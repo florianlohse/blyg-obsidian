@@ -1,0 +1,9 @@
+node_modules/
+main.js
+*.js.map
+dist/
+coverage/
+.DS_Store
+data.json
+.env*
+tests/fixtures/out/

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 3,
+  "studio": {
+    "baseUrl": "__STUDIO_URL__",
+    "mount": "",
+    "tokenSecretName": "smoke-studio"
+  },
+  "routes": [
+    {
+      "vaultPrefix": "Blyg/",
+      "mode": "studio",
+      "label": "Blyg item",
+      "draftsOnly": true
+    }
+  ],
+  "respond": {
+    "draftsPrefix": "Blyg/"
+  }
+}

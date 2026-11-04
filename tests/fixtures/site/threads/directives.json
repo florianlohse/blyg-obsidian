@@ -1,0 +1,242 @@
+{
+  "_about": "Directive grammar cases (spec section 10.1; the reference's behaviour). `directives` are in order; `quote` is the attached blockquote with markers stripped (null = a whole quotation). `links` are the plain internal links found; `problems` is the number of grammar-level problems.",
+  "ids": {
+    "A": "7c9wk2mhq0v3xj8tn5rzfd41bg",
+    "B": "1vgtgz0gq5b2c9k7d3m8r4n6xy"
+  },
+  "cases": [
+    {
+      "name": "a whole directive",
+      "md": "Before.\n\n![[7c9wk2mhq0v3xj8tn5rzfd41bg]]\n\nAfter.",
+      "directives": [
+        {
+          "id": "7c9wk2mhq0v3xj8tn5rzfd41bg",
+          "quote": null
+        }
+      ],
+      "links": [],
+      "problems": 0
+    },
+    {
+      "name": "surrounding whitespace is allowed",
+      "md": "  ![[7c9wk2mhq0v3xj8tn5rzfd41bg]]  ",
+      "directives": [
+        {
+          "id": "7c9wk2mhq0v3xj8tn5rzfd41bg",
+          "quote": null
+        }
+      ],
+      "links": [],
+      "problems": 0
+    },
+    {
+      "name": "an attached quote makes it partial",
+      "md": "![[7c9wk2mhq0v3xj8tn5rzfd41bg]]\n> Stigmergy is what a protocol\n> looks like from inside.\n\nAfter.",
+      "directives": [
+        {
+          "id": "7c9wk2mhq0v3xj8tn5rzfd41bg",
+          "quote": "Stigmergy is what a protocol\nlooks like from inside."
+        }
+      ],
+      "links": [],
+      "problems": 0
+    },
+    {
+      "name": "a blank line detaches the quote",
+      "md": "![[7c9wk2mhq0v3xj8tn5rzfd41bg]]\n\n> My own quotation.",
+      "directives": [
+        {
+          "id": "7c9wk2mhq0v3xj8tn5rzfd41bg",
+          "quote": null
+        }
+      ],
+      "links": [],
+      "problems": 0
+    },
+    {
+      "name": "a quote with a bare > line keeps two blocks",
+      "md": "![[7c9wk2mhq0v3xj8tn5rzfd41bg]]\n> one\n>\n> two",
+      "directives": [
+        {
+          "id": "7c9wk2mhq0v3xj8tn5rzfd41bg",
+          "quote": "one\n\ntwo"
+        }
+      ],
+      "links": [],
+      "problems": 0
+    },
+    {
+      "name": "nested quote markers stay nested",
+      "md": "![[7c9wk2mhq0v3xj8tn5rzfd41bg]]\n> > inner",
+      "directives": [
+        {
+          "id": "7c9wk2mhq0v3xj8tn5rzfd41bg",
+          "quote": "> inner"
+        }
+      ],
+      "links": [],
+      "problems": 0
+    },
+    {
+      "name": "the same directive twice is two directives",
+      "md": "![[7c9wk2mhq0v3xj8tn5rzfd41bg]]\n\ntext\n\n![[7c9wk2mhq0v3xj8tn5rzfd41bg]]",
+      "directives": [
+        {
+          "id": "7c9wk2mhq0v3xj8tn5rzfd41bg",
+          "quote": null
+        },
+        {
+          "id": "7c9wk2mhq0v3xj8tn5rzfd41bg",
+          "quote": null
+        }
+      ],
+      "links": [],
+      "problems": 0
+    },
+    {
+      "name": "two different sources, in order",
+      "md": "![[1vgtgz0gq5b2c9k7d3m8r4n6xy]]\n\n![[7c9wk2mhq0v3xj8tn5rzfd41bg]]",
+      "directives": [
+        {
+          "id": "1vgtgz0gq5b2c9k7d3m8r4n6xy",
+          "quote": null
+        },
+        {
+          "id": "7c9wk2mhq0v3xj8tn5rzfd41bg",
+          "quote": null
+        }
+      ],
+      "links": [],
+      "problems": 0
+    },
+    {
+      "name": "inline is not a directive",
+      "md": "Text ![[7c9wk2mhq0v3xj8tn5rzfd41bg]] more",
+      "directives": [],
+      "links": [],
+      "problems": 0
+    },
+    {
+      "name": "inert in a backtick fence",
+      "md": "```\n![[7c9wk2mhq0v3xj8tn5rzfd41bg]]\n```",
+      "directives": [],
+      "links": [],
+      "problems": 0
+    },
+    {
+      "name": "inert in a tilde fence",
+      "md": "~~~\n![[7c9wk2mhq0v3xj8tn5rzfd41bg]]\n~~~",
+      "directives": [],
+      "links": [],
+      "problems": 0
+    },
+    {
+      "name": "inert in an indented code block",
+      "md": "text\n\n    ![[7c9wk2mhq0v3xj8tn5rzfd41bg]]\n",
+      "directives": [],
+      "links": [],
+      "problems": 0
+    },
+    {
+      "name": "inert in a fence inside a list item",
+      "md": "- item\n\n  ```\n  ![[7c9wk2mhq0v3xj8tn5rzfd41bg]]\n  ```\n",
+      "directives": [],
+      "links": [],
+      "problems": 0
+    },
+    {
+      "name": "inert in a code span",
+      "md": "Use `![[7c9wk2mhq0v3xj8tn5rzfd41bg]]` to quote.",
+      "directives": [],
+      "links": [],
+      "problems": 0
+    },
+    {
+      "name": "a directive after a closed fence is live",
+      "md": "```\ncode\n```\n![[7c9wk2mhq0v3xj8tn5rzfd41bg]]",
+      "directives": [
+        {
+          "id": "7c9wk2mhq0v3xj8tn5rzfd41bg",
+          "quote": null
+        }
+      ],
+      "links": [],
+      "problems": 0
+    },
+    {
+      "name": "an explicit version is refused",
+      "md": "![[7c9wk2mhq0v3xj8tn5rzfd41bg@v2]]",
+      "directives": [],
+      "links": [],
+      "problems": 1
+    },
+    {
+      "name": "an id one character short is not a directive",
+      "md": "![[7c9wk2mhq0v3xj8tn5rzfd41b]]",
+      "directives": [],
+      "links": [],
+      "problems": 0
+    },
+    {
+      "name": "an uppercase id is not a directive",
+      "md": "![[7C9WK2MHQ0V3XJ8TN5RZFD41BG]]",
+      "directives": [],
+      "links": [],
+      "problems": 0
+    },
+    {
+      "name": "an id with a forbidden letter is not a directive",
+      "md": "![[7c9wk2mhq0v3xj8tn5rzfd41bu]]",
+      "directives": [],
+      "links": [],
+      "problems": 0
+    },
+    {
+      "name": "a plain internal link",
+      "md": "See [[7c9wk2mhq0v3xj8tn5rzfd41bg]] now.",
+      "directives": [],
+      "links": [
+        "7c9wk2mhq0v3xj8tn5rzfd41bg"
+      ],
+      "problems": 0
+    },
+    {
+      "name": "plain links are inert in code",
+      "md": "`[[7c9wk2mhq0v3xj8tn5rzfd41bg]]` and\n\n```\n[[7c9wk2mhq0v3xj8tn5rzfd41bg]]\n```",
+      "directives": [],
+      "links": [],
+      "problems": 0
+    },
+    {
+      "name": "a link inside an attached quote is quote text, not a link",
+      "md": "![[7c9wk2mhq0v3xj8tn5rzfd41bg]]\n> see [[1vgtgz0gq5b2c9k7d3m8r4n6xy]]",
+      "directives": [
+        {
+          "id": "7c9wk2mhq0v3xj8tn5rzfd41bg",
+          "quote": "see [[1vgtgz0gq5b2c9k7d3m8r4n6xy]]"
+        }
+      ],
+      "links": [],
+      "problems": 0
+    },
+    {
+      "name": "a directive is not also a link",
+      "md": "![[7c9wk2mhq0v3xj8tn5rzfd41bg]]",
+      "directives": [
+        {
+          "id": "7c9wk2mhq0v3xj8tn5rzfd41bg",
+          "quote": null
+        }
+      ],
+      "links": [],
+      "problems": 0
+    },
+    {
+      "name": "essay wikilinks are not item links",
+      "md": "See [[Shitty Castles]] and [[folder/Name|shown]].",
+      "directives": [],
+      "links": [],
+      "problems": 0
+    }
+  ]
+}

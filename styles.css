@@ -1,0 +1,373 @@
+/* Blyg plugin styles. Every class is prefixed "blyg-" so nothing leaks into other plugins or themes. */
+
+.blyg-issues {
+  margin-bottom: 1em;
+}
+
+.blyg-issues-title {
+  font-weight: var(--font-semibold);
+  color: var(--text-warning);
+}
+
+.blyg-issue {
+  color: var(--text-warning);
+  font-size: var(--font-ui-smaller);
+}
+
+.blyg-note {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.blyg-check-result {
+  margin: 0.5em 0 1em;
+}
+
+.blyg-check-line {
+  font-size: var(--font-ui-small);
+  padding: 0.1em 0;
+}
+
+.blyg-check-line.blyg-ok::before {
+  content: "✓ ";
+  color: var(--text-success);
+}
+
+.blyg-check-line.blyg-warn::before {
+  content: "⚠ ";
+  color: var(--text-warning);
+}
+
+.blyg-check-line.blyg-error::before {
+  content: "✗ ";
+  color: var(--text-error);
+}
+
+/* The preview window shown before a write (R2). The window is a column: target bar on top, buttons at the bottom, and only the
+   middle scrolls, so a long link list, commit message or diff can never push the buttons or the target out of reach. */
+.blyg-preview {
+  display: flex;
+  flex-direction: column;
+  max-height: 70vh;
+}
+
+.blyg-preview .blyg-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.blyg-preview .blyg-footer {
+  flex: none;
+}
+
+/* The target bar (class "blyg-where"; it was "blyg-target" in 0.0.4, see WritePreviewModal): normal text on a neutral background with a thick coloured edge. Never colour-on-colour: in 0.0.4
+   the preview bar used a warning colour for fill and text and rendered as an empty orange block on the iPad. */
+.blyg-preview .blyg-where {
+  padding: 0.6em 0.75em;
+  border-radius: var(--radius-s);
+  font-weight: var(--font-semibold);
+  margin-bottom: 0.75em;
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-left-width: 0.5em;
+}
+
+.blyg-preview .blyg-where-preview {
+  border-left-color: var(--color-orange, orange);
+}
+
+.blyg-preview .blyg-where-production {
+  border-left-color: var(--color-red, red);
+}
+
+/* A publish through a Studio goes live at once and cannot be taken back (a withdrawal is the only undo): the same loud edge as production. */
+.blyg-preview .blyg-where-studio {
+  border-left-color: var(--color-red, red);
+}
+
+.blyg-preview .blyg-studio-render {
+  padding: 0.5em 0.75em;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  overflow-wrap: anywhere;
+}
+
+.blyg-preview .blyg-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.15em 0.75em;
+  font-size: var(--font-ui-small);
+  margin: 0 0 0.5em;
+}
+
+.blyg-preview .blyg-facts dt {
+  color: var(--text-muted);
+}
+
+.blyg-preview .blyg-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.blyg-preview .blyg-changes {
+  margin: 0.25em 0 0.75em;
+  font-size: var(--font-ui-small);
+}
+
+.blyg-preview .blyg-warning {
+  color: var(--text-warning);
+  margin: 0.5em 0 1em;
+}
+
+.blyg-preview .blyg-diff-heading {
+  font-weight: var(--font-semibold);
+  margin: 0.5em 0 0.25em;
+}
+
+/* No scroll area of its own: the whole middle of the window scrolls (nested scrolling is unusable on a touch screen). */
+.blyg-preview .blyg-diff {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  padding: 0.5em 0.75em;
+  margin-bottom: 1em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--font-ui-small);
+}
+
+.blyg-preview .blyg-diff-same {
+  color: var(--text-muted);
+}
+
+.blyg-preview .blyg-diff-add {
+  background: rgba(var(--color-green-rgb), 0.25);
+}
+
+.blyg-preview .blyg-diff-del {
+  background: rgba(var(--color-red-rgb), 0.25);
+  text-decoration: line-through;
+}
+
+.blyg-preview .blyg-links {
+  margin: 0.25em 0 0.5em;
+  font-size: var(--font-ui-small);
+  overflow-wrap: anywhere;
+}
+
+.blyg-preview .blyg-link-outside {
+  color: var(--text-error);
+  font-weight: var(--font-semibold);
+}
+
+/* The side panel (R2). Class names are all "blyg-pane*", new in 0.0.12, so no older stylesheet can touch them. Markers are normal
+   text with a coloured edge or a coloured check glyph, never text coloured like its own background (found on the iPad, 0.0.4). */
+.blyg-pane {
+  padding: var(--size-4-3);
+}
+
+/* Test mode: only drawn while publishing is pointed at the preview branch. Normal text on a neutral background, coloured edge. */
+.blyg-pane .blyg-pane-testmode {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+  align-items: flex-start;
+  padding: 0.6em 0.75em;
+  margin-bottom: 0.75em;
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-left: 0.4em solid var(--color-orange, orange);
+  font-size: var(--font-ui-small);
+}
+
+/* The status: normal text on a neutral background; a coloured edge, green with a check when everything is fine. */
+.blyg-pane .blyg-pane-status {
+  padding: 0.5em 0.75em;
+  margin-bottom: 0.5em;
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-left: 0.4em solid var(--background-modifier-border);
+}
+
+.blyg-pane .blyg-pane-status-ok {
+  border-left-color: var(--color-green, green);
+}
+
+.blyg-pane .blyg-pane-check {
+  color: var(--text-success);
+  font-weight: var(--font-bold);
+  margin-right: 0.4em;
+}
+
+.blyg-pane .blyg-pane-headline {
+  font-weight: var(--font-semibold);
+  margin-bottom: 0.25em;
+}
+
+.blyg-pane .blyg-pane-note {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  margin-bottom: 0.25em;
+  overflow-wrap: anywhere;
+}
+
+.blyg-pane .blyg-pane-hint {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  margin-bottom: 0.5em;
+}
+
+.blyg-pane .blyg-pane-version {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  margin-top: 1em;
+}
+
+.blyg-pane .blyg-pane-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.15em 0.75em;
+  font-size: var(--font-ui-small);
+  margin: 0.75em 0;
+}
+
+.blyg-pane .blyg-pane-facts dt {
+  color: var(--text-muted);
+}
+
+.blyg-pane .blyg-pane-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.blyg-pane .blyg-pane-deploy {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  padding: 0.5em 0.75em;
+  margin: 0.75em 0;
+  font-size: var(--font-ui-small);
+}
+
+.blyg-pane .blyg-pane-deploy-attention {
+  border-left: 0.4em solid var(--color-orange, orange);
+}
+
+.blyg-pane .blyg-pane-deploy-title {
+  color: var(--text-muted);
+}
+
+.blyg-pane .blyg-pane-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5em;
+  margin-top: 0.75em;
+}
+
+/* Insert quote (R3): the item's text in a read-only box to select a passage from. New class names, as always. */
+.blyg-quote .blyg-quote-help {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  margin-bottom: 0.5em;
+}
+
+.blyg-quote .blyg-quote-text {
+  width: 100%;
+  resize: vertical;
+  font-family: var(--font-text);
+  line-height: var(--line-height-normal);
+}
+
+.blyg-quote .blyg-quote-status {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  margin: 0.4em 0;
+}
+
+/* The write preview's list of what a thread quotes. */
+.blyg-preview .blyg-quotes {
+  margin: 0.25em 0 0.75em;
+  padding-left: 1.25em;
+  font-size: var(--font-ui-small);
+  overflow-wrap: anywhere;
+}
+
+.blyg-preview .blyg-quote-moved {
+  border-left: 0.3em solid var(--interactive-accent);
+  padding-left: 0.4em;
+  margin-left: -0.7em;
+}
+
+/* The quote window's buttons: wrap and stay inside the window on a phone (a Setting row does not wrap). */
+.blyg-quote .blyg-quote-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5em;
+  margin-top: 0.5em;
+}
+
+.blyg-quote .blyg-quote-buttons button {
+  flex: 1 1 auto;
+}
+
+/* The write preview's buttons too. */
+.blyg-preview .blyg-footer .setting-item-control {
+  flex-wrap: wrap;
+}
+
+/* The side panel's writing buttons. */
+.blyg-pane .blyg-pane-write {
+  margin: 0.75em 0;
+}
+
+.blyg-pane .blyg-pane-write-title {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  margin-bottom: 0.25em;
+}
+
+.blyg-pane .blyg-pane-write button {
+  flex: 1 1 40%;
+}
+
+/* Buttons that do not apply are plainly dead: faint, flat, no accent colour (0.1.2 looked almost the same as live ones). */
+.blyg-pane button:disabled {
+  opacity: 0.3;
+  cursor: default;
+  box-shadow: none;
+}
+
+.blyg-pane button.mod-cta:disabled,
+.blyg-pane button.mod-warning:disabled {
+  background-color: var(--background-modifier-border);
+  color: var(--text-faint);
+}
+
+.blyg-textmodal-area {
+  width: 100%;
+  margin: 0.75em 0;
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+}
+
+/* "Import from the Studio": the checklist (roadmap S7). */
+.blyg-import .blyg-import-list {
+  max-height: 55vh;
+  overflow-y: auto;
+  margin: var(--size-4-2) 0;
+}
+.blyg-import .blyg-import-caution {
+  color: var(--text-warning);
+}
+
+/* Replies and addresses (roadmap S9, S10). */
+.blyg-pane .blyg-pane-warn {
+  color: var(--text-warning);
+}
+.blyg-pick-unquotable small {
+  color: var(--text-warning);
+}

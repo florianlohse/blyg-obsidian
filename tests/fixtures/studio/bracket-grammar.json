@@ -1,0 +1,251 @@
+{
+  "comment": "How a real Blygger Studio 0.48.2 reads bracket text (spec 0.4 §10.1): per input, how many quote directives (`![[id…]]` on a line) and item links (`[[id…]]`) its thread preview recognised, measured 2026-10-23 against a local Studio with an id that names no item (so every recognised bracket is reported as an error with its directive). The input strings are `texts` of crates/blyg-render/tests/fixtures/grammar_input.json from aneeshsathe/blygger-desktop @ 2df7656 (MIT, Copyright (c) 2026 Blygger Desktop contributors), whose own comment says: 'Bracket grammar vectors (studio grammar.ts, link-label.ts; labels.test.ts and tk-generate.test.ts cases plus edges)'. The counts are ours.",
+  "studio": "blygger-studio/0.48.2",
+  "cases": [
+    {
+      "text": "[[7c9wk2n4h6q1x8v0z3m5rjy2ke]]",
+      "directives": 0,
+      "links": 1
+    },
+    {
+      "text": "[[7c9wk2n4h6q1x8v0z3m5rjy2ke | the opening fragment]]",
+      "directives": 0,
+      "links": 1
+    },
+    {
+      "text": "[[7c9wk2n4h6q1x8v0z3m5rjy2ke|tight]]",
+      "directives": 0,
+      "links": 1
+    },
+    {
+      "text": "[[7c9wk2n4h6q1x8v0z3m5rjy2ke   |   padded   ]]",
+      "directives": 0,
+      "links": 1
+    },
+    {
+      "text": "[[7c9wk2n4h6q1x8v0z3m5rjy2ke | either | or]]",
+      "directives": 0,
+      "links": 1
+    },
+    {
+      "text": "[[7c9wk2n4h6q1x8v0z3m5rjy2ke | a ] single bracket]]",
+      "directives": 0,
+      "links": 1
+    },
+    {
+      "text": "[[7c9wk2n4h6q1x8v0z3m5rjy2ke | [nested] brackets]]",
+      "directives": 0,
+      "links": 1
+    },
+    {
+      "text": "[[7c9wk2n4h6q1x8v0z3m5rjy2ke |]]",
+      "directives": 0,
+      "links": 1
+    },
+    {
+      "text": "[[7c9wk2n4h6q1x8v0z3m5rjy2ke |   ]]",
+      "directives": 0,
+      "links": 1
+    },
+    {
+      "text": "[[7c9wk2n4h6q1x8v0z3m5rjy2ke | cut]] here]]",
+      "directives": 0,
+      "links": 1
+    },
+    {
+      "text": "see [[7c9wk2n4h6q1x8v0z3m5rjy2ke | one]] and [[7c9wk2n4h6q1x8v0z3m5rjy2ke]] too",
+      "directives": 0,
+      "links": 2
+    },
+    {
+      "text": "[[a label | 7c9wk2n4h6q1x8v0z3m5rjy2ke]]",
+      "directives": 0,
+      "links": 0
+    },
+    {
+      "text": "[[c9wk2n4h6q1x8v0z3m5rjy2ke | short id]]",
+      "directives": 0,
+      "links": 0
+    },
+    {
+      "text": "[[7c9wk2n4h6q1x8v0z3m5rjy2kex]]",
+      "directives": 0,
+      "links": 0
+    },
+    {
+      "text": "[[just words]]",
+      "directives": 0,
+      "links": 0
+    },
+    {
+      "text": "![[7c9wk2n4h6q1x8v0z3m5rjy2ke | a quote]]",
+      "directives": 1,
+      "links": 0
+    },
+    {
+      "text": "![[7c9wk2n4h6q1x8v0z3m5rjy2ke | the source]]",
+      "directives": 1,
+      "links": 0
+    },
+    {
+      "text": "  ![[7c9wk2n4h6q1x8v0z3m5rjy2ke]]  ",
+      "directives": 1,
+      "links": 0
+    },
+    {
+      "text": "text ![[7c9wk2n4h6q1x8v0z3m5rjy2ke | inline]]",
+      "directives": 0,
+      "links": 0
+    },
+    {
+      "text": "[[7c9wk2n4h6q1x8v0z3m5rjy2ke | ends ] ] early]]",
+      "directives": 0,
+      "links": 1
+    },
+    {
+      "text": "[[7c9wk2n4h6q1x8v0z3m5rjy2ke ]]",
+      "directives": 0,
+      "links": 0
+    },
+    {
+      "text": "[[7c9wk2n4h6q1x8v0z3m5rjy2ke\t|\ttabbed\t]]",
+      "directives": 0,
+      "links": 1
+    },
+    {
+      "text": "[[7c9wk2n4h6q1x8v0z3m5rjy2ke | two\nlines]]",
+      "directives": 0,
+      "links": 0
+    },
+    {
+      "text": "[[7c9wk2n4h6q1x8v0z3m5rjy2ke | a]]]",
+      "directives": 0,
+      "links": 1
+    },
+    {
+      "text": "[[[7c9wk2n4h6q1x8v0z3m5rjy2ke | triple]]]",
+      "directives": 0,
+      "links": 1
+    },
+    {
+      "text": "[[7c9wk2n4h6q1x8v0z3m5rjy2ke | see [[7c9wk2n4h6q1x8v0z3m5rjy2ke]] inside]]",
+      "directives": 0,
+      "links": 1
+    },
+    {
+      "text": "![[7c9wk2n4h6q1x8v0z3m5rjy2ke | a]] b]]",
+      "directives": 0,
+      "links": 0
+    },
+    {
+      "text": " ![[7c9wk2n4h6q1x8v0z3m5rjy2ke | nbsp]] ",
+      "directives": 1,
+      "links": 0
+    },
+    {
+      "text": "![[7c9wk2n4h6q1x8v0z3m5rjy2ke@v2 | pinned]]",
+      "directives": 0,
+      "links": 0
+    },
+    {
+      "text": "[[7c9wk2n4h6q1x8v0z3m5rjy2ke | café — “quoted”]]",
+      "directives": 0,
+      "links": 1
+    },
+    {
+      "text": "[[7C9WK2N4H6Q1X8V0Z3M5RJY2KE | caps]]",
+      "directives": 0,
+      "links": 0
+    },
+    {
+      "text": "![[[7c9wk2n4h6q1x8v0z3m5rjy2ke]]",
+      "directives": 0,
+      "links": 1
+    },
+    {
+      "text": "!![[7c9wk2n4h6q1x8v0z3m5rjy2ke | double bang]]",
+      "directives": 0,
+      "links": 0
+    },
+    {
+      "text": "It is worth reading in full ![[7c9wk2n4h6q1x8v0z3m5rjy2ke]]",
+      "directives": 0,
+      "links": 0
+    },
+    {
+      "text": "As argued in [[7c9wk2n4h6q1x8v0z3m5rjy2ke]], the order matters.",
+      "directives": 0,
+      "links": 1
+    },
+    {
+      "text": "As argued in [[7c9wk2n4h6q1x8v0z3m5rjy2ke | the earlier post]], yes.",
+      "directives": 0,
+      "links": 1
+    },
+    {
+      "text": "see (![[7c9wk2n4h6q1x8v0z3m5rjy2ke | that]]) here",
+      "directives": 0,
+      "links": 0
+    },
+    {
+      "text": "No grammar here at all.",
+      "directives": 0,
+      "links": 0
+    },
+    {
+      "text": "Above.\n\n![[7c9wk2n4h6q1x8v0z3m5rjy2ke]]\n\nBelow.",
+      "directives": 1,
+      "links": 0
+    },
+    {
+      "text": "Above.\n![[7c9wk2n4h6q1x8v0z3m5rjy2ke | kept as a quote]]\nBelow.",
+      "directives": 1,
+      "links": 0
+    },
+    {
+      "text": "Two  spaces  stay [[7c9wk2n4h6q1x8v0z3m5rjy2ke]] here  and\tthere",
+      "directives": 0,
+      "links": 1
+    },
+    {
+      "text": "End with a link [[7c9wk2n4h6q1x8v0z3m5rjy2ke]] .",
+      "directives": 0,
+      "links": 1
+    },
+    {
+      "text": "( [[7c9wk2n4h6q1x8v0z3m5rjy2ke]] ) and [[7c9wk2n4h6q1x8v0z3m5rjy2ke]]!",
+      "directives": 0,
+      "links": 2
+    },
+    {
+      "text": "tab\t[[7c9wk2n4h6q1x8v0z3m5rjy2ke]]\t, then",
+      "directives": 0,
+      "links": 1
+    },
+    {
+      "text": "Only [[7c9wk2n4h6q1x8v0z3m5rjy2ke]]   ",
+      "directives": 0,
+      "links": 1
+    },
+    {
+      "text": "`[[7c9wk2n4h6q1x8v0z3m5rjy2ke | in code]]` is stripped too",
+      "directives": 0,
+      "links": 0
+    },
+    {
+      "text": "[[7c9wk2n4h6q1x8v0z3m5rjy2ke]]",
+      "directives": 0,
+      "links": 1
+    },
+    {
+      "text": "  [[7c9wk2n4h6q1x8v0z3m5rjy2ke | indented label]]",
+      "directives": 0,
+      "links": 1
+    },
+    {
+      "text": "a [[7c9wk2n4h6q1x8v0z3m5rjy2ke|x]][[7c9wk2n4h6q1x8v0z3m5rjy2ke|y]] b",
+      "directives": 0,
+      "links": 2
+    }
+  ]
+}

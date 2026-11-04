@@ -1,0 +1,156 @@
+{
+  "_about": "Shared fixtures for the text-content rule and the quote grammar (R3, S104). The site's scripts/test-threads.mjs and the Obsidian plugin's tests both read these files, so the two implementations cannot drift. selectionText cases are the reference studio's own (blygger/blygger-studio test/selection.test.ts, MIT). Change a case only together with the contract (docs/CONTRACT-obsidian-blyg.md section 3.3).",
+  "selectionText": [
+    {
+      "name": "one line per block",
+      "html": "<p>first</p>\n<p>second</p>",
+      "text": "first\nsecond"
+    },
+    {
+      "name": "newlines a renderer leaves inside a paragraph collapse",
+      "html": "<p>one\ntwo\nthree</p>",
+      "text": "one two three"
+    },
+    {
+      "name": "runs of spaces and tabs collapse",
+      "html": "<p>a   b\t\tc</p>",
+      "text": "a b c"
+    },
+    {
+      "name": "empty blocks are dropped",
+      "html": "<p>a</p><p></p><p>  </p><p>b</p>",
+      "text": "a\nb"
+    },
+    {
+      "name": "br is a block boundary",
+      "html": "<p>a<br>b</p>",
+      "text": "a\nb"
+    },
+    {
+      "name": "list items break apart",
+      "html": "<ul><li>one</li><li>two</li></ul>",
+      "text": "one\ntwo"
+    },
+    {
+      "name": "blocks never weld",
+      "html": "<p>evil.</p><p>Next</p>",
+      "text": "evil.\nNext"
+    },
+    {
+      "name": "inline formatting is stripped, text unbroken",
+      "html": "<p>the <em>thin</em> layer</p>",
+      "text": "the thin layer"
+    },
+    {
+      "name": "entities the renderer emits are decoded",
+      "html": "<p>a &amp; b &lt;c&gt; &quot;d&quot;</p>",
+      "text": "a & b <c> \"d\""
+    },
+    {
+      "name": "named curly-quote entities fold to straight quotes (the reference's rule)",
+      "html": "<p>&ldquo;x&rdquo; &lsquo;y&rsquo;</p>",
+      "text": "\"x\" 'y'"
+    },
+    {
+      "name": "literal curly quotes are NOT folded",
+      "html": "<p>“x” ‘y’</p>",
+      "text": "“x” ‘y’"
+    },
+    {
+      "name": "nested blocks are separate lines",
+      "html": "<blockquote><p>inner</p></blockquote><p>after</p>",
+      "text": "inner\nafter"
+    },
+    {
+      "name": "script and style content is dropped",
+      "html": "<p>a</p><script>var x = 1;</script><p>b</p>",
+      "text": "a\nb"
+    },
+    {
+      "name": "no text at all",
+      "html": "<p></p>",
+      "text": ""
+    },
+    {
+      "name": "empty input",
+      "html": "",
+      "text": ""
+    }
+  ],
+  "normalizeSelection": [
+    {
+      "name": "a browser selection: blocks as newlines, runs collapse",
+      "input": "first  para\nsecond\n\nthird",
+      "output": "first para\nsecond\nthird"
+    },
+    {
+      "name": "blank lines and edges are dropped",
+      "input": "\n  a  \n\n",
+      "output": "a"
+    }
+  ],
+  "quoteLines": [
+    {
+      "name": "two blocks get a bare > between them so they render back to two blocks",
+      "selection": "one\ntwo",
+      "quote": "> one\n>\n> two"
+    },
+    {
+      "name": "one line",
+      "selection": "only",
+      "quote": "> only"
+    }
+  ],
+  "selectionFromQuote": [
+    {
+      "name": "plain text",
+      "quote": "A plain passage.",
+      "selection": "A plain passage."
+    },
+    {
+      "name": "soft wraps collapse",
+      "quote": "A plain\npassage that wraps.",
+      "selection": "A plain passage that wraps."
+    },
+    {
+      "name": "emphasis and links keep their text only",
+      "quote": "the *thin* [layer](https://example.com) and **more**",
+      "selection": "the thin layer and more"
+    },
+    {
+      "name": "two paragraphs stay two lines",
+      "quote": "First.\n\nSecond.",
+      "selection": "First.\nSecond."
+    },
+    {
+      "name": "a quote of a quote keeps its text",
+      "quote": "> inner words",
+      "selection": "inner words"
+    },
+    {
+      "name": "a list is one line per item",
+      "quote": "- one\n- two",
+      "selection": "one\ntwo"
+    },
+    {
+      "name": "straight quotes stay straight (no typography in the selection)",
+      "quote": "He said \"yes\".",
+      "selection": "He said \"yes\"."
+    },
+    {
+      "name": "empty after rendering",
+      "quote": "",
+      "selection": ""
+    },
+    {
+      "name": "raw HTML in a quote stays as visible text (the reference escapes it)",
+      "quote": "use <tags> & more",
+      "selection": "use <tags> & more"
+    },
+    {
+      "name": "an ampersand and angle brackets survive",
+      "quote": "Tom & Jerry say 1 < 2",
+      "selection": "Tom & Jerry say 1 < 2"
+    }
+  ]
+}

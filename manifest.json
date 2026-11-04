@@ -1,0 +1,9 @@
+{
+  "id": "blyg",
+  "name": "Blyg",
+  "version": "0.9.0-rc.1",
+  "minAppVersion": "1.13.0",
+  "description": "Publish notes to your Blygger Studio blyg, quote and respond to other blygs, from desktop or mobile.",
+  "author": "Florian Lohse",
+  "isDesktopOnly": false
+}

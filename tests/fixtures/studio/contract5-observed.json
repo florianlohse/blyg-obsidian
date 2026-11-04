@@ -1,0 +1,270 @@
+{
+ "_about": "Observed on a local Studio 0.51.0 (contract 5.2.0) by docs/architecture/spikes/s16/measure.sh on 2026-11-04. Ids, timestamps and opaque cursors are as seen; the capabilities answer is cut to the keys the plugin reads.",
+ "probes": {
+  "capabilities": {
+   "status": null,
+   "body": "(cut; see the report: contractVersion \"5.2.0\", endpoints{publicBase,studio,api,issuer,mcp,media}, operations[...])"
+  },
+  "create": {
+   "status": 201,
+   "body": {
+    "id": "<id>",
+    "revision": 1,
+    "kind": "fragment",
+    "status": "draft",
+    "created": "2026-11-04T08:27:23Z",
+    "updated": "2026-11-04T08:27:23Z",
+    "version": 0,
+    "contentMd": "Spike item one.",
+    "dirty": true,
+    "stubOf": null,
+    "forkedFrom": null,
+    "forkCite": null,
+    "provenance": [],
+    "responses": "default",
+    "highlight": "default"
+   }
+  },
+  "old-style create (content_md) must fail": {
+   "status": 400,
+   "body": {
+    "code": "invalid-input",
+    "message": "request: Unrecognized key: \"content_md\"",
+    "details": {
+     "issues": [
+      {
+       "path": [],
+       "message": "Unrecognized key: \"content_md\""
+      }
+     ]
+    }
+   }
+  },
+  "patch rev1": {
+   "status": 200,
+   "body": {
+    "id": "<id>",
+    "revision": 2,
+    "kind": "fragment",
+    "status": "draft",
+    "created": "2026-11-04T08:27:23Z",
+    "updated": "2026-11-04T08:27:23Z",
+    "version": 0,
+    "contentMd": "Spike item one, edited.",
+    "dirty": true,
+    "stubOf": null,
+    "forkedFrom": null,
+    "forkCite": null,
+    "provenance": [],
+    "responses": "default",
+    "highlight": "default"
+   }
+  },
+  "patch stale rev1 (expect revision-conflict)": {
+   "status": 409,
+   "body": {
+    "code": "revision-conflict",
+    "message": "item revision conflict; reload and try again",
+    "details": {
+     "itemId": "<id>",
+     "expectedRevision": 1
+    }
+   }
+  },
+  "patch without expectedRevision": {
+   "status": 400,
+   "body": {
+    "code": "invalid-input",
+    "message": "expectedRevision: Invalid input: expected number, received undefined",
+    "details": {
+     "issues": [
+      {
+       "path": [
+        "expectedRevision"
+       ],
+       "message": "Invalid input: expected number, received undefined"
+      }
+     ]
+    }
+   }
+  },
+  "publish rev2": {
+   "status": 200,
+   "body": {
+    "ok": true,
+    "version": 1,
+    "revision": 3
+   }
+  },
+  "get after publish": {
+   "status": 200,
+   "body": {
+    "id": "<id>",
+    "revision": 3,
+    "kind": "fragment",
+    "status": "public",
+    "created": "2026-11-04T08:27:23Z",
+    "updated": "2026-11-04T08:27:23Z",
+    "version": 1,
+    "contentMd": "Spike item one, edited.",
+    "dirty": false,
+    "stubOf": null,
+    "forkedFrom": null,
+    "forkCite": null,
+    "provenance": [],
+    "responses": "default",
+    "highlight": "default",
+    "pins": [],
+    "media": [],
+    "publishedMedia": [],
+    "published": {
+     "kind": "fragment",
+     "itemId": "<id>",
+     "version": 1,
+     "contentMd": "Spike item one, edited.",
+     "contentHtml": "<p>Spike item one, edited.</p>\n",
+     "contentHash": "sha256:ca91f903a50693e8f1c7b48185bd104fe5a6fb3c9d096dc55be3577042a7f919",
+     "publishedAt": "2026-11-04T08:27:23Z",
+     "note": null,
+     "transclusions": [],
+     "pinned": false,
+     "pinnedAt": null,
+     "stubOf": null,
+     "stubCite": null,
+     "noteGenerated": false,
+     "generated": [],
+     "changeClass": null
+    }
+   }
+  },
+  "withdraw stale": {
+   "status": 409,
+   "body": {
+    "code": "revision-conflict",
+    "message": "item revision conflict; reload and try again",
+    "details": {
+     "itemId": "<id>",
+     "expectedRevision": 1
+    }
+   }
+  },
+  "delete published (expect refusal)": {
+   "status": 409,
+   "body": {
+    "code": "conflict",
+    "message": "published items are withdrawn, not deleted"
+   }
+  },
+  "second draft: delete with a JSON body": {
+   "status": 200,
+   "body": {
+    "ok": true,
+    "outcome": "discarded"
+   }
+  },
+  "delete without body": {
+   "status": 400,
+   "body": {
+    "code": "invalid-input",
+    "message": "request: Invalid input: expected object, received undefined",
+    "details": {
+     "issues": [
+      {
+       "path": [],
+       "message": "Invalid input: expected object, received undefined"
+      }
+     ]
+    }
+   }
+  },
+  "summary": {
+   "status": 200,
+   "body": {
+    "all": 2,
+    "drafts": 1,
+    "changes": 0,
+    "public": 1,
+    "withdrawn": 0
+   }
+  },
+  "list limit=1": {
+   "status": 200,
+   "body": {
+    "items": [
+     {
+      "id": "<id>",
+      "revision": 1,
+      "kind": "fragment",
+      "status": "draft",
+      "created": "2026-11-04T08:27:23Z",
+      "updated": "2026-11-04T08:27:23Z",
+      "version": 0,
+      "contentMd": "Disposable 2.",
+      "dirty": true,
+      "stubOf": null,
+      "forkedFrom": null,
+      "forkCite": null,
+      "provenance": [],
+      "responses": "default",
+      "highlight": "default",
+      "pins": []
+     }
+    ],
+    "page": {
+     "limit": 1,
+     "nextCursor": "<opaque-cursor>"
+    }
+   }
+  },
+  "list offset (expect 400)": {
+   "status": 400,
+   "body": {
+    "code": "invalid-input",
+    "message": "request: Unrecognized key: \"offset\"",
+    "details": {
+     "issues": [
+      {
+       "path": [],
+       "message": "Unrecognized key: \"offset\""
+      }
+     ]
+    }
+   }
+  },
+  "list bad cursor": {
+   "status": 400,
+   "body": {
+    "code": "invalid-input",
+    "message": "Invalid cursor for this collection, filters, or order"
+   }
+  },
+  "mentions targetItemId": {
+   "status": 200,
+   "body": {
+    "items": [],
+    "page": {
+     "limit": 1,
+     "nextCursor": null
+    },
+    "direction": "inbound"
+   }
+  },
+  "hoppers": {
+   "status": 200,
+   "body": {
+    "items": [],
+    "page": {
+     "limit": 5,
+     "nextCursor": null
+    }
+   }
+  },
+  "cursor-expired (a create between two pages)": {
+   "status": 409,
+   "body": {
+    "code": "cursor-expired",
+    "message": "Collection changed; restart from its first page"
+   }
+  }
+ }
+}

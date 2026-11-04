@@ -1,0 +1,89 @@
+{
+  "_about": "Shared with the site: its normalizeContentMd (src/lib/blyg.ts) must give the same content_md and hash for every input. Expected values were computed with Node's crypto, independent of the plugin code. See docs/TESTING.md layer 1.",
+  "cases": [
+    {
+      "name": "plain text",
+      "input": "hello",
+      "content_md": "hello",
+      "hash": "sha256:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+    },
+    {
+      "name": "CRLF line endings become LF",
+      "input": "line one\r\nline two\r\n",
+      "content_md": "line one\nline two",
+      "hash": "sha256:b6858b03a6cae635deeaeab09a74e598979b72c917cbfff0bb3fe2cd05111dbc"
+    },
+    {
+      "name": "mixed CRLF and LF",
+      "input": "a\r\nb\nc\r\n",
+      "content_md": "a\nb\nc",
+      "hash": "sha256:ea7fb08b7a2dc4619ffb7c7bb38d95a2047935fa165d71b12efd3852a2e6d0cc"
+    },
+    {
+      "name": "spaces inside lines are kept, only the ends are trimmed",
+      "input": "a  \nb \n",
+      "content_md": "a  \nb",
+      "hash": "sha256:2783c1c31c81230475bb10bd9e0cbf657556aa5d93463878b653f45d932019f4"
+    },
+    {
+      "name": "leading and trailing blank lines and spaces",
+      "input": "\n\n  text  \n\n",
+      "content_md": "text",
+      "hash": "sha256:982d9e3eb996f559e633f4d194def3761d909f5a3b647d1a851fead67c32c9d1"
+    },
+    {
+      "name": "umlauts",
+      "input": "Prüfung: Äöü ß\n",
+      "content_md": "Prüfung: Äöü ß",
+      "hash": "sha256:8a89652ae943ca73837031ec56a6c1eead953113a0b248e3d2e184fc5c675df7"
+    },
+    {
+      "name": "emoji",
+      "input": "🌿 grow 👩‍🌾\n",
+      "content_md": "🌿 grow 👩‍🌾",
+      "hash": "sha256:157a99131dab8cc4fec06825b29e79864f45844e6c7204d40c63d137f5a659c0"
+    },
+    {
+      "name": "a lone CR is not a line ending and stays",
+      "input": "a\rb\n",
+      "content_md": "a\rb",
+      "hash": "sha256:af9081672dd5ef3247a30c2db5b0dafcc9bcf981a26aefb3c55d210d43fcc14e"
+    },
+    {
+      "name": "NBSP and BOM are trimmed (String.prototype.trim)",
+      "input": " ﻿x \n",
+      "content_md": "x",
+      "hash": "sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+    },
+    {
+      "name": "NFD text is not normalised to NFC",
+      "input": "über\n",
+      "content_md": "über",
+      "hash": "sha256:69071569d87ea9b36ad6d23339b20a0187d87d633a57eb2dd51238a4f5e45906"
+    },
+    {
+      "name": "NFC text",
+      "input": "über\n",
+      "content_md": "über",
+      "hash": "sha256:b51c854170449c382397a108bc58403e78fb72c80a1b2b0674b30ea3b88a19f0"
+    },
+    {
+      "name": "empty",
+      "input": "",
+      "content_md": "",
+      "hash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "whitespace only",
+      "input": "  \r\n \t\n",
+      "content_md": "",
+      "hash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "inner blank lines and tabs are kept",
+      "input": "a\n\n\tb\n",
+      "content_md": "a\n\n\tb",
+      "hash": "sha256:b1c1af450c1ed60cb4f74f26ebc4eaa665f1f2725cab852d90d214036f95b379"
+    }
+  ]
+}
