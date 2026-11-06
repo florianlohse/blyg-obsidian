@@ -13,7 +13,7 @@ becomes the release notes. Write entries for people who use the plugin, not for 
 - Development builds: a second build flavour, `blyg-dev` ("Blyg (dev)"), can sit next to the real plugin in a test vault with its own
   settings. Development pre-releases are numbered `x.y.z-dev.N`.
 
-## [0.9.0] — 2026-11-04
+## [0.9.0] — 2026-11-06
 
 The first public release (a beta). Install it through BRAT from `florianlohse/blyg-obsidian` (see the README). Release candidates are published first as
 pre-releases `0.9.0-rc.N`; the text of this section is the release notes of both.

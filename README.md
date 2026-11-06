@@ -1,6 +1,6 @@
 # Blyg for Obsidian
 
-Write in your vault, publish to your **[Blygger](https://blygger.org)** blyg from desktop **or iPhone/iPad**. Short
+Write in your vault, publish to your **[Blygger](https://blygger.org)** blyg from **iPhone/iPad or desktop**. Short
 *fragments* and long *threads* that quote other people's items go to your own **Blygger Studio**; the plugin checks what
 will change before anything leaves your vault.
 
@@ -8,7 +8,6 @@ will change before anything leaves your vault.
 > *Known gaps* below before relying on it.
 
 <p><img src="images/readme/hero.png" width="640" alt="Obsidian on the desktop: a vault with a Blyg folder of notes, an open thread note, and the Blyg panel on the right saying Published (v1) and up to date, with buttons to write, quote, reply and update"></p>
-<sub>Screenshots use an invented author and neighbour (demo data).</sub>
 
 ## What it does
 
@@ -27,13 +26,13 @@ will change before anything leaves your vault.
 
 ## What your post looks like
 
-What you send from Obsidian is published by your Studio as a page of your blyg. A fragment, and a thread that quotes a neighbour's
-item (the quote carries the author's name and the version it was taken from):
+What you send from Obsidian is published by your Studio as a page of your blyg. Items have no titles of their own: the large
+heading is the name of your blyg, the same above every item. On the left a fragment, on the right a thread that quotes a
+neighbour's item (the quote carries the author's name and the version it was taken from; only the top of the thread is shown):
 
-<p>
-<img src="images/readme/public-fragment.png" width="260" alt="A published fragment on a blyg page on a phone: the blyg title Workshop notes, the author name, one short paragraph of text, its creation date and a permalink">
-<img src="images/readme/public-thread.png" width="260" alt="A published thread on a blyg page on a phone: a quotation from another author with the line from Teo Brandt, snapshot of v1, followed by the thread's own paragraphs">
-</p>
+| A fragment | A thread that quotes a neighbour |
+|:---:|:---:|
+| <img src="images/readme/public-fragment.png" width="260" alt="A published fragment on a blyg page on a phone: the blyg title Workshop notes, the author name, one short paragraph of text, its creation date and a permalink"> | <img src="images/readme/public-thread.png" width="260" alt="A published thread on a blyg page on a phone: a quotation from another author with the line from Teo Brandt, snapshot of v1, followed by the thread's own paragraphs"> |
 
 ## A look inside Obsidian
 
@@ -52,6 +51,25 @@ item (the quote carries the author's name and the version it was taken from):
 **Settings** for a Studio-only setup need just the Studio address and a token:
 
 <p><img src="images/readme/settings-studio-only.png" width="300" alt="The Blyg settings on a phone: Studio address, Studio mount and Studio token fields; no GitHub settings"></p>
+
+## The idea: your vault stays the source
+
+Obsidian's *file over app* idea is that what you write should outlive any one app: plain files you own, readable with
+anything. This plugin tries to keep that true while you publish:
+
+- **Your vault files are the master copies.** You write in the note and publish from it. There is no second editor, no
+  export step and no separate repository to keep in step by hand. What the plugin needs to remember about a note (its kind,
+  the version last sent, a hash of what was sent) is written into the note's own properties (the `blyg_…` keys).
+- **Open formats on both sides.** Notes are plain Markdown with ordinary properties. Your Studio is open source and speaks
+  the open Blygger protocol through a REST API with tokens of its own. So nothing in your files ties them to this plugin, and
+  in principle another client, such as another mobile app, can work with the same Studio and the same writing. (This plugin is
+  one such client; it is not claimed to be the only possible one.)
+- **Your own Studio, your own backups.** The published side runs on a Studio you own, and because the drafts are ordinary
+  vault files, whatever sync, backup or version history you already use for your vault covers them too.
+
+What this does not mean: the Studio, not your vault, is the authority for published items. Ids are permanent, versions only
+go up, and withdrawing an item leaves an end note and never deletes its address. The plugin's settings and its cache of the
+blygs you follow live in the plugin's own storage, not in your notes.
 
 ## What you need
 
