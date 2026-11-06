@@ -141,7 +141,7 @@ export function readItem(json: unknown): StudioItem | null {
       published = { version: p.version, contentMd: p.contentMd, contentHtml: str(p.contentHtml) ?? "", contentHash: p.contentHash, note: str(p.note) };
     }
   }
-  return { id, revision, kind, status, version, contentMd, dirty, stubOf: readWireStub(json.stubOf), published };
+  return { id, revision, kind, status, version, contentMd, dirty, created: str(json.created), updated: str(json.updated), stubOf: readWireStub(json.stubOf), published };
 }
 
 /** A row of the owner's item list: an item plus its creation time; null when it is not in the expected form. */

@@ -126,7 +126,7 @@ export class BlygPanelView extends ItemView {
       if (state.thread.remote && state.thread.remote.length > 0) fact("From other blygs", state.thread.remote.join(" · "));
     }
     if (state.stub) {
-      fact("In response to", state.stub.label);
+      fact("Stub", `a reply to ${state.stub.label}`);
       if (state.stub.problem) facts.createEl("dd", { cls: "blyg-pane-warn", text: state.stub.problem });
     }
     if (state.hoppers) {
@@ -166,9 +166,12 @@ export class BlygPanelView extends ItemView {
   /** Studio notes: what the Studio said that is not about the note itself. Plain sentences, each on its own line. */
   private drawStudioWarnings(root: HTMLElement, state: PanelState): void {
     const lines = [...(state.studio?.warnings ?? []), ...(state.studio?.unreachable ? ["The Studio could not be reached just now. This is what the note itself says; the Studio’s own state is not known."] : [])];
-    if (lines.length === 0) return;
-    const box = root.createDiv({ cls: "blyg-pane-testmode" });
-    for (const line of lines) box.createDiv({ text: line });
+    if (lines.length > 0) {
+      const box = root.createDiv({ cls: "blyg-pane-testmode" });
+      for (const line of lines) box.createDiv({ text: line });
+    }
+    // Transparency only (a newer minor contract): one small muted line, no warning box, no icon.
+    for (const note of state.studio?.notes ?? []) root.createDiv({ cls: "blyg-pane-note", text: note });
   }
 
   /**

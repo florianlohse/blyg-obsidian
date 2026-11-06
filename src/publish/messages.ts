@@ -181,7 +181,7 @@ export const M = {
     "That address is not recognised as an item of a blyg. Paste the address of the item itself (it ends in /f/… or /t/…, or is a page of the Studio's reader), or search for its words.",
   stubNeedsThread: "Not sent — blyg_stub_of is set, but a reply must be a thread. Make the note a thread, or remove blyg_stub_of.",
   stubInvalid: (problem: string) => `Not sent — ${problem}.`,
-  stubReply: (label: string) => `A reply to ${label}`,
+  stubReply: (label: string) => `Stub: a reply to ${label}`,
   stubCannotQuote:
     "That item is of a blyg you do not read, and quoting follows reading: subscribe to that blyg in the Studio first. You can still reply to it with “Reply to an item”.",
   hoppersInvalid: (problem: string) => `Not sent — ${problem}. Fix it in the note's properties, or choose the hoppers with “Studio: choose hoppers for this note”.`,

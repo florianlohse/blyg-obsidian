@@ -5,7 +5,11 @@
 // What it proves, in desktop layout and then in Obsidian's phone layout (Chromium emulation, NOT iOS; the iPad is Florian's):
 //   1. the built main.js loads: the plugin is enabled, no uncaught page error, no console error that names the plugin;
 //   2. the panel opens on a note in `Blyg/` and shows the plugin's version;
-//   3. a draft goes to a local Studio and comes back stamped: the note gets `blyg_id` and the Studio has the item.
+//   3. a draft goes to a local Studio and comes back stamped: the note gets `blyg_id` and the Studio has the item;
+//   4. Obsidian's Settings window opens and the plugin's tab draws, with a Studio-only, a Studio and a GitHub-setup configuration: the Advanced
+//      switch is there (off for Studio-only, on with a GitHub setup) and expands and collapses the GitHub settings in the same box.
+//      NOTE for anyone driving Obsidian over CDP: windows and modals live in `activeDocument`, which is NOT `window.document` in the driven page.
+//      `document.querySelector(".modal")` finds nothing even while the Settings window is open.
 // The harness is adapted from the demo vault's `.demo/test/obsidian.mjs` (CC0): a copy of the vault in a temp dir, real Obsidian from an AppImage
 // under xvfb, driven over the debugging port by playwright-core. Linux only. The Obsidian download is cached in ~/.cache/obsidian-e2e, never in the repo.
 // playwright-core is NOT a dependency of this repo: set PLAYWRIGHT_CORE to its folder, or have `playwright-core` / `playwright` resolvable.
@@ -124,6 +128,54 @@ try {
 
   await round("desktop");
 
+  // 4. the Settings window and the plugin's tab, with three configurations (the plugin is reloaded with each; the original data is put back at the end)
+  async function withData(obj) {
+    await page.evaluate(async (json) => {
+      await window.app.plugins.disablePlugin("blyg");
+      await window.app.vault.adapter.write(".obsidian/plugins/blyg/data.json", json);
+      await window.app.plugins.enablePlugin("blyg");
+    }, typeof obj === "string" ? obj : JSON.stringify(obj));
+    await until(() => page.evaluate(() => Boolean(window.app.plugins.plugins["blyg"])), 30000, "the plugin to reload");
+    // closing the Settings window saves the settings (a moment later): let that land before the next file is written, or it would overwrite it
+    await wait(1500);
+  }
+  async function settingsRound(layout, label, wantOn) {
+    const inDom = (sel) => page.evaluate((q) => Boolean(activeDocument.querySelector(q)), sel);
+    const text = () => page.evaluate(() => activeDocument.querySelector(".modal.mod-settings")?.textContent ?? "");
+    await page.evaluate(() => { window.app.setting.open(); });
+    const open = await until(() => inDom(".modal.mod-settings"), 15000, "the Settings window").catch(() => false);
+    check(open, `${layout}, ${label}: the Settings window opens`);
+    if (!open) return;
+    await page.evaluate(() => { window.app.setting.openTabById("blyg"); });
+    const drawn = await until(async () => /Also publish to a GitHub-hosted site/.test(await text()), 15000, "the plugin's settings tab").catch(() => false);
+    check(drawn, `${layout}, ${label}: the plugin's tab shows the Advanced switch`);
+    if (drawn) {
+      const githubShown = async () => /GitHub owner/.test(await text());
+      const toggle = () => page.evaluate(() => {
+        const row = [...activeDocument.querySelectorAll(".modal.mod-settings .setting-item")].find((r) => /Also publish to a GitHub-hosted site/.test(r.textContent ?? ""));
+        row?.querySelector(".checkbox-container")?.click();
+      });
+      check((await githubShown()) === wantOn, `${layout}, ${label}: the switch starts ${wantOn ? "on, with the GitHub settings under it" : "off, with no GitHub settings"}`);
+      await toggle();
+      await until(async () => (await githubShown()) === !wantOn, 10000, "the switch to flip").catch(() => {});
+      check((await githubShown()) === !wantOn, `${layout}, ${label}: toggling ${wantOn ? "collapses" : "expands"} the GitHub settings`);
+      await toggle();
+      await until(async () => (await githubShown()) === wantOn, 10000, "the switch to flip back").catch(() => {});
+      check((await githubShown()) === wantOn, `${layout}, ${label}: toggling again restores them`);
+    }
+    await page.evaluate(() => { window.app.setting.close(); });
+    await until(async () => !(await inDom(".modal.mod-settings")), 10000, "the Settings window to close").catch(() => {});
+    await wait(1500);
+  }
+  async function settingsRounds(layout) {
+    const originalData = await page.evaluate(() => window.app.vault.adapter.read(".obsidian/plugins/blyg/data.json"));
+    const base = JSON.parse(originalData);
+    await settingsRound(layout, "Studio configured, no GitHub", false);
+    await withData({ ...base, github: { owner: "someone", repo: "site", branch: "main", previewBranch: "preview", useBranch: "production", tokenSecretName: "smoke-github", watchDeploy: true }, blyg: { origin: "https://example.com/blyg/" }, routes: [...base.routes, { vaultPrefix: "Old/", mode: "blyg", label: "Blyg item" }] });
+    await settingsRound(layout, "with a GitHub setup", true);
+    await withData(originalData);
+  }
+
   // 3. a draft goes to the local Studio and comes back stamped
   await page.evaluate(() => window.app.commands.executeCommandById("blyg:publish-active-note"));
   // Obsidian puts windows and notices into `activeDocument`, which is not `window.document` in the driven page: look there.
@@ -153,6 +205,8 @@ try {
     check(res.ok, `the local Studio has the item (HTTP ${res.status})`);
   }
 
+  await settingsRounds("desktop");
+
   // phone layout (Chromium emulation of Obsidian's mobile UI)
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Emulation.setDeviceMetricsOverride", { width: 393, height: 852, deviceScaleFactor: 2, mobile: true });
@@ -161,6 +215,7 @@ try {
   try { await page.getByText("Trust author and enable plugins").click({ timeout: 3000 }); } catch { /* none */ }
   await page.waitForFunction(() => window.app.plugins.plugins["blyg"], undefined, { timeout: 30000 });
   await round("phone layout");
+  await settingsRounds("phone layout");
 
   // 1b. nothing broke while all that happened
   check(pageErrors.length === 0, `no uncaught page error${pageErrors.length ? `: ${pageErrors[0]}` : ""}`);

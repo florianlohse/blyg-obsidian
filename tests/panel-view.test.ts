@@ -321,8 +321,51 @@ describe("BlygPanelView", () => {
     expect((await mount(stateOf({}))).button("Import from Studio")).toBeUndefined();
   });
 
-  it("a note with another blyg's record gets a Repost to Studio button, enabled when the text can be sent", async () => {
+  it("a note with another blyg's record gets a Repost to Studio button only in a setup that uses GitHub (M1 0.9.0: R11)", async () => {
+    const studioOnly = { ...settings(), studio: { baseUrl: "https://studio.test", mount: "", tokenSecretName: "t", importFolder: "" }, routes: [{ vaultPrefix: "studio/", mode: "studio" as const, label: "Blyg item" }] };
+    const hidden = computePanelState({ settings: studioOnly, note: { path: "studio/Old.md", name: "Old.md", extension: "md" }, frontmatter: { id: ID, version: 3 }, localHash: "sha256:a" });
+    expect(hidden.showRepost).toBe(false);
+    const shown = await mount(hidden);
+    expect(shown.button("Repost to Studio")).toBeUndefined();
+    expect(shown.texts.join(" ")).not.toContain("Repost to Studio");
+  });
+
+  it("a published Studio note shows Created and Updated from what the Studio says, not dashes (M1 0.9.0)", async () => {
     const studioSettings = { ...settings(), studio: { baseUrl: "https://studio.test", mount: "", tokenSecretName: "t", importFolder: "" }, routes: [{ vaultPrefix: "studio/", mode: "studio" as const, label: "Blyg item" }] };
+    const base = { settings: studioSettings, note: { path: "studio/N.md", name: "N.md", extension: "md" }, frontmatter: { id: ID, origin: "https://studio.test/", version: 2, sent: "sha256:a" }, localHash: "sha256:a" };
+    const facts = { item: { status: "public" as const, version: 2, workingHash: "sha256:a", created: "2026-11-01T10:00:00.000Z", updated: "2026-11-02T11:00:00.000Z" }, mentions: null, at: 0 };
+    const st = computePanelState({ ...base, studio: { warnings: [], facts } });
+    expect(st.item).toMatchObject({ created: "2026-11-01T10:00:00.000Z", updated: "2026-11-02T11:00:00.000Z" });
+    const unknown = computePanelState({ ...base, studio: { warnings: [] } });
+    expect(unknown.item).toMatchObject({ created: null, updated: null });
+  });
+
+  it("a note from a newer minor contract shows one muted line and no warning box (M1 0.9.0)", async () => {
+    const studioSettings = { ...settings(), studio: { baseUrl: "https://studio.test", mount: "", tokenSecretName: "t", importFolder: "" }, routes: [{ vaultPrefix: "studio/", mode: "studio" as const, label: "Blyg item" }] };
+    const line = "Studio API 5.5.0 is newer than the 5.4 this plugin was tested with. Newer minor versions only add things and are accepted.";
+    const base = { settings: studioSettings, note: { path: "studio/N.md", name: "N.md", extension: "md" }, frontmatter: {}, localHash: "sha256:a" };
+    const st = computePanelState({ ...base, studio: { warnings: [], notes: [line] } });
+    expect(st.studio?.warnings).toEqual([]);
+    const m = await mount(st);
+    expect(m.texts.filter((t) => t === line)).toHaveLength(1);
+    expect(m.els.some((e) => e.cls.has("blyg-pane-testmode"))).toBe(false);
+    const none = await mount(computePanelState({ ...base, studio: { warnings: [], notes: [] } }));
+    expect(none.texts.some((t) => /newer than/.test(t))).toBe(false);
+  });
+
+  it("a thread that is a reply says 'Stub' in the panel, and the problem when it is not a thread (M1 0.9.0: R5)", async () => {
+    const studioSettings = { ...settings(), studio: { baseUrl: "https://studio.test", mount: "", tokenSecretName: "t", importFolder: "" }, routes: [{ vaultPrefix: "studio/", mode: "studio" as const, label: "Blyg item" }] };
+    const stubOf = { origin: "https://studio.test", id: ID, version: 2, label: "A remote fragment" };
+    const n = { path: "studio/T.md", name: "T.md", extension: "md" };
+    const thread = await mount(computePanelState({ settings: studioSettings, note: n, frontmatter: { kind: "thread", stubOf }, localHash: "sha256:a" }));
+    expect(thread.texts).toContain("Stub");
+    expect(thread.texts).toContain("a reply to A remote fragment");
+    const none = await mount(computePanelState({ settings: studioSettings, note: n, frontmatter: { kind: "thread" }, localHash: "sha256:a" }));
+    expect(none.texts).not.toContain("Stub");
+  });
+
+  it("(legacy) a note with another blyg's record gets a Repost to Studio button, enabled when the text can be sent", async () => {
+    const studioSettings = { ...settings(), github: { ...settings().github, owner: "someone" }, studio: { baseUrl: "https://studio.test", mount: "", tokenSecretName: "t", importFolder: "" }, routes: [{ vaultPrefix: "studio/", mode: "studio" as const, label: "Blyg item" }] };
     const old = computePanelState({ settings: studioSettings, note: { path: "studio/Old.md", name: "Old.md", extension: "md" }, frontmatter: { id: ID, version: 3 }, localHash: "sha256:a" });
     const { button, calls } = await mount(old);
     expect(button("Repost to Studio")?.disabled).toBe(false);

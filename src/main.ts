@@ -103,12 +103,12 @@ export default class BlygPlugin extends Plugin {
     this.addCommand({
       id: "repost-to-studio",
       name: "Studio: repost this note",
-      callback: () => void this.repostActiveNote(),
+      checkCallback: (checking) => this.githubCommand(checking, () => void this.repostActiveNote()),
     });
     this.addCommand({
       id: "list-reposted-items",
       name: "Studio: list reposted items",
-      callback: () => void this.listRepostedItems(),
+      checkCallback: (checking) => this.githubCommand(checking, () => this.listRepostedItems()),
     });
     this.addCommand({
       id: "pull-studio-copy",
@@ -206,7 +206,7 @@ export default class BlygPlugin extends Plugin {
     });
   }
 
-  /** A command about GitHub-hosted sites (preview channel, deploy status, GitHub connection): not offered to someone with no GitHub setup (studioOnly.ts). */
+  /** A command about GitHub-hosted sites (preview channel, deploy status, GitHub connection, repost): not offered to someone with no GitHub setup (studioOnly.ts). */
   private githubCommand(checking: boolean, run: () => void): boolean {
     if (isStudioOnly(this.settings)) return false;
     if (!checking) run();
@@ -692,7 +692,8 @@ export default class BlygPlugin extends Plugin {
           if (id) this.studioFacts.request(id, () => this.refreshPanels());
           this.studioWarnings.request("studio", () => this.refreshPanels());
           const facts = id ? this.studioFacts.peek(id) : undefined;
-          return { ...(facts ? { facts } : {}), warnings: this.studioWarnings.peek("studio") ?? [] };
+          const notices = this.studioWarnings.peek("studio");
+          return { ...(facts ? { facts } : {}), warnings: notices?.warnings ?? [], notes: notices?.notes ?? [] };
         },
       },
       file ? noteRefOf(file) : null,

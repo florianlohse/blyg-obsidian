@@ -206,35 +206,80 @@ describe("settings tab for someone with only a Studio (M1 A2.4)", () => {
     expect(hidden).toBe(true);
   });
 
-  it("a new route is a Studio route, and 'Advanced' reveals the GitHub options for the visit", () => {
+  const toggleOf = (tab: ReturnType<typeof makeTab>["tab"]) => {
+    const defs = tab.getSettingDefinitions() as unknown as Def[];
+    const adv = defs.find((d) => d.heading === "Advanced");
+    const row = adv?.items?.find((d) => d.name === "Also publish to a GitHub-hosted site");
+    let value: boolean | undefined;
+    let onChange: ((on: boolean) => void) | undefined;
+    const t = { setValue: (v: boolean) => ((value = v), t), onChange: (f: (on: boolean) => void) => ((onChange = f), t) };
+    (row?.render as ((setting: unknown) => void) | undefined)?.({ addToggle: (f: (x: typeof t) => void) => f(t) });
+    return { defs, adv, value, flip: (on: boolean) => onChange?.(on) };
+  };
+  const keysOf = (defs: Def[]): (string | undefined)[] => controls(defs).map((d) => d.control?.key);
+
+  it("a new route is a Studio route", () => {
     const { tab, plugin } = makeTab(studioOnly());
     const defs = tab.getSettingDefinitions() as unknown as Def[];
     const add = defs.flatMap((d) => d.items ?? []).find((d) => d.name === "Add route");
     (add?.action as () => void)();
     expect(plugin.settings.routes.at(-1)?.mode).toBe("studio");
-    const advanced = (tab.getSettingDefinitions() as unknown as Def[]).flatMap((d) => d.items ?? []).find((d) => d.name === "Also publish to a GitHub-hosted site");
-    expect(advanced).toBeDefined();
-    (advanced?.action as () => void)();
-    const after = tab.getSettingDefinitions() as unknown as Def[];
-    expect(headings(after)).toContain("GitHub");
-    expect(controls(after).map((d) => d.control?.key)).toContain("github.owner");
-    expect(after.flatMap((d) => d.items ?? []).find((d) => d.name === "Also publish to a GitHub-hosted site")).toBeUndefined();
   });
 
-  it("a setup that uses GitHub sees everything, and no 'Advanced' switch", () => {
+  it("Studio only: the switch is off and the GitHub settings are not there; switching on expands them in the same Advanced box, off collapses them (M1 0.9.0: F6)", () => {
+    const { tab } = makeTab(studioOnly());
+    const first = toggleOf(tab);
+    expect(first.value).toBe(false);
+    expect(keysOf(first.adv?.items ?? [])).not.toContain("github.owner");
+    first.flip(true);
+    const on = toggleOf(tab);
+    expect(on.value).toBe(true);
+    // the GitHub fields now sit inside the Advanced box, right after the switch, and nowhere else
+    expect(on.adv?.items?.[0]?.name).toBe("Also publish to a GitHub-hosted site");
+    expect(keysOf(on.adv?.items ?? [])).toEqual(expect.arrayContaining(["github.owner", "github.repo", "github.watchDeploy", "blyg.origin", "blyg.itemsDir"]));
+    expect(headings(on.defs)).not.toContain("GitHub");
+    expect(keysOf(on.defs.filter((d) => d.heading !== "Advanced"))).not.toContain("github.owner");
+    const kind = controls(on.defs).find((d) => d.control?.key === "routes.0.mode");
+    expect(typeof kind?.visible === "function" ? kind.visible() : kind?.visible).not.toBe(false);
+    on.flip(false);
+    const off = toggleOf(tab);
+    expect(off.value).toBe(false);
+    expect(keysOf(off.defs)).not.toContain("github.owner");
+  });
+
+  it("a setup that uses GitHub starts with the switch on, every field there, and collapsing never deletes a value (M1 0.9.0: F6)", () => {
     const s = defaultSettings();
     s.routes = [{ vaultPrefix: "a/", mode: "blyg", label: "A" }];
-    const { tab } = makeTab(s);
-    const defs = tab.getSettingDefinitions() as unknown as Def[];
-    expect(headings(defs)).toContain("GitHub");
-    expect(controls(defs).map((d) => d.control?.key)).toEqual(expect.arrayContaining(["github.owner", "blyg.origin", "routes.0.mode"]));
-    expect(defs.flatMap((d) => d.items ?? []).find((d) => d.name === "Also publish to a GitHub-hosted site")).toBeUndefined();
+    s.github.owner = "someone";
+    s.github.repo = "site";
+    s.github.tokenSecretName = "gh-token";
+    s.blyg.origin = "https://example.com/blyg/";
+    const before = structuredClone(s);
+    const { tab, plugin } = makeTab(s);
+    const start = toggleOf(tab);
+    expect(start.value).toBe(true);
+    expect(keysOf(start.adv?.items ?? [])).toEqual(expect.arrayContaining(["github.owner", "github.repo", "github.branch", "github.previewBranch", "github.useBranch", "github.watchDeploy", "blyg.origin", "blyg.previewOrigin", "blyg.itemsDir"]));
+    expect(controls(start.defs).map((d) => d.control?.key)).toContain("routes.0.mode");
+    start.flip(false);
+    expect(keysOf(toggleOf(tab).defs)).not.toContain("github.owner");
+    expect(plugin.settings).toEqual(before);
+    toggleOf(tab).flip(true);
+    expect(keysOf(toggleOf(tab).defs)).toContain("github.owner");
+    expect(plugin.settings).toEqual(before);
   });
 
-  it("filling in a GitHub setting later brings the GitHub group back by itself", () => {
+  it("the switch state is kept while the page is open and derived again when it is opened anew", () => {
+    const { tab } = makeTab(studioOnly());
+    toggleOf(tab).flip(true);
+    expect(toggleOf(tab).value).toBe(true);
+    tab.hide();
+    expect(toggleOf(tab).value).toBe(false);
+  });
+
+  it("filling in a GitHub setting makes the next visit start with the switch on", () => {
     const s = studioOnly();
     s.github.owner = "someone";
     const { tab } = makeTab(s);
-    expect(headings(tab.getSettingDefinitions() as unknown as Def[])).toContain("GitHub");
+    expect(toggleOf(tab).value).toBe(true);
   });
 });

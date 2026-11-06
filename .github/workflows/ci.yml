@@ -76,7 +76,7 @@ jobs:
           set +e
           if [ "$LEG" = "newest" ]; then unset STUDIO_SHA256; else STUDIO_SHA256=$(sed -n 's/^STUDIO_SHA256=//p' tests/e2e/studio-pin.env); export STUDIO_SHA256; fi
           export WITH_REMOTE=1
-          OUT=$(scripts/local-studio.sh start "$RUNNER_TEMP/studio") ; RC=$?
+          OUT=$(bash scripts/local-studio.sh start "$RUNNER_TEMP/studio") ; RC=$?
           if [ $RC -eq 0 ]; then
             export STUDIO_E2E_URL=$(echo "$OUT" | sed -n 's/^export STUDIO_E2E_URL=//p')
             TOKEN=$(echo "$OUT" | sed -n 's/^export STUDIO_E2E_TOKEN=//p'); echo "::add-mask::$TOKEN"; export STUDIO_E2E_TOKEN=$TOKEN
@@ -84,7 +84,7 @@ jobs:
           else
             echo "$OUT" | grep -v STUDIO_E2E_TOKEN
           fi
-          scripts/local-studio.sh stop "$RUNNER_TEMP/studio" >/dev/null 2>&1
+          bash scripts/local-studio.sh stop "$RUNNER_TEMP/studio" >/dev/null 2>&1
           if [ $RC -ne 0 ] && [ "$MUST_PASS" != "true" ]; then
             echo "::warning::e2e against the $LEG Studio ($STUDIO_VERSION) FAILED but is allowed to fail until A2.3 (NEWEST_MUST_PASS=false in tests/e2e/studio-pin.env)."
             echo "**FAILED, allowed to fail** (NEWEST_MUST_PASS=false)" >> "$GITHUB_STEP_SUMMARY"
@@ -120,10 +120,10 @@ jobs:
           key: obsidian-e2e-1.14.5
       - name: Local Studio, then the smoke test
         run: |
-          OUT=$(scripts/local-studio.sh start "$RUNNER_TEMP/studio")
+          OUT=$(bash scripts/local-studio.sh start "$RUNNER_TEMP/studio")
           export STUDIO_E2E_URL=$(echo "$OUT" | sed -n 's/^export STUDIO_E2E_URL=//p')
           TOKEN=$(echo "$OUT" | sed -n 's/^export STUDIO_E2E_TOKEN=//p'); echo "::add-mask::$TOKEN"; export STUDIO_E2E_TOKEN=$TOKEN
           set +e
           npm run test:obsidian; RC=$?
-          scripts/local-studio.sh stop "$RUNNER_TEMP/studio" >/dev/null 2>&1
+          bash scripts/local-studio.sh stop "$RUNNER_TEMP/studio" >/dev/null 2>&1
           exit $RC

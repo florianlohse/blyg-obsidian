@@ -355,6 +355,10 @@ run("against a real Studio", { timeout: 120_000 }, () => {
     if (!client) throw new Error("e2e setup");
     const clock = { now: () => new Date() };
     expect(await loadStudioFacts(client, id, clock)).toMatchObject({ item: { status: "public", version: 1 }, mentions: { count: 0, complete: true } });
+    // The panel's Created/Updated rows come from here (a real Studio answers with ISO dates).
+    const dated = await loadStudioFacts(client, id, clock);
+    expect(typeof dated.item === "string" ? null : dated.item.created).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(typeof dated.item === "string" ? null : dated.item.updated).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     w.answer = { note: "retracted in the test" };
     expect(await tapStudioWithdraw(w, "studio/E2E withdraw.md")).toMatchObject({ status: "published", id, version: 2 });
     expect(frontmatterOf(w.local.get("studio/E2E withdraw.md") ?? "")).toMatchObject({ blyg_withdrawn: true, blyg_version: 2 });
@@ -371,7 +375,9 @@ run("against a real Studio", { timeout: 120_000 }, () => {
     const client = w.deps.studio?.client;
     if (!client) throw new Error("e2e setup");
     expect((await loadStudioFacts(client, "a0000000000000000000000099", { now: () => new Date() })).item).toBe("missing");
-    expect(await loadStudioWarnings(client, TOKEN ?? "", { now: () => new Date() })).toEqual([]);
+    // The newest-release leg may run against a Studio whose contract minor is above the tested one: that is a muted note, never a warning.
+    const warnings = await loadStudioWarnings(client, TOKEN ?? "", { now: () => new Date() });
+    expect(warnings).toEqual([]);
   });
 
   it("reposts a note with the old GitHub record as a new item and keeps the old record, quote and all", async () => {
@@ -541,7 +547,7 @@ run("against a real Studio", { timeout: 120_000 }, () => {
     const out = await tapStudio(w, path);
     expect(out.notices.join(" | ")).not.toMatch(/budget|limiting/);
     expect(out).toMatchObject({ status: "published", version: 1 });
-    expect(w.previews.at(-1)?.changes.some((c) => c.startsWith("A reply to"))).toBe(true);
+    expect(w.previews.at(-1)?.changes.some((c) => c.startsWith("Stub: a reply to"))).toBe(true);
     const got = await client.getItem(out.id ?? "");
     expect(got.kind === "ok" && got.value.stubOf).toMatchObject({ origin: sub.value.origin, id: hit.id });
     // sent back unchanged: nothing to send, and the reply target is not re-sent

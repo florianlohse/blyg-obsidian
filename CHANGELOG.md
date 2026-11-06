@@ -29,8 +29,20 @@ pre-releases `0.9.0-rc.N`; the text of this section is the release notes of both
 
 ### Changed
 
-- Speaks **Studio API contract 5**: needs **Studio 0.51.0 or newer**; older Studios are refused before anything is sent. If you ran 0.7.x, update the Studio first.
+- Speaks **Studio API contract 5**: needs **Studio 0.51.0 or newer** (tested with Studio 0.51.0 to 0.53.0, API contract 5.2 to 5.4); older Studios are refused before anything is sent. If you ran 0.7.x, update the Studio first.
+- Settings: **Advanced → Also publish to a GitHub-hosted site** is now a switch. Switching it on shows the GitHub settings right below it, in the
+  same box; switching it off hides them again. Nothing you typed is deleted. If you already use a GitHub-hosted site, the switch starts on.
+- A thread that is a reply now says so in plain words: the panel shows **Stub: a reply to …**, and so does the send window.
+- **Studio: repost this note**, **Studio: list reposted items** and the panel's **Repost to Studio** button are only offered when you also
+  use a GitHub-hosted site (they move an old GitHub-site item into the Studio). Everyone else no longer sees them.
+- A Studio whose API is a newer minor version than the one this plugin was tested with is no longer reported as a warning: "Check connection"
+  shows a muted note, and the panel shows at most one small muted line. Newer minor versions only add things and are accepted; a newer major
+  version is still refused.
 - The plugin id is now **`blyg`** (was `obsidian-blyg`). Existing early users are taken over once from the old install.
+
+### Fixed
+
+- The panel's **Created** and **Updated** rows for a published item now show the dates the Studio reports (they showed "—").
 
 ### Security
 

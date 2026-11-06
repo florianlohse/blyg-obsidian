@@ -22,8 +22,12 @@ import { describeField, validateSettings } from "./validate";
  */
 export class BlygSettingTab extends PluginSettingTab {
   private issuesSetting: Setting | null = null;
-  /** A Studio-only user asked to see the GitHub-site options (advanced). Not saved: the next time the page opens they are hidden again, until GitHub is set up. */
-  private showGithub = false;
+  /**
+   * The "Also publish to a GitHub-hosted site" switch (Advanced). Not saved and not in the settings schema: null until the page is first
+   * drawn, then derived from the loaded settings (on when they carry a GitHub setup or a legacy route), kept while the settings tab is
+   * open and forgotten when it closes. Switching off only hides: no value is ever deleted.
+   */
+  private showGithub: boolean | null = null;
   private readonly save = debounce(() => void this.plugin.saveSettings(), 500, true);
 
   constructor(
@@ -54,9 +58,15 @@ export class BlygSettingTab extends PluginSettingTab {
     this.changed();
   }
 
-  /** Hide everything about GitHub-hosted sites from someone who publishes only to a Studio (studioOnly.ts). */
+  /** Is the GitHub-site part expanded in the Advanced box? */
+  private githubOpen(): boolean {
+    this.showGithub ??= !isStudioOnly(this.plugin.settings);
+    return this.showGithub;
+  }
+
+  /** Hide everything about GitHub-hosted sites while the Advanced switch is off (studioOnly.ts). */
   private studioOnlyView(): boolean {
-    return isStudioOnly(this.plugin.settings) && !this.showGithub;
+    return !this.githubOpen();
   }
 
   override getSettingDefinitions(): SettingDefinitionItem[] {
@@ -88,45 +98,6 @@ export class BlygSettingTab extends PluginSettingTab {
     });
 
     items.push({ name: "Version", desc: `This device runs Blyg ${this.plugin.manifest.version}.`, searchable: false });
-
-    if (!studioOnly) items.push({
-      type: "group",
-      heading: "GitHub",
-      items: [
-        text("Owner", "The account or organisation that owns the site repository.", "github.owner"),
-        text("Repository", "The site repository the plugin commits to.", "github.repo"),
-        text("Production branch", "Where published notes go live.", "github.branch"),
-        text("Preview branch", "A test channel: nothing published there is permanent.", "github.previewBranch"),
-        {
-          name: "Publish to",
-          desc: "The branch the publish commands write to. Preview is for testing.",
-          control: {
-            type: "dropdown",
-            key: "github.useBranch",
-            options: { production: "Production", preview: "Preview" },
-          },
-        },
-        {
-          name: "GitHub token",
-          desc: "Pick or create an entry in the keychain. The token stays in this device's keychain; the plugin only remembers the entry's name.",
-          aliases: ["secret", "keychain", "pat"],
-          render: (setting) => {
-            setting.addComponent((el) =>
-              new SecretComponent(this.app, el).setValue(s.github.tokenSecretName).onChange((name) => {
-                this.setControlValue("github.tokenSecretName", name);
-              }),
-            );
-          },
-        },
-        {
-          name: "Watch deploys",
-          desc: "After a commit, wait for the site's checks and tell you whether it deployed. Needs “Actions: Read-only” on the token; harmless without it.",
-          aliases: ["deploy", "status", "checks", "actions"],
-          control: { type: "toggle", key: "github.watchDeploy", defaultValue: true },
-        },
-        this.checkConnectionItem("Tests the token, the repository and both branches. Changes nothing.", () => this.plugin.runConnectionCheck()),
-      ],
-    });
 
     items.push({
       type: "group",
@@ -169,13 +140,6 @@ export class BlygSettingTab extends PluginSettingTab {
       type: "group",
       heading: "Publication",
       items: [
-        ...(studioOnly
-          ? []
-          : [
-              text("Blyg address", "The production blyg's address, ending with “/”.", "blyg.origin", "https://example.com/blyg/"),
-              text("Preview blyg address", "The preview channel's address, ending with “/”.", "blyg.previewOrigin", "https://preview.example.pages.dev/blyg/"),
-              text("Items folder", "Repository folder where Blyg items are written.", "blyg.itemsDir"),
-            ]),
         {
           name: "Fragment character cap",
           desc: `Longer fragments are refused before anything is sent. At most ${CONTRACT_MAX_FRAGMENT_CAP}: the site rejects longer ones.`,
@@ -257,29 +221,77 @@ export class BlygSettingTab extends PluginSettingTab {
       ],
     });
 
-    // The legacy path (Blyg items committed to a GitHub-hosted site, plain files, the preview channel) stays in the code but is not offered to
-    // someone who has no GitHub setup. This reveals it for this visit to the page.
-    if (studioOnly) {
-      items.push({
-        type: "group",
-        heading: "Advanced",
-        items: [
-          {
-            name: "Also publish to a GitHub-hosted site",
-            desc: "For a site built from a GitHub repository (the older way to run a blyg). Shows the GitHub settings and the folder kinds that commit to a repository. Not needed for a Studio.",
-            action: () => {
-              this.showGithub = true;
-              this.update();
-            },
+    // The legacy path (Blyg items committed to a GitHub-hosted site, plain files, the preview channel) stays in the code. The switch below
+    // expands its settings in this same box; a setup that already uses GitHub starts with it on. (The folder Kind of each route is
+    // shown or hidden with it, in the route's own box.)
+    items.push({
+      type: "group",
+      heading: "Advanced",
+      items: [
+        {
+          name: "Also publish to a GitHub-hosted site",
+          desc: "For a site built from a GitHub repository (the older way to run a blyg). Switch on to show the GitHub settings below and the folder kinds that commit to a repository. Not needed for a Studio. Switching off only hides them; nothing is deleted.",
+          aliases: ["github", "legacy", "repository", "preview"],
+          searchable: false,
+          render: (setting) => {
+            setting.addToggle((t) =>
+              t.setValue(this.githubOpen()).onChange((on) => {
+                this.showGithub = on;
+                this.update();
+              }),
+            );
           },
-        ],
-      });
-    }
+        },
+        ...(this.githubOpen() ? this.githubItems(text) : []),
+      ],
+    });
 
     // The reader section arrives with the reader (R4).
     return items;
   }
 
+
+  /** The GitHub-site settings, drawn under the switch in the Advanced box. */
+  private githubItems(text: (name: string, desc: string, key: string, placeholder?: string) => SettingGroupItem): SettingGroupItem[] {
+    const s = this.plugin.settings;
+    return [
+        text("GitHub owner", "The account or organisation that owns the site repository.", "github.owner"),
+        text("GitHub repository", "The site repository the plugin commits to.", "github.repo"),
+        text("Production branch", "Where published notes go live.", "github.branch"),
+        text("Preview branch", "A test channel: nothing published there is permanent.", "github.previewBranch"),
+        {
+          name: "Publish to",
+          desc: "The branch the publish commands write to. Preview is for testing.",
+          control: {
+            type: "dropdown",
+            key: "github.useBranch",
+            options: { production: "Production", preview: "Preview" },
+          },
+        },
+        {
+          name: "GitHub token",
+          desc: "Pick or create an entry in the keychain. The token stays in this device's keychain; the plugin only remembers the entry's name.",
+          aliases: ["secret", "keychain", "pat"],
+          render: (setting) => {
+            setting.addComponent((el) =>
+              new SecretComponent(this.app, el).setValue(s.github.tokenSecretName).onChange((name) => {
+                this.setControlValue("github.tokenSecretName", name);
+              }),
+            );
+          },
+        },
+        {
+          name: "Watch deploys",
+          desc: "After a commit, wait for the site's checks and tell you whether it deployed. Needs “Actions: Read-only” on the token; harmless without it.",
+          aliases: ["deploy", "status", "checks", "actions"],
+          control: { type: "toggle", key: "github.watchDeploy", defaultValue: true },
+        },
+        this.checkConnectionItem("Tests the token, the repository and both branches. Changes nothing.", () => this.plugin.runConnectionCheck()),
+        text("Blyg address", "The production blyg's address, ending with “/”.", "blyg.origin", "https://example.com/blyg/"),
+        text("Preview blyg address", "The preview channel's address, ending with “/”.", "blyg.previewOrigin", "https://preview.example.pages.dev/blyg/"),
+        text("Items folder", "Repository folder where Blyg items are written.", "blyg.itemsDir"),
+    ];
+  }
 
   /** A “Check connection” row: runs `run`, shows its lines under the button. */
   private checkConnectionItem(desc: string, run: () => Promise<{ lines: { level: string; text: string }[] }>, name = "Check connection"): SettingGroupItem {
@@ -370,6 +382,7 @@ export class BlygSettingTab extends PluginSettingTab {
   }
 
   override hide(): void {
+    this.showGithub = null;
     void this.plugin.saveSettings();
   }
 

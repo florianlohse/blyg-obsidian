@@ -157,6 +157,10 @@ describe("readItem", () => {
     expect(readItem({ ...base, kind: "thread" })).toMatchObject({ kind: "thread", revision: 4 });
     expect(readItem({ ...base })).toMatchObject({ kind: "fragment", revision: 4, status: "public" });
   });
+  it("reads when the item was made and last changed (contract 5: created, updated), and null when they are missing", () => {
+    expect(readItem({ ...base, created: "2026-11-01T10:00:00.000Z", updated: "2026-11-02T11:00:00.000Z" })).toMatchObject({ created: "2026-11-01T10:00:00.000Z", updated: "2026-11-02T11:00:00.000Z" });
+    expect(readItem({ ...base })).toMatchObject({ created: null, updated: null });
+  });
   it("rejects anything that is not an item", () => {
     for (const bad of [null, [], "x", {}, { ...base, status: "weird" }, { ...base, version: "2" }, { ...base, dirty: 0 }, { ...base, contentMd: 5 }, { ...base, id: 3 }, { ...base, kind: "withdrawn" }, { ...base, revision: 0 }, { ...base, revision: 1.5 }, { ...base, revision: undefined }]) {
       expect(readItem(bad)).toBeNull();

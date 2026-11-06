@@ -14,7 +14,7 @@ export interface ConnectionTarget {
 }
 
 export interface CheckLine {
-  level: "ok" | "warn" | "error";
+  level: "ok" | "info" | "warn" | "error";
   text: string;
 }
 
@@ -123,6 +123,6 @@ export async function checkConnection(
 }
 
 export function formatReport(report: ConnectionReport): string {
-  const mark = { ok: "✓", warn: "⚠", error: "✗" } as const;
+  const mark = { ok: "✓", info: "ⓘ", warn: "⚠", error: "✗" } as const;
   return report.lines.map((l) => `${mark[l.level]} ${l.text}`).join("\n");
 }

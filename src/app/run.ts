@@ -18,7 +18,7 @@ import { studioAddress } from "../studio/address";
 import { contractCacheFor, createStudioClient } from "../studio/client";
 import type { ContractVerdict } from "../studio/version";
 import { createStudioHttp } from "../studio/http";
-import { loadStudioFacts, loadStudioWarnings, type StudioFacts } from "../studio/live";
+import { loadStudioFacts, loadStudioNotices, type StudioFacts, type StudioNotices } from "../studio/live";
 import { readQuotable } from "../studio/passage";
 import type { PendingDrafts } from "../studio/pending";
 import { hitPick, type StudioPick } from "../studio/picker";
@@ -221,10 +221,10 @@ export async function runStudioFacts(env: AppEnv, id: string): Promise<StudioFac
 }
 
 /** Warnings for the whole Studio (token expiry, release outside the tested range, no token on this device) as sentences for the panel. */
-export async function runStudioWarnings(env: AppEnv): Promise<string[]> {
+export async function runStudioWarnings(env: AppEnv): Promise<StudioNotices> {
   const built = buildStudio(env);
-  if (!built.ok) return env.settings.studio.baseUrl === "" ? [] : [built.message];
-  return loadStudioWarnings(built.studio.client, built.token, env.clock);
+  if (!built.ok) return { warnings: env.settings.studio.baseUrl === "" ? [] : [built.message], notes: [] };
+  return loadStudioNotices(built.studio.client, built.token, env.clock);
 }
 
 /**

@@ -41,7 +41,26 @@ describe("studio connection check", () => {
     newer.contractVersion = "5.9.0";
     const r1 = await run(newer);
     expect(r1.ok).toBe(true);
-    expect(formatReport(r1)).toMatch(/Contract 5\.9\.0 is newer than the 5\.2 this plugin was tested with/);
+    expect(formatReport(r1)).toMatch(/Studio API 5\.9\.0 is newer than the 5\.4 this plugin was tested with\. Newer minor versions only add things and are accepted/);
+    // an info line (muted), not a warning
+    expect(r1.lines.find((l) => /newer than/.test(l.text))?.level).toBe("info");
+    expect(r1.lines.filter((l) => l.level === "warn").some((l) => /newer than/.test(l.text))).toBe(false);
+    // the tested contracts (Studio 0.51.0 to 0.53.0) say nothing about versions
+    for (const v of ["5.2.0", "5.3.0", "5.4.0"]) {
+      const tested = new FakeStudio();
+      tested.contractVersion = v;
+      const r = await run(tested);
+      expect(r.ok, v).toBe(true);
+      expect(formatReport(r), v).not.toMatch(/newer than/);
+    }
+    const next = new FakeStudio();
+    next.contractVersion = "5.5.0";
+    expect(formatReport(await run(next))).toMatch(/Studio API 5\.5\.0 is newer than the 5\.4/);
+    const major = new FakeStudio();
+    major.contractVersion = "6.0.0";
+    const refused = await run(major);
+    expect(refused.ok).toBe(false);
+    expect(refused.lines.some((l) => l.level === "error")).toBe(true);
     const fork = new FakeStudio();
     fork.generator = "my-fork/1";
     expect(formatReport(await run(fork))).toMatch(/does not announce a Blygger Studio/);

@@ -7,8 +7,8 @@ will change before anything leaves your vault.
 > **Beta (0.9.x).** Installed through BRAT, not yet in Obsidian's community-plugin list. Expect rough edges and read
 > *Known gaps* below before relying on it.
 
-<p><img src="images/readme/draft.png" width="300" alt="The Blyg panel on a phone for a note that is only a draft in the Studio: “Tap Publish to make it version 1”, with the write buttons below"></p>
-<sub>Screenshots use an invented author and neighbour (demo data), a local test Studio, and an early build.</sub>
+<p><img src="images/readme/hero.png" width="640" alt="Obsidian on the desktop: a vault with a Blyg folder of notes, an open thread note, and the Blyg panel on the right saying Published (v1) and up to date, with buttons to write, quote, reply and update"></p>
+<sub>Screenshots use an invented author and neighbour (demo data).</sub>
 
 ## What it does
 
@@ -20,25 +20,35 @@ will change before anything leaves your vault.
   published.
 - **Quote and respond.** Insert a quote (a whole item or a passage) from your own items or from a blyg your Studio
   follows, find an item by pasting its address, or reply to an item with a *stub* (a thread that says it responds to one
-  item).
+  item; the panel then reads “Stub: a reply to …”).
 - **Keep both sides in step.** Pull the Studio's copy into the note, import items that were written in the Studio,
   withdraw an item, delete a draft, put items into your Studio's hoppers.
 - **Mobile first.** Everything runs on iOS and Android as well as desktop; no desktop-only APIs are used.
 
-### A look
+## What your post looks like
+
+What you send from Obsidian is published by your Studio as a page of your blyg. A fragment, and a thread that quotes a neighbour's
+item (the quote carries the author's name and the version it was taken from):
+
+<p>
+<img src="images/readme/public-fragment.png" width="260" alt="A published fragment on a blyg page on a phone: the blyg title Workshop notes, the author name, one short paragraph of text, its creation date and a permalink">
+<img src="images/readme/public-thread.png" width="260" alt="A published thread on a blyg page on a phone: a quotation from another author with the line from Teo Brandt, snapshot of v1, followed by the thread's own paragraphs">
+</p>
+
+## A look inside Obsidian
 
 **Before anything is sent**, a window shows what readers will see and what changes:
 
 <p><img src="images/readme/publish-preview.png" width="300" alt="The publish window on a phone: the target Studio, the text as readers will see it, the new text, and Cancel and Publish buttons"></p>
-**Afterwards** the panel says the note is published and up to date:
 
-<p><img src="images/readme/in-sync.png" width="300" alt="The panel after publishing: Published (v1) and up to date, with buttons for new thread, new fragment, import, reply and quote"></p>
 **Quote another blyg** by searching its items (or pasting an address):
 
-<p><img src="images/readme/quote-picker.png" width="300" alt="The quote picker on a phone, searching for a word and showing one matching item of a neighbouring blyg"></p>
-**A thread that quotes a neighbour's fragment**, with the panel on the right (desktop):
+<p><img src="images/readme/quote-picker.png" width="300" alt="The quote picker on a phone: the word dandelion typed in the search box and one matching fragment by Teo Brandt listed above it"></p>
 
-<p><img src="images/readme/thread-quotes.png" width="560" alt="Desktop Obsidian: a thread note containing a quote of another blyg's item, and the Blyg panel showing it published with one quote"></p>
+**A thread that quotes a neighbour's fragment.** The panel shows the quote under *From other blygs*:
+
+<p><img src="images/readme/thread-quotes.png" width="300" alt="The Blyg panel on a phone for a published thread: Published (v1) and up to date, the write buttons, and the quote of a fragment by Teo Brandt listed under From other blygs"></p>
+
 **Settings** for a Studio-only setup need just the Studio address and a token:
 
 <p><img src="images/readme/settings-studio-only.png" width="300" alt="The Blyg settings on a phone: Studio address, Studio mount and Studio token fields; no GitHub settings"></p>
@@ -48,7 +58,8 @@ will change before anything leaves your vault.
 1. **Obsidian 1.13.0 or newer** (the plugin stores secrets in Obsidian's keychain and uses the 1.13 settings screen).
 2. **A Blygger Studio** that you own and have signed in to. Blygger Studio is the reference server of the Blygger
    protocol (open source: [blygger/blygger-studio](https://github.com/blygger/blygger-studio)). The plugin needs
-   **Studio 0.51.0 or newer** (API contract 5); an older Studio is refused before anything is sent.
+   **Studio 0.51.0 or newer** (API contract 5). It is tested with Studio 0.51.0 to 0.53.0 (API contract 5.2 to 5.4); a newer
+   minor version is accepted with a quiet note, an older Studio is refused before anything is sent.
 3. **An access token from that Studio** (see *Token*).
 
 You do **not** need a GitHub account or a static site. (An older mode that commits to a GitHub-hosted site still exists
@@ -86,8 +97,12 @@ BRAT keeps the plugin updated. Your settings live in the plugin's own data file 
    and tap **Publish** (**Send draft** on a Drafts-only route).
 
 GitHub settings, “Blyg address”, the folder “Kind” and the preview channel belong to an older way of running a blyg from a
-GitHub repository. They stay hidden unless you tap **Advanced → Also publish to a GitHub-hosted site**.
+GitHub repository. They stay hidden unless you switch on **Advanced → Also publish to a GitHub-hosted site** at the bottom
+of the settings; the GitHub fields then appear right under the switch, and switching it off hides them again without deleting
+anything. The commands that move an old GitHub-site item into the Studio (**Studio: repost this note**, **Studio: list
+reposted items**) are offered only then.
 
+<p><img src="images/readme/advanced-github-switch.png" width="300" alt="The Blyg settings on a phone with the Advanced switch Also publish to a GitHub-hosted site turned on and the GitHub owner, repository and branch fields shown directly below it"></p>
 
 ## What is sent where
 

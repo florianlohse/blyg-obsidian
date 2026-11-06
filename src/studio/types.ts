@@ -23,6 +23,9 @@ export interface StudioItem {
   dirty: boolean;
   /** What the item is a reply to (`stubOf`), or null when it is not one (or the shape is not known). */
   stubOf: StubTarget | null;
+  /** When the item was made and last changed (ISO text from the Studio); null when the answer did not carry them. */
+  created?: string | null;
+  updated?: string | null;
   /** The newest published version's document, when there is one (present on GET only). */
   published: { version: number; contentMd: string; contentHtml: string; contentHash: string; note: string | null } | null;
 }

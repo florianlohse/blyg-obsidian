@@ -33,6 +33,15 @@
   color: var(--text-success);
 }
 
+.blyg-check-line.blyg-info {
+  color: var(--text-muted);
+}
+
+.blyg-check-line.blyg-info::before {
+  content: "ⓘ ";
+  color: var(--text-faint);
+}
+
 .blyg-check-line.blyg-warn::before {
   content: "⚠ ";
   color: var(--text-warning);

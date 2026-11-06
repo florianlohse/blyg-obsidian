@@ -10,7 +10,7 @@ import { createStudioHttp } from "./http";
 import { expiryVerdict, tokenScopes } from "./jwt";
 import { sameOrigin } from "./record";
 import type { StudioFailure } from "./types";
-import { CONTRACT_TEXT, contractVerdict, incompatibleMessage, studioVersionVerdict } from "./version";
+import { contractVerdict, newerMinorNote, incompatibleMessage, studioVersionVerdict } from "./version";
 
 /** What publishing needs: read (the item and the preview's reads), draft (create, edit, preview) and publish (publish, withdraw). */
 export const NEEDED_SCOPES = ["owner:read", "owner:draft", "owner:publish"] as const;
@@ -79,7 +79,7 @@ export async function checkStudioConnection(
     deps.gate?.set(contract);
     if (contract.kind === "ok") {
       lines.push({ level: "ok", text: `${studioName}, contract ${contract.contract}: the API this plugin speaks.` });
-      if (contract.newerMinor) lines.push({ level: "warn", text: `Contract ${contract.contract} is newer than the ${CONTRACT_TEXT} this plugin was tested with. Publishing should still work; if something looks wrong, say so.` });
+      if (contract.newerMinor) lines.push({ level: "info", text: newerMinorNote(contract.contract) });
     } else {
       lines.push({ level: "error", text: `${studioName}${contract.contract ? `, contract ${contract.contract}` : ""}: ${incompatibleMessage(contract.kind)}` });
       return { ok: false, lines };

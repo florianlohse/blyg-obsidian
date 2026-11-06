@@ -2,10 +2,15 @@
 // `GET /api/capabilities` (`contractVersion`), not the release number: one hard cutover, no support for older contracts.
 // The manifest's `generator` is only used to tell a stock Studio from a fork or another program.
 
-/** The contract this plugin was built and tested against (Studio 0.51.0 announces 5.2.0). Minors are additive; a higher minor is accepted. */
-export const CONTRACT = { major: 5, minor: 2 } as const;
-/** "5.2": for messages. */
+/**
+ * The newest contract this plugin was tested against: Studio 0.51.0 announces 5.2.0, 0.52.0 5.3.0 (adds POST /read-batch), 0.53.0 5.4.0 (adds `include` on GET /search and
+ * `draft` on its hits). None of the operations the plugin calls changed (checked against the OpenAPI of each release, 2026-11-05). Minors are additive; a higher minor is accepted.
+ */
+export const CONTRACT = { major: 5, minor: 4 } as const;
+/** "5.4": for messages. */
 export const CONTRACT_TEXT = `${CONTRACT.major}.${CONTRACT.minor}`;
+/** A newer minor of the same major is accepted, so it is a muted note, not a warning. */
+export const newerMinorNote = (announced: string): string => `Studio API ${announced} is newer than the ${CONTRACT_TEXT} this plugin was tested with. Newer minor versions only add things and are accepted.`;
 /** The first Studio release that speaks it. */
 export const MIN_STUDIO_VERSION = "0.51.0";
 

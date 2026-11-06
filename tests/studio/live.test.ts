@@ -1,7 +1,7 @@
 // What the panel learns from the Studio: facts about one item, warnings about the whole Studio, and the cache between them and the panel.
 import { describe, expect, it } from "vitest";
 import { contentHash } from "../../src/core/hash";
-import { createLiveCache, editedInStudio, loadStudioFacts, loadStudioWarnings, type StudioFacts } from "../../src/studio/live";
+import { createLiveCache, editedInStudio, loadStudioFacts, loadStudioNotices, loadStudioWarnings, type StudioFacts } from "../../src/studio/live";
 import { studioAddress } from "../../src/studio/address";
 import { createStudioClient } from "../../src/studio/client";
 import { createStudioHttp } from "../../src/studio/http";
@@ -33,7 +33,7 @@ describe("facts about one item", () => {
     const item = studio.seed({ content_md: "Hello.", status: "public", version: 2 });
     studio.mentions.push(mention(item.id), mention(item.id, { relation: null }), mention(item.id, { status: "pending" }), mention(item.id, { hidden: true }), mention(idOf(99)));
     const facts = await loadStudioFacts(client, item.id, clock);
-    expect(facts).toEqual({ item: { status: "public", version: 2, workingHash: await contentHash("Hello.") }, mentions: { count: 2, complete: true }, hoppers: [], at: NOW.getTime() });
+    expect(facts).toEqual({ item: { status: "public", version: 2, workingHash: await contentHash("Hello."), created: item.created, updated: item.updated }, mentions: { count: 2, complete: true }, hoppers: [], at: NOW.getTime() });
   });
 
   it("names the hoppers the item is in (S13), and says nothing when they cannot be read", async () => {
@@ -113,11 +113,27 @@ describe("warnings about the whole Studio", () => {
       studio.contractVersion = contractVersion;
       return loadStudioWarnings(client, tok, clock);
     };
-    expect(await withContract("5.9.0")).toEqual([expect.stringMatching(/contract 5\.9\.0 is newer than the 5\.2/)]);
+    // (b) a newer minor is not a warning: it is a muted note
+    expect(await withContract("5.9.0")).toEqual([]);
+    expect(await withContract("5.5.0")).toEqual([]);
+    for (const tested of ["5.2.0", "5.3.0", "5.4.0"]) expect(await withContract(tested), tested).toEqual([]);
     expect(await withContract("4.1.0")).toEqual([expect.stringMatching(/older API.*0\.51\.0/)]);
     expect(await withContract(null)).toEqual([expect.stringMatching(/older API/)]);
     expect(await withContract("6.0.0")).toEqual([expect.stringMatching(/Update the plugin/)]);
     expect(await warn(tok, "someone-else/1.0")).toEqual([expect.stringMatching(/does not announce a Blygger Studio/)]);
+  });
+  it("a newer minor contract is a note, never a warning; same or older minor says nothing; a newer major is refused", async () => {
+    const tok = makeToken({ expSeconds: FAR_FUTURE });
+    const notices = async (contractVersion: string) => {
+      const { studio, client } = setup();
+      studio.contractVersion = contractVersion;
+      return loadStudioNotices(client, tok, clock);
+    };
+    expect(await notices("5.5.0")).toEqual({ warnings: [], notes: [expect.stringMatching(/Studio API 5\.5\.0 is newer than the 5\.4 this plugin was tested with\. Newer minor versions only add things and are accepted/)] });
+    for (const v of ["5.4.0", "5.3.0", "5.2.0"]) expect(await notices(v), v).toEqual({ warnings: [], notes: [] });
+    const major = await notices("6.0.0");
+    expect(major.notes).toEqual([]);
+    expect(major.warnings).toEqual([expect.stringMatching(/Update the plugin/)]);
   });
   it("an unreachable Studio adds no version warning (the panel says it is unreachable by itself)", async () => {
     const { studio, client } = setup();

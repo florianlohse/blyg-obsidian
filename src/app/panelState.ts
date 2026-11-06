@@ -25,6 +25,7 @@ import { sameOrigin, ORIGIN_KEY, SENT_KEY, URL_KEY } from "../studio/record";
 import { editedInStudio, type StudioFacts } from "../studio/live";
 import { panelLines, prepareStudioText } from "../studio/text";
 import type { PublishedRecord, PublishedStore } from "./publishedStore";
+import { githubInUse } from "../settings/studioOnly";
 import { activeBranch, activeChannel, toPublishSettings } from "./publishSettings";
 
 /** The note's own `blyg_*` frontmatter as the metadata cache has it. User-editable, so every field is `unknown`. */
@@ -227,7 +228,7 @@ export interface PanelState {
   /** The main button is the call to action (there is something to send); false when it would only say "No changes". */
   emphasizePublish: boolean;
   /** Studio notes: what the Studio itself reported (mentions, warnings, whether it could be reached). Absent for other routes. */
-  studio?: { mentions?: { count: number; complete: boolean }; warnings: string[]; unreachable?: boolean };
+  studio?: { mentions?: { count: number; complete: boolean }; warnings: string[]; /** Muted transparency lines (a newer minor contract): not warnings, not counted. */ notes?: string[]; unreachable?: boolean };
   /** Studio notes that are replies (roadmap S10): what they answer, and what is wrong with it, if anything. */
   stub?: { label: string; problem: string | null };
   /**
@@ -275,7 +276,7 @@ export interface PanelInput {
   /** Blyg notes: from `summarizeThreadText`. */
   thread?: ThreadSummary;
   /** Studio notes: what the Studio last said (a cached answer, never fetched here) and the warnings that hold for the whole Studio. */
-  studio?: { facts?: StudioFacts; warnings: string[] };
+  studio?: { facts?: StudioFacts; warnings: string[]; notes?: string[] };
 }
 
 /** A timestamp as ISO text: Obsidian's YAML parser may hand back a string or a Date (see core/blyg.ts). */
@@ -315,6 +316,7 @@ export function computePanelState(input: PanelInput): PanelState {
   const openThread = openBlyg && core.kind === "thread";
   return {
     ...core,
+    ...(core.status === "other-blyg" && !githubInUse(input.settings) ? { notes: ["This item belongs to another blyg, not to the Studio set up now. Publishing it here is not offered."] } : {}),
     ...publishButton(core.status),
     ...(draftsOnly ? { publishLabel: "Send draft" as const, canWithdraw: false } : {}),
     draftsOnly,
@@ -325,8 +327,9 @@ export function computePanelState(input: PanelInput): PanelState {
     ...(core.route?.mode === "studio" && input.studio ? { studio: studioInfo(input.studio) } : {}),
     ...(core.route?.mode === "studio" && input.note?.extension === "md" ? { hoppers: hopperInfo(input) } : {}),
     ...(core.route?.mode === "studio" && input.note?.extension === "md" ? stubInfo(input.frontmatter.stubOf, core.kind) : {}),
-    showRepost: core.status === "other-blyg",
-    canRepost: core.status === "other-blyg" && input.localHash !== null,
+    // Repost is a corner case of the older GitHub way: offered only to a setup that uses GitHub (settings/studioOnly.ts). Hidden, not removed.
+    showRepost: core.status === "other-blyg" && githubInUse(input.settings),
+    canRepost: core.status === "other-blyg" && githubInUse(input.settings) && input.localHash !== null,
     showPull: core.status === "edited-there" || (core.route?.mode === "studio" && core.status === "local-changes"),
     canPull: core.status === "edited-there" || (core.route?.mode === "studio" && core.status === "local-changes"),
     showOpenWeb: blygRoute || route?.mode === "studio" || Boolean(route?.webUrl?.trim()),
@@ -366,6 +369,7 @@ function studioInfo(studio: NonNullable<PanelInput["studio"]>): NonNullable<Pane
   const facts = studio.facts;
   return {
     warnings: studio.warnings,
+    ...(studio.notes && studio.notes.length > 0 ? { notes: studio.notes } : {}),
     ...(facts?.mentions ? { mentions: facts.mentions } : {}),
     ...(facts?.item === "unreachable" ? { unreachable: true } : {}),
   };
@@ -701,7 +705,10 @@ function studioCore(
     };
   }
 
-  const item = { id: rawId, version: versionOf(fm.version), created: null, updated: null };
+  // A Studio note carries no dates of its own (it is not stamped with blyg_created/blyg_updated): they come from what the Studio last said.
+  const known = input.studio?.facts?.item;
+  const dates = known && typeof known !== "string" ? { created: known.created ?? null, updated: known.updated ?? null } : { created: null, updated: null };
+  const item = { id: rawId, version: versionOf(fm.version), ...dates };
   const stampedUrl = typeof fm.url === "string" && fm.url.startsWith(address.origin) ? fm.url : studioItemUrl(address, kind, rawId);
   const web = { webUrl: stampedUrl, canOpenWeb: true };
   const withVersion = item.version !== null ? ` (v${item.version})` : "";
@@ -836,7 +843,7 @@ export interface PanelEnv {
    * it arrives). `id` is the note's id when it has one of this Studio's. Never called for other routes. Without it the panel shows only
    * what the note's own record says.
    */
-  studioLive?: (note: NoteRef, id: string | null) => { facts?: StudioFacts; warnings: string[] };
+  studioLive?: (note: NoteRef, id: string | null) => { facts?: StudioFacts; warnings: string[]; notes?: string[] };
 }
 
 /**

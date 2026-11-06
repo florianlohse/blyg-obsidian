@@ -3,7 +3,7 @@ import { studioAddress, studioBaseProblem, studioItemUrl, studioMountProblem } f
 import { expiryVerdict, tokenExpiry, tokenScopes } from "../../src/studio/jwt";
 import { createPendingDrafts, MAX_PENDING, readPending, withPending, type PendingDraft } from "../../src/studio/pending";
 import { readStudioRecord, sameOrigin } from "../../src/studio/record";
-import { contractVerdict, studioVersionVerdict } from "../../src/studio/version";
+import { CONTRACT_TEXT, contractVerdict, MIN_STUDIO_VERSION, studioVersionVerdict } from "../../src/studio/version";
 import { makeToken } from "./fake-studio";
 
 describe("address", () => {
@@ -67,10 +67,15 @@ describe("the manifest's generator", () => {
 });
 
 describe("the contract gate's verdict (contractVersion, not the release number)", () => {
-  it("supports major 5; a higher minor is accepted and flagged", () => {
-    expect(contractVerdict("5.2.0")).toEqual({ kind: "ok", contract: "5.2.0", newerMinor: false });
-    expect(contractVerdict("5.1.0")).toEqual({ kind: "ok", contract: "5.1.0", newerMinor: false });
-    expect(contractVerdict("5.3.1")).toEqual({ kind: "ok", contract: "5.3.1", newerMinor: true });
+  it("supports major 5; the tested minors (5.2 to 5.4: Studio 0.51.0 to 0.53.0) give no notice, a higher minor is accepted and flagged", () => {
+    for (const v of ["5.1.0", "5.2.0", "5.3.0", "5.3.1", "5.4.0", "5.4.9"]) expect(contractVerdict(v), v).toEqual({ kind: "ok", contract: v, newerMinor: false });
+    expect(contractVerdict("5.5.0")).toEqual({ kind: "ok", contract: "5.5.0", newerMinor: true });
+    expect(contractVerdict("5.12.0")).toEqual({ kind: "ok", contract: "5.12.0", newerMinor: true });
+    expect(CONTRACT_TEXT).toBe("5.4");
+    expect(MIN_STUDIO_VERSION).toBe("0.51.0");
+  });
+  it("a lower major still refuses, whatever its minor", () => {
+    expect(contractVerdict("4.99.0")).toEqual({ kind: "studio-older", contract: "4.99.0" });
   });
   it("an older major, or anything that is not major.minor.patch, means the Studio is older", () => {
     expect(contractVerdict("4.9.0")).toEqual({ kind: "studio-older", contract: "4.9.0" });

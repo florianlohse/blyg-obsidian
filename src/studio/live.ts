@@ -7,12 +7,12 @@ import { normalizeContentMd } from "../core/normalize";
 import type { Clock } from "../platform/ports";
 import type { StudioClient } from "./client";
 import { expiryVerdict } from "./jwt";
-import { CONTRACT_TEXT, contractVerdict, incompatibleMessage, studioVersionVerdict } from "./version";
+import { contractVerdict, newerMinorNote, incompatibleMessage, studioVersionVerdict } from "./version";
 
 /** What the Studio holds for one item, at one moment. */
 export interface StudioFacts {
   /** `missing`: the Studio has no such item. `unreachable`: the question could not be asked or answered. */
-  item: { status: "draft" | "public" | "withdrawn"; version: number; workingHash: string } | "missing" | "unreachable";
+  item: { status: "draft" | "public" | "withdrawn"; version: number; workingHash: string; created?: string | null; updated?: string | null } | "missing" | "unreachable";
   mentions: { count: number; complete: boolean } | null;
   /** The names of the hoppers the item is in (roadmap S13); null when they could not be read. */
   hoppers?: string[] | null;
@@ -25,7 +25,7 @@ export async function loadStudioFacts(client: StudioClient, id: string, clock: C
     const got = await client.getItem(id);
     if (got.kind === "not-found") return { item: "missing", mentions: null, at };
     if (got.kind !== "ok") return { item: "unreachable", mentions: null, at };
-    const item = { status: got.value.status, version: got.value.version, workingHash: await contentHash(normalizeContentMd(got.value.contentMd)) };
+    const item = { status: got.value.status, version: got.value.version, workingHash: await contentHash(normalizeContentMd(got.value.contentMd)), created: got.value.created ?? null, updated: got.value.updated ?? null };
     let mentions: StudioFacts["mentions"] = null;
     try {
       const counted = await client.countMentions(id);
@@ -65,9 +65,21 @@ export function editedInStudio(facts: StudioFacts, note: { sent: string | null; 
   return facts.item.workingHash !== note.sent && facts.item.workingHash !== note.localHash;
 }
 
+/** What holds for the whole Studio: `warnings` need attention; `notes` are transparency only (shown muted, never counted as warnings). */
+export interface StudioNotices {
+  warnings: string[];
+  notes: string[];
+}
+
 /** Warnings that hold for the whole Studio, as plain sentences. An unreachable Studio gives none here (the item facts say so). */
 export async function loadStudioWarnings(client: StudioClient, token: string, clock: Clock): Promise<string[]> {
+  return (await loadStudioNotices(client, token, clock)).warnings;
+}
+
+/** The warnings, and the muted notes (a newer minor contract is a note, never a warning: Studios ship often and additive minors are accepted). */
+export async function loadStudioNotices(client: StudioClient, token: string, clock: Clock): Promise<StudioNotices> {
   const out: string[] = [];
+  const notes: string[] = [];
   const expiry = expiryVerdict(token, clock.now());
   if (expiry.kind === "expired") out.push("The Studio token has expired. Create a new one in the Studio (More → Client access) and paste it into the keychain entry.");
   else if (expiry.kind === "soon") out.push(`The Studio token expires in ${expiry.days} day${expiry.days === 1 ? "" : "s"}. Create a new one in the Studio and paste it into the keychain entry.`);
@@ -85,13 +97,13 @@ export async function loadStudioWarnings(client: StudioClient, token: string, cl
     if (caps.kind === "ok") {
       const contract = contractVerdict(caps.value.contractVersion);
       if (contract.kind === "ok") {
-        if (contract.newerMinor) out.push(`The Studio's API contract ${contract.contract} is newer than the ${CONTRACT_TEXT} this plugin was tested with. Publishing should still work.`);
+        if (contract.newerMinor) notes.push(newerMinorNote(contract.contract));
       } else out.push(incompatibleMessage(contract.kind));
     } else if (caps.kind === "not-found") out.push(incompatibleMessage("studio-older"));
   } catch {
     // no answer, no contract warning
   }
-  return out;
+  return { warnings: out, notes };
 }
 
 /**
