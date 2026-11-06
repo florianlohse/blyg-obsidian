@@ -6,7 +6,7 @@
 //
 //   node scripts/flavour.mjs <blyg|blyg-dev> [OUTDIR]
 //
-// BLYG_VERSION, if set, replaces the version in the written manifest (the dev pre-release workflow sets it to x.y.z-dev.N).
+// BLYG_VERSION, if set, replaces the version in the written manifest (the dev build workflow sets it to x.y.z-dev.N).
 // Takes main.js and styles.css (from `npm run build`) and manifest.json, writes OUTDIR (default dist/<flavour>/) with the three files a
 // release carries. Prints nothing secret; reads nothing but these files.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -56,6 +56,39 @@ export function nextDevVersion(base, existingTags) {
     if (Number.isInteger(n) && n > highest) highest = n;
   }
   return `${prefix}${highest + 1}`;
+}
+
+/**
+ * Compare two release tags of the forms this repo uses (`x.y.z` and `x.y.z-dev.N`, optionally `x.y.z-rc.N`) the way semver does, which is how BRAT
+ * orders releases ("Latest" is the highest-semver release that is not a pre-release, BRAT 2.2.0 `grabReleaseFromRepository`). Returns a negative
+ * number, 0 or a positive number; null when either tag is not of those forms (such a tag is ignored by the caller).
+ * @param {string} a @param {string} b
+ */
+export function compareReleaseTags(a, b) {
+  const parse = (t) => {
+    const m = /^(\d+)\.(\d+)\.(\d+)(?:-([a-z]+)\.(\d+))?$/.exec(t);
+    return m ? { core: [Number(m[1]), Number(m[2]), Number(m[3])], pre: m[4] ? { id: m[4], n: Number(m[5]) } : null } : null;
+  };
+  const x = parse(a), y = parse(b);
+  if (!x || !y) return null;
+  for (let i = 0; i < 3; i++) if (x.core[i] !== y.core[i]) return x.core[i] - y.core[i];
+  if (!x.pre && !y.pre) return 0;
+  if (!x.pre) return 1; // a release is above its own pre-releases
+  if (!y.pre) return -1;
+  if (x.pre.id !== y.pre.id) return x.pre.id < y.pre.id ? -1 : 1; // semver compares identifiers as text
+  return x.pre.n - y.pre.n;
+}
+
+/**
+ * The existing NORMAL (non-pre-release) release tags that a new dev build would NOT outrank. BRAT's "Latest" is the highest-semver normal
+ * release, so a dev build published as a normal release is offered as Latest only if this list is empty (decision D3, 2026-11-06).
+ * @param {string} version the new dev version @param {{tagName: string, isPrerelease: boolean}[]} releases
+ */
+export function normalReleasesAbove(version, releases) {
+  return releases.filter((r) => !r.isPrerelease).map((r) => r.tagName).filter((t) => {
+    const c = compareReleaseTags(t, version);
+    return c !== null && c >= 0;
+  });
 }
 
 function main() {

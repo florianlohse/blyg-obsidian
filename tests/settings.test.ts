@@ -45,6 +45,25 @@ describe("templates", () => {
   });
 });
 
+describe("defaults of the development build", () => {
+  it("a fresh dev install starts with the test route and import folder `Studio test/`; the release defaults are unchanged", () => {
+    const dev = defaultSettings("dev");
+    expect(dev.routes).toEqual([{ vaultPrefix: "Studio test/", mode: "studio", label: "Test item" }]);
+    expect(dev.studio.importFolder).toBe("Studio test/");
+    expect(defaultSettings().routes).toEqual([{ vaultPrefix: "blyg/", mode: "studio", label: "Blyg item" }]);
+    expect(defaultSettings().studio.importFolder).toBe("");
+    expect(defaultSettings("release")).toEqual(defaultSettings());
+  });
+
+  it("migrateSettings gives a fresh dev install the dev defaults and leaves an existing install's routes alone", () => {
+    expect(migrateSettings(null, "dev").settings.routes).toEqual(defaultSettings("dev").routes);
+    const stored = { routes: [{ vaultPrefix: "mine/", mode: "studio", label: "Mine" }], studio: { baseUrl: "https://a.workers.dev", mount: "", tokenSecretName: "t", importFolder: "mine/" } };
+    const loaded = migrateSettings(stored, "dev").settings;
+    expect(loaded.routes).toEqual([{ vaultPrefix: "mine/", mode: "studio", label: "Mine" }]);
+    expect(loaded.studio.importFolder).toBe("mine/");
+  });
+});
+
 describe("migrateSettings", () => {
   it("gives the defaults for missing or non-object data", () => {
     for (const raw of [undefined, null, 42, "x", []]) {

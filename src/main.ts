@@ -33,6 +33,7 @@ import { noteRefOf, obsidianNoteEdit, obsidianVault, obsidianYaml } from "./plat
 import { redactingLogger } from "./platform/redact";
 import type { Outcome } from "./publish/types";
 import { migrateSettings } from "./settings/migrate";
+import { devGuardProblem, isDevBuildId, isDevStudioLock, realPluginId, setDevStudioLock } from "./studio/devLock";
 import { defaultSettings, type BlygSettings } from "./settings/schema";
 import { isStudioOnly } from "./settings/studioOnly";
 import { BlygSettingTab } from "./settings/tab";
@@ -79,6 +80,14 @@ export default class BlygPlugin extends Plugin {
   private readonly contractVerdicts = new Map<string, ContractVerdict>();
 
   override async onload(): Promise<void> {
+    // The development build ("blyg-dev") may only talk to test Studios: switched on before anything reads an address (studio/devLock.ts).
+    setDevStudioLock(isDevBuildId(this.manifest.id));
+    // ... and it stays idle while the real plugin is enabled (the two cannot share the panel view): nothing is registered, nothing is read or written.
+    const idle = devGuardProblem(this.manifest.id, isPluginEnabled(this.app, realPluginId(this.manifest.id)));
+    if (idle) {
+      new Notice(idle, 0);
+      return;
+    }
     // The old plugin (id obsidian-blyg) registers the same view type: with both enabled this one would fail half-way. Say so and stay idle.
     if (await this.adoptOldInstallData()) return;
     await this.loadSettings();
@@ -234,7 +243,7 @@ export default class BlygPlugin extends Plugin {
   }
 
   async loadSettings(): Promise<void> {
-    const loaded = migrateSettings((await this.loadData()) as unknown);
+    const loaded = migrateSettings((await this.loadData()) as unknown, isDevStudioLock() ? "dev" : "release");
     this.settings = loaded.settings;
     this.settingsLocked = loaded.fromNewerVersion;
     if (this.settingsLocked) {

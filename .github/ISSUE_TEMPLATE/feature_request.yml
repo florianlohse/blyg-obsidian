@@ -1,0 +1,44 @@
+name: Idea or feature request
+description: Something you would like to be able to do
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea. This is a one-person beta, so nothing here is a promise; a clear description of the problem helps most.
+        This repository takes issues only; pull requests are not accepted for now. **Please leave tokens and passwords out.**
+  - type: textarea
+    id: goal
+    attributes:
+      label: What would you like to do?
+      description: Describe what you are trying to get done, not only the feature.
+    validations:
+      required: true
+  - type: textarea
+    id: today
+    attributes:
+      label: What happens today?
+      description: What you do now instead, and what is awkward about it.
+    validations:
+      required: false
+  - type: dropdown
+    id: device
+    attributes:
+      label: Where do you use Obsidian?
+      multiple: true
+      options:
+        - iPhone
+        - iPad
+        - Android phone or tablet
+        - macOS
+        - Windows
+        - Linux
+    validations:
+      required: false
+  - type: checkboxes
+    id: checked
+    attributes:
+      label: Before you send
+      options:
+        - label: I looked at the existing issues and the "Known gaps" in the README.
+          required: true

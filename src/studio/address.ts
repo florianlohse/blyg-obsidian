@@ -1,6 +1,8 @@
 // Where a Studio is: its host, its optional mount, and the addresses derived from them. Pure; shared by the settings
 // validation, the http adapter and the publish service, so they cannot disagree about what a usable address is.
 
+import { devStudioProblem, LOOPBACK_HOSTS } from "./devLock";
+
 export interface StudioAddress {
   /** "https://blyg.example.com" — scheme and host (and port), nothing else. The token is only ever sent here. */
   host: string;
@@ -12,8 +14,6 @@ export interface StudioAddress {
   apiBase: string;
 }
 
-const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
-
 /** The reason an address is unusable, or null. Plain http is accepted for the local machine only (a Studio under test); the token must never cross a network in clear. */
 export function studioBaseProblem(baseUrl: string): string | null {
   let url: URL;
@@ -22,13 +22,14 @@ export function studioBaseProblem(baseUrl: string): string | null {
   } catch {
     return "Must be an address like https://blyg.example.com";
   }
-  if (url.protocol !== "https:" && !(url.protocol === "http:" && LOOPBACK.has(url.hostname))) {
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && LOOPBACK_HOSTS.has(url.hostname))) {
     return "Must be an https:// address (plain http is accepted for localhost only).";
   }
   if (url.username !== "" || url.password !== "") return "Must not contain a user name or password.";
   if (url.search !== "" || url.hash !== "") return "Must not contain a query or fragment.";
   if (url.pathname !== "/") return "Only the host: put a path in “Mount” instead.";
-  return null;
+  // The development build only talks to test Studios (devLock.ts); a no-op for the release build.
+  return devStudioProblem(baseUrl);
 }
 
 /** The reason a mount is unusable, or null. Empty is fine (the Studio has its own host). */

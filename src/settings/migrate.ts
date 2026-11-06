@@ -40,8 +40,8 @@ export interface LoadedSettings {
  * Turn whatever `loadData()` returned into a complete, well-typed settings object. Missing or malformed fields fall
  * back to the generic defaults. Never throws.
  */
-export function migrateSettings(raw: unknown): LoadedSettings {
-  const d = defaultSettings();
+export function migrateSettings(raw: unknown, flavour: "release" | "dev" = "release"): LoadedSettings {
+  const d = defaultSettings(flavour);
   if (!isPlain(raw)) return { settings: d, fromNewerVersion: false };
 
   const fromNewerVersion = typeof raw.schemaVersion === "number" && raw.schemaVersion > SCHEMA_VERSION;

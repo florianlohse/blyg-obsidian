@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // A minimal stand-in for the parts of "obsidian" the settings tab touches at import and construction time.
 vi.mock("obsidian", () => {
@@ -16,6 +16,7 @@ vi.mock("obsidian", () => {
 });
 
 import { BlygSettingTab } from "../src/settings/tab";
+import { setDevStudioLock } from "../src/studio/devLock";
 import { defaultSettings, type BlygSettings } from "../src/settings/schema";
 import { getPath } from "../src/settings/path";
 
@@ -281,5 +282,17 @@ describe("settings tab for someone with only a Studio (M1 A2.4)", () => {
     s.github.owner = "someone";
     const { tab } = makeTab(s);
     expect(toggleOf(tab).value).toBe(true);
+  });
+});
+
+describe("settings tab of the development build", () => {
+  afterEach(() => setDevStudioLock(false));
+  it("starts with a visible 'Development build' line that names the rule; the release build has none", () => {
+    setDevStudioLock(true);
+    const first = (makeTab(defaultSettings()).tab.getSettingDefinitions() as Def[])[0];
+    expect(first?.name).toBe("Development build");
+    expect(String((first as { desc?: string }).desc)).toContain(".workers.dev");
+    setDevStudioLock(false);
+    expect(((makeTab(defaultSettings()).tab.getSettingDefinitions() as Def[])[0])?.name).toBe("Setup check");
   });
 });

@@ -15,6 +15,7 @@ import type { ImportDeps, NoteFiles } from "../publish/studioImport";
 import type { Confirmation, Outcome, PublishDeps, WritePreview } from "../publish/types";
 import type { BlygSettings } from "../settings/schema";
 import { studioAddress } from "../studio/address";
+import { devStudioProblem } from "../studio/devLock";
 import { contractCacheFor, createStudioClient } from "../studio/client";
 import type { ContractVerdict } from "../studio/version";
 import { createStudioHttp } from "../studio/http";
@@ -56,7 +57,7 @@ const refuse = (message: string): Outcome => ({ status: "refused", notices: [mes
 /** The Studio client for the settings, or why there is none. A missing Studio never blocks essays and pages: only a Studio route is refused. */
 function buildStudio(env: AppEnv): { ok: true; studio: NonNullable<PublishDeps["studio"]>; token: string } | { ok: false; message: string } {
   const address = studioAddress(env.settings.studio);
-  if (!address || !env.studio) return { ok: false, message: M.studioNotConfigured };
+  if (!address || !env.studio) return { ok: false, message: devStudioProblem(env.settings.studio.baseUrl) ?? M.studioNotConfigured };
   const token = readToken(env.keychain, env.settings.studio.tokenSecretName, "Studio");
   if (!token.ok) return { ok: false, message: token.message };
   const http = createStudioHttp({ transport: env.studio.transport, timers: env.studio.timers, address, ...(env.logger ? { logger: env.logger } : {}) });

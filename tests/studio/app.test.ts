@@ -1,9 +1,10 @@
 // The Studio publish wired the way the plugin wires it: settings → address, keychain → token, runPublish → the service.
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { runPublish, runWithdraw, type AppEnv } from "../../src/app/run";
 import type { NoteRef } from "../../src/platform/ports";
 import { M } from "../../src/publish/messages";
 import { defaultSettings, type BlygSettings } from "../../src/settings/schema";
+import { setDevStudioLock } from "../../src/studio/devLock";
 import { fakeKeychain, idleTimers, TOKEN } from "../helpers";
 import { makeWorld, MACRO_ROUTES, type World } from "../world";
 import { FakeStudio, STUDIO_HOST, STUDIO_ORIGIN, STUDIO_TOKEN } from "./fake-studio";
@@ -39,6 +40,7 @@ function setup(vault: Record<string, string>, active: string, over: Partial<AppE
 }
 
 describe("runPublish for a Studio route", () => {
+  afterEach(() => setDevStudioLock(false));
   it("publishes through the Studio named in the settings, with the token from the keychain", async () => {
     const { w, studio, env } = setup({ "studio/N.md": "Hello.\n" }, "studio/N.md");
     const out = await runPublish(env);
@@ -55,6 +57,27 @@ describe("runPublish for a Studio route", () => {
     expect((await runPublish(env)).status).toBe("committed");
     expect(studio.seen).toEqual([]);
     expect(w.commits).toHaveLength(1);
+  });
+
+  it("the development build refuses to publish to a Studio that is not a test Studio: no request, no token read, the note untouched", async () => {
+    setDevStudioLock(true);
+    try {
+      const { w, studio, env } = setup({ "studio/N.md": "Hello.\n" }, "studio/N.md");
+      const out = await runPublish(env); // the settings name STUDIO_HOST (blyg.example.com), as a live Studio would be
+      expect(out.status).toBe("refused");
+      expect(out.notices.join(" ")).toMatch(/only connects to test Studios/);
+      expect(studio.seen).toEqual([]);
+      expect(w.calls).toEqual([]);
+      expect(w.local.get("studio/N.md")).toBe("Hello.\n");
+    } finally {
+      setDevStudioLock(false);
+    }
+  });
+
+  it("the same settings publish fine in the release build (the lock is off)", async () => {
+    const { studio, env } = setup({ "studio/N.md": "Hello.\n" }, "studio/N.md");
+    expect((await runPublish(env)).status).toBe("published");
+    expect(studio.seen.length).toBeGreaterThan(0);
   });
 
   it("a Studio route with unfinished Studio settings blocks publishing, and the message names the Studio fields", async () => {

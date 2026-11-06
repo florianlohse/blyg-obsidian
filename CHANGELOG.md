@@ -8,10 +8,20 @@ becomes the release notes. Write entries for people who use the plugin, not for 
 
 ## [Unreleased]
 
+## [0.9.1] — 2026-11-06
+
+A small maintenance release: nothing changes in how the plugin publishes or reads.
+
 ### Added
 
-- Development builds: a second build flavour, `blyg-dev` ("Blyg (dev)"), can sit next to the real plugin in a test vault with its own
-  settings. Development pre-releases are numbered `x.y.z-dev.N`.
+- Issue forms for bug reports and ideas, and a security policy (`SECURITY.md`), in the repository, so a report arrives with the details that matter (versions, device, Studio).
+
+### Changed
+
+- The README says that pull requests are not accepted for now; ideas and fixes go into an issue.
+- Development builds (the test flavour, `Blyg (dev)`, numbered `x.y.z-dev.N`) connect only to test Studios (an address ending in `.workers.dev`, or localhost), so they can never
+  publish to a real Studio, and the settings say so on top. A development build does nothing while the real plugin is enabled (it says so; only one can run at a time),
+  and a fresh development install starts with the test folder `Studio test/` instead of `blyg/`. None of this changes the plugin you install from here.
 
 ## [0.9.0] — 2026-11-06
 

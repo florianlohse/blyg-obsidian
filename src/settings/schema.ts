@@ -93,7 +93,8 @@ export interface BlygSettings {
   mentions: { repoPath: string };
 }
 
-export function defaultSettings(): BlygSettings {
+/** `dev` is the development build (manifest id ends in -dev): a fresh install starts with the test route `Studio test/`, so it never claims the real plugin's default folder `blyg/`. */
+export function defaultSettings(flavour: "release" | "dev" = "release"): BlygSettings {
   return {
     schemaVersion: SCHEMA_VERSION,
     github: {
@@ -112,9 +113,9 @@ export function defaultSettings(): BlygSettings {
       fragmentCharCap: 1000,
       threadSoftCap: 50000,
     },
-    studio: { baseUrl: "", mount: "", tokenSecretName: "", importFolder: "" },
+    studio: { baseUrl: "", mount: "", tokenSecretName: "", importFolder: flavour === "dev" ? "Studio test/" : "" },
     // A new install publishes to a Studio (the GitHub-site path is for existing setups; settings/studioOnly.ts). Existing settings keep their routes.
-    routes: [{ vaultPrefix: "blyg/", mode: "studio", label: "Blyg item" }],
+    routes: flavour === "dev" ? [{ vaultPrefix: "Studio test/", mode: "studio", label: "Test item" }] : [{ vaultPrefix: "blyg/", mode: "studio", label: "Blyg item" }],
     attachments: { repoDir: "public/attachments" },
     safety: { outsideLinks: "block" },
     reader: {

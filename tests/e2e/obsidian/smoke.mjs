@@ -27,6 +27,9 @@ const STUDIO = process.env.STUDIO_E2E_URL;
 const TOKEN = process.env.STUDIO_E2E_TOKEN;
 const BUILD = resolve(process.env.OBSIDIAN_SMOKE_BUILD ?? join(ROOT, "dist", "blyg"));
 const NOTE = "Blyg/A pot that would not boil.md";
+// The development flavour, enabled beside the real plugin: it must stay idle (one plugin at a time). Without its build the check is skipped.
+const DEV_BUILD = resolve(process.env.OBSIDIAN_SMOKE_DEV_BUILD ?? join(ROOT, "dist", "blyg-dev"));
+const DEV = ["main.js", "manifest.json", "styles.css"].every((f) => existsSync(join(DEV_BUILD, f)));
 
 if (!STUDIO || !TOKEN) {
   console.error("Set STUDIO_E2E_URL and STUDIO_E2E_TOKEN (scripts/local-studio.sh start prints both).");
@@ -81,6 +84,12 @@ for (const f of ["main.js", "manifest.json", "styles.css"]) copyFileSync(join(BU
 // A Studio-only configuration, as a stranger has it: no GitHub settings, no GitHub token (A2.4 made that possible).
 const data = JSON.parse(readFileSync(join(vault, "plugin-data.template.json"), "utf8").replace("__STUDIO_URL__", STUDIO.replace(/\/$/, "")));
 writeFileSync(join(pluginDir, "data.json"), JSON.stringify(data, null, 2));
+if (DEV) {
+  const devDir = join(vault, ".obsidian", "plugins", "blyg-dev");
+  mkdirSync(devDir, { recursive: true });
+  for (const f of ["main.js", "manifest.json", "styles.css"]) copyFileSync(join(DEV_BUILD, f), join(devDir, f));
+  writeFileSync(join(vault, ".obsidian", "community-plugins.json"), JSON.stringify(["blyg", "blyg-dev"]));
+}
 const cfg = join(root, "cfg");
 mkdirSync(join(cfg, "obsidian"), { recursive: true });
 writeFileSync(join(cfg, "obsidian", "obsidian.json"), JSON.stringify({ vaults: { smoke: { path: vault, ts: Date.now(), open: true } } }));
@@ -206,6 +215,17 @@ try {
   }
 
   await settingsRounds("desktop");
+
+  // 5. the development build enabled beside the real plugin stays idle: it registers nothing, and the real plugin is not disturbed
+  if (!DEV) console.log("skip the idle-development-build check: no build at " + DEV_BUILD + " (run `node scripts/flavour.mjs blyg-dev dist/blyg-dev`)");
+  if (DEV) {
+    const devCommands = await page.evaluate(() => Object.keys(window.app.commands.commands).filter((id) => id.startsWith("blyg-dev:")));
+    check(devCommands.length === 0, `the development build is enabled beside the real plugin and registers no command (${devCommands.length})`);
+    const devPanel = await page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-dev-panel").length + document.querySelectorAll(".blyg-pane-dev").length);
+    check(devPanel === 0, "the development build opens no panel");
+    const realCommands = await page.evaluate(() => Object.keys(window.app.commands.commands).filter((id) => id.startsWith("blyg:")).length);
+    check(realCommands > 5, `the real plugin's commands are all there (${realCommands})`);
+  }
 
   // phone layout (Chromium emulation of Obsidian's mobile UI)
   const cdp = await page.context().newCDPSession(page);

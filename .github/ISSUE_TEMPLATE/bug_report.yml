@@ -1,0 +1,88 @@
+name: Bug report
+description: Something does not work the way the README says it should
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. **Please leave tokens and passwords out of everything you paste** (the plugin's messages never contain one).
+        This repository takes issues only; pull requests are not accepted for now.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, and what the plugin or the Studio did instead.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: false
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps, starting from the note and the folder (route) it is in.
+    validations:
+      required: false
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Blyg version
+      description: Settings → Community plugins → Blyg, or the line at the bottom of the panel (for example 0.9.0).
+    validations:
+      required: true
+  - type: input
+    id: obsidian-version
+    attributes:
+      label: Obsidian version
+      description: Settings → General → About (for example 1.13.0).
+    validations:
+      required: true
+  - type: dropdown
+    id: device
+    attributes:
+      label: Device
+      options:
+        - iPhone
+        - iPad
+        - Android phone or tablet
+        - macOS
+        - Windows
+        - Linux
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: publishing
+    attributes:
+      label: What kind of publishing is this about?
+      options:
+        - To a Blygger Studio
+        - To a GitHub-hosted site
+        - Not about publishing (panel, settings, install)
+    validations:
+      required: true
+  - type: input
+    id: studio-version
+    attributes:
+      label: Studio version and API contract
+      description: Tap "Check connection" in the Studio settings; it names both (for example "Studio 0.51.0, contract 5.2.0"). Leave empty if you do not use a Studio.
+    validations:
+      required: false
+  - type: textarea
+    id: message
+    attributes:
+      label: Message or screenshot
+      description: Paste the message the plugin showed, or describe it. Remove anything private.
+    validations:
+      required: false
+  - type: checkboxes
+    id: tokens
+    attributes:
+      label: Before you send
+      options:
+        - label: I checked that nothing I pasted contains a token or a password.
+          required: true

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { manifestFor, nextDevVersion, versionKind } from "../../scripts/flavour.mjs";
+import { compareReleaseTags, manifestFor, nextDevVersion, normalReleasesAbove, versionKind } from "../../scripts/flavour.mjs";
 
 const base = { id: "blyg", name: "Blyg", version: "0.9.0", minAppVersion: "1.13.0", isDesktopOnly: false };
 
@@ -29,5 +29,25 @@ describe("build flavours", () => {
     expect(nextDevVersion("0.9.0", ["0.9.0-dev.1", "0.9.0-dev.2", "0.8.0-dev.7", "0.7.0"])).toBe("0.9.0-dev.3");
     expect(nextDevVersion("0.9.0", ["0.9.0-dev.9", "0.9.0-dev.10"])).toBe("0.9.0-dev.11");
     expect(() => nextDevVersion("0.9.0-dev.1", [])).toThrow(/plain x.y.z/);
+  });
+});
+
+describe("BRAT ordering of releases (D3: dev builds are normal releases)", () => {
+  it("compares tags the way semver does: numeric pre-release numbers, a release above its own pre-releases", () => {
+    expect(compareReleaseTags("0.9.0-dev.10", "0.9.0-dev.9")).toBeGreaterThan(0);
+    expect(compareReleaseTags("0.9.0", "0.9.0-dev.3")).toBeGreaterThan(0);
+    expect(compareReleaseTags("0.9.0-dev.3", "0.9.0-rc.1")).toBeLessThan(0); // "dev" sorts before "rc" as text
+    expect(compareReleaseTags("0.7.0", "0.9.0-dev.1")).toBeLessThan(0);
+    expect(compareReleaseTags("0.10.0-dev.1", "0.9.0-dev.99")).toBeGreaterThan(0);
+    expect(compareReleaseTags("0.9.0", "0.9.0")).toBe(0);
+    expect(compareReleaseTags("v1", "0.9.0")).toBeNull();
+  });
+  it("lists the normal releases that a new dev build would not outrank (pre-releases do not count)", () => {
+    const rel = (tagName: string, isPrerelease = false) => ({ tagName, isPrerelease });
+    expect(normalReleasesAbove("0.9.0-dev.3", [rel("0.7.0"), rel("0.9.0-dev.2"), rel("0.9.0-dev.1")])).toEqual([]);
+    expect(normalReleasesAbove("0.9.0-dev.3", [rel("0.9.0"), rel("0.9.0-rc.2", true)])).toEqual(["0.9.0"]);
+    expect(normalReleasesAbove("0.9.1-dev.1", [rel("0.9.0")])).toEqual([]);
+    expect(normalReleasesAbove("0.9.0-dev.3", [rel("0.9.0-dev.3")])).toEqual(["0.9.0-dev.3"]); // an equal normal tag also blocks
+    expect(normalReleasesAbove("0.9.0-dev.3", [rel("latest-build")])).toEqual([]); // tags of another shape are ignored
   });
 });

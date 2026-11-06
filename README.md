@@ -174,6 +174,8 @@ withdrawing an item leaves an end note and never deletes the address.
 
 Open an issue on this repository. Please leave tokens out of anything you paste; the plugin's messages never contain one.
 
+Pull requests are not accepted for now: this repository is a published copy of the plugin's source, and code changes are made elsewhere. If you have a fix or an idea, describe it in an issue.
+
 ## License
 
 MIT — see `LICENSE`. Credits: protocol by Venkatesh Rao and contributors (`blygger/blygger-spec`, MIT); ideas and

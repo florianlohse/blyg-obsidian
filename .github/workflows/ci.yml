@@ -108,6 +108,7 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: node scripts/flavour.mjs blyg dist/blyg
+      - run: node scripts/flavour.mjs blyg-dev dist/blyg-dev
       - name: Electron's system libraries and a virtual display
         run: |
           sudo apt-get update -qq

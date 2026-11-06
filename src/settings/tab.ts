@@ -1,4 +1,5 @@
 import { importFolderChoices } from "../studio/import";
+import { DEV_STUDIO_RULE, isDevStudioLock } from "../studio/devLock";
 import {
   debounce,
   PluginSettingTab,
@@ -79,6 +80,14 @@ export class BlygSettingTab extends PluginSettingTab {
     });
 
     const items: SettingDefinitionItem[] = [];
+
+    if (isDevStudioLock()) {
+      items.push({
+        name: "Development build",
+        desc: `This build connects only to test Studios (${DEV_STUDIO_RULE}). Any other Studio address is refused, so it can never publish to your real Studio.`,
+        searchable: false,
+      });
+    }
 
     if (this.plugin.isSettingsLocked) {
       items.push({

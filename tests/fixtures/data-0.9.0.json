@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 3,
+  "github": {
+    "owner": "someone",
+    "repo": "my-site",
+    "branch": "main",
+    "previewBranch": "preview",
+    "useBranch": "production",
+    "tokenSecretName": "github-token",
+    "watchDeploy": true
+  },
+  "blyg": {
+    "origin": "https://site.example.com/blyg/",
+    "previewOrigin": "https://preview.site.example.com/blyg/",
+    "itemsDir": "src/content/notes",
+    "fragmentCharCap": 1000,
+    "threadSoftCap": 50000
+  },
+  "studio": {
+    "baseUrl": "https://blyg.example.com",
+    "mount": "",
+    "tokenSecretName": "studio-token",
+    "importFolder": "Blyg/Imports"
+  },
+  "routes": [
+    { "vaultPrefix": "Blyg/", "mode": "studio", "label": "Blyg item" },
+    { "vaultPrefix": "Blyg Drafts/", "mode": "studio", "label": "Blyg draft", "draftsOnly": true },
+    { "vaultPrefix": "website/essays/", "mode": "plain", "label": "Essay", "dest": "src/content/essays/", "requireTitle": true, "webUrl": "https://site.example.com/essays/{slug}/" }
+  ],
+  "attachments": { "repoDir": "public/attachments" },
+  "safety": { "outsideLinks": "warn" },
+  "reader": {
+    "cacheDir": "{plugin dir}/cache/",
+    "sourcesStore": "repo",
+    "sourcesVaultPath": "Blyg Reader/sources.json",
+    "sourcesRepoPath": "data/blyg-sources.json",
+    "pollMinutes": 60,
+    "userAgent": "blyg/{version}"
+  },
+  "templates": { "fragment": "Templates/fragment.md", "thread": "Templates/thread.md" },
+  "respond": { "draftsPrefix": "Blyg Drafts/" },
+  "mentions": { "repoPath": "data/mentions.json" },
+  "published": {
+    "version": 1,
+    "records": { "main": { "src/content/essays/a.md": { "hash": "sha256:00", "at": "2026-11-01T09:00:00.000Z" } } }
+  },
+  "studioImportIgnored": ["01k8z2m9q4v7t3x5c6d8e0f1g2"]
+}
