@@ -8,6 +8,15 @@ becomes the release notes. Write entries for people who use the plugin, not for 
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-11-07
+
+One new command, for quoting a web page. Nothing changes in how the plugin publishes or reads, and your settings carry over unchanged.
+
+### Added
+
+- **Insert web quote (plain Markdown).** Quote a passage from any web page, a Substack post for example: paste the passage and the page's address into a small form and get an ordinary Markdown quote with an italic source link under it. The link's text can be an alias you type; without one the address is shown shortened. Tracking parameters (`utm_…` and the like, and Substack's share parameters) are taken out of the address. Your text is kept if the app is closed while you go to the browser to copy the address. It is not a blyg item: nothing is checked, fetched or sent, and it works in any note.
+- **Settings → Web quote** holds a template for the whole block, with `{quote}`, `{link}`, `{alias}` and `{url}`, so you decide where the quote, the link and any blank line go. By default the source is an italic line directly under the quote, with no blank line between.
+
 ## [0.9.1] — 2026-11-06
 
 A small maintenance release: nothing changes in how the plugin publishes or reads.

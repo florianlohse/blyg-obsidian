@@ -20,6 +20,11 @@ will change before anything leaves your vault.
 - **Quote and respond.** Insert a quote (a whole item or a passage) from your own items or from a blyg your Studio
   follows, find an item by pasting its address, or reply to an item with a *stub* (a thread that says it responds to one
   item; the panel then reads “Stub: a reply to …”).
+- **Quote from the web.** “Insert web quote (plain Markdown)” turns a passage and an address into an ordinary Markdown quote
+  with an italic source link: paste both into a small form (an alias for the link is optional; without one the address is
+  shortened), and the form keeps your text if the app is closed while you copy the address. It is not a blyg item: nothing is
+  checked, fetched or sent. Settings → Web quote holds a template for the whole block, so you decide where the quote, the
+  link and any blank line go.
 - **Keep both sides in step.** Pull the Studio's copy into the note, import items that were written in the Studio,
   withdraw an item, delete a draft, put items into your Studio's hoppers.
 - **Mobile first.** Everything runs on iOS and Android as well as desktop; no desktop-only APIs are used.

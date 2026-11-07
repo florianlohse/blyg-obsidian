@@ -380,3 +380,34 @@
 .blyg-pick-unquotable small {
   color: var(--text-warning);
 }
+
+/* "Insert web quote" (roadmap S20): a form of three fields; each field stands full width, name above, so a phone keyboard has room. */
+.blyg-webquote .blyg-webquote-field.setting-item {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--size-4-1);
+}
+.blyg-webquote .blyg-webquote-field textarea,
+.blyg-webquote .blyg-webquote-field input[type="text"] {
+  width: 100%;
+}
+.blyg-webquote .blyg-webquote-problem:empty,
+.blyg-webquote .blyg-note:empty,
+.blyg-webquote .blyg-webquote-preview:empty {
+  display: none;
+}
+.blyg-webquote .blyg-webquote-label {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+  margin-top: var(--size-4-2);
+}
+.blyg-webquote .blyg-webquote-preview {
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 30vh;
+  overflow-y: auto;
+  margin: var(--size-4-1) 0 var(--size-4-2);
+}

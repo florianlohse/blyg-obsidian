@@ -128,3 +128,85 @@ jobs:
           npm run test:obsidian; RC=$?
           bash scripts/local-studio.sh stop "$RUNNER_TEMP/studio" >/dev/null 2>&1
           exit $RC
+
+  # P6 (docs/plans/P6-ui-regression.md, decision D3): the UI scenarios are ADVISORY for the first week (continue-on-error: a red scenario shows as a
+  # warning, not a failed check), then required (remove the continue-on-error line). A scenario that passes only on its retry is reported as a warning.
+  obsidian-ui:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: node scripts/flavour.mjs blyg dist/blyg
+      - run: node scripts/flavour.mjs blyg-dev dist/blyg-dev
+      - name: Electron's system libraries and a virtual display
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb libnss3 libgbm1 libgtk-3-0t64 libasound2t64 libxss1 libxkbcommon0
+      - name: playwright-core (not a dependency of the repo; drives Obsidian over its debugging port)
+        run: npm install --no-save --no-package-lock playwright-core@1.56.1
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/obsidian-e2e
+          key: obsidian-e2e-1.14.5
+      - name: Local Studio, then the UI scenarios
+        run: |
+          OUT=$(WITH_REMOTE=1 bash scripts/local-studio.sh start "$RUNNER_TEMP/studio")
+          export STUDIO_E2E_URL=$(echo "$OUT" | sed -n 's/^export STUDIO_E2E_URL=//p')
+          TOKEN=$(echo "$OUT" | sed -n 's/^export STUDIO_E2E_TOKEN=//p'); echo "::add-mask::$TOKEN"; export STUDIO_E2E_TOKEN=$TOKEN
+          set +e
+          npm run test:obsidian:ui; RC=$?
+          bash scripts/local-studio.sh stop "$RUNNER_TEMP/studio" >/dev/null 2>&1
+          exit $RC
+
+  # P6 slice E (decision D1): the same scenarios against the NEWEST public Obsidian, so a change in Obsidian shows here before it reaches a device.
+  # ADVISORY and staying so (continue-on-error): the required legs run the pinned Obsidian above. A red leg here is a warning to look at, not a failure of the change.
+  obsidian-ui-newest:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: node scripts/flavour.mjs blyg dist/blyg
+      - run: node scripts/flavour.mjs blyg-dev dist/blyg-dev
+      - name: Electron's system libraries and a virtual display
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb libnss3 libgbm1 libgtk-3-0t64 libasound2t64 libxss1 libxkbcommon0
+      - name: playwright-core (not a dependency of the repo; drives Obsidian over its debugging port)
+        run: npm install --no-save --no-package-lock playwright-core@1.56.1
+      - name: Newest public Obsidian release
+        id: obsidian
+        run: |
+          V=$(curl -fsSL -H "Authorization: Bearer ${{ github.token }}" https://api.github.com/repos/obsidianmd/obsidian-releases/releases/latest | sed -n 's/.*"tag_name": *"v\{0,1\}\([0-9][^"]*\)".*/\1/p' | head -1)
+          if [ -z "$V" ]; then echo "::error title=Newest Obsidian::could not read the newest Obsidian release"; exit 1; fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "Obsidian $V (the required legs use the pinned version)" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/obsidian-e2e
+          key: obsidian-e2e-${{ steps.obsidian.outputs.version }}
+      - name: Local Studio, then the smoke test and the UI scenarios on the newest Obsidian
+        env:
+          OBSIDIAN_E2E_VERSION: ${{ steps.obsidian.outputs.version }}
+        run: |
+          OUT=$(WITH_REMOTE=1 bash scripts/local-studio.sh start "$RUNNER_TEMP/studio")
+          export STUDIO_E2E_URL=$(echo "$OUT" | sed -n 's/^export STUDIO_E2E_URL=//p')
+          TOKEN=$(echo "$OUT" | sed -n 's/^export STUDIO_E2E_TOKEN=//p'); echo "::add-mask::$TOKEN"; export STUDIO_E2E_TOKEN=$TOKEN
+          set +e
+          npm run test:obsidian; RC1=$?
+          npm run test:obsidian:ui; RC2=$?
+          bash scripts/local-studio.sh stop "$RUNNER_TEMP/studio" >/dev/null 2>&1
+          exit $((RC1 | RC2))

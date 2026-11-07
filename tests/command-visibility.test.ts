@@ -79,3 +79,20 @@ describe("Repost commands are offered only to a GitHub setup (M1 0.9.0: R11)", (
     }
   });
 });
+
+describe("Insert web quote (S20) is for everyone", () => {
+  it("is offered in a Studio-only install and with no routes at all, because it has nothing to do with the Studio", async () => {
+    const studioOnly = await load((s) => {
+      s.routes = [{ vaultPrefix: "blyg/", mode: "studio", label: "Blyg item" }];
+    });
+    const noRoutes = await load((s) => {
+      s.routes = [];
+    });
+    for (const plugin of [studioOnly, noRoutes]) {
+      const cmd = plugin.commands.find((c) => c.id === "insert-web-quote");
+      expect(cmd).toBeDefined();
+      expect(cmd?.callback).toBeTypeOf("function"); // always available: no route, GitHub or token check
+      expect(cmd?.checkCallback).toBeUndefined();
+    }
+  });
+});

@@ -1,5 +1,6 @@
 import { CONTRACT_ITEMS_DIR, CONTRACT_MAX_FRAGMENT_CAP } from "../contract";
 import { checkWebAddress } from "../core/webAddress";
+import { formatProblem } from "../core/webQuote";
 import { studioBaseProblem, studioMountProblem } from "../studio/address";
 import type { BlygSettings } from "./schema";
 import { githubInUse } from "./studioOnly";
@@ -128,6 +129,10 @@ export function validateSettings(s: BlygSettings): SettingsIssue[] {
     }
   }
 
+  // "Insert web quote" never blocks publishing; an unusable format just makes it write the default one.
+  const quoteFormat = formatProblem(s.webQuote.format);
+  if (quoteFormat) warn("webQuote.format", `${quoteFormat} Until it is fixed, the default format is used.`);
+
   return issues;
 }
 
@@ -146,6 +151,7 @@ const FIELD_LABELS: Record<string, string> = {
   "studio.tokenSecretName": "Studio token",
   "templates.fragment": "Fragment template",
   "templates.thread": "Thread template",
+  "webQuote.format": "Web quote format",
   routes: "Routes",
 };
 

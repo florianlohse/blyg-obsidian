@@ -18,6 +18,8 @@ import { checkConnection, formatReport, type ConnectionReport } from "./github/c
 import { studioAddress } from "./studio/address";
 import { repostMap, repostMapText } from "./studio/repostMap";
 import { TextModal } from "./ui/TextModal";
+import { openWebQuote } from "./ui/WebQuoteModal";
+import { endOf, planInsert } from "./core/webQuote";
 import { checkStudioConnection } from "./studio/connection";
 import { contractCacheFor } from "./studio/client";
 import type { ContractVerdict } from "./studio/version";
@@ -99,6 +101,13 @@ export default class BlygPlugin extends Plugin {
     this.addRibbonIcon("send", "Open panel", () => void this.openPanel());
     this.registerPanelRefresh();
 
+    this.addCommand({
+      id: "insert-web-quote",
+      // Set apart from the blyg operations on purpose (Florian, 2026-11-07). "(not a blyg item)" was the first wording; the lint rule that forbids
+      // the plugin's name in a command name cannot be disabled in this repository, so the suffix says what the command writes instead.
+      name: "Insert web quote (plain Markdown)",
+      callback: () => this.insertWebQuote(),
+    });
     this.addCommand({
       id: "open-panel",
       name: "Open panel",
@@ -768,6 +777,28 @@ export default class BlygPlugin extends Plugin {
         watch.returned();
       });
     }
+  }
+
+  /** "Insert web quote" (roadmap S20): a plain quote-with-link in the open note. Not a blyg operation: no route, no Studio, no request. */
+  private insertWebQuote(): void {
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!view || view.getMode() !== "source") {
+      new Notice("Open a note in editing view first. The quote is written into the open note.");
+      return;
+    }
+    const editor = view.editor;
+    const from = editor.getCursor("from");
+    const to = editor.getCursor("to");
+    openWebQuote(this.app, this.settings.webQuote, editor.getSelection(), (block) => {
+      if (this.app.workspace.getActiveViewOfType(MarkdownView) !== view) {
+        new Notice("The open note changed, so nothing was inserted. Your draft is kept.");
+        return false;
+      }
+      const plan = planInsert(editor.getValue().split("\n"), from, to, block);
+      editor.replaceRange(plan.text, plan.from, plan.to);
+      editor.setCursor(endOf(plan.from, plan.text));
+      return true;
+    });
   }
 
   private async openPanel(): Promise<void> {

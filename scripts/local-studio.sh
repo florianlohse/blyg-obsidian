@@ -40,16 +40,19 @@ REMOTE_DIR="$DIR-remote"
 STATE="$DIR.state"
 REMOTE_STATE="$REMOTE_DIR.state"
 export NO_PROXY="localhost,127.0.0.1" no_proxy="localhost,127.0.0.1"   # the sandbox proxy would otherwise swallow localhost
+export WRANGLER_SEND_METRICS=false   # no telemetry calls: they only waste time, and a locked-down network refuses them
 
 # stop_one STATE: npx starts wrangler, which starts workerd: they were started as one process group, which is stopped as a whole
 stop_one() {
   if [ -f "$1/wrangler.pid" ]; then kill -- "-$(cat "$1/wrangler.pid")" 2>/dev/null || true; rm -f "$1/wrangler.pid"; fi
 }
 
-# boot_one DIR STATE PORT: unpack (once), migrate a fresh database, start, wait until it answers
-boot_one() {
-  local dir="$1" state="$2" port="$3"
-  mkdir -p "$dir" "$state"
+# prepare_one DIR [FROM]: unpack (once), write the secrets and make a migrated database. With FROM, the migrated database of that (not yet running) Studio
+# is copied instead of migrating again: each migration run takes ~25 s, a copy a moment. Nothing here runs side by side with anything else: booting two
+# Studios in parallel worked on a roomy machine and made the first Studio time out on a 2-CPU CI runner.
+prepare_one() {
+  local dir="$1" from="${2:-}"
+  mkdir -p "$dir"
   if [ ! -f "$dir/worker.js" ]; then
     # Unpacked beside, not inside, the worker folder: wrangler would take every file below it for a module of the Worker.
     local tmp
@@ -64,7 +67,20 @@ boot_one() {
     cd "$dir"
     printf 'OWNER_PASSWORD=%s\nCOOKIE_SECRET=%s\n' "$PASSWORD" "$(head -c 48 /dev/urandom | base64 | tr -d '\n=+/')" > .dev.vars
     rm -rf .wrangler
-    npx --yes "$WRANGLER" d1 migrations apply DB --local >&2
+    if [ -n "$from" ] && [ -d "$from/.wrangler" ]; then
+      cp -r "$from/.wrangler" .wrangler
+    else
+      npx --yes "$WRANGLER" d1 migrations apply DB --local >&2
+    fi
+  )
+}
+
+# serve_one DIR STATE PORT: start it and wait until it answers
+serve_one() {
+  local dir="$1" state="$2" port="$3"
+  mkdir -p "$state"
+  (
+    cd "$dir"
     setsid nohup npx --yes "$WRANGLER" dev --port "$port" --var ALLOW_PRIVATE_FETCH:true > "$state/wrangler.log" 2>&1 &
     echo $! > "$state/wrangler.pid"
   )
@@ -91,10 +107,12 @@ case "${1:-}" in
     echo "stopped"
     ;;
   start)
-    boot_one "$DIR" "$STATE" "$PORT"
+    prepare_one "$DIR"
+    if [ "${WITH_REMOTE:-}" = "1" ]; then prepare_one "$REMOTE_DIR" "$DIR"; fi   # before the first Studio runs: its database is copied
+    serve_one "$DIR" "$STATE" "$PORT"
+    if [ "${WITH_REMOTE:-}" = "1" ]; then serve_one "$REMOTE_DIR" "$REMOTE_STATE" "$REMOTE_PORT"; fi
     TOKEN="$(mint "$STATE" "$PORT")"
     if [ "${WITH_REMOTE:-}" = "1" ]; then
-      boot_one "$REMOTE_DIR" "$REMOTE_STATE" "$REMOTE_PORT"
       REMOTE_TOKEN="$(mint "$REMOTE_STATE" "$REMOTE_PORT")"
       REMOTE_BODY='{"mode":"blank","kind":"fragment","contentMd":"A remote fragment from a blyg you read. It has a quotable sentence. And another one."}'
       CREATED="$(curl -fsS --noproxy '*' -X POST "http://localhost:$REMOTE_PORT/api/items" -H "Authorization: Bearer $REMOTE_TOKEN" -H 'content-type: application/json' -d "$REMOTE_BODY")"

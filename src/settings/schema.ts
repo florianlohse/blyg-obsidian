@@ -1,5 +1,6 @@
 // Settings schema (docs/ARCHITECTURE.md §2). Everything setup-specific is a setting; the defaults are generic
 // placeholders, never the owner's values (CLAUDE.md §3).
+import { DEFAULT_WEB_QUOTE } from "../core/webQuote";
 
 // 2 (0.3.0): route mode "studio" and the `studio` block. Raised on purpose: a device still on an older plugin reads the settings as
 // "from a newer version" and stays read-only, instead of mistaking a studio route for a GitHub one and saving that over it.
@@ -91,6 +92,15 @@ export interface BlygSettings {
   templates: { fragment: string; thread: string };
   respond: { draftsPrefix: string };
   mentions: { repoPath: string };
+  /**
+   * "Insert web quote" (roadmap S20): a plain Markdown quote with an attribution link, nothing to do with blyg items. Optional in data.json (added without a
+   * schema change, like `studio.importFolder`: an older plugin ignores it and drops it the next time it saves).
+   */
+  webQuote: {
+    /** The whole block: one or more lines, placeholders {quote} (once), {link}, {alias}, {url}. */
+    format: string;
+    stripTracking: boolean;
+  };
 }
 
 /** `dev` is the development build (manifest id ends in -dev): a fresh install starts with the test route `Studio test/`, so it never claims the real plugin's default folder `blyg/`. */
@@ -129,5 +139,6 @@ export function defaultSettings(flavour: "release" | "dev" = "release"): BlygSet
     templates: { fragment: "", thread: "" },
     respond: { draftsPrefix: "blyg/" },
     mentions: { repoPath: "data/mentions.json" },
+    webQuote: { ...DEFAULT_WEB_QUOTE },
   };
 }

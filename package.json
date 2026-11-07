@@ -1,6 +1,6 @@
 {
   "name": "blyg",
-  "version": "0.9.1",
+  "version": "0.10.0",
   "description": "Obsidian plugin to publish to, read and respond on Blygger blygs.",
   "private": true,
   "license": "MIT",
@@ -14,6 +14,7 @@
     "test": "vitest run",
     "lint": "eslint .",
     "test:obsidian": "node tests/e2e/obsidian/smoke.mjs",
+    "test:obsidian:ui": "node tests/e2e/obsidian/run-scenarios.mjs",
     "version": "node version-bump.mjs && git add manifest.json versions.json",
     "gen:studio-types": "node scripts/gen-studio-api-types.mjs"
   },

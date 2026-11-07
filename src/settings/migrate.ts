@@ -55,6 +55,7 @@ export function migrateSettings(raw: unknown, flavour: "release" | "dev" = "rele
   const st = isPlain(raw.studio) ? raw.studio : {};
   const rs = isPlain(raw.respond) ? raw.respond : {};
   const mn = isPlain(raw.mentions) ? raw.mentions : {};
+  const wq = isPlain(raw.webQuote) ? raw.webQuote : {};
 
   const settings: BlygSettings = {
     schemaVersion: SCHEMA_VERSION,
@@ -96,6 +97,12 @@ export function migrateSettings(raw: unknown, flavour: "release" | "dev" = "rele
     templates: { fragment: str(tp.fragment, d.templates.fragment), thread: str(tp.thread, d.templates.thread) },
     respond: { draftsPrefix: str(rs.draftsPrefix, d.respond.draftsPrefix) },
     mentions: { repoPath: str(mn.repoPath, d.mentions.repoPath) },
+    webQuote: {
+      // A format with nothing in it is the same as none: the default applies (an unusable but non-empty one is kept as typed, and the tab says what is wrong).
+      // Keys of the first dev build of this feature (`attribution`, `position`) are not read: no public release ever carried them.
+      format: typeof wq.format === "string" && wq.format.trim() !== "" ? wq.format.replace(/\r\n?/g, "\n").trim() : d.webQuote.format,
+      stripTracking: typeof wq.stripTracking === "boolean" ? wq.stripTracking : d.webQuote.stripTracking,
+    },
   };
 
   if (isPlain(bl.author) && typeof bl.author.name === "string") {

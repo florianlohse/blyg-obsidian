@@ -183,6 +183,24 @@ export class BlygSettingTab extends PluginSettingTab {
 
     items.push({
       type: "group",
+      heading: "Web quote",
+      items: [
+        {
+          name: "Web quote format",
+          desc: "What “Insert web quote” writes, as a template for the whole block (it has nothing to do with blyg items). {quote} is the quote, {link} the whole link, {alias} its visible text, {url} the address. Each line stands as you type it, so a blank line appears only where you leave one. Default: “> {quote}” on one line and “> *{link}*” on the next (a quote with an italic source as its last line). The quote's own lines follow the marks in front of {quote}.",
+          aliases: ["quote", "attribution", "source", "substack", "template"],
+          control: { type: "textarea", key: "webQuote.format", placeholder: "> {quote}\n> *{link}*", rows: 3 },
+        },
+        {
+          name: "Remove tracking parameters",
+          desc: "Takes utm_*, fbclid, gclid and similar (and Substack's share parameters) out of the address before it is written. The page is the same without them.",
+          control: { type: "toggle", key: "webQuote.stripTracking", defaultValue: true },
+        },
+      ],
+    });
+
+    items.push({
+      type: "group",
       heading: "Safety",
       items: [
         {
