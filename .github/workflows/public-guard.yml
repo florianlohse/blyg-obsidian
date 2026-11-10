@@ -1,0 +1,72 @@
+name: Public guard
+
+# This repository is public, so every push is a publication. This workflow scans the files, the pull request title and body, the commit messages and what every commit
+# ADDED (a secret added in one commit and removed in the next stays in the public history) for secrets and for private names, and runs gitleaks over the files and over the
+# commit range. Secrets: only PRIVATE_NEEDLES (a list of private strings, kept out of the repository); a fork pull request gets no secrets and is scanned with the generic
+# list only. No pull_request_target, no write permission, no untrusted text inside a shell command (it goes through env).
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  GITLEAKS_VERSION: "8.28.0"
+  GITLEAKS_SHA256: "a65b5253807a68ac0cafa4414031fd740aeb55f54fb7e55f386acb52e6a840eb"   # gitleaks_8.28.0_linux_x64.tar.gz (the release's checksums file)
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5   # v4.3.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020   # v4.4.0
+        with:
+          node-version: 22
+      - name: Which commits does this run cover?
+        id: range
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
+        run: |
+          RANGE=""
+          if [ -n "$HEAD_SHA" ]; then
+            RANGE="$BASE_SHA..$HEAD_SHA"
+          elif [ -n "$PUSH_BEFORE" ] && [ "$PUSH_BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            RANGE="$PUSH_BEFORE..$PUSH_AFTER"
+          fi
+          echo "range=$RANGE" >> "$GITHUB_OUTPUT"
+      - name: Secret scan (gitleaks, pinned and checksummed) of the files and the commits
+        env:
+          RANGE: ${{ steps.range.outputs.range }}
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/gitleaks.tgz" "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/gitleaks.tgz" | sha256sum -c -
+          mkdir "$RUNNER_TEMP/gitleaks" && tar -xzf "$RUNNER_TEMP/gitleaks.tgz" -C "$RUNNER_TEMP/gitleaks"
+          "$RUNNER_TEMP/gitleaks/gitleaks" dir . --config .github/release/gitleaks.toml --no-banner --redact --verbose --exit-code 1
+          if [ -n "$RANGE" ]; then
+            "$RUNNER_TEMP/gitleaks/gitleaks" git . --log-opts="$RANGE" --config .github/release/gitleaks.toml --no-banner --redact --verbose --exit-code 1
+          fi
+      - name: Leak scan of the files, the pull request title and body, the commit messages and what the commits added
+        env:
+          PRIVATE_NEEDLES: ${{ secrets.PRIVATE_NEEDLES }}
+          IS_FORK: ${{ github.event.pull_request.head.repo.fork }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RANGE: ${{ steps.range.outputs.range }}
+        run: |
+          args=(--tree .)
+          if [ "$IS_FORK" != "true" ]; then args+=(--require-private); fi
+          if [ -n "$HEAD_SHA" ]; then args+=(--pr-title-env PR_TITLE --pr-body-env PR_BODY); fi
+          if [ -n "$RANGE" ]; then args+=(--commits "$RANGE" --history "$RANGE"); fi
+          node scripts/public-scan.mjs "${args[@]}"

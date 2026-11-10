@@ -1,0 +1,61 @@
+name: Release on merge
+
+# Merging the pull request "Release x.y.z" is the go for the release. On a push to main this workflow checks that the pushed commit IS such a merge, judged by the title of
+# the pull request GitHub links to that commit (never the commit message: a merge made in the GitHub app carries no title): the pull request is merged, every checklist box is
+# ticked, manifest.json and the CHANGELOG agree with the title. Then it dispatches release.yml for that version. It publishes nothing itself; release.yml keeps its own locks
+# (the repository variable PUBLIC_RELEASE_ENABLED must be "true", the public-release environment, the release checks). Setting that variable to anything but "true" is the
+# emergency off-switch: the merge then dispatches nothing and says so. A push that is not a release pull request merge does nothing. A release pull request that is not in
+# order fails this run, loudly. If the variable was off or the dispatch failed: fix it, then "Re-run jobs" here.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+  actions: write   # only to dispatch release.yml
+
+# One at a time; a second merge waits for the first.
+concurrency:
+  group: release-on-merge
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.plan.outputs.release }}
+      version: ${{ steps.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5   # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020   # v4.4.0
+        with:
+          node-version: 22
+      - name: Is this push the merge of a ready release pull request?
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+        run: node scripts/release-plan.mjs
+
+  dispatch:
+    needs: plan
+    if: ${{ needs.plan.outputs.release == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Start the release (from main)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          SWITCH: ${{ vars.PUBLIC_RELEASE_ENABLED }}
+        run: |
+          if [ "$SWITCH" != "true" ]; then
+            echo "::error::Release $VERSION is merged, but PUBLIC_RELEASE_ENABLED is not \"true\": nothing was dispatched (the emergency off-switch). Set it to true, then re-run this job."
+            exit 1
+          fi
+          gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref main -f version="$VERSION"
+          echo "Dispatched release.yml: $VERSION from main."

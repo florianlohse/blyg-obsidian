@@ -1,0 +1,26 @@
+name: Release PR checklist ticked
+
+# M2 P3 (the maintainer, 2026-11-06): the pull request "Release x.y.z" cannot be merged while a box of its checklist is unticked; merging it is the go for the release.
+# Any other pull request passes at once. Ticking a box edits the pull request body, which re-runs this check (`edited`). Reads title and body only; no secrets.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  ticked:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5   # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020   # v4.4.0
+        with:
+          node-version: 22
+      - name: Every box is ticked (release pull requests only)
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: node scripts/check-release-pr.mjs
