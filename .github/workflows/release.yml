@@ -1,0 +1,142 @@
+name: Release
+
+# The stable release of the plugin (id `blyg`), made in THIS repository. Two modes:
+#   * pull_request       -> a DRY RUN: the release checks as warnings where a pull request is not yet the release, the leak scan, a production build and the assembly of the
+#                           release files. Publishes nothing, needs no secret.
+#   * workflow_dispatch  -> the RELEASE, normally started by release-on-merge.yml when the maintainer merges the pull request "Release x.y.z" (do not start it by hand).
+#                           Same checks, strict, plus lint and tests. Then, ONLY IF the publish job is enabled, a draft release with the three files is created at the
+#                           verified commit and published.
+# THE PUBLISH IS OFF UNLESS the repository variable PUBLIC_RELEASE_ENABLED is exactly "true" (anything else is the emergency off-switch), the run is on main, and the
+# environment `public-release` (restricted to main) allows it. The only write permission in this file is in the publish job. No secret is needed to publish: the
+# release is made with the run's own token. The leak scan reads the secret PRIVATE_NEEDLES (a fork pull request has none and is scanned with the generic list only).
+# Untrusted text never goes into a shell command: it passes through env.
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "x.y.z, equal to manifest.json's version (a stable release, from main)"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}   # a release run is never cancelled
+
+env:
+  GITLEAKS_VERSION: "8.28.0"
+  GITLEAKS_SHA256: "a65b5253807a68ac0cafa4414031fd740aeb55f54fb7e55f386acb52e6a840eb"   # gitleaks_8.28.0_linux_x64.tar.gz (the release's checksums file)
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5   # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020   # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Work out the version (and, for a release, check where it is run from)
+        id: version
+        env:
+          WANT: ${{ inputs.version }}
+        run: |
+          HAVE=$(node -p "require('./manifest.json').version")
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            [ "$GITHUB_REF" = "refs/heads/main" ] || { echo "A release runs on main only (this is $GITHUB_REF)." >&2; exit 1; }
+            [ "$WANT" = "$HAVE" ] || { echo "Input $WANT does not equal manifest.json $HAVE." >&2; exit 1; }
+          fi
+          echo "version=$HAVE" >> "$GITHUB_OUTPUT"
+          echo "version $HAVE" >> "$GITHUB_STEP_SUMMARY"
+
+      - run: npm ci
+      - if: github.event_name == 'workflow_dispatch'
+        run: npm run lint
+      - if: github.event_name == 'workflow_dispatch'
+        run: npm test
+      - run: npm run build
+
+      - name: Newest published release
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          LATEST=$(gh release list --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName // "0.0.0"')
+          echo "latest=$LATEST" >> "$GITHUB_OUTPUT"
+
+      - name: Release checks (version, id, CHANGELOG, order)
+        env:
+          MODE: ${{ github.event_name == 'workflow_dispatch' && 'release' || 'dry-run' }}
+          LATEST: ${{ steps.latest.outputs.latest }}
+        run: node scripts/release-check.mjs --mode "$MODE" --latest "$LATEST"
+
+      - name: Leak scan (files)
+        env:
+          PRIVATE_NEEDLES: ${{ secrets.PRIVATE_NEEDLES }}
+        run: |
+          args=(--tree .)
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then args+=(--require-private); fi
+          node scripts/public-scan.mjs "${args[@]}"
+
+      - name: Secret scan (gitleaks, pinned and checksummed)
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/gitleaks.tgz" "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/gitleaks.tgz" | sha256sum -c -
+          mkdir "$RUNNER_TEMP/gitleaks" && tar -xzf "$RUNNER_TEMP/gitleaks.tgz" -C "$RUNNER_TEMP/gitleaks"
+          "$RUNNER_TEMP/gitleaks/gitleaks" dir . --config .github/release/gitleaks.toml --no-banner --redact --verbose --exit-code 1
+
+      - name: Assemble the release files
+        run: node scripts/flavour.mjs blyg dist/blyg
+
+      - name: Keep the verified files for the publish job
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02   # v4.6.2
+        with:
+          name: release-assets
+          path: dist/blyg
+          retention-days: 7
+
+  publish:
+    # OFF unless PUBLIC_RELEASE_ENABLED is exactly "true". This job builds nothing: it ships the files the job above verified, and runs no npm step, so the write
+    # token never sits in the environment of code from a dependency. Order: a DRAFT release with the files (fails early on a duplicate), then it is published
+    # (only then does the tag appear, at the verified commit).
+    if: ${{ vars.PUBLIC_RELEASE_ENABLED == 'true' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: public-release   # restricted to main in the repository settings
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5   # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093   # v4.3.0
+        with:
+          name: release-assets
+          path: assets
+      - name: Check that the verified files are what is about to ship
+        run: |
+          for f in main.js manifest.json styles.css; do [ -s "assets/$f" ] || { echo "assets/$f is missing: the verify job's build did not reach this job." >&2; exit 1; }; done
+          [ "$(jq -r .version assets/manifest.json)" = "$VERSION" ] || { echo "The built manifest does not say $VERSION." >&2; exit 1; }
+          [ "$(jq -r .id assets/manifest.json)" = "blyg" ] || { echo "The built manifest's id is not blyg." >&2; exit 1; }
+          awk -v v="$VERSION" '$0 ~ "^## \\[" v "\\]" {f=1; next} /^## \[/ {f=0} f' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          [ -s "$RUNNER_TEMP/notes.md" ] || { echo "No CHANGELOG section for $VERSION." >&2; exit 1; }
+      - name: Draft release, then publish it
+        run: |
+          if gh release view "$VERSION" >/dev/null 2>&1; then echo "Release (or draft) $VERSION already exists. Delete the draft if it is a leftover." >&2; exit 1; fi
+          gh release create "$VERSION" assets/main.js assets/manifest.json assets/styles.css --draft --target "$GITHUB_SHA" --latest --title "$VERSION" --notes-file "$RUNNER_TEMP/notes.md"
+          gh release edit "$VERSION" --draft=false || { echo "The release $VERSION is still a draft: publish it by hand on GitHub." >&2; exit 1; }

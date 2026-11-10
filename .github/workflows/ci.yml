@@ -1,8 +1,13 @@
 name: CI
 
+# Public repository: standard runners are free, so every job runs on every pull request and every push, with no path filters (a required check must always report). The rules below come from the private workspace, where they do apply; here only rule 3 does:
+#   1. A change that touches only docs/ or CLAUDE.md runs no CI (no code, nothing shipped, no test reads those files).
+#   2. In the PRIVATE workspace a push to main (the merge of a pull request that already ran everything) runs only `check`; e2e and the Obsidian jobs run on
+#      pull requests. (This file ships to the public repo, which is not private: there every job still runs on every push, as before.)
+#   3. A newer push to the same pull request cancels the older run (concurrency below).
 on:
   push:
-    branches: [main, m1]
+    branches: [main]
   pull_request:
 
 permissions:
@@ -16,8 +21,8 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5   # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020   # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -38,6 +43,7 @@ jobs:
   # publish service. Two legs: the PINNED release (tests/e2e/studio-pin.env) and the NEWEST release of blygger-studio. The newest leg is the one
   # that catches a Studio contract change before a user does; it fails CI only when NEWEST_MUST_PASS=true in the pin file (lane A2 sets it in A2.3).
   e2e:
+    if: github.event_name == 'pull_request' || github.event.repository.private != true
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -45,8 +51,8 @@ jobs:
       matrix:
         leg: [pinned, newest]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5   # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020   # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -97,11 +103,12 @@ jobs:
   # Proven on GitHub's ubuntu-latest runners (8 of 8 checks, two consecutive runs on 2026-11-04), so it is REQUIRED. If a runner image change ever breaks it
   # without a plugin change: run it in a cloud session per release candidate (docs/TESTING.md) and fix the job; do not just switch it off.
   obsidian-smoke:
+    if: github.event_name == 'pull_request' || github.event.repository.private != true
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5   # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020   # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -115,7 +122,7 @@ jobs:
           sudo apt-get install -y -qq xvfb libnss3 libgbm1 libgtk-3-0t64 libasound2t64 libxss1 libxkbcommon0
       - name: playwright-core (not a dependency of the repo; drives Obsidian over its debugging port)
         run: npm install --no-save --no-package-lock playwright-core@1.56.1
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830   # v4.3.0
         with:
           path: ~/.cache/obsidian-e2e
           key: obsidian-e2e-1.14.5
@@ -132,12 +139,13 @@ jobs:
   # P6 (docs/plans/P6-ui-regression.md, decision D3): the UI scenarios are ADVISORY for the first week (continue-on-error: a red scenario shows as a
   # warning, not a failed check), then required (remove the continue-on-error line). A scenario that passes only on its retry is reported as a warning.
   obsidian-ui:
+    if: github.event_name == 'pull_request' || github.event.repository.private != true
     runs-on: ubuntu-latest
     continue-on-error: true
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5   # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020   # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -151,7 +159,7 @@ jobs:
           sudo apt-get install -y -qq xvfb libnss3 libgbm1 libgtk-3-0t64 libasound2t64 libxss1 libxkbcommon0
       - name: playwright-core (not a dependency of the repo; drives Obsidian over its debugging port)
         run: npm install --no-save --no-package-lock playwright-core@1.56.1
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830   # v4.3.0
         with:
           path: ~/.cache/obsidian-e2e
           key: obsidian-e2e-1.14.5
@@ -168,12 +176,13 @@ jobs:
   # P6 slice E (decision D1): the same scenarios against the NEWEST public Obsidian, so a change in Obsidian shows here before it reaches a device.
   # ADVISORY and staying so (continue-on-error): the required legs run the pinned Obsidian above. A red leg here is a warning to look at, not a failure of the change.
   obsidian-ui-newest:
+    if: github.event_name == 'push'   # watches Obsidian releases, which a pull request does not change: once per merge, not once per PR push
     runs-on: ubuntu-latest
     continue-on-error: true
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5   # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020   # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -194,7 +203,7 @@ jobs:
           if [ -z "$V" ]; then echo "::error title=Newest Obsidian::could not read the newest Obsidian release"; exit 1; fi
           echo "version=$V" >> "$GITHUB_OUTPUT"
           echo "Obsidian $V (the required legs use the pinned version)" >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830   # v4.3.0
         with:
           path: ~/.cache/obsidian-e2e
           key: obsidian-e2e-${{ steps.obsidian.outputs.version }}

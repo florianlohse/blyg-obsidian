@@ -1,0 +1,8 @@
+# Generic needles: strings that must not appear in anything that becomes public. Safe to publish: it names no private value.
+# The private needles (names of private repos, the maintainer's email address, private project names) are NOT here: they are kept in the Actions secret
+# PRIVATE_NEEDLES and read by scripts/public-scan.mjs, which reports them by number only.
+# Format: one per line, `needle [ | comma-separated paths where it IS allowed ]`. Case-insensitive, literal. The generic needles are allowed in this file and in the scan's test,
+# which must name them.
+/home/user | .github/release/public-needles.txt, tests/scripts/public-scan.test.ts
+/Users/ | .github/release/public-needles.txt, tests/scripts/public-scan.test.ts
+TODO-PRIVATE | .github/release/public-needles.txt, tests/scripts/public-scan.test.ts

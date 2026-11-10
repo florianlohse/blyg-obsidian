@@ -1,0 +1,13 @@
+export type Rule = { needle: string; allowed: string[]; private?: boolean; n?: number };
+export const SECRET_PATTERNS: [string, RegExp][];
+export function parseForbidden(text: string): Rule[];
+export function buildRules(publicText: string, privateText: string): Rule[];
+export function scanText(label: string, text: string, rules: Rule[], path?: string | null): string[];
+export function scanTree(dir: string, rules: Rule[]): string[];
+export function scanPrBody(body: string | undefined | null, rules: Rule[]): string[];
+export function scanCommits(messages: string[], rules: Rule[]): string[];
+export function commitMessages(range: string, cwd?: string): string[];
+export function scanPrTitle(title: string | undefined | null, rules: Rule[]): string[];
+export function withoutMergeOwner(message: string): string;
+export function addedLines(logOutput: string): { sha: string; path: string; text: string }[];
+export function scanHistory(range: string, rules: Rule[], cwd?: string): string[];

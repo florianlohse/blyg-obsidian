@@ -1,0 +1,26 @@
+name: PR declares its note and device steps
+
+# M2 P4 (the maintainer, 2026-11-06): every pull request into main says what users will notice ("## User-facing note", or "none") and what the maintainer does on a device
+# ("## Device steps", or "none: covered by tests"). The release pull request is assembled from these. Reads the pull request body only; no secrets. (The checker
+# comes from the pull request's own merge commit: the repository takes no outside pull requests, so nobody needs protecting from a weakened check.)
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  declares:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5   # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020   # v4.4.0
+        with:
+          node-version: 22
+      - name: The body has both sections
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: node scripts/check-pr-body.mjs

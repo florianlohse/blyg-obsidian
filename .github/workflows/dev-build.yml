@@ -1,0 +1,153 @@
+name: Dev build
+
+# A merge into main that changes the plugin's build inputs (scripts/dev-gate.mjs) makes a DEV BUILD of the plugin (id `blyg-dev`, version x.y.z-dev.N) and publishes it as a release
+# of a SEPARATE public repository, named in the repository variable DEV_BUILDS_REPO ("owner/name"), so testers' BRAT keeps the dev plugin current by itself and the dev builds
+# never show up among this repository's releases. Without that variable (a fork, or before it is set) nothing here runs.
+# Three jobs, so that the token never sits next to code from a dependency:
+#   gate     decides whether this run makes a build (no secret)
+#   build    npm ci, lint, tests, build, assemble the dev files (no secret)
+#   publish  runs no npm or node step and does not even check out the repository; it holds the only secret, DEV_BUILDS_TOKEN (a fine-grained token limited to the dev-builds
+#            repository, Contents: read and write), in the environment `dev-builds` (restricted to main), and creates the release there.
+# By hand: "Run workflow" on main always builds. The repository variable DEV_AUTO_RELEASE=false switches the automatic builds off. This workflow never makes a stable release.
+# Each release's notes start with `Source commit: <sha>`; the gate compares with the newest one. Two merges close together queue instead of picking the same number.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dev-build
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    if: ${{ vars.DEV_BUILDS_REPO != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      release: ${{ steps.gate.outputs.release }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5   # v4.3.1
+        with:
+          fetch-depth: 0   # the gate compares with the commit of the last dev build
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020   # v4.4.0
+        with:
+          node-version: 22
+      - name: Should this run make a dev build?
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          AUTO_OFF: ${{ vars.DEV_AUTO_RELEASE == 'false' }}
+          DEV_REPO: ${{ vars.DEV_BUILDS_REPO }}
+        run: |
+          if [ "$EVENT" != "push" ]; then
+            echo "A manual run always makes a dev build."
+            echo "release=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [ "$AUTO_OFF" = "true" ]; then
+            echo "Automatic dev builds are switched off (repository variable DEV_AUTO_RELEASE=false): no dev build."
+            echo "release=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          # The commit the newest dev build was made from: the first line of the newest release's notes.
+          LAST=$(gh api "repos/$DEV_REPO/releases?per_page=1" --jq '.[0].body // ""' | sed -n 's/^Source commit: \([0-9a-f]\{40\}\).*/\1/p' | head -1)
+          if [ -z "$LAST" ] || ! git cat-file -e "${LAST}^{commit}" 2>/dev/null; then
+            echo "No earlier dev build to compare with ($LAST): making one."
+            echo "release=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          HIT=$(git diff --name-only "$LAST" "$GITHUB_SHA" | node scripts/dev-gate.mjs)
+          if [ -n "$HIT" ]; then
+            echo "Build inputs changed since the last dev build ($LAST):"; echo "$HIT"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No build input changed since the last dev build ($LAST): tests, docs, workflows or release scripts only. No dev build."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: gate
+    if: ${{ needs.gate.outputs.release == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5   # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020   # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+      - name: Work out the dev version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEV_REPO: ${{ vars.DEV_BUILDS_REPO }}
+        run: |
+          BASE=$(node -p "require('./manifest.json').version")
+          PKG=$(node -p "require('./package.json').version")
+          [ "$BASE" = "$PKG" ] || { echo "manifest.json ($BASE) and package.json ($PKG) disagree." >&2; exit 1; }
+          RELEASES=$(gh release list -R "$DEV_REPO" --limit 200 --json tagName)
+          VERSION=$(RELEASES="$RELEASES" BASE="$BASE" node --input-type=module -e '
+            import { nextDevVersion } from "./scripts/flavour.mjs";
+            const releases = JSON.parse(process.env.RELEASES || "[]");
+            console.log(nextDevVersion(process.env.BASE, releases.map((r) => r.tagName)));
+          ')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Assemble the blyg-dev files
+        env:
+          BLYG_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          node scripts/flavour.mjs blyg-dev dist/blyg-dev
+          node -e '
+            const m = require("./dist/blyg-dev/manifest.json");
+            if (!m.id.endsWith("-dev") || !/-dev\.[0-9]+$/.test(m.version)) { console.error("not a dev manifest", m); process.exit(1); }
+            console.log(m.id, m.version);
+          '
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02   # v4.6.2
+        with:
+          name: dev-assets
+          path: dist/blyg-dev
+          retention-days: 3
+
+  publish:
+    needs: [gate, build]
+    if: ${{ needs.gate.outputs.release == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: dev-builds   # restricted to main; holds DEV_BUILDS_TOKEN
+    env:
+      GH_TOKEN: ${{ secrets.DEV_BUILDS_TOKEN }}
+      DEV_REPO: ${{ vars.DEV_BUILDS_REPO }}
+      VERSION: ${{ needs.build.outputs.version }}
+      SOURCE_SHA: ${{ github.sha }}
+    steps:
+      - name: Refuse without the token
+        run: |
+          if [ -z "$GH_TOKEN" ]; then echo "DEV_BUILDS_TOKEN does not exist or has expired (fine-grained tokens last at most a year). Create it, then run again." >&2; exit 1; fi
+          echo "::add-mask::$GH_TOKEN"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093   # v4.3.0
+        with:
+          name: dev-assets
+          path: assets
+      - name: Check the files, then create the release (a normal release of the dev build)
+        run: |
+          for f in main.js manifest.json styles.css; do [ -s "assets/$f" ] || { echo "assets/$f is missing." >&2; exit 1; }; done
+          [ "$(jq -r .version assets/manifest.json)" = "$VERSION" ] || { echo "The built manifest does not say $VERSION." >&2; exit 1; }
+          case "$(jq -r .id assets/manifest.json)" in *-dev) ;; *) echo "The built manifest's id is not a dev id." >&2; exit 1 ;; esac
+          if gh release view "$VERSION" -R "$DEV_REPO" >/dev/null 2>&1; then echo "Release $VERSION already exists in $DEV_REPO." >&2; exit 1; fi
+          printf 'Source commit: %s\n\nA development build of Blyg for Obsidian, for testers using BRAT. Do not use it in the same vault as the real plugin.\n' "$SOURCE_SHA" > "$RUNNER_TEMP/notes.md"
+          gh release create "$VERSION" assets/main.js assets/manifest.json assets/styles.css -R "$DEV_REPO" --title "$VERSION (dev)" --latest --notes-file "$RUNNER_TEMP/notes.md"
