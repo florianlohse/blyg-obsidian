@@ -101,7 +101,7 @@ describe("preparing a release from the merged pull requests (M2 P3)", () => {
     const r = buildRelease({ prs: [pr(1, "The panel says Stub.", "1. Open a stub note."), pr(2, "none", "none"), pr(3, "Repost is hidden.\nSecond line.", "1. Open a stub note.")], version: "0.9.1", date: "2026-11-10" });
     expect(r.changelogSection).toBe("## [0.9.1] — 2026-11-10\n\n### Changed\n\n- The panel says Stub.\n- Repost is hidden.\n  Second line.\n");
     expect(r.deviceSteps).toEqual(["1. Open a stub note."]); // the same steps from two pull requests appear once
-    expect(r.scopeLines[0]).toBe("- [#1](https://example.test/pull/1) Change 1");
+    expect(r.scopeLines[0]).toBe("- #1 Change 1"); // no full link: it would carry the owner's name into a body the leak guard scans
     expect(r.undeclared).toEqual([]);
     const quiet = buildRelease({ prs: [pr(2, "none", "none")], version: "0.9.2", date: "2026-11-11" });
     expect(quiet.changelogSection).toContain("- No changes for people who use the plugin (maintenance only).");
