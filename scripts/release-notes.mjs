@@ -46,7 +46,8 @@ export function buildRelease({ prs, version, date }) {
     items,
     notesBody: body,
     changelogSection: `## [${version}] — ${date}\n\n### Changed\n\n${body}\n`,
-    scopeLines: items.map((p) => `- ${p.url ? `[#${p.number}](${p.url})` : `#${p.number}`} ${p.title}`),
+    // `#N` and not a full link: GitHub links it itself, and a full link carries the owner's name, which the leak guard refuses in a pull request body.
+    scopeLines: items.map((p) => `- #${p.number} ${p.title}`),
     deviceSteps: steps,
     undeclared: items.filter((p) => !p.declared),
   };
