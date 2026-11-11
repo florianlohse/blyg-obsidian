@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { M } from "../../src/publish/messages";
 import { lookupAddress, stubTargetOf } from "../../src/studio/lookup";
-import { parseItemAddress, readStubProperty, readWireStub, sameStubTarget, stubForWire, stubLabel, stubProperty } from "../../src/studio/stub";
+import { looksLikeAddress, parseItemAddress, readStubProperty, readWireStub, sameStubTarget, stubForWire, stubLabel, stubProperty } from "../../src/studio/stub";
 import type { StudioPick } from "../../src/studio/picker";
 import { frontmatterOf } from "../world";
 import { STUDIO_HOST, STUDIO_ORIGIN } from "./fake-studio";
@@ -241,5 +241,17 @@ describe("a reply on the way back", () => {
     expect(props).toMatchObject({ blyg_id: item.id, blyg_kind: "thread", blyg_stub_of: target });
     // and publishing it unchanged has nothing to send
     expect(await tapStudio(w, "studio/Written on the web.md")).toMatchObject({ status: "noop" });
+  });
+});
+
+describe("looksLikeAddress (decides the picker's \"Looking up…\" line)", () => {
+  it("is true for one web address, with or without brackets, query and fragment", () => {
+    expect(looksLikeAddress("https://example.com/a/b")).toBe(true);
+    expect(looksLikeAddress("<https://example.com/a?x=1#top>")).toBe(true);
+  });
+  it("is false for words, a note name, or an address with more text", () => {
+    expect(looksLikeAddress("quiet mornings")).toBe(false);
+    expect(looksLikeAddress("see https://example.com/a")).toBe(false);
+    expect(looksLikeAddress("")).toBe(false);
   });
 });

@@ -122,6 +122,9 @@ export function parseItemAddress(input: string, studio: StudioAddress | null): I
   return { kind: "web", url: url.href };
 }
 
+/** Is the text one web address (so the picker will look it up rather than search for words)? Decided before the lookup, to say "Looking up…". */
+export const looksLikeAddress = (input: string): boolean => parseItemAddress(input, null) !== null;
+
 const safeDecode = (s: string): string => {
   try {
     return decodeURIComponent(s);

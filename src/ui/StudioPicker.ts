@@ -7,6 +7,7 @@ import { filterVault, mergePicks, type StudioPick } from "../studio/picker";
 
 const DEBOUNCE_MS = 250;
 const DEFAULT_EMPTY = "No matches.";
+const LOOKING_UP = "Looking up…";
 
 export interface StudioPickerSource {
   /** The notes of this Studio in the vault (already without the open note). */
@@ -18,6 +19,8 @@ export interface StudioPickerSource {
    * address, so the words are searched for.
    */
   lookup?(query: string): Promise<{ ok: true; pick: StudioPick } | { ok: false; error: string } | null>;
+  /** Is the text an address? Then a line says "Looking up…" until the lookup answers; the list stays where it is. */
+  isAddress?(query: string): boolean;
 }
 
 /** Pick one item; resolves null when the window is closed without a choice. */
@@ -32,14 +35,37 @@ export function promptForStudioItem(app: App, source: StudioPickerSource, placeh
     class StudioItemPicker extends SuggestModal<StudioPick> {
       private latest = 0;
       private warned = false;
+      private statusEl: HTMLElement | null = null;
+
+      /** The "Looking up…" line above the list (nothing when `text` is null). The list itself is left alone, so the picks do not jump. */
+      private setStatus(text: string | null): void {
+        if (text === null) {
+          this.statusEl?.remove();
+          this.statusEl = null;
+          return;
+        }
+        if (!this.statusEl) {
+          this.statusEl = createDiv({ cls: "blyg-pick-status" });
+          this.resultContainerEl.before(this.statusEl);
+        }
+        this.statusEl.setText(text);
+      }
 
       override async getSuggestions(query: string): Promise<StudioPick[]> {
         const ticket = ++this.latest;
+        this.setStatus(null);
         const own = filterVault(source.own, query);
         await new Promise<void>((done) => window.setTimeout(done, DEBOUNCE_MS));
         // Typing went on: a newer call will answer; this one only keeps the list from flickering.
         if (ticket !== this.latest) return own;
-        const byAddress = source.lookup ? await source.lookup(query) : null;
+        if (source.lookup && source.isAddress?.(query)) this.setStatus(LOOKING_UP);
+        let byAddress: Awaited<ReturnType<NonNullable<StudioPickerSource["lookup"]>>> = null;
+        try {
+          byAddress = source.lookup ? await source.lookup(query) : null;
+        } finally {
+          // A newer call owns the line from here on: it clears or sets it itself.
+          if (ticket === this.latest) this.setStatus(null);
+        }
         if (ticket !== this.latest) return own;
         if (byAddress) {
           // A pasted address: it names one item, found by the Studio. A failure is said in the empty list, where the eye is.
