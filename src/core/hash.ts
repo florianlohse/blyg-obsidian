@@ -7,6 +7,14 @@ export async function sha256Hex(text: string): Promise<string> {
     .join("");
 }
 
+/** SHA-256 of raw bytes, lowercase hex (what the Studio puts in a media address). */
+export async function sha256HexBytes(bytes: ArrayBuffer | Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", bytes as BufferSource);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 /** `blyg_hash`: "sha256:" + hex(SHA-256(content_md as UTF-8)). Contract §3.1. */
 export async function contentHash(contentMd: string): Promise<string> {
   return `sha256:${await sha256Hex(contentMd)}`;

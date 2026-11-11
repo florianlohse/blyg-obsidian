@@ -15,6 +15,9 @@ will change before anything leaves your vault.
   versions and change notes are handled for you; the Studio keeps them.
 - **Look before you send.** A window shows what the Studio will render and what changes. Nothing is published without
   your tap; a failed send is kept as a draft and your note is left untouched.
+- **Images.** A note in a Studio route can embed images from your vault (`![[photo.png]]`, `![[photo.png|a red door]]` or
+  `![a red door](photo.png)`). They are uploaded to your Studio when you publish, kept with the item, and shown in the post.
+  PNG, JPEG, GIF, WebP and SVG, up to 5 MB each; anything else is refused before anything is sent, with the reason.
 - **Drafts only folders.** Mark a folder as "Drafts only" to rehearse: notes there are sent as private drafts and never
   published.
 - **Quote and respond.** Insert a quote (a whole item or a passage) from your own items or from a blyg your Studio
@@ -142,7 +145,7 @@ The plugin makes requests only through Obsidian's `requestUrl`, to these hosts:
 
 | Host | What goes there | Credential |
 |---|---|---|
-| **Your Studio** (the address you set) | Your note's text and metadata when you send it, and reads of your items, hoppers and followed blygs' items for the panel and pickers. | The Studio token, in a header. Never in a URL. |
+| **Your Studio** (the address you set) | Your note's text and metadata when you send it, the image files the note embeds (only when you publish), and reads of your items, hoppers and followed blygs' items for the panel and pickers. | The Studio token, in a header. Never in a URL. |
 | **The Studio's public pages** (same host) | The public manifest, read to find your blyg's address. | None. |
 | `api.github.com` | Only if you use the older GitHub mode. Not used in Studio-only setups. | A GitHub token, only to this host. |
 
@@ -165,7 +168,10 @@ stripped from the published text.
 
 ## Known gaps
 
-- **No images.** Embedded images are not uploaded; a note with `![[image.png]]` is refused with an explanation.
+- **Images only in Studio routes.** A note in an older GitHub-hosted route that embeds an image is refused with an explanation.
+  In a Studio route images are published as they are: no resizing (`|300` after a name is ignored), no HEIC conversion (convert
+  a camera photo first), and no way yet to bring a Studio item's images back into a note (a pulled or imported item keeps the
+  Studio's image addresses, which show as web images).
 - **No mentions list.** Who quoted or answered you is visible in the Studio, not yet in Obsidian.
 - **No reader stream.** Read the blygs you follow in the Studio; the plugin lets you quote and reply to their items but
   does not show a feed.
@@ -175,7 +181,7 @@ stripped from the published text.
 
 ## Planned (not promised)
 
-Mentions list; images; OAuth sign-in instead of the monthly token; automatic checks for new Studio items; a public
+Mentions list; resizing images; OAuth sign-in instead of the monthly token; automatic checks for new Studio items; a public
 address setting for Studios behind a proxy; listing in Obsidian's community plugins after a beta period (1.0).
 
 ## Privacy and safety in short

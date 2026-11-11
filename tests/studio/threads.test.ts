@@ -80,7 +80,7 @@ describe("what is refused before any request", () => {
     ["a quote of an essay", { "website/essays/Essay.md": "---\ntitle: T\n---\nx\n" }, "![[Essay]]", /“Essay” is an essay or a page/],
     ["an embed with a heading", { "studio/Fragment one.md": "x\n" }, "![[Fragment one#Part]]", /embeds a heading, a block or a size/],
     ["a link to a note the Studio cannot show", { "somewhere/Else.md": "x\n" }, "See [[Else]].", /links the Studio would show as plain text: \[\[Else\]\]/],
-    ["an image", {}, "![[photo.png]]", /embed/],
+    ["an image", {}, "![[photo.png]]", /image “photo\.png” is not in the vault/],
     ["an explicit version", {}, "![[a0000000000000000000000009@v2]]", /embed/],
   ];
   for (const [name, vault, body, expected] of cases) {

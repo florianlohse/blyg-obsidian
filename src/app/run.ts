@@ -1,13 +1,14 @@
 // The two commands' logic, with every Obsidian-facing piece passed in so it runs in Node tests.
 import { createContentsClient, type ContentsClient } from "../github/contents";
 import type { GithubHttp, RawTransport } from "../platform/http";
-import type { Clock, Keychain, Logger, NoteEditPort, NoteRef, Random, SiteReader, Timers, VaultPort, Yaml } from "../platform/ports";
+import type { BinaryVaultPort, Clock, Keychain, Logger, NoteEditPort, NoteRef, Random, SiteReader, Timers, VaultPort, Yaml } from "../platform/ports";
 import { redact } from "../platform/redact";
 import { readToken } from "../platform/token";
 import { fetchQuotable, type Quotable } from "../publish/items";
 import { deleteDraftNote, publishNote, pullNote, repostNote, withdrawNote } from "../publish/router";
 import { studioFailureOutcome } from "../publish/studio";
 import { takeHoppersNote } from "../publish/studioHopperNote";
+import type { DigestCache } from "../studio/media";
 import type { StudioHopper } from "../studio/types";
 import { lookupAddress, stubTargetOf } from "../studio/lookup";
 import { parseItemAddress, type StubTarget } from "../studio/stub";
@@ -37,6 +38,10 @@ export interface AppEnv {
   /** Creates the GitHub client; passed in so tests can fake the network. */
   http: GithubHttp;
   vault: VaultPort;
+  /** Reading images a note embeds (Studio routes). Optional (tests that never do); without it a note with an image is refused with a reason. */
+  images?: BinaryVaultPort;
+  /** Digests of images already read (shared with the panel). */
+  imageDigests?: DigestCache;
   /** Replacing a note's text (bringing the Studio's copy in). Optional (tests that never do). */
   edit?: NoteEditPort;
   yaml: Yaml;
@@ -94,6 +99,8 @@ function buildDeps(env: AppEnv): { ok: true; deps: PublishDeps; secrets: string[
       settings: toPublishSettings(env.settings),
       confirm: (preview) => env.confirm(preview),
       vault: env.vault,
+      ...(env.images ? { images: env.images } : {}),
+      ...(env.imageDigests ? { imageDigests: env.imageDigests } : {}),
       ...(env.edit ? { edit: env.edit } : {}),
       yaml: env.yaml,
       clock: env.clock,

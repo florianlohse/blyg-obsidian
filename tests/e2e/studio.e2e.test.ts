@@ -35,7 +35,7 @@ async function transport(req: RawRequest): Promise<RawResponse> {
   // The Studio gives a token a work budget per minute (`429 API work budget exceeded`); the whole suite together can use it up. A person would
   // wait and try again, so the test does too (the plugin's own adapter retries short waits only; its tests use idle timers).
   for (let attempt = 1; ; attempt++) {
-    const res = await fetch(req.url, { method: req.method, headers: { ...req.headers, ...(req.contentType ? { "content-type": req.contentType } : {}) }, ...(req.body !== undefined ? { body: req.body } : {}) });
+    const res = await fetch(req.url, { method: req.method, headers: { ...req.headers, ...(req.contentType ? { "content-type": req.contentType } : {}) }, ...(req.bodyBytes !== undefined ? { body: req.bodyBytes } : req.body !== undefined ? { body: req.body } : {}) });
     const headers: Record<string, string> = {};
     res.headers.forEach((value, key) => (headers[key] = value));
     const text = await res.text();
@@ -226,6 +226,51 @@ run("against a real Studio", { timeout: 120_000 }, () => {
     expect(await tapStudioDeleteDraft(w2, "drafts/E2E-third.md")).toMatchObject({ status: "published", notices: [M.studioDraftDeleted(third.id ?? "")] });
     expect(await w2.deps.studio?.client.getItem(third.id ?? "")).toMatchObject({ kind: "not-found" });
     expect((await publicText(`items/${third.id}.json`)).status).toBe(404);
+  });
+
+  it("images (S6): an embedded image is uploaded and attached, the public address serves the same bytes, and the note and the Studio stay comparable", async () => {
+    // A tiny valid PNG, made unique per run so the Studio's duplicate rule does not hide an upload.
+    const png = (seed: number): Uint8Array => Uint8Array.from([...Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"), seed, seed >> 8, 7, 7]);
+    const seed = Date.now() % 60000;
+    const w = realWorld({ [NOTE]: `Images ${stamp}\n\n![[door.png|a red door]]\n` });
+    w.addImage("photos/door.png", png(seed));
+    const first = await tapStudio(w, NOTE);
+    expect(first.status).toBe("published");
+    const client = w.deps.studio?.client;
+    const got = await client?.getItem(first.id ?? "");
+    if (got?.kind !== "ok") throw new Error("read the item");
+    const match = /!\[a red door\]\((\S+\/media\/[0-9a-z]+\/([0-9a-f]{64})\.png)\)/.exec(got.value.contentMd);
+    expect(match).not.toBeNull();
+    // the Studio's address holds the digest of exactly the bytes the vault held, and serves them
+    const served = await fetch(match?.[1] ?? "");
+    expect(served.status).toBe(200);
+    const { createHash } = await import("node:crypto");
+    expect(createHash("sha256").update(Buffer.from(await served.arrayBuffer())).digest("hex")).toBe(match?.[2]);
+    expect(got.value.published?.contentMd).toContain(match?.[1] ?? "x");
+    // nothing to do the second time: the note and the Studio's copy agree although one holds a file name and the other an address
+    expect((await tapStudio(w, NOTE)).status).toBe("noop");
+    // words change, the picture does not: a new version, no second copy of the file
+    w.local.set(NOTE, (w.local.get(NOTE) ?? "").replace("Images", "More words, images"));
+    expect(await tapStudio(w, NOTE)).toMatchObject({ status: "published", version: 2 });
+    // the file changes: a new upload, a new version
+    w.addImage("photos/door.png", png(seed + 1));
+    expect(await tapStudio(w, NOTE)).toMatchObject({ status: "published", version: 3 });
+    // the Studio's copy comes into the note (the pictures as the Studio's own addresses) and then goes out again unchanged
+    expect((await tapStudioPull(w, NOTE)).status).not.toBe("failed");
+    expect((await tapStudio(w, NOTE)).status).toBe("noop");
+    await tapStudioWithdraw(w, NOTE);
+  });
+
+  it("images (S6): a draft-only route and a note whose image is too big or missing", async () => {
+    const w = realWorld({ "drafts/Img.md": `Draft ${stamp}\n\n![[a.png]]\n`, [NOTE]: "![[nope.png]]\n" });
+    w.addImage("a.png", Uint8Array.from([...Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"), Date.now() % 250]));
+    const draft = await tapStudio(w, "drafts/Img.md");
+    expect(draft.status).toBe("published");
+    const item = await w.deps.studio?.client.getItem(draft.id ?? "");
+    expect(item).toMatchObject({ kind: "ok", value: { status: "draft", version: 0 } });
+    const missing = await tapStudio(w, NOTE);
+    expect(missing.status).toBe("refused");
+    await tapStudioDeleteDraft(w, "drafts/Img.md");
   });
 
   it("a wrong token comes back as the plugin's own message", async () => {

@@ -137,6 +137,16 @@ export interface StudioCommandDone {
   warning?: string;
 }
 
+/** What a media upload answers: the address the Studio gave the file (it holds the file's SHA-256), and the item's new revision when it was attached to one. */
+export interface StudioMediaDone {
+  id: string;
+  url: string;
+  mime: string;
+  /** The Studio already held these bytes for this item: nothing was added, the revision did not move. */
+  duplicate: boolean;
+  revision: number | null;
+}
+
 export type StudioFailure =
   /** 401: the token is wrong, expired or revoked. */
   | { kind: "unauthorized"; message: string }
