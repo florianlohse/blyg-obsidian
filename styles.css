@@ -377,10 +377,41 @@
 .blyg-pane .blyg-pane-warn {
   color: var(--text-warning);
 }
+/* "Looking up…" in the quote picker: a clear line with a spinner; the list under it is greyed and cannot be chosen from until the answer is in. */
 .blyg-pick-status {
-  padding: 4px var(--size-4-3);
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  margin: var(--size-4-1) var(--size-4-2);
+  padding: var(--size-4-2) var(--size-4-3);
+  border-radius: var(--radius-m);
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+  font-size: var(--font-ui-medium);
+  font-weight: var(--font-medium);
+}
+.blyg-pick-spinner {
+  flex: none;
+  width: 1em;
+  height: 1em;
+  border: 2px solid var(--text-faint);
+  border-top-color: var(--interactive-accent);
+  border-radius: 50%;
+  animation: blyg-pick-spin 0.8s linear infinite;
+}
+@keyframes blyg-pick-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .blyg-pick-spinner {
+    animation: none;
+  }
+}
+.blyg-pick-list-busy {
+  opacity: 0.4;
+  pointer-events: none;
 }
 .blyg-pick-unquotable small {
   color: var(--text-warning);

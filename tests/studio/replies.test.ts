@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { M } from "../../src/publish/messages";
 import { lookupAddress, stubTargetOf } from "../../src/studio/lookup";
-import { looksLikeAddress, parseItemAddress, readStubProperty, readWireStub, sameStubTarget, stubForWire, stubLabel, stubProperty } from "../../src/studio/stub";
+import { looksLikeAddress, parseItemAddress, parseItemId, readStubProperty, readWireStub, sameStubTarget, stubForWire, stubLabel, stubProperty } from "../../src/studio/stub";
 import type { StudioPick } from "../../src/studio/picker";
 import { frontmatterOf } from "../world";
 import { STUDIO_HOST, STUDIO_ORIGIN } from "./fake-studio";
@@ -114,6 +114,16 @@ describe("finding an item by its address, at the Studio", () => {
     expect(await lookupAddress(client, address, `${STUDIO_HOST}/studio/reading/%7Eown/${out.id}`)).toMatchObject({ kind: "found", pick: { id: out.id } });
     const draft = w.studio.seed({ content_md: "Not yet." });
     expect(await lookupAddress(client, address, `${STUDIO_ORIGIN}f/${draft.id}/`)).toEqual({ kind: "problem", message: M.lookupOwnDraft });
+  });
+
+  it("an item id alone, as the reader's \"Copy id\" gives it: one of yours, or one held from a blyg you read; an unknown id says so", async () => {
+    const { w, client, address } = setup();
+    w.local.set("studio/Mine2.md", "Mine too.\n");
+    const out = await tapStudio(w, "studio/Mine2.md");
+    expect(await lookupAddress(client, address, `[[${out.id} | “Mine too.”]]`)).toMatchObject({ kind: "found", pick: { id: out.id, subscriptionId: null } });
+    expect(await lookupAddress(client, address, REMOTE)).toMatchObject({ kind: "found", pick: { id: REMOTE, subscriptionId: "sub1", origin: BLOG, quotable: true } });
+    expect(await lookupAddress(client, address, `[[${REMOTE}]]`)).toMatchObject({ kind: "found", pick: { id: REMOTE } });
+    expect(await lookupAddress(client, address, "x9999999999999999999999999")).toEqual({ kind: "problem", message: M.lookupIdUnknown });
   });
 
   it("says why when it is not an item, not served, or not held; words are left to the search", async () => {
@@ -244,10 +254,26 @@ describe("a reply on the way back", () => {
   });
 });
 
+describe("an item id alone", () => {
+  const ID = "40gscfc6bbx1hry3t769jfk7q4";
+  it("is read bare or from the reader's link form; ordinary text is not an id", () => {
+    expect(parseItemId(ID)).toBe(ID);
+    expect(parseItemId(`  ${ID}\n`)).toBe(ID);
+    expect(parseItemId(`[[${ID}]]`)).toBe(ID);
+    expect(parseItemId(`[[${ID} | “Thought occurs to me that what makes a city culturally big (…”]]`)).toBe(ID);
+    expect(parseItemId("abcdefghijklmnopqrstuvwxyz")).toBeNull(); // 26 letters, no digit: a word, not an id
+    expect(parseItemId("short1")).toBeNull();
+    expect(parseItemId(`see [[${ID}]] here`)).toBeNull();
+    expect(parseItemId("[[First test]]")).toBeNull();
+    expect(parseItemAddress(`[[${ID} | “x”]]`, null)).toEqual({ kind: "id", id: ID });
+  });
+});
+
 describe("looksLikeAddress (decides the picker's \"Looking up…\" line)", () => {
   it("is true for one web address, with or without brackets, query and fragment", () => {
     expect(looksLikeAddress("https://example.com/a/b")).toBe(true);
     expect(looksLikeAddress("<https://example.com/a?x=1#top>")).toBe(true);
+    expect(looksLikeAddress("[[40gscfc6bbx1hry3t769jfk7q4 | “x”]]")).toBe(true);
   });
   it("is false for words, a note name, or an address with more text", () => {
     expect(looksLikeAddress("quiet mornings")).toBe(false);

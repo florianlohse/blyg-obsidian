@@ -118,7 +118,22 @@ async function peeked(client: StudioClient, origin: string, id: string): Promise
 }
 
 /**
- * What the input is. Not an address → "not-an-address" (the picker searches for the words). An address of this Studio's reader or of an own
+ * An item known only by its id (the reader's "Copy id"): one of this Studio's own, else an item held from a blyg the Studio reads, found by the
+ * Studio's search (an exact id match is taken; a hit whose id differs is not).
+ */
+async function byId(client: StudioClient, id: string): Promise<Lookup> {
+  const own = await client.getItem(id);
+  if (own.kind === "ok") return ownItem(client, id);
+  if (own.kind !== "not-found") return { kind: "problem", message: failureText("Looking up the item", own) };
+  const found = await client.search({ q: id, source: "imported", limit: 25 });
+  if (found.kind !== "ok") return { kind: "problem", message: failureText("Looking up the item", found) };
+  const hit = found.value.items.find((h) => h.id === id && h.subscriptionId !== null);
+  if (!hit || hit.subscriptionId === null) return { kind: "problem", message: M.lookupIdUnknown };
+  return heldItem(client, hit.subscriptionId, id);
+}
+
+/**
+ * What the input is. Not an address → "not-an-address" (the picker searches for the words). An item id alone is looked up by `byId`. An address of this Studio's reader or of an own
  * item is read from the Studio's own data; any other address is first asked of the Studio (`classifyLinks`), then read.
  */
 export async function lookupAddress(client: StudioClient, address: StudioAddress, input: string): Promise<Lookup> {
@@ -126,6 +141,7 @@ export async function lookupAddress(client: StudioClient, address: StudioAddress
   if (parsed === null) return { kind: "not-an-address" };
   if (parsed.kind === "reading") return parsed.sub === OWN_SUB ? ownItem(client, parsed.id) : heldItem(client, parsed.sub, parsed.id);
   if (parsed.kind === "own") return ownItem(client, parsed.id);
+  if (parsed.kind === "id") return byId(client, parsed.id);
   const classified = await client.classifyLinks([parsed.url]);
   if (classified.kind !== "ok") return { kind: "problem", message: failureText("Looking up the address", classified) };
   const target = classified.value[0]?.target ?? null;

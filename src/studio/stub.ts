@@ -91,7 +91,9 @@ export type ItemAddress =
   /** The public page of one of this Studio's own items: `{origin}f/{id}/` or `{origin}t/{id}/`. */
   | { kind: "own"; id: string }
   /** Any other address: the Studio is asked what it is (`POST /api/peek/links`). */
-  | { kind: "web"; url: string };
+  | { kind: "web"; url: string }
+  /** An item id alone, as the reader's "Copy id" gives it (`[[id | "excerpt"]]`) or bare: the Studio finds which item it is. */
+  | { kind: "id"; id: string };
 
 /** The reader's name for the owner's own items. */
 export const OWN_SUB = "~own";
@@ -102,7 +104,10 @@ export const OWN_SUB = "~own";
  */
 export function parseItemAddress(input: string, studio: StudioAddress | null): ItemAddress | null {
   const text = input.trim().replace(/^[<"'(]+|[>"')]+$/g, "");
-  if (!/^https?:\/\/\S+$/i.test(text)) return null;
+  if (!/^https?:\/\/\S+$/i.test(text)) {
+    const id = parseItemId(input);
+    return id === null ? null : { kind: "id", id };
+  }
   let url: URL;
   try {
     url = new URL(text);
@@ -120,6 +125,17 @@ export function parseItemAddress(input: string, studio: StudioAddress | null): I
     }
   }
   return { kind: "web", url: url.href };
+}
+
+/**
+ * An item id on its own: bare, or inside the reader's link form `[[id]]` / `[[id | label]]` (what "Copy id" puts on the clipboard). Ids are 20 to 32
+ * lowercase letters and digits; a bare one must also hold a digit, so that no ordinary word is mistaken for an id. Null otherwise.
+ */
+export function parseItemId(input: string): string | null {
+  const text = input.trim();
+  const link = /^\[\[\s*([0-9a-z]{20,32})\s*(?:\|[^\]]*)?\]\]$/.exec(text);
+  if (link) return link[1] ?? null;
+  return /^[0-9a-z]{20,32}$/.test(text) && /[0-9]/.test(text) ? text : null;
 }
 
 /** Is the text one web address (so the picker will look it up rather than search for words)? Decided before the lookup, to say "Looking up…". */
