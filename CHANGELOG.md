@@ -8,6 +8,18 @@ becomes the release notes. Write entries for people who use the plugin, not for 
 
 ## [Unreleased]
 
+## [0.10.1] — 2026-11-11
+
+The quote picker is easier to use when you paste something. Nothing else changes, and your settings carry over unchanged.
+
+### Added
+
+- **Paste an item's id.** In "Insert quote", "Insert link" and when you start a reply, you can paste the id the reader's "Copy id" gives you (the whole `[[id | "…"]]` text, or the id alone) instead of the item's address. It finds your own items and items of the blygs your Studio is subscribed to. For any other blyg, paste the item's address ("Copy url"); the picker says so.
+
+### Changed
+
+- **A clear "Looking up…" while an address or id is looked up.** A line with a spinner shows above the list, and the list is greyed and cannot be chosen from until the answer is in, so it is plain that you are meant to wait a moment.
+
 ## [0.10.0] — 2026-11-07
 
 One new command, for quoting a web page. Nothing changes in how the plugin publishes or reads, and your settings carry over unchanged.
