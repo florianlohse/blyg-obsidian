@@ -49,6 +49,15 @@ neighbour's item (the quote carries the author's name and the version it was tak
 
 <p><img src="images/readme/quote-picker.png" width="300" alt="The quote picker on a phone: the word dandelion typed in the search box and one matching fragment by Teo Brandt listed above it"></p>
 
+**Paste an address, or an item's id, to find exactly one item.** The reader's "Copy id" gives `[[id | "…"]]`; paste all of it or the id alone. While the Studio looks it up, a "Looking up…" line with a spinner shows and the list below is greyed and cannot be chosen from; then the one item is there. An id finds your own items and items of blygs your Studio is subscribed to; for any other blyg, paste the item's address.
+
+<p><img src="images/readme/picker-looking-up-desktop.png" width="640" alt="The quote picker on the desktop with an item's id pasted into the search box: a Looking up line with a spinner above a greyed list of fragments by Teo Brandt, the Blyg panel on the right"></p>
+
+<p><img src="images/readme/picker-found-desktop.png" width="640" alt="The same picker a moment later: the one item the pasted id names, a fragment by Teo Brandt, is the only row"></p>
+
+| <img src="images/readme/picker-looking-up-phone.png" width="260" alt="The quote picker on a phone, the Looking up line with a spinner above a greyed list"> | <img src="images/readme/picker-found-phone.png" width="260" alt="The quote picker on a phone with the one found item"> |
+|---|---|
+
 **A thread that quotes a neighbour's fragment.** The panel shows the quote under *From other blygs*:
 
 <p><img src="images/readme/thread-quotes.png" width="300" alt="The Blyg panel on a phone for a published thread: Published (v1) and up to date, the write buttons, and the quote of a fragment by Teo Brandt listed under From other blygs"></p>

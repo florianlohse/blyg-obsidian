@@ -1,6 +1,6 @@
 {
   "name": "blyg",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "description": "Obsidian plugin to publish to, read and respond on Blygger blygs.",
   "private": true,
   "license": "MIT",
