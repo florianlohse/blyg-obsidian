@@ -536,6 +536,10 @@ run("against a real Studio", { timeout: 120_000 }, () => {
     const byPage = await lookupAddress(client, address, `${sub.value.origin}f/${hit.id}/?utm_source=share`);
     expect(byPage).toMatchObject({ kind: "found", pick: { id: hit.id, origin: sub.value.origin, version: hit.version, quotable: true } });
     expect(await lookupAddress(client, address, "https://example.com/nothing-here")).toEqual({ kind: "problem", message: M.lookupNotAnItem });
+    // the reader's "Copy id" (an id alone, bare or in its link form): found by the Studio's search, which matches ids; an id nobody has says so
+    expect(await lookupAddress(client, address, hit.id)).toMatchObject({ kind: "found", pick: { id: hit.id, subscriptionId: hit.subscriptionId, quotable: true } });
+    expect(await lookupAddress(client, address, `[[${hit.id} | “an excerpt”]]`)).toMatchObject({ kind: "found", pick: { id: hit.id, subscriptionId: hit.subscriptionId } });
+    expect(await lookupAddress(client, address, "x9999999999999999999999999")).toEqual({ kind: "problem", message: M.lookupIdUnknown });
 
     // the reply: what it names, then a thread note that carries it
     const named = await stubTargetOf(client, address, byReader.pick);

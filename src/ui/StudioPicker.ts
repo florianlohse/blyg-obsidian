@@ -36,9 +36,15 @@ export function promptForStudioItem(app: App, source: StudioPickerSource, placeh
       private latest = 0;
       private warned = false;
       private statusEl: HTMLElement | null = null;
+      private busy = false;
 
-      /** The "Looking up…" line above the list (nothing when `text` is null). The list itself is left alone, so the picks do not jump. */
+      /**
+       * The "Looking up…" line above the list (nothing when `text` is null). While it shows, the list stays where it is but is greyed and cannot
+       * be chosen from (a tap or Enter does nothing), so it is plain that the picks of the moment are not the answer: wait a second.
+       */
       private setStatus(text: string | null): void {
+        this.busy = text !== null;
+        this.resultContainerEl.toggleClass("blyg-pick-list-busy", this.busy);
         if (text === null) {
           this.statusEl?.remove();
           this.statusEl = null;
@@ -46,9 +52,16 @@ export function promptForStudioItem(app: App, source: StudioPickerSource, placeh
         }
         if (!this.statusEl) {
           this.statusEl = createDiv({ cls: "blyg-pick-status" });
+          this.statusEl.createSpan({ cls: "blyg-pick-spinner" });
+          this.statusEl.createSpan({ cls: "blyg-pick-status-text" });
           this.resultContainerEl.before(this.statusEl);
         }
-        this.statusEl.setText(text);
+        this.statusEl.querySelector(".blyg-pick-status-text")?.setText(text);
+      }
+
+      override selectSuggestion(value: StudioPick, evt: MouseEvent | KeyboardEvent): void {
+        if (this.busy) return;
+        super.selectSuggestion(value, evt);
       }
 
       override async getSuggestions(query: string): Promise<StudioPick[]> {
@@ -101,7 +114,7 @@ export function promptForStudioItem(app: App, source: StudioPickerSource, placeh
     }
     const picker = new StudioItemPicker(app);
     picker.setPlaceholder(placeholder);
-    picker.setInstructions([{ command: "type or paste", purpose: "words to search for, or the address of an item" }]);
+    picker.setInstructions([{ command: "type or paste", purpose: "words to search for, or the address or id of an item" }]);
     picker.open();
   });
 }

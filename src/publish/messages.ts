@@ -173,6 +173,7 @@ export const M = {
   studioImportIncomplete: "The Studio holds more items than the plugin reads at once (5000): only the newest were checked.",
   studioImportCancelled: "Cancelled — nothing was imported.",
   lookupNotHere: "This Studio has no item with that address.",
+  lookupIdUnknown: "The Studio holds no item with that id: it is not one of yours and not from a blyg you read. Paste its address instead.",
   lookupOwnDraft: "That item of yours is not published yet, so nobody can answer or quote it. Publish it first.",
   lookupWithdrawn: "That item was withdrawn: there is nothing left to quote. A reply can still be made in the Studio.",
   lookupNotHeld: "The Studio holds no such item. If it is a blyg you read, let the Studio fetch it (Subscriptions → poll) and try again.",

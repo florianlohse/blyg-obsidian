@@ -342,7 +342,7 @@ export class FakeStudio {
       const imported = this.imports
         .filter((i) => i.state === "current")
         .map((i) => ({ id: i.remote_id, excerpt: i.content_md.slice(0, 80), label: `“${i.content_md.slice(0, 40)}”`, version: i.version, updated: this.now, badge: i.source_title, source: "imported", kind: i.kind, subscriptionId: i.subscription_id, sourceTitle: i.source_title }));
-      const rows = [...(source === "imported" ? [] : mine), ...(source === "mine" ? [] : imported)].filter((r) => q === "" || r.excerpt.toLowerCase().includes(q));
+      const rows = [...(source === "imported" ? [] : mine), ...(source === "mine" ? [] : imported)].filter((r) => q === "" || r.excerpt.toLowerCase().includes(q) || r.id.toLowerCase().includes(q)); // the real Studio matches an id too (checked on 0.51.0)
       return this.page(url, rows);
     }
     if (path === "/api/mentions" && req.method === "GET") {
