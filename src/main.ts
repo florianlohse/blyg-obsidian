@@ -45,7 +45,7 @@ import { promptForStudioItem } from "./ui/StudioPicker";
 import { confirmWithModal } from "./ui/WritePreviewModal";
 import { chooseImports } from "./ui/ImportModal";
 import { chooseHoppers } from "./ui/HopperModal";
-import { STUB_KEY, stubLabel, stubProperty, type StubTarget } from "./studio/stub";
+import { STUB_KEY, looksLikeAddress, stubLabel, stubProperty, type StubTarget } from "./studio/stub";
 import { readStudioRecord } from "./studio/record";
 import { HOPPERS_KEY, readHopperNames } from "./studio/hoppers";
 import { readIgnored, updateIgnored } from "./app/importIgnore";
@@ -1197,6 +1197,7 @@ export default class BlygPlugin extends Plugin {
           if (!found.ok) return { ok: false, error: found.outcome.notices.join(" ") };
           return { ok: true, picks: found.picks.filter((p) => p.id !== selfId) };
         },
+        isAddress: looksLikeAddress,
         // A pasted address (S9): the Studio finds the item. An item of yours that has a note here is offered as that note (written by name).
         lookup: async (query) => {
           const found = await runStudioLookup(env, query);

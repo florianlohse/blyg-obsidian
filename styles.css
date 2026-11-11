@@ -377,6 +377,11 @@
 .blyg-pane .blyg-pane-warn {
   color: var(--text-warning);
 }
+.blyg-pick-status {
+  padding: 4px var(--size-4-3);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
 .blyg-pick-unquotable small {
   color: var(--text-warning);
 }
