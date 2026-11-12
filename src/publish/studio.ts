@@ -87,7 +87,7 @@ export async function publishStudio(deps: PublishDeps, note: NoteRef, opts: { re
   const stripped = stripComments(stripFrontmatter(await vault.read(note)));
   if (!stripped.ok) return stripped.outcome;
   // Pictures first: a note's embedded images become `![alt](blyg-media:<sha256>)`, the form the Studio's copy is compared in (core/images.ts).
-  const resolved = await resolveImages(normalizeContentMd(stripped.text), { vault, binary: deps.images, fromPath: note.path, ...(deps.imageDigests ? { cache: deps.imageDigests } : {}) });
+  const resolved = await resolveImages(normalizeContentMd(stripped.text), { vault, binary: deps.images, fromPath: note.path, folder: routeFor(settings.routes, note.path)?.vaultPrefix ?? "", ...(deps.imageDigests ? { cache: deps.imageDigests } : {}) });
   if (resolved.problems.length > 0) return refused(M.imagesProblems(resolved.problems));
   const images = resolved.images;
   const draft = prepareStudioText(resolved.text, kind, {

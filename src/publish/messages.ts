@@ -74,6 +74,8 @@ export const M = {
 
   // ---- images (S6) ----
   imageNotFound: (line: number, target: string) => `Line ${line}: the image “${target.slice(0, 60)}” is not in the vault.`,
+  imageOutside: (line: number, name: string, folder: string) =>
+    `Line ${line}: “${name.slice(0, 60)}” is outside the folder this note is published from (${folder.slice(0, 60)}). Only images inside that folder, or a folder below it, are sent: move the image there.`,
   imageType: (line: number, name: string, ext: string) =>
     `Line ${line}: “${name.slice(0, 60)}” is a .${ext} file; the Studio takes png, jpg, gif, webp and svg. Convert it (a photo from the iPhone camera may be HEIC) and embed that file.`,
   imageTooBig: (line: number, name: string, bytes: number) =>

@@ -233,7 +233,7 @@ run("against a real Studio", { timeout: 120_000 }, () => {
     const png = (seed: number): Uint8Array => Uint8Array.from([...Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"), seed, seed >> 8, 7, 7]);
     const seed = Date.now() % 60000;
     const w = realWorld({ [NOTE]: `Images ${stamp}\n\n![[door.png|a red door]]\n` });
-    w.addImage("photos/door.png", png(seed));
+    w.addImage("studio/photos/door.png", png(seed));
     const first = await tapStudio(w, NOTE);
     expect(first.status).toBe("published");
     const client = w.deps.studio?.client;
@@ -253,7 +253,7 @@ run("against a real Studio", { timeout: 120_000 }, () => {
     w.local.set(NOTE, (w.local.get(NOTE) ?? "").replace("Images", "More words, images"));
     expect(await tapStudio(w, NOTE)).toMatchObject({ status: "published", version: 2 });
     // the file changes: a new upload, a new version
-    w.addImage("photos/door.png", png(seed + 1));
+    w.addImage("studio/photos/door.png", png(seed + 1));
     expect(await tapStudio(w, NOTE)).toMatchObject({ status: "published", version: 3 });
     // the Studio's copy comes into the note (the pictures as the Studio's own addresses) and then goes out again unchanged
     expect((await tapStudioPull(w, NOTE)).status).not.toBe("failed");
@@ -263,7 +263,7 @@ run("against a real Studio", { timeout: 120_000 }, () => {
 
   it("images (S6): a draft-only route and a note whose image is too big or missing", async () => {
     const w = realWorld({ "drafts/Img.md": `Draft ${stamp}\n\n![[a.png]]\n`, [NOTE]: "![[nope.png]]\n" });
-    w.addImage("a.png", Uint8Array.from([...Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"), Date.now() % 250]));
+    w.addImage("drafts/a.png", Uint8Array.from([...Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"), Date.now() % 250]));
     const draft = await tapStudio(w, "drafts/Img.md");
     expect(draft.status).toBe("published");
     const item = await w.deps.studio?.client.getItem(draft.id ?? "");

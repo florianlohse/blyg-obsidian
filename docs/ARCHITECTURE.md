@@ -124,7 +124,7 @@ show preview when something will change (R2) → write → **only then** stamp t
   `blyg_url`, `blyg_kind` for threads, `blyg_sent` = hash of the text as sent). A draft created before a publish that then fails is remembered in `data.json`
   (`studioDrafts`, by note path) so the retry finishes it instead of making a second item.
 - **Images in a Studio item (S6)** — `core/images.ts` (pure: finds `![[img|alt]]` and `![alt](path)` outside code; `|300` is a size and is ignored; web addresses and notes are not
-  images) and `studio/media.ts` `resolveImages` (looks each file up with `VaultPort.resolveLink`, checks type and 5 MB, reads it through `BinaryVaultPort`, digests it). The
+  images) and `studio/media.ts` `resolveImages` (looks each file up with `VaultPort.resolveLink`, **refuses one outside the note's route folder before reading it** (`folder` = the route's `vaultPrefix`), checks type and 5 MB, reads it through `BinaryVaultPort`, digests it). The
   Studio's upload address contains the file's SHA-256 (`…/media/<id>/<sha256>.<ext>`), so **both sides are hashed in one canonical form**, `![alt](blyg-media:<sha256>)`: the
   note's embeds are written so before `prepareStudioText`, and every hash of the Studio's copy goes through `studioTextHash` (`canonicalizeStudioMedia` first). That keeps "no
   changes", "edited in the Studio" and the panel's "in sync" meaning what they meant without asking the Studio anything. In the write order, after the window and after the

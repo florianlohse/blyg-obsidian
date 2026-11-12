@@ -3,6 +3,7 @@
 // record is marked afterwards so the panel stops saying "changed there". Ids in the Studio's text become note names again where a note of
 // this Studio holds that id; every other id stays (ids stay valid).
 import { localKind } from "../core/blyg";
+import { routeFor } from "../core/routes";
 import { normalizeContentMd } from "../core/normalize";
 import { stripObsidianComments } from "../core/comments";
 import { HttpError } from "../platform/http";
@@ -50,7 +51,7 @@ export async function pullStudio(deps: PublishDeps, note: NoteRef, opts: { confi
     // Same as what a publish would send? Then there is nothing to bring over (the record may only be out of date).
     const commented = stripObsidianComments(current);
     if (commented.ok) {
-      const resolved = await resolveImages(normalizeContentMd(commented.text), { vault, binary: deps.images, fromPath: note.path, ...(deps.imageDigests ? { cache: deps.imageDigests } : {}) });
+      const resolved = await resolveImages(normalizeContentMd(commented.text), { vault, binary: deps.images, fromPath: note.path, folder: routeFor(settings.routes, note.path)?.vaultPrefix ?? "", ...(deps.imageDigests ? { cache: deps.imageDigests } : {}) });
       const sendable = prepareStudioText(resolved.problems.length === 0 ? resolved.text : normalizeContentMd(commented.text), item.kind, ctx);
       if (resolved.problems.length === 0 && sendable.problems.length === 0 && (await localStudioHash(sendable.contentMd)) === workingHash) {
         await mark(deps, note, item.version, item.dirty, workingHash, item.stubOf);

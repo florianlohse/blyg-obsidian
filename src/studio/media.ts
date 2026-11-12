@@ -35,6 +35,8 @@ export interface ImageContext {
   /** Absent where images cannot be read (then a note that embeds one is refused with a reason). */
   binary: BinaryVaultPort | undefined;
   fromPath: string;
+  /** The vault folder of the note's route (its prefix): an image outside it is never read or sent. */
+  folder: string;
   cache?: DigestCache;
 }
 
@@ -53,6 +55,8 @@ export async function resolveImages(text: string, ctx: ImageContext): Promise<Im
     const resolved = ctx.vault.resolveLink(target, ctx.fromPath);
     const name = target.split("/").pop() ?? target;
     if (!resolved) return { ok: false, problem: (line) => M.imageNotFound(line, target) };
+    // Before anything is read: only what lies in the note's own route folder may leave the vault.
+    if (ctx.folder === "" || !resolved.path.startsWith(ctx.folder)) return { ok: false, problem: (line) => M.imageOutside(line, name, ctx.folder) };
     const ext = extensionOf(resolved.path);
     const mime = IMAGE_MIME[ext];
     if (!mime) return { ok: false, problem: (line) => M.imageType(line, name, ext) };

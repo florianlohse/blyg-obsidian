@@ -895,7 +895,7 @@ export async function loadPanelState(env: PanelEnv, note: NoteRef | null): Promi
       const kind: BlygKind = "kind" in declared ? declared.kind : "fragment";
       if (!stripped.ok) return computePanelState({ settings, note, frontmatter, localHash: null, thread: { quotes: 0, passages: 0, links: 0, problems: [] } });
       // The hash a publish stamps (`blyg_sent`) is of the text with names turned into ids and pictures in their canonical form, so that is the text to hash here too.
-      const pictures = await resolveImages(normalizeContentMd(stripped.text), { vault, binary: env.images, fromPath: note.path, ...(env.imageDigests ? { cache: env.imageDigests } : {}) });
+      const pictures = await resolveImages(normalizeContentMd(stripped.text), { vault, binary: env.images, fromPath: note.path, folder: route.vaultPrefix, ...(env.imageDigests ? { cache: env.imageDigests } : {}) });
       // A picture that cannot be sent is listed with the other problems (the publish refuses with the same words); the text is then taken as written.
       const { contentMd, ...summary } = studioTextSummary(pictures.problems.length > 0 ? normalizeContentMd(stripped.text) : pictures.text, kind, { settings, vault, note });
       const thread = pictures.problems.length > 0 ? { ...summary, problems: [...pictures.problems, ...summary.problems] } : summary;

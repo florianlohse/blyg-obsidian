@@ -18,9 +18,12 @@ const digest = (b: Uint8Array): string => createHash("sha256").update(b).digest(
 const urlOf = (b: Uint8Array, id: string): string => `${STUDIO_HOST}/media/${id}/${digest(b)}.png`;
 const writes = (w: StudioWorld): string[] => w.studio.writes().map((s) => `${s.method} ${s.path.replace(/[0-9a-z]{26}/, "<id>")}`);
 
-function world(body: string, files: Record<string, Uint8Array> = { "photos/door.png": PNG }, path = NOTE): StudioWorld {
+/** `files` are named relative to the note's route folder (where an image has to be); `outside` are vault paths as given. */
+function world(body: string, files: Record<string, Uint8Array> = { "photos/door.png": PNG }, path = NOTE, outside: Record<string, Uint8Array> = {}): StudioWorld {
   const w = makeStudioWorld({ vault: { [path]: body } });
-  for (const [p, bytes] of Object.entries(files)) w.addImage(p, bytes);
+  const folder = path.slice(0, path.indexOf("/") + 1);
+  for (const [p, bytes] of Object.entries(files)) w.addImage(`${folder}${p}`, bytes);
+  for (const [p, bytes] of Object.entries(outside)) w.addImage(p, bytes);
   return w;
 }
 
@@ -57,7 +60,7 @@ describe("publishing a note with an image", () => {
   });
 
   it("uploads one file once however often the note embeds it, and keeps each use's own description", async () => {
-    const w = world("![[door.png|front]]\n\ntext\n\n![the door again](photos/door.png)\n");
+    const w = world("![[door.png|front]]\n\ntext\n\n![the door again](studio/photos/door.png)\n");
     expect((await tapStudio(w, NOTE)).status).toBe("published");
     expect(w.studio.uploads).toHaveLength(1);
     const md = [...w.studio.items.values()][0]?.content_md ?? "";
@@ -98,7 +101,7 @@ describe("publishing a note with an image", () => {
   it("a changed file is a new upload and a new version; the old picture stays with the item", async () => {
     const w = world("![[door.png|a]]\n");
     const first = await tapStudio(w, NOTE);
-    w.addImage("photos/door.png", PNG2);
+    w.addImage("studio/photos/door.png", PNG2);
     const second = await tapStudio(w, NOTE);
     expect(second).toMatchObject({ status: "published", version: 2 });
     const item = w.studio.items.get(first.id ?? "");
@@ -135,6 +138,47 @@ describe("publishing a note with an image", () => {
     const w = world("![[door.png|a]]\n");
     await tapStudio(w, NOTE);
     expect(w.local.get(NOTE)).toContain(await localStudioHash(`![a](blyg-media:${digest(PNG)})`));
+  });
+});
+
+describe("only images inside the note's route folder are sent", () => {
+  it("refuses an image elsewhere in the vault, naming the folder, and never reads it", async () => {
+    const w = world("![[elsewhere.png]]\n", {}, NOTE, { "attachments/elsewhere.png": PNG });
+    let reads = 0;
+    const images = w.deps.images;
+    if (!images) throw new Error("images");
+    w.deps.images = { fileInfo: (p) => images.fileInfo(p), readBinary: (p) => (reads++, images.readBinary(p)) };
+    const out = await tapStudio(w, NOTE);
+    expect(out.status).toBe("refused");
+    expect(has(out.notices, /Line 1: “elsewhere\.png” is outside the folder this note is published from \(studio\/\)/)).toBe(true);
+    expect(reads).toBe(0);
+    expect(w.studio.seen).toEqual([]);
+  });
+
+  it("takes an image in a folder below the route folder", async () => {
+    const w = world("![[deep.png|d]]\n", { "a/b/deep.png": PNG });
+    expect((await tapStudio(w, NOTE)).status).toBe("published");
+    expect(w.studio.uploads).toHaveLength(1);
+  });
+
+  it("goes by the note's own route: a draft note cannot send an image that lives in the other route's folder", async () => {
+    const w = world("![[door.png]]\n", {}, DRAFT, { "studio/door.png": PNG });
+    const out = await tapStudio(w, DRAFT);
+    expect(out.status).toBe("refused");
+    expect(has(out.notices, /outside the folder this note is published from \(drafts\/\)/)).toBe(true);
+  });
+
+  it("a folder whose name only starts the same is not inside it", async () => {
+    const w = world("![[x.png]]\n", {}, NOTE, { "studio-extra/x.png": PNG });
+    expect((await tapStudio(w, NOTE)).status).toBe("refused");
+  });
+
+  it("the panel says so before the user taps", async () => {
+    const w = world("![[elsewhere.png]]\n", {}, NOTE, { "attachments/elsewhere.png": PNG });
+    const base = defaultSettings();
+    const state = await loadPanelState({ settings: { ...base, routes: w.settings.routes, studio: { ...base.studio, baseUrl: STUDIO_HOST } }, vault: w.deps.vault, ...(w.deps.images ? { images: w.deps.images } : {}) }, { path: NOTE, name: "Note.md", extension: "md" });
+    expect(JSON.stringify(state)).toContain("is outside the folder this note is published from");
+    expect(state.canPublish).toBe(false);
   });
 });
 
@@ -213,7 +257,7 @@ describe("when something goes wrong in the middle", () => {
     const w = world("![[door.png]]\n");
     const answer = w.answer;
     w.answerFor = (): boolean => {
-      w.addImage("photos/door.png", PNG2);
+      w.addImage("studio/photos/door.png", PNG2);
       return answer as boolean;
     };
     const out = await tapStudio(w, NOTE);
@@ -225,7 +269,7 @@ describe("when something goes wrong in the middle", () => {
   it("a revision that moved in the Studio during the upload ends it as 'changed there'", async () => {
     const w = world("![[door.png]]\n");
     const first = await tapStudio(w, NOTE);
-    w.addImage("photos/door.png", PNG2);
+    w.addImage("studio/photos/door.png", PNG2);
     w.studio.onNext("POST", /\/api\/media$/, () => w.studio.touch(first.id ?? ""));
     const out = await tapStudio(w, NOTE);
     expect(out.status).toBe("failed");

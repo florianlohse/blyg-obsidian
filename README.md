@@ -17,7 +17,9 @@ will change before anything leaves your vault.
   your tap; a failed send is kept as a draft and your note is left untouched.
 - **Images.** A note in a Studio route can embed images from your vault (`![[photo.png]]`, `![[photo.png|a red door]]` or
   `![a red door](photo.png)`). They are uploaded to your Studio when you publish, kept with the item, and shown in the post.
-  PNG, JPEG, GIF, WebP and SVG, up to 5 MB each; anything else is refused before anything is sent, with the reason.
+  PNG, JPEG, GIF, WebP and SVG, up to 5 MB each. The image has to be inside the same vault folder as the note's route (or a
+  folder below it): one from elsewhere in the vault is refused, and never read. Anything else that cannot be sent is also refused
+  before anything is sent, with the reason. Nothing is copied or renamed in your vault.
 - **Drafts only folders.** Mark a folder as "Drafts only" to rehearse: notes there are sent as private drafts and never
   published.
 - **Quote and respond.** Insert a quote (a whole item or a passage) from your own items or from a blyg your Studio
@@ -152,7 +154,7 @@ The plugin makes requests only through Obsidian's `requestUrl`, to these hosts:
 Nothing else: no analytics, no telemetry, no third-party servers. Text from other blygs is shown only after being
 sanitised and is kept in the plugin's own storage, never written into your vault.
 
-Only notes in your route folders are ever sent, and only when you tap. Obsidian comments (`%%…%%`) and block ids are
+Only notes in your route folders, and the images they embed from the same folders, are ever sent, and only when you tap. Obsidian comments (`%%…%%`) and block ids are
 stripped from the published text.
 
 ## Token
