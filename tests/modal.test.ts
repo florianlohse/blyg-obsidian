@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const registry = vi.hoisted(() => ({
   buttons: [] as { text: string; cta: boolean; destructive: boolean; click: () => void }[],
   sanitized: [] as string[],
+  /** The `<img>` elements the fake sanitiser "returns" (tests that look at pictures put fakes here). */
+  imgs: [] as Array<{ getAttribute(n: string): string | null; setAttribute(n: string, v: string): void }>,
   order: [] as string[],
   toggle: { name: "", value: null as boolean | null, set: (_v: boolean) => {} },
   fields: [] as { name: string; desc: string; placeholder: string; value: string; type: (v: string) => void }[],
@@ -112,7 +114,7 @@ vi.mock("obsidian", () => {
       return this;
     }
   }
-  const sanitizeHTMLToDom = (html: string) => (registry.sanitized.push(html), { sanitized: html });
+  const sanitizeHTMLToDom = (html: string) => (registry.sanitized.push(html), { sanitized: html, querySelectorAll: () => registry.imgs });
   return { Modal, Setting, sanitizeHTMLToDom };
 });
 
@@ -317,6 +319,28 @@ describe("WritePreviewModal", () => {
     expect(texts.some((t) => t.text.includes("onerror"))).toBe(false);
     buttons[1]?.click();
     expect(answers).toEqual([true]);
+  });
+
+  it("shows the note's own pictures from the vault in place of the stand-in addresses, after the sanitiser", () => {
+    const STAND_IN = "https://studio.test/media/pending/abc.png";
+    const attrs = new Map([["src", STAND_IN]]);
+    const foreign = new Map([["src", "https://elsewhere.test/a.png"]]);
+    const fake = (m: Map<string, string>) => ({ getAttribute: (n: string) => m.get(n) ?? null, setAttribute: (n: string, v: string) => void m.set(n, v) });
+    registry.imgs = [fake(attrs), fake(foreign)];
+    const app = { vault: { getFileByPath: (p: string) => (p === "studio/door.png" ? { path: p } : null), getResourcePath: (f: { path: string }) => `app://local/${f.path}` } };
+    const p = preview({ branch: "https://studio.test", path: "(new item)", commitMessage: "", studio: { host: "https://studio.test", html: `<img src="${STAND_IN}">`, localImages: [{ src: STAND_IN, path: "studio/door.png" }] } });
+    new WritePreviewModal(app as never, p, () => undefined).open();
+    expect(attrs.get("src")).toBe("app://local/studio/door.png");
+    expect(foreign.get("src")).toBe("https://elsewhere.test/a.png");
+    registry.imgs = [];
+  });
+
+  it("without pictures of its own the window does not look at the rendering's images at all", () => {
+    let asked = 0;
+    registry.imgs = [{ getAttribute: () => (asked++, null), setAttribute: () => undefined }];
+    open(preview({ branch: "https://studio.test", path: "(new item)", commitMessage: "", studio: { host: "https://studio.test", html: "<p>Hi</p>" } }));
+    expect(asked).toBe(0);
+    registry.imgs = [];
   });
 
   it("a Studio publish with nothing rendered shows no empty box", () => {

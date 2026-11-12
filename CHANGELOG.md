@@ -8,6 +8,10 @@ becomes the release notes. Write entries for people who use the plugin, not for 
 
 ## [Unreleased]
 
+### Fixed
+
+- **The publish window shows your pictures.** When a note embeds an image, the "As readers will see it" box in the publish window used to show a broken-image icon with the description, because the picture only gets its address on the Studio when you publish. It now shows the picture from your vault. What is sent and published does not change.
+
 ## [0.11.0] — 2026-11-12
 
 You can now put images in your Studio notes. Nothing else changes, and your settings carry over unchanged.

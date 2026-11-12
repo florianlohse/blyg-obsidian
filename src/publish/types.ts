@@ -97,7 +97,7 @@ export interface WritePreview {
    * For "delete-draft" `before` is the draft's text and `after` is empty; the draft and the note's record of it go, the note keeps its text.
    * For "studio-pull" `before` is the note's text and `after` the Studio's copy that would replace it; nothing is sent to the Studio.
    */
-  studio?: { host: string; html: string; quotes?: StudioQuoteLine[]; askNote?: boolean; noteDefault?: string; repost?: { id: string; origin: string | null; version: number | null } };
+  studio?: { host: string; html: string; /** Pictures of the note that the preview shows at a stand-in address: the window puts the vault's file in their place (ui/localImages.ts). */ localImages?: Array<{ src: string; path: string }>; quotes?: StudioQuoteLine[]; askNote?: boolean; noteDefault?: string; repost?: { id: string; origin: string | null; version: number | null } };
 }
 
 /** One quote of a thread for the window: the item, the passage (null: all of it), whether it lives in another blyg, and how the note labelled it. */
