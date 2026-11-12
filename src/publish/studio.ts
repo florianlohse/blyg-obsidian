@@ -155,6 +155,11 @@ export async function publishStudio(deps: PublishDeps, note: NoteRef, opts: { re
     // The Studio cannot know the pictures' addresses before they are uploaded; the preview gets stand-ins on its own host.
     const standIns = new Map(images.map((i) => [i.sha256, `${address.host}/media/pending/${i.sha256}.${(Object.entries(IMAGE_MIME).find(([, m]) => m === i.mime) ?? ["png"])[0]}`]));
     const previewed = await client.preview({ contentMd: withStudioAddresses(contentMd, standIns), kind, ...(id ? { itemId: id } : {}) });
+    /** What the window needs to show the pictures from the vault in place of those stand-ins. */
+    const localImages = images.flatMap((i) => {
+      const src = standIns.get(i.sha256);
+      return src === undefined ? [] : [{ src, path: i.path }];
+    });
     if (previewed.kind !== "ok") return studioFailureOutcome("Preview", previewed);
     if (previewed.value.problems.length > 0) {
       return refused(M.studioPreviewProblems(previewed.value.problems.map((p) => (p.directive ? `${p.directive}: ${p.reason}` : p.reason))));
@@ -191,7 +196,7 @@ export async function publishStudio(deps: PublishDeps, note: NoteRef, opts: { re
           links: [],
           blygNote: false,
           commitMessage: "",
-          studio: { host: address.host, html: previewed.value.html, ...(quotes.length > 0 ? { quotes } : {}) },
+          studio: { host: address.host, html: previewed.value.html, ...(localImages.length > 0 ? { localImages } : {}), ...(quotes.length > 0 ? { quotes } : {}) },
         }
       : {
       action: id && item && item.version > 0 ? "update" : "create",
@@ -221,7 +226,7 @@ export async function publishStudio(deps: PublishDeps, note: NoteRef, opts: { re
       links: [],
       blygNote: false,
       commitMessage: "",
-      studio: { host: address.host, html: previewed.value.html, ...(quotes.length > 0 ? { quotes } : {}), askNote: publishedBefore !== null || repost !== null, ...(repost ? { noteDefault: repostNoteText(repost.origin, vault.frontmatterValue(note, "blyg_created")), repost: { id: repost.id, origin: repost.origin, version: typeof repost.version === "number" ? repost.version : null } } : {}) },
+      studio: { host: address.host, html: previewed.value.html, ...(localImages.length > 0 ? { localImages } : {}), ...(quotes.length > 0 ? { quotes } : {}), askNote: publishedBefore !== null || repost !== null, ...(repost ? { noteDefault: repostNoteText(repost.origin, vault.frontmatterValue(note, "blyg_created")), repost: { id: repost.id, origin: repost.origin, version: typeof repost.version === "number" ? repost.version : null } } : {}) },
     };
     // Decision 1: work done in the Studio's own editor is never overwritten without being shown, and asked about, first.
     if (editedThere && item) {

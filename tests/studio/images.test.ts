@@ -59,6 +59,21 @@ describe("publishing a note with an image", () => {
     expect(JSON.stringify(preview?.body)).toContain(`${STUDIO_HOST}/media/pending/${digest(PNG)}.png`);
   });
 
+  it("hands the window the stand-in addresses and the vault files they stand for, so it can show the pictures", async () => {
+    const w = world("![[door.png|a]]\n");
+    await tapStudio(w, NOTE);
+    const standIn = `${STUDIO_HOST}/media/pending/${digest(PNG)}.png`;
+    expect(w.previews[0]?.studio?.localImages).toEqual([{ src: standIn, path: "studio/photos/door.png" }]);
+    // it is the very address the Studio's preview was asked to render
+    expect(JSON.stringify(w.studio.seen.find((s) => s.path === "/api/preview")?.body)).toContain(standIn);
+  });
+
+  it("a note without pictures hands the window nothing of the kind", async () => {
+    const w = world("Just words.\n", {});
+    await tapStudio(w, NOTE);
+    expect(w.previews[0]?.studio && "localImages" in w.previews[0].studio).toBe(false);
+  });
+
   it("uploads one file once however often the note embeds it, and keeps each use's own description", async () => {
     const w = world("![[door.png|front]]\n\ntext\n\n![the door again](studio/photos/door.png)\n");
     expect((await tapStudio(w, NOTE)).status).toBe("published");
