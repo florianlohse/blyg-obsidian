@@ -12,6 +12,8 @@ export interface RawRequest {
   method: string;
   headers: Record<string, string>;
   body?: string;
+  /** A binary body (an upload): sent instead of `body`. */
+  bodyBytes?: ArrayBuffer;
   contentType?: string;
 }
 

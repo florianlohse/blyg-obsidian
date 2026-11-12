@@ -10,7 +10,7 @@ import { M } from "./messages";
 import { logError } from "./shared";
 import { studioFailureOutcome } from "./studioFailure";
 import { withRevision } from "./studioRevision";
-import { contentHash } from "../core/hash";
+import { studioTextHash } from "../studio/media";
 import { cancelled, failed, refused, type Outcome, type PublishDeps, type WritePreview } from "./types";
 
 export async function deleteDraftStudio(deps: PublishDeps, note: NoteRef): Promise<Outcome> {
@@ -66,7 +66,7 @@ export async function deleteDraftStudio(deps: PublishDeps, note: NoteRef): Promi
     };
     if (!(await deps.confirm(preview))) return cancelled(M.studioCancelled);
 
-    const deleted = await withRevision(client, item.id, item.revision, await contentHash(normalizeContentMd(item.contentMd)), (rev) => client.deleteItem(item.id, rev));
+    const deleted = await withRevision(client, item.id, item.revision, await studioTextHash(item.contentMd), (rev) => client.deleteItem(item.id, rev));
     if (deleted.kind === "changed-there") return failed(M.studioChangedWhilePublishing(item.id));
     // Gone already is as good as deleted; anything else (a 409 because it was published meanwhile) stops here with the note untouched.
     if (deleted.kind !== "ok" && deleted.kind !== "not-found") return studioFailureOutcome("Deleting the draft", deleted);

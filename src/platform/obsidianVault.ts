@@ -1,6 +1,6 @@
 import { parseYaml, stringifyYaml, type App, type TFile } from "obsidian";
 import { swapBody } from "../core/frontmatter";
-import type { NoteEditPort, NoteRef, VaultPort, Yaml } from "./ports";
+import type { BinaryVaultPort, NoteEditPort, NoteRef, VaultPort, Yaml } from "./ports";
 
 export const obsidianYaml: Yaml = { parse: parseYaml, stringify: stringifyYaml };
 
@@ -24,6 +24,22 @@ export function obsidianVault(app: App): VaultPort {
       return file ? { path: file.path, extension: file.extension } : null;
     },
     updateFrontmatter: (note, update) => app.fileManager.processFrontMatter(fileOf(note), update),
+  };
+}
+
+/** The bytes of vault files (images a note embeds), looked up by path at use time. */
+export function obsidianBinaryVault(app: App): BinaryVaultPort {
+  const fileAt = (path: string): TFile => {
+    const file = app.vault.getFileByPath(path);
+    if (!file) throw new Error(`The file “${path}” no longer exists.`);
+    return file;
+  };
+  return {
+    readBinary: (path) => app.vault.readBinary(fileAt(path)),
+    fileInfo: (path) => {
+      const file = app.vault.getFileByPath(path);
+      return file ? { size: file.stat.size, mtime: file.stat.mtime } : null;
+    },
   };
 }
 

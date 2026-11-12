@@ -5,6 +5,7 @@ import { DEFAULT_TIMEOUT_MS, headerValue, HttpError, type RawTransport, type Raw
 import type { Logger, Timers } from "../platform/ports";
 import { redact } from "../platform/redact";
 import type { StudioAddress } from "./address";
+import { buildMultipart, newBoundary, type MultipartFile } from "./multipart";
 
 /** A Studio answers in a few kilobytes; anything larger than this is not an answer to a question the plugin asked. */
 export const MAX_RESPONSE_CHARS = 4_000_000;
@@ -21,6 +22,8 @@ export interface StudioRequest {
   query?: Record<string, string>;
   /** Serialised as JSON. */
   body?: unknown;
+  /** Sent as multipart/form-data instead of `body` (a media upload). */
+  multipart?: { fields: Record<string, string>; file: MultipartFile };
 }
 
 export interface StudioResponse {
@@ -95,6 +98,12 @@ export function createStudioHttp(deps: {
       if (request.body !== undefined) {
         raw.body = JSON.stringify(request.body);
         raw.contentType = "application/json";
+      }
+
+      if (request.multipart) {
+        const built = buildMultipart(newBoundary(), request.multipart.fields, request.multipart.file);
+        raw.bodyBytes = built.body;
+        raw.contentType = built.contentType;
       }
 
       const label = `${method} ${url.host}${url.pathname}`;

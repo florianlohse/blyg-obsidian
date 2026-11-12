@@ -2,8 +2,7 @@
 // changed in the Studio, how many other blygs point at it; and the warnings that hold for the whole Studio (the token is about to
 // expire, the release is outside the range the plugin was tested with). Everything here is a report: it never changes anything, and
 // "the Studio could not be reached" is its own answer, never "not published".
-import { contentHash } from "../core/hash";
-import { normalizeContentMd } from "../core/normalize";
+import { studioTextHash } from "./media";
 import type { Clock } from "../platform/ports";
 import type { StudioClient } from "./client";
 import { expiryVerdict } from "./jwt";
@@ -25,7 +24,7 @@ export async function loadStudioFacts(client: StudioClient, id: string, clock: C
     const got = await client.getItem(id);
     if (got.kind === "not-found") return { item: "missing", mentions: null, at };
     if (got.kind !== "ok") return { item: "unreachable", mentions: null, at };
-    const item = { status: got.value.status, version: got.value.version, workingHash: await contentHash(normalizeContentMd(got.value.contentMd)), created: got.value.created ?? null, updated: got.value.updated ?? null };
+    const item = { status: got.value.status, version: got.value.version, workingHash: await studioTextHash(got.value.contentMd), created: got.value.created ?? null, updated: got.value.updated ?? null };
     let mentions: StudioFacts["mentions"] = null;
     try {
       const counted = await client.countMentions(id);

@@ -19,6 +19,10 @@ export const STUDIO_ROUTES = [
 ];
 
 export interface StudioWorld extends World {
+  /** The bytes of image files in the vault (the note map `local` holds a placeholder text for the same path, so links resolve). */
+  binaries: Map<string, { bytes: Uint8Array; mtime: number }>;
+  /** Put an image file in the vault. */
+  addImage(path: string, bytes: Uint8Array): void;
   studio: FakeStudio;
   pendingMap: Map<string, PendingDraft>;
   failPending: { set: boolean };
@@ -39,6 +43,21 @@ export function makeStudioWorld(init: { vault?: Record<string, string>; coldGate
   };
   const http = createStudioHttp({ transport: studio.transport, timers: idleTimers, address });
   world.studio = studio;
+  world.binaries = new Map();
+  world.addImage = (path, bytes) => {
+    world.local.set(path, "(binary)");
+    world.binaries.set(path, { bytes, mtime: world.binaries.size + 1 });
+  };
+  world.deps.images = {
+    readBinary: (path) => {
+      const file = world.binaries.get(path);
+      return file ? Promise.resolve(file.bytes.buffer.slice(file.bytes.byteOffset, file.bytes.byteOffset + file.bytes.byteLength) as ArrayBuffer) : Promise.reject(new Error("no such file"));
+    },
+    fileInfo: (path) => {
+      const file = world.binaries.get(path);
+      return file ? { size: file.bytes.byteLength, mtime: file.mtime } : null;
+    },
+  };
   world.pendingMap = pendingMap;
   world.failPending = failPending;
   world.deps.edit = {

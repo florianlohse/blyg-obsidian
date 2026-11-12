@@ -10,7 +10,7 @@ import type { StudioItemKind } from "../studio/types";
 import { M } from "./messages";
 import { cleanNote, studioFailureOutcome } from "./studio";
 import { withRevision } from "./studioRevision";
-import { contentHash } from "../core/hash";
+import { studioTextHash } from "../studio/media";
 import { logError } from "./shared";
 import { cancelled, failed, noop, refused, type Outcome, type PublishDeps, type WritePreview } from "./types";
 import { normalizeContentMd } from "../core/normalize";
@@ -73,7 +73,7 @@ export async function withdrawStudio(deps: PublishDeps, note: NoteRef): Promise<
     if (!answer) return cancelled(M.studioWithdrawCancelled);
     const changeNote = typeof answer === "object" ? cleanNote(answer.note) : undefined;
 
-    const done = await withRevision(client, item.id, item.revision, await contentHash(normalizeContentMd(item.contentMd)), (rev) => client.withdraw(item.id, changeNote, rev));
+    const done = await withRevision(client, item.id, item.revision, await studioTextHash(item.contentMd), (rev) => client.withdraw(item.id, changeNote, rev));
     if (done.kind === "changed-there") return failed(M.studioChangedWhilePublishing(item.id));
     if (done.kind !== "ok") return studioFailureOutcome("Withdrawing", done);
     const outcome: Outcome = { status: "published", notices: [M.studioWithdrawn(done.value.version, url)], id: item.id, version: done.value.version };

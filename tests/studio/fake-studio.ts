@@ -27,6 +27,7 @@ interface Version {
   content_hash: string;
   published_at: string;
   note: string | null;
+  media?: Media[];
 }
 interface Stored {
   id: string;
@@ -41,7 +42,17 @@ interface Stored {
   versions: Version[];
   /** Set for an item that answers another (a stub). */
   stub_of?: unknown;
+  /** Images attached to the item (`POST /api/media` with this itemId). */
+  media?: Media[];
 }
+interface Media {
+  id: string;
+  sha: string;
+  mime: string;
+  alt: string | null;
+  inline: boolean;
+}
+const MEDIA_EXT: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp", "image/svg+xml": "svg" };
 
 /** An item imported from a blyg the owner reads (what the real Studio keeps after a subscription poll). */
 export interface Imported {
@@ -80,6 +91,8 @@ export class FakeStudio {
   /** Inbound mentions, as the owner's list answers them (newest first by the order added). */
   readonly mentions: Array<{ id: string; target_item_id: string; status: "pending" | "verified" | "failed" | "gone"; relation: string | null; hidden: boolean }> = [];
   readonly seen: Seen[] = [];
+  /** Every upload the fake accepted or recognised as a duplicate, as the tests assert them. */
+  readonly uploads: Array<{ itemId: string | null; expectedRevision: number | null; alt: string | null; inline: string | null; mime: string; size: number; sha: string; duplicate: boolean }> = [];
   now = "2026-10-22T09:00:00Z";
   generator = "blygger-studio/0.51.0";
   /** What `GET /api/capabilities` announces; null: the Studio has no such route (a release before 0.49.7). */
@@ -100,7 +113,7 @@ export class FakeStudio {
     const url = new URL(req.url);
     const path = url.pathname + url.search;
     const authorization = req.headers.Authorization;
-    const seen: Seen = { method: req.method, path, authorization, body: req.body ? (JSON.parse(req.body) as unknown) : undefined };
+    const seen: Seen = { method: req.method, path, authorization, body: req.body ? (JSON.parse(req.body) as unknown) : req.bodyBytes ? { multipart: req.contentType, bytes: req.bodyBytes.byteLength } : undefined };
     this.seen.push(seen);
     const forced = this.forced.get(`${req.method} ${url.pathname}`);
     if (forced) {
@@ -194,6 +207,57 @@ export class FakeStudio {
     });
     return out;
   }
+  private mediaView(itemId: string, m: Media): Record<string, unknown> {
+    return { id: m.id, itemId, mime: m.mime, alt: m.alt, created: this.now, inline: m.inline, url: `${STUDIO_HOST}/media/${m.id}/${m.sha}.${MEDIA_EXT[m.mime] ?? "bin"}` };
+  }
+  /** `POST /api/media`: the multipart body is parsed for real, so a wrong boundary or a missing field fails like it would on the Studio. */
+  private upload(req: RawRequest): RawResponse {
+    const type = /^multipart\/form-data; boundary=(.+)$/.exec(req.contentType ?? "");
+    if (!type || !req.bodyBytes) return this.fail(415, "unsupported-media", "multipart/form-data required");
+    const raw = Buffer.from(req.bodyBytes);
+    const delimiter = Buffer.from(`--${type[1]}`);
+    const fields: Record<string, string> = {};
+    let file: { mime: string; bytes: Buffer } | null = null;
+    let at = raw.indexOf(delimiter);
+    while (at !== -1) {
+      const next = raw.indexOf(delimiter, at + delimiter.length);
+      if (next === -1) break;
+      // One part: CRLF, headers, a blank line, the content, CRLF.
+      const part = raw.subarray(at + delimiter.length + 2, next - 2);
+      const split = part.indexOf("\r\n\r\n");
+      const head = part.subarray(0, split).toString("utf8");
+      const content = part.subarray(split + 4);
+      const name = /name="([^"]+)"/.exec(head)?.[1] ?? "";
+      if (/filename="/.test(head)) file = { mime: /Content-Type: ([^\r\n]+)/i.exec(head)?.[1] ?? "", bytes: Buffer.from(content) };
+      else fields[name] = content.toString("utf8");
+      at = next;
+    }
+    if (!file) return this.fail(400, "invalid-input", "file field required (multipart)");
+    if (!MEDIA_EXT[file.mime]) return this.fail(415, "unsupported-media", `unsupported type ${file.mime || "(none)"}; allowed: png/jpg/gif/webp/svg`);
+    if (file.bytes.byteLength > 5 * 1024 * 1024) return this.fail(413, "too-large", "file exceeds 5 MB");
+    const itemId = fields.itemId ?? null;
+    const item = itemId ? this.items.get(itemId) : undefined;
+    if (itemId && !item) return this.fail(404, "not-found", "itemId not found");
+    const expected = fields.expectedRevision === undefined ? null : Number(fields.expectedRevision);
+    if (item) {
+      if (expected === null) return this.fail(400, "invalid-input", "expectedRevision required when attaching media");
+      if (expected !== item.revision) return this.fail(409, "revision-conflict", "item revision conflict; reload and try again", { itemId: item.id, expectedRevision: expected });
+    }
+    const digest = createHash("sha256").update(file.bytes).digest("hex");
+    const log = { itemId, expectedRevision: expected, alt: fields.alt ?? null, inline: fields.inline ?? null, mime: file.mime, size: file.bytes.byteLength, sha: digest };
+    const same = item?.media?.find((m) => m.sha === digest && m.mime === file.mime);
+    if (item && same) {
+      this.uploads.push({ ...log, duplicate: true });
+      return this.json(200, { id: same.id, url: this.mediaView(item.id, same).url, mime: same.mime, duplicate: true, revision: item.revision });
+    }
+    const media: Media = { id: `m${(item?.media?.length ?? 0) + 1}${digest.slice(0, 6)}`, sha: digest, mime: file.mime, alt: fields.alt ?? null, inline: fields.inline === "true" };
+    this.uploads.push({ ...log, duplicate: false });
+    if (!item) return this.json(201, { id: media.id, url: this.mediaView("", media).url, mime: media.mime });
+    item.media = [...(item.media ?? []), media];
+    item.revision++;
+    this.epoch++;
+    return this.json(201, { id: media.id, url: this.mediaView(item.id, media).url, mime: media.mime, revision: item.revision });
+  }
   private json(status: number, body: unknown): RawResponse {
     return { status, headers: {}, text: JSON.stringify(body) };
   }
@@ -223,8 +287,8 @@ export class FakeStudio {
       pins: [],
       ...(full
         ? {
-            media: [],
-            publishedMedia: [],
+            media: (i.media ?? []).map((x) => this.mediaView(i.id, x)),
+            publishedMedia: (latest?.media ?? []).map((x) => this.mediaView(i.id, x)),
             published: latest
               ? { kind: i.kind, itemId: i.id, version: latest.version, contentMd: latest.content_md, contentHtml: latest.content_html, contentHash: latest.content_hash, publishedAt: latest.published_at, note: latest.note, transclusions: [], pinned: false, pinnedAt: null, stubOf: i.stub_of ?? null, stubCite: null, noteGenerated: false, generated: [], changeClass: null }
               : null,
@@ -266,6 +330,7 @@ export class FakeStudio {
       if (this.contractVersion === null) return this.fail(404, "not-found", "not found");
       return this.json(200, { contractVersion: this.contractVersion, endpoints: { publicBase: STUDIO_HOST, studio: `${STUDIO_HOST}/studio`, api: `${STUDIO_HOST}/api`, issuer: `${STUDIO_HOST}/studio/auth`, mcp: `${STUDIO_HOST}/studio/mcp`, media: `${STUDIO_HOST}/media` }, operations: [], extensions: [] });
     }
+    if (path === "/api/media" && req.method === "POST") return this.upload(req);
     const body = req.body ? (JSON.parse(req.body) as Record<string, unknown>) : {};
     const m = /^\/api\/items\/([^/]+)(?:\/(publish|withdraw))?$/.exec(path);
 
@@ -406,7 +471,7 @@ export class FakeStudio {
         this.epoch++;
         item.status = "public";
         item.updated = this.now;
-        item.versions.push({ version: item.version, content_md: item.content_md, content_html: `<p>${esc(item.content_md)}</p>`, content_hash: sha(item.content_md), published_at: this.now, note: typeof body.note === "string" ? body.note : null });
+        item.versions.push({ version: item.version, content_md: item.content_md, content_html: `<p>${esc(item.content_md)}</p>`, content_hash: sha(item.content_md), published_at: this.now, note: typeof body.note === "string" ? body.note : null, media: [...(item.media ?? [])] });
         return this.json(200, { ok: true, version: item.version, revision: item.revision });
       }
       if (m[2] === "withdraw" && req.method === "POST") {

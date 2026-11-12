@@ -2,7 +2,6 @@
 // from the vault). The reverse of a first publish: nothing is sent to the Studio; each new note says afterwards what a send would have
 // stamped, so the panel reads "up to date" and the next publish has nothing to send. An existing note is never touched.
 import { buildBlygFileText } from "../core/frontmatter";
-import { contentHash } from "../core/hash";
 import { normalizeContentMd } from "../core/normalize";
 import { HttpError } from "../platform/http";
 import type { Logger, NoteEditPort, NoteRef, VaultPort, Yaml } from "../platform/ports";
@@ -10,6 +9,7 @@ import type { Route } from "../settings/schema";
 import type { StudioAddress } from "../studio/address";
 import type { StudioClient } from "../studio/client";
 import { importProperties, importRoute, newItems, noteName, templateExtras, type ImportCandidate, type ImportScan } from "../studio/import";
+import { studioTextHash } from "../studio/media";
 import { namesFromIds, type DraftContext } from "../studio/text";
 import { M } from "./messages";
 import { studioFailureOutcome } from "./studioFailure";
@@ -108,7 +108,7 @@ export async function importStudioItems(deps: ImportDeps, chosen: ImportCandidat
       const ctx: DraftContext = { vault, routes: deps.routes, fromPath: path, origin: deps.address.origin, fragmentCharCap: deps.fragmentCharCap };
       const text = namesFromIds(working, ctx, edit);
       named += text.named;
-      const props = importProperties(c, deps.address, await contentHash(working));
+      const props = importProperties(c, deps.address, await studioTextHash(c.contentMd));
       const extras = deps.templateProps ? templateExtras(await deps.templateProps(c.kind, name)) : {};
       const ref = await deps.files.create(path, buildBlygFileText(deps.yaml, { ...extras, ...props }, text.text));
       takenNames.add(name.toLowerCase());

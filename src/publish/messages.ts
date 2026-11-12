@@ -72,6 +72,21 @@ export const M = {
   missingImages: (dir: string, shown: string) =>
     `embedded images not found in ${dir} (the plugin does not upload images yet): ${shown}.`,
 
+  // ---- images (S6) ----
+  imageNotFound: (line: number, target: string) => `Line ${line}: the image “${target.slice(0, 60)}” is not in the vault.`,
+  imageOutside: (line: number, name: string, folder: string) =>
+    `Line ${line}: “${name.slice(0, 60)}” is outside the folder this note is published from (${folder.slice(0, 60)}). Only images inside that folder, or a folder below it, are sent: move the image there.`,
+  imageType: (line: number, name: string, ext: string) =>
+    `Line ${line}: “${name.slice(0, 60)}” is a .${ext} file; the Studio takes png, jpg, gif, webp and svg. Convert it (a photo from the iPhone camera may be HEIC) and embed that file.`,
+  imageTooBig: (line: number, name: string, bytes: number) =>
+    `Line ${line}: “${name.slice(0, 60)}” is ${(bytes / (1024 * 1024)).toFixed(1)} MB; the Studio takes at most 5 MB per image. Make it smaller and embed that file.`,
+  imageUnreadable: (line: number, name: string) => `Line ${line}: the image “${name.slice(0, 60)}” could not be read.`,
+  imagesUnavailable: "This note embeds images, which this version of the plugin cannot read here. Nothing was sent.",
+  imagesProblems: (problems: string[]) => `Not published — ${problems.slice(0, 4).join(" · ")}${problems.length > 4 ? " · …" : ""}`,
+  imagesOnlyStudio: "images can be published only to a Studio route; this route keeps refusing them",
+  imageChanged: (name: string) => `The image “${name.slice(0, 60)}” changed while the note was being sent. Nothing was published; try again.`,
+  imageUploadStopped: (id: string) => `Stopped while uploading images: nothing was published and the note is untouched. The Studio holds ${id}; the next publish continues with it.`,
+
   // ---- threads and item links (R3) ----
   unknownKind: (value: string) => `Refusing: blyg_kind is “${value.slice(0, 30)}”. Use “thread”, or remove the property for a fragment.`,
   kindChanged: (id: string, localKind: string, committedKind: string) =>
@@ -110,7 +125,7 @@ export const M = {
   lazyQuote: (lines: number[]) =>
     `Line ${lines.slice(0, 3).join(", ")}${lines.length > 3 ? ", …" : ""} sits directly under a quote with no “>” and no blank line before it. Studio 0.50 and later read such a line as part of the QUOTED passage (older ones as your own words), so the same note would publish differently. Nothing was sent. Add a blank line after the quote, or put “>” in front of the line.`,
   embedsLeft: (problems: string[]) =>
-    `Not published — the site shows notes as plain text, so an embed would appear as literal brackets and the site would refuse to deploy it: ${problems.join(" · ")}. Only a whole line that embeds a published fragment or thread, in a thread, is a quote. Remove the embed (images cannot be published in notes yet).`,
+    `Not published — the site shows notes as plain text, so an embed would appear as literal brackets and the site would refuse to deploy it: ${problems.join(" · ")}. Only a whole line that embeds a published fragment or thread, in a thread, is a quote. Remove the embed (images are published only through a Studio route).`,
   embedNotPublished: (name: string) => `“${name}” is not published yet. Publish it first, then the note that quotes or links to it.`,
   embedWithdrawn: (name: string) => `“${name}” is withdrawn, so it cannot be quoted or linked. Take it out.`,
   embedNotBlyg: (name: string) => `“${name}” is an essay or a page. Only Blyg items (fragments and threads) can be quoted: on the site an embed shows as plain text.`,

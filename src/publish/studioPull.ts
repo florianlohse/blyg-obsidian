@@ -3,13 +3,14 @@
 // record is marked afterwards so the panel stops saying "changed there". Ids in the Studio's text become note names again where a note of
 // this Studio holds that id; every other id stays (ids stay valid).
 import { localKind } from "../core/blyg";
-import { contentHash } from "../core/hash";
+import { routeFor } from "../core/routes";
 import { normalizeContentMd } from "../core/normalize";
 import { stripObsidianComments } from "../core/comments";
 import { HttpError } from "../platform/http";
 import type { NoteRef } from "../platform/ports";
 import { studioItemUrl } from "../studio/address";
 import { readStudioRecord, SENT_KEY } from "../studio/record";
+import { localStudioHash, resolveImages, studioTextHash } from "../studio/media";
 import { namesFromIds, prepareStudioText } from "../studio/text";
 import { M } from "./messages";
 import { logError } from "./shared";
@@ -41,7 +42,7 @@ export async function pullStudio(deps: PublishDeps, note: NoteRef, opts: { confi
     if (got.kind !== "ok") return studioFailureOutcome("Reading the Studio's copy", got);
     const item = got.value;
     const working = normalizeContentMd(item.contentMd);
-    const workingHash = await contentHash(working);
+    const workingHash = await studioTextHash(item.contentMd);
 
     const raw = await vault.read(note);
     const current = stripFrontmatter(raw);
@@ -50,8 +51,9 @@ export async function pullStudio(deps: PublishDeps, note: NoteRef, opts: { confi
     // Same as what a publish would send? Then there is nothing to bring over (the record may only be out of date).
     const commented = stripObsidianComments(current);
     if (commented.ok) {
-      const sendable = prepareStudioText(normalizeContentMd(commented.text), item.kind, ctx);
-      if (sendable.problems.length === 0 && (await contentHash(sendable.contentMd)) === workingHash) {
+      const resolved = await resolveImages(normalizeContentMd(commented.text), { vault, binary: deps.images, fromPath: note.path, folder: routeFor(settings.routes, note.path)?.vaultPrefix ?? "", ...(deps.imageDigests ? { cache: deps.imageDigests } : {}) });
+      const sendable = prepareStudioText(resolved.problems.length === 0 ? resolved.text : normalizeContentMd(commented.text), item.kind, ctx);
+      if (resolved.problems.length === 0 && sendable.problems.length === 0 && (await localStudioHash(sendable.contentMd)) === workingHash) {
         await mark(deps, note, item.version, item.dirty, workingHash, item.stubOf);
         return noop(M.studioPullSame);
       }

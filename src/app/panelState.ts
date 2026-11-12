@@ -16,13 +16,14 @@ import { plainCommitText, plainSyncHash } from "../core/plain";
 import { resolvePlainTarget, routeFor } from "../core/routes";
 import { leftoverEmbeds, scanThread } from "../core/thread";
 import { checkWebAddress, expandWebAddress, siteOrigin } from "../core/webAddress";
-import type { NoteRef, VaultPort } from "../platform/ports";
+import type { BinaryVaultPort, NoteRef, VaultPort } from "../platform/ports";
 import { translateNameEmbeds } from "../publish/embeds";
 import { problemLinks, shownProblemLinks } from "../publish/shared";
 import type { BlygSettings, RouteMode } from "../settings/schema";
 import { studioAddress, studioItemUrl } from "../studio/address";
 import { sameOrigin, ORIGIN_KEY, SENT_KEY, URL_KEY } from "../studio/record";
 import { editedInStudio, type StudioFacts } from "../studio/live";
+import { localStudioHash, resolveImages, type DigestCache } from "../studio/media";
 import { panelLines, prepareStudioText } from "../studio/text";
 import type { PublishedRecord, PublishedStore } from "./publishedStore";
 import { githubInUse } from "../settings/studioOnly";
@@ -844,6 +845,10 @@ export interface PanelEnv {
    * what the note's own record says.
    */
   studioLive?: (note: NoteRef, id: string | null) => { facts?: StudioFacts; warnings: string[]; notes?: string[] };
+  /** Reading the images a Studio note embeds (to tell whether they changed, and to name what stops a publish). Without it such a note shows a problem. */
+  images?: BinaryVaultPort;
+  /** Digests of images already read; keeps the panel from reading an unchanged image on every redraw. */
+  imageDigests?: DigestCache;
 }
 
 /**
@@ -889,12 +894,15 @@ export async function loadPanelState(env: PanelEnv, note: NoteRef | null): Promi
       const declared = localKind(frontmatter.kind);
       const kind: BlygKind = "kind" in declared ? declared.kind : "fragment";
       if (!stripped.ok) return computePanelState({ settings, note, frontmatter, localHash: null, thread: { quotes: 0, passages: 0, links: 0, problems: [] } });
-      // The hash a publish stamps (`blyg_sent`) is of the text with names turned into ids, so that is the text to hash here too.
-      const { contentMd, ...thread } = studioTextSummary(normalizeContentMd(stripped.text), kind, { settings, vault, note });
+      // The hash a publish stamps (`blyg_sent`) is of the text with names turned into ids and pictures in their canonical form, so that is the text to hash here too.
+      const pictures = await resolveImages(normalizeContentMd(stripped.text), { vault, binary: env.images, fromPath: note.path, folder: route.vaultPrefix, ...(env.imageDigests ? { cache: env.imageDigests } : {}) });
+      // A picture that cannot be sent is listed with the other problems (the publish refuses with the same words); the text is then taken as written.
+      const { contentMd, ...summary } = studioTextSummary(pictures.problems.length > 0 ? normalizeContentMd(stripped.text) : pictures.text, kind, { settings, vault, note });
+      const thread = pictures.problems.length > 0 ? { ...summary, problems: [...pictures.problems, ...summary.problems] } : summary;
       const address = studioAddress(settings.studio);
       const idOfThisStudio = address && isBlygId(frontmatter.id) && typeof frontmatter.origin === "string" && sameOrigin(frontmatter.origin, address.origin) ? frontmatter.id : null;
       const live = env.studioLive?.(note, idOfThisStudio);
-      return computePanelState({ settings, note, frontmatter, localHash: await contentHash(contentMd), thread, ...(live ? { studio: live } : {}) });
+      return computePanelState({ settings, note, frontmatter, localHash: await localStudioHash(contentMd), thread, ...(live ? { studio: live } : {}) });
     }
     if (route?.mode === "blyg" && note.extension === "md") {
       const raw = await vault.read(note);

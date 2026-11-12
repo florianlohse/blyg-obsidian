@@ -2,9 +2,8 @@
 // comes back as a `conflict`: the item changed in the Studio between our read and our write. This is the one rule for all commands:
 // read the item again; if its text is still the text we compared (only unrelated state moved), run the command once more with the new
 // revision; if the text differs, stop. Never repeat a write over text the user has not seen (Burrow's rule, adopted in the plan).
-import { contentHash } from "../core/hash";
-import { normalizeContentMd } from "../core/normalize";
 import type { StudioClient } from "../studio/client";
+import { studioTextHash } from "../studio/media";
 import type { StudioResult } from "../studio/types";
 
 /** The text of the Studio's working copy changed under us: nothing further was sent. */
@@ -22,7 +21,7 @@ export async function withRevision<T>(
   if (first.kind !== "conflict") return first;
   const fresh = await client.getItem(id);
   if (fresh.kind !== "ok") return fresh;
-  if ((await contentHash(normalizeContentMd(fresh.value.contentMd))) !== expectedHash) return { kind: "changed-there" };
+  if ((await studioTextHash(fresh.value.contentMd)) !== expectedHash) return { kind: "changed-there" };
   const second = await run(fresh.value.revision);
   return second.kind === "conflict" ? { kind: "changed-there" } : second;
 }

@@ -185,7 +185,7 @@ describe("refused before any request", () => {
     ["a fragment over the cap", `${"a".repeat(1001)}\n`, /1001 chars, over the 1000-char fragment cap/],
     ["an unclosed %% comment", "Fine.\n%% never closed\n", /never closes/],
     ["a [[wikilink]] to another note (the Studio would show literal brackets)", "See [[Other note]].\n", /links the Studio would show as plain text: \[\[Other note\]\]/],
-    ["an image embed", "![[photo.png]]\n", /embed/],
+    ["an image embed", "![[photo.png]]\n", /image “photo\.png” is not in the vault/],
     ["an unknown blyg_kind", "---\nblyg_kind: essay\n---\nText.\n", /blyg_kind is “essay”/],
     ["a quote line in a fragment", "x\n\n![[7000000000000000000000000a]]\n", /quotes another item|embed/],
   ];

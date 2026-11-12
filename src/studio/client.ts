@@ -5,7 +5,7 @@
 import { redact } from "../platform/redact";
 import { readWireStub, stubForWire, type StubTarget } from "./stub";
 import type { StudioHttp, StudioResponse } from "./http";
-import type { StudioCapabilities, StudioCommandDone, StudioFailure, StudioHit, StudioImported, StudioHopper, StudioItem, StudioItemKind, StudioListedItem, StudioManifest, StudioPeek, StudioPreview, StudioProblem, StudioResolvedQuote, StudioResult, StudioSubscription } from "./types";
+import type { StudioCapabilities, StudioCommandDone, StudioFailure, StudioHit, StudioImported, StudioHopper, StudioItem, StudioItemKind, StudioListedItem, StudioManifest, StudioMediaDone, StudioPeek, StudioPreview, StudioProblem, StudioResolvedQuote, StudioResult, StudioSubscription } from "./types";
 import { contractVerdict, incompatibleMessage, type ContractVerdict } from "./version";
 
 /** What the gate remembers about a Studio's contract (per plugin session, so a publish does not ask every time); "Check connection" asks again. */
@@ -39,6 +39,12 @@ export interface StudioClient {
   preview(input: { contentMd: string; kind: StudioItemKind; itemId?: string }): Promise<StudioResult<StudioPreview>>;
   /** Deletes an item that was never published (a draft). The Studio refuses (409) for a published one: a published address stays for good. */
   deleteItem(id: string, expectedRevision: number): Promise<StudioResult<null>>;
+  /**
+   * Upload an image and attach it to an item (`POST /media`, multipart): the Studio keeps it with the item, so the published version retains it.
+   * `expectedRevision` is the revision the caller holds; the answer carries the next one (unchanged for a duplicate). Needs `owner:draft`,
+   * and `owner:publish` too when the item is already published.
+   */
+  uploadMedia(input: { itemId: string; expectedRevision: number; bytes: ArrayBuffer; name: string; mime: string; alt: string }): Promise<StudioResult<StudioMediaDone>>;
   /** Publishes the working copy as the next version. Studio makes a new version even when nothing changed: callers check first. */
   publish(id: string, note: string | undefined, expectedRevision: number): Promise<StudioResult<StudioCommandDone>>;
   withdraw(id: string, note: string | undefined, expectedRevision: number): Promise<StudioResult<StudioCommandDone>>;
@@ -266,6 +272,15 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
       return itemResult(await http.send(token, { method: "PATCH", area: "api", path: `/items/${encodeURIComponent(id)}`, body }), [200]);
     },
 
+    uploadMedia: async ({ itemId, expectedRevision, bytes, name, mime, alt }: { itemId: string; expectedRevision: number; bytes: ArrayBuffer; name: string; mime: string; alt: string }): Promise<StudioResult<StudioMediaDone>> => {
+      const fields: Record<string, string> = { itemId, expectedRevision: String(expectedRevision), inline: "true", ...(alt !== "" ? { alt } : {}) };
+      const res = await http.send(token, { method: "POST", area: "api", path: "/media", multipart: { fields, file: { field: "file", name, mime, bytes } } });
+      if (res.status !== 201 && res.status !== 200) return failure(res);
+      const json = res.json;
+      if (!isRecord(json) || typeof json.id !== "string" || typeof json.url !== "string") return unreadable(res);
+      return { kind: "ok", value: { id: json.id, url: json.url, mime: str(json.mime) ?? mime, duplicate: json.duplicate === true, revision: typeof json.revision === "number" ? json.revision : null } };
+    },
+
     deleteItem: async (id: string, expectedRevision: number): Promise<StudioResult<null>> => {
       // Contract 5 wants a JSON body on DELETE (S16 plan §2); whether Obsidian's requestUrl sends it on iOS is a device step (T1).
       const res = await http.send(token, { method: "DELETE", area: "api", path: `/items/${encodeURIComponent(id)}`, body: { expectedRevision } });
@@ -397,6 +412,7 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
     createItem: guard(inner.createItem),
     updateItem: guard(inner.updateItem),
     preview: guard(inner.preview),
+    uploadMedia: guard(inner.uploadMedia),
     deleteItem: guard(inner.deleteItem),
     publish: guard(inner.publish),
     withdraw: guard(inner.withdraw),

@@ -22,6 +22,7 @@ import { openWebQuote } from "./ui/WebQuoteModal";
 import { endOf, planInsert } from "./core/webQuote";
 import { checkStudioConnection } from "./studio/connection";
 import { contractCacheFor } from "./studio/client";
+import type { DigestCache } from "./studio/media";
 import type { ContractVerdict } from "./studio/version";
 import { createPendingDrafts, type PendingDrafts } from "./studio/pending";
 import { createLiveCache } from "./studio/live";
@@ -31,7 +32,7 @@ import { createGithubHttp } from "./platform/http";
 import { obsidianKeychain, obsidianNotifier, systemClock, webRandom, windowTimers } from "./platform/obsidianPorts";
 import { obsidianTransport } from "./platform/obsidianTransport";
 import { createSiteReader } from "./platform/siteReader";
-import { noteRefOf, obsidianNoteEdit, obsidianVault, obsidianYaml } from "./platform/obsidianVault";
+import { noteRefOf, obsidianBinaryVault, obsidianNoteEdit, obsidianVault, obsidianYaml } from "./platform/obsidianVault";
 import { redactingLogger } from "./platform/redact";
 import type { Outcome } from "./publish/types";
 import { migrateSettings } from "./settings/migrate";
@@ -289,6 +290,9 @@ export default class BlygPlugin extends Plugin {
    * What the plugin last published for essays and pages: the `published` key of data.json. Obsidian Sync carries data.json to the other
    * devices but not other files in the plugin folder (measured 2026-10-09), so the record lives there. Paths and fingerprints only.
    */
+  /** Digests of images already read, shared by the publish and the panel (an unchanged image is not read again). */
+  private readonly imageDigests: DigestCache = new Map();
+
   private published(): PublishedStore {
     // One instance: its queue is what keeps two quick publishes from dropping each other's record.
     this.publishedStore ??= createPublishedStore({
@@ -371,6 +375,8 @@ export default class BlygPlugin extends Plugin {
       keychain: obsidianKeychain(this.app),
       http: this.http(),
       vault: obsidianVault(this.app),
+      images: obsidianBinaryVault(this.app),
+      imageDigests: this.imageDigests,
       edit: obsidianNoteEdit(this.app),
       yaml: obsidianYaml,
       clock: systemClock,
@@ -705,6 +711,8 @@ export default class BlygPlugin extends Plugin {
       {
         settings: this.settings,
         vault: obsidianVault(this.app),
+        images: obsidianBinaryVault(this.app),
+        imageDigests: this.imageDigests,
         published: this.published(),
         studioLive: (_note, id) => {
           if (id) this.studioFacts.request(id, () => this.refreshPanels());

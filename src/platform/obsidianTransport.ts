@@ -7,7 +7,7 @@ export const obsidianTransport: RawTransport = async (request) => {
     url: request.url,
     method: request.method,
     headers: request.headers,
-    body: request.body,
+    body: request.bodyBytes ?? request.body,
     contentType: request.contentType,
     throw: false,
   });

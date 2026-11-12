@@ -7,7 +7,8 @@
 import { itemPagePath } from "../contract";
 import { localKind } from "../core/blyg";
 import { stripFrontmatter } from "../core/frontmatter";
-import { contentHash } from "../core/hash";
+import { sha256HexBytes } from "../core/hash";
+import { canonicalizeStudioMedia, IMAGE_MIME, withStudioAddresses } from "../core/images";
 import { normalizeContentMd } from "../core/normalize";
 import { routeFor } from "../core/routes";
 import { HttpError } from "../platform/http";
@@ -15,6 +16,7 @@ import type { NoteRef } from "../platform/ports";
 import { studioItemUrl } from "../studio/address";
 import { ORIGIN_KEY, readStudioRecord, SENT_KEY, sameOrigin, URL_KEY, type StudioRecord } from "../studio/record";
 import { readStubProperty, sameStubTarget, STUB_KEY, stubLabel } from "../studio/stub";
+import { localStudioHash, resolveImages, studioTextHash, type ResolvedImage } from "../studio/media";
 import { prepareStudioText, refusalFor } from "../studio/text";
 import type { StudioItem, StudioItemKind } from "../studio/types";
 import { M } from "./messages";
@@ -34,7 +36,12 @@ export const cleanNote = (text: string): string | undefined => {
 
 export { studioFailureOutcome } from "./studioFailure";
 
-const hashOfWorkingCopy = (item: StudioItem): Promise<string> => contentHash(normalizeContentMd(item.contentMd));
+const hashOfWorkingCopy = (item: StudioItem): Promise<string> => studioTextHash(item.contentMd);
+/** A text as the confirmation window shows it: pictures are written in the one form that note and Studio share, so a picture that did not change is not a change. */
+const shown = (md: string): string => normalizeContentMd(canonicalizeStudioMedia(md));
+const sizeLabel = (bytes: number): string => (bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
+const imageLines = (images: ResolvedImage[], noun: string): string[] =>
+  images.length === 0 ? [] : [`${images.length === 1 ? "1 image" : `${images.length} images`} uploaded with this ${noun}: ${images.map((i) => `${i.name} (${sizeLabel(i.size)})`).join(", ")}.`];
 
 /**
  * Publish a note to the Studio. With `repost` the note carries the record of ANOTHER blyg (the old GitHub one, or another Studio's): its
@@ -79,7 +86,11 @@ export async function publishStudio(deps: PublishDeps, note: NoteRef, opts: { re
   // ---- the text, checked locally before any request ------------------------------------------------------------------------
   const stripped = stripComments(stripFrontmatter(await vault.read(note)));
   if (!stripped.ok) return stripped.outcome;
-  const draft = prepareStudioText(normalizeContentMd(stripped.text), kind, {
+  // Pictures first: a note's embedded images become `![alt](blyg-media:<sha256>)`, the form the Studio's copy is compared in (core/images.ts).
+  const resolved = await resolveImages(normalizeContentMd(stripped.text), { vault, binary: deps.images, fromPath: note.path, folder: routeFor(settings.routes, note.path)?.vaultPrefix ?? "", ...(deps.imageDigests ? { cache: deps.imageDigests } : {}) });
+  if (resolved.problems.length > 0) return refused(M.imagesProblems(resolved.problems));
+  const images = resolved.images;
+  const draft = prepareStudioText(resolved.text, kind, {
     vault,
     routes: settings.routes,
     fromPath: note.path,
@@ -89,7 +100,7 @@ export async function publishStudio(deps: PublishDeps, note: NoteRef, opts: { re
   const problem = draft.problems[0];
   if (problem) return refused(refusalFor(problem));
   const contentMd = draft.contentMd;
-  const localHash = await contentHash(contentMd);
+  const localHash = await localStudioHash(contentMd);
 
   try {
     // ---- which item, and what the Studio holds now -----------------------------------------------------------------------
@@ -141,7 +152,9 @@ export async function publishStudio(deps: PublishDeps, note: NoteRef, opts: { re
     const id = item?.id ?? null;
 
     // ---- Studio's own rendering and checks, then the user's confirmation --------------------------------------------------
-    const previewed = await client.preview({ contentMd, kind, ...(id ? { itemId: id } : {}) });
+    // The Studio cannot know the pictures' addresses before they are uploaded; the preview gets stand-ins on its own host.
+    const standIns = new Map(images.map((i) => [i.sha256, `${address.host}/media/pending/${i.sha256}.${(Object.entries(IMAGE_MIME).find(([, m]) => m === i.mime) ?? ["png"])[0]}`]));
+    const previewed = await client.preview({ contentMd: withStudioAddresses(contentMd, standIns), kind, ...(id ? { itemId: id } : {}) });
     if (previewed.kind !== "ok") return studioFailureOutcome("Preview", previewed);
     if (previewed.value.problems.length > 0) {
       return refused(M.studioPreviewProblems(previewed.value.problems.map((p) => (p.directive ? `${p.directive}: ${p.reason}` : p.reason))));
@@ -165,10 +178,11 @@ export async function publishStudio(deps: PublishDeps, note: NoteRef, opts: { re
           noteName: note.name,
           label: kind,
           ...(id ? { id } : {}),
-          before: item ? normalizeContentMd(item.contentMd) : null,
+          before: item ? shown(item.contentMd) : null,
           after: contentMd,
           changes: [
             "Nothing goes live: a draft is visible only to you in the Studio.",
+            ...imageLines(images, "draft"),
             id ? "The Studio's working copy is replaced by this note's text." : "A new draft in the Studio.",
             ...(publishedBefore ? [`The published version ${publishedBefore.version} stays as it is.`] : []),
             ...(stub ? [M.stubReply(stubLabel(stub))] : []),
@@ -189,7 +203,7 @@ export async function publishStudio(deps: PublishDeps, note: NoteRef, opts: { re
       ...(id ? { id } : {}),
       ...(publishedBefore ? { fromVersion: publishedBefore.version } : {}),
       toVersion,
-      before: publishedBefore?.published ? normalizeContentMd(publishedBefore.published.contentMd) : null,
+      before: publishedBefore?.published ? shown(publishedBefore.published.contentMd) : null,
       after: contentMd,
       changes: [
         ...(repost
@@ -199,6 +213,7 @@ export async function publishStudio(deps: PublishDeps, note: NoteRef, opts: { re
             ]
           : []),
         id && publishedBefore ? `Version ${publishedBefore.version} → ${toVersion}` : "Version 1",
+        ...imageLines(images, "version"),
         ...(publishedBefore?.status === "withdrawn" ? ["The item is no longer withdrawn"] : []),
         ...(stub ? [M.stubReply(stubLabel(stub))] : []),
         ...hopperLines(hoppers),
@@ -218,7 +233,7 @@ export async function publishStudio(deps: PublishDeps, note: NoteRef, opts: { re
         noteName: note.name,
         label: kind,
         id: item.id,
-        before: normalizeContentMd(item.contentMd),
+        before: shown(item.contentMd),
         after: contentMd,
         changes: [],
         links: [],
@@ -239,6 +254,7 @@ export async function publishStudio(deps: PublishDeps, note: NoteRef, opts: { re
     let itemId = id;
     /** The revision the next command acts on: what we read, then what each write of ours answered. */
     let revision = item?.revision ?? 0;
+    const isNew = itemId === null;
     if (itemId === null) {
       const created = await client.createItem({ kind, contentMd, ...(stub ? { stubOf: stub } : {}) });
       if (created.kind !== "ok") return studioFailureOutcome("Publishing", created);
@@ -249,9 +265,36 @@ export async function publishStudio(deps: PublishDeps, note: NoteRef, opts: { re
       } catch (err) {
         logError(deps, "remembering the new draft (ignored)", err);
       }
-    } else if (item && (item.contentMd !== contentMd || stubDiffers(item))) {
+    }
+
+    // Pictures are uploaded to the item (attached, so the version that shows them keeps them), one at a time, each acting on the revision the
+    // last one answered. Only then does the text carry their addresses.
+    let sendMd = contentMd;
+    if (images.length > 0) {
+      const binary = deps.images;
+      if (!binary) return failed(M.imagesUnavailable);
+      const addresses = new Map<string, string>();
+      for (const image of images) {
+        const bytes = await binary.readBinary(image.path);
+        if ((await sha256HexBytes(bytes)) !== image.sha256) return failed(M.imageChanged(image.name));
+        const sendRevision = revision;
+        const sendItem = itemId;
+        const uploaded = await client.uploadMedia({ itemId: sendItem, expectedRevision: sendRevision, bytes, name: image.name, mime: image.mime, alt: image.alt });
+        if (uploaded.kind === "conflict") return failed(M.studioChangedWhilePublishing(sendItem));
+        if (uploaded.kind !== "ok") {
+          const out = studioFailureOutcome("Uploading an image", uploaded);
+          return { ...out, notices: [...out.notices, M.imageUploadStopped(sendItem)] };
+        }
+        addresses.set(image.sha256, uploaded.value.url);
+        if (uploaded.value.revision !== null) revision = uploaded.value.revision;
+      }
+      sendMd = withStudioAddresses(contentMd, addresses);
+    }
+    const needsText = isNew ? sendMd !== contentMd : item !== null && (item.contentMd !== sendMd || stubDiffers(item));
+    if (needsText) {
       const sendId = itemId;
-      const updated = await withRevision(client, sendId, item.revision, await hashOfWorkingCopy(item), (rev) => client.updateItem(sendId, { contentMd, ...(stubDiffers(item) && stub ? { stubOf: stub } : {}) }, rev));
+      const working = item ? await hashOfWorkingCopy(item) : localHash;
+      const updated = await withRevision(client, sendId, revision, working, (rev) => client.updateItem(sendId, { contentMd: sendMd, ...(item && stubDiffers(item) && stub ? { stubOf: stub } : {}) }, rev));
       if (updated.kind === "changed-there") return failed(M.studioChangedWhilePublishing(sendId));
       if (updated.kind !== "ok") return studioFailureOutcome("Publishing", updated);
       revision = updated.value.revision;

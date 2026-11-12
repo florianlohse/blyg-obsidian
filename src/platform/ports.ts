@@ -50,6 +50,13 @@ export interface NoteRef {
   extension: string;
 }
 
+/** The bytes of a vault file (an image a note embeds), for uploading and for telling whether it changed. Separate from `VaultPort` on purpose. */
+export interface BinaryVaultPort {
+  readBinary(path: string): Promise<ArrayBuffer>;
+  /** Size in bytes and last-modified time, without reading the file; null when there is no such file. */
+  fileInfo(path: string): { size: number; mtime: number } | null;
+}
+
 /** What replacing a note's text (pulling a Studio's copy into it) needs from the vault, beyond reading and stamping. */
 export interface NoteEditPort {
   /** Notes whose `blyg_id` property is `id` (any route, any origin: the caller judges). */

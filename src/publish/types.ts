@@ -1,5 +1,6 @@
 import type { ContentsClient } from "../github/contents";
-import type { Clock, Logger, NoteEditPort, Random, SiteReader, VaultPort, Yaml } from "../platform/ports";
+import type { BinaryVaultPort, Clock, Logger, NoteEditPort, Random, SiteReader, VaultPort, Yaml } from "../platform/ports";
+import type { DigestCache } from "../studio/media";
 import type { Route } from "../settings/schema";
 import type { StudioAddress } from "../studio/address";
 import type { StudioClient } from "../studio/client";
@@ -139,6 +140,10 @@ export interface PublishDeps {
   /** Why there is no `studio` (no usable address, no token on this device): what a refused Studio publish says. */
   studioProblem?: string;
   vault: VaultPort;
+  /** Reading an image a note embeds (Studio routes). Absent where it cannot be done: a note that embeds an image is then refused with a reason. */
+  images?: BinaryVaultPort;
+  /** Digests of images already read, so an unchanged image is not read again (shared with the panel). */
+  imageDigests?: DigestCache;
   /** Replacing a note's text (pulling a Studio's copy into it). Absent in callers that never do (tests). */
   edit?: NoteEditPort;
   yaml: Yaml;
