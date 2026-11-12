@@ -133,7 +133,7 @@ in your vault keeps its text. Publishing again brings it back as a new version.
 | "no published item … on main" | the id is not one of your published notes on that branch | publish it there first, or remove the line |
 | "… is withdrawn" | you withdrew that note | take the quote or link out |
 | "is an essay or a page" | only Blyg notes can be quoted | remove it |
-| "the site shows notes as plain text … an embed" | an `![[…]]` that is not a whole line quoting a published Blyg note: inline in a sentence, an image, a stray bracket or backtick next to it (the site would show literal brackets and refuse to deploy it) | remove it or put it on its own line; images cannot be published in notes yet |
+| "the site shows notes as plain text … an embed" | an `![[…]]` that is not a whole line quoting a published Blyg note: inline in a sentence, an image, a stray bracket or backtick next to it (the site would show literal brackets and refuse to deploy it) | remove it or put it on its own line; an image is not a quote: to publish a picture, embed it in a note of a Studio route, from that route's folder (older GitHub-hosted routes cannot publish images) |
 | "embeds a heading, a block or a size" | `![[Note#Heading]]` etc. | embed the whole note, or use Insert quote |
 | "committed but the site does not serve it yet" / "still serves v1" | the quoted note's newest version is not deployed | wait a minute or two, publish again |
 | "the quoted passage is not in …" (+ curly-quote hint) | the words are not in that version of the note | use **Insert quote** again |

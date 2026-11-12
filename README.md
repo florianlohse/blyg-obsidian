@@ -19,7 +19,10 @@ will change before anything leaves your vault.
   `![a red door](photo.png)`). They are uploaded to your Studio when you publish, kept with the item, and shown in the post.
   PNG, JPEG, GIF, WebP and SVG, up to 5 MB each. The image has to be inside the same vault folder as the note's route (or a
   folder below it): one from elsewhere in the vault is refused, and never read. Anything else that cannot be sent is also refused
-  before anything is sent, with the reason. Nothing is copied or renamed in your vault.
+  before anything is sent, with the reason. Nothing is copied or renamed in your vault. Images work in Studio routes only (a note
+  in an older GitHub-hosted route that embeds one is refused with an explanation). They are published as they are: no resizing
+  (`|300` after a name is ignored) and no HEIC conversion (convert a camera photo first). A note you pull or import from the
+  Studio keeps the Studio's image addresses, which show as web images, instead of your vault file.
 - **Drafts only folders.** Mark a folder as "Drafts only" to rehearse: notes there are sent as private drafts and never
   published.
 - **Quote and respond.** Insert a quote (a whole item or a passage) from your own items or from a blyg your Studio
@@ -170,10 +173,6 @@ stripped from the published text.
 
 ## Known gaps
 
-- **Images only in Studio routes.** A note in an older GitHub-hosted route that embeds an image is refused with an explanation.
-  In a Studio route images are published as they are: no resizing (`|300` after a name is ignored), no HEIC conversion (convert
-  a camera photo first), and no way yet to bring a Studio item's images back into a note (a pulled or imported item keeps the
-  Studio's image addresses, which show as web images).
 - **No mentions list.** Who quoted or answered you is visible in the Studio, not yet in Obsidian.
 - **No reader stream.** Read the blygs you follow in the Studio; the plugin lets you quote and reply to their items but
   does not show a feed.
