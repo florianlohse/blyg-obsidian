@@ -12,6 +12,10 @@ becomes the release notes. Write entries for people who use the plugin, not for 
 
 - **The publish window shows your pictures.** When a note embeds an image, the "As readers will see it" box in the publish window used to show a broken-image icon with the description, because the picture only gets its address on the Studio when you publish. It now shows the picture from your vault. What is sent and published does not change.
 
+## [0.11.0] — 2026-11-12
+
+You can now put images in your Studio notes. Nothing else changes, and your settings carry over unchanged.
+
 ### Added
 
 - **Images in Studio notes.** A note can embed an image from your vault, `![[photo.png]]`, `![[photo.png|a red door]]` (the text after the bar is the image's description) or `![a red door](photo.png)`, and publishing uploads it to your Studio with the item. The window shows how many images go up and how big they are. PNG, JPEG, GIF, WebP and SVG up to 5 MB are accepted, and the image has to be inside the folder of the note's route (or below it); an image that is missing, outside that folder, too big or of another kind (an iPhone HEIC photo, for example) stops the publish before anything is sent, with the line it is on. Publishing the same note again uploads nothing it does not have to, and the panel tells you about a problem image before you tap Publish. Images work in Studio routes only; the older GitHub-hosted routes still refuse them.
