@@ -45,6 +45,7 @@ import { promptForItem, promptForQuote } from "./ui/QuotePicker";
 import { promptForStudioItem } from "./ui/StudioPicker";
 import { BLYG_READER_VIEW, BlygReaderView, excerptOf, type ReaderHost } from "./ui/ReaderView";
 import { framePolicy } from "./ui/readerFeed";
+import { stylesheetsOf, trimmedDocument } from "./ui/trimmedPage";
 import { buildStudio } from "./app/run";
 import type { ReadingPost } from "./studio/reading";
 import { confirmWithModal } from "./ui/WritePreviewModal";
@@ -860,15 +861,25 @@ export default class BlygPlugin extends Plugin {
           return null;
         }
       },
-      frameAllowed: async (url) => {
-        // Asked with a plain request (no token, no cookies), only to read the page's framing headers. On any doubt: no frame, the post is shown as text.
+      preparePage: async (url) => {
+        // Plain requests (no token, no cookies): the post's page, then its stylesheets. On any doubt the reader shows the post as text.
         try {
-          let res = await obsidianTransport({ url, method: "HEAD", headers: {} });
-          if (res.status === 405 || res.status === 501) res = await obsidianTransport({ url, method: "GET", headers: {} });
-          if (res.status >= 400) return "unreachable";
-          return framePolicy(res.headers);
+          const res = await obsidianTransport({ url, method: "GET", headers: {} });
+          if (res.status >= 400) return { kind: "unreachable" };
+          const css: string[] = [];
+          for (const sheet of stylesheetsOf(res.text, url)) {
+            try {
+              const got = await obsidianTransport({ url: sheet, method: "GET", headers: {} });
+              if (got.status < 400 && got.text.length < 600_000) css.push(got.text);
+            } catch {
+              // a stylesheet that does not load: the post shows in plain type
+            }
+          }
+          const doc = trimmedDocument({ pageHtml: res.text, pageUrl: url, css });
+          if (doc !== null) return { kind: "trimmed", doc };
+          return framePolicy(res.headers) === "allowed" ? { kind: "full" } : { kind: "forbidden" };
         } catch {
-          return "unreachable";
+          return { kind: "unreachable" };
         }
       },
       load: async () => {

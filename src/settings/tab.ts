@@ -211,7 +211,7 @@ export class BlygSettingTab extends PluginSettingTab {
         },
         {
           name: "Open posts as",
-          desc: "“Web page” shows the post as its author's blyg shows it on the web, inside Obsidian (scripts are not run; the page and its images load as a visit would). “Text” draws only the post's text here, and images follow the setting above. A blyg that does not allow its pages inside other apps is always shown as text.",
+          desc: "“Web page” shows the post as its author's blyg shows it on the web, inside Obsidian, without the blyg's menus and header (scripts are not run; the post, its stylesheet and its images load as a visit would; “Open in browser” shows the whole page). “Text” draws only the post's text here, and images follow the setting above. A blyg that does not allow its pages inside other apps is always shown as text.",
           aliases: ["reader", "web view", "page"],
           control: { type: "dropdown", key: "readerPane.view", options: { web: "Web page", text: "Text" } },
         },

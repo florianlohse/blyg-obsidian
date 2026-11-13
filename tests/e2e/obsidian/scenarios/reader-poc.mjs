@@ -73,12 +73,14 @@ await runScenario({ data: fixtureData() }, async (s) => {
       const f = document.querySelector(".blyg-reader-frame");
       return f ? { src: f.getAttribute("src"), sandbox: f.getAttribute("sandbox") ?? "" } : null;
     });
-    check(frame !== null && frame.src?.startsWith("http"), `${layout}: tapping a post shows its web page inside Obsidian (${frame?.src ?? "no frame"})`);
+    check(frame !== null && frame.src?.startsWith("blob:"), `${layout}: tapping a post shows its web page, trimmed to the post, inside Obsidian (${frame?.src?.slice(0, 30) ?? "no frame"})`);
     check(frame !== null && !/allow-scripts|allow-same-origin/.test(frame.sandbox), `${layout}: the page runs sandboxed, without scripts and without its origin (${frame?.sandbox})`);
     await wait(1500);
     const framed = page.frames().find((f) => f.url() === frame?.src);
-    const framedText = framed ? await framed.evaluate(() => document.body?.innerText ?? "").catch(() => "") : "";
-    check(framedText.length > 0, `${layout}: the page really rendered in the frame (${framedText.replace(/\s+/g, " ").slice(0, 60)}…)`);
+    const inside = framed ? await framed.evaluate(() => ({ text: document.body?.innerText ?? "", styles: [...document.querySelectorAll("style")].map((x) => x.textContent?.length ?? 0), font: getComputedStyle(document.body).fontFamily, article: document.querySelectorAll("article").length })).catch(() => null) : null;
+    check(Boolean(inside) && inside.text.length > 0 && inside.article === 1, `${layout}: the post really rendered in the frame (${(inside?.text ?? "").replace(/\s+/g, " ").slice(0, 60)}…)`);
+    check(Boolean(inside) && !/Made with Blygger|Find more blygs/.test(inside.text), `${layout}: the blyg's menu, masthead and links are left out`);
+    check(Boolean(inside) && inside.styles[0] > 1000 && inside.font.trim() !== '"Times New Roman"' /* the browser's default when no stylesheet applies */, `${layout}: the blyg's own stylesheet is applied, inline (${inside?.styles[0]} characters; font ${inside?.font?.slice(0, 40)})`);
     check((await text(".blyg-reader-meta")).some((t) => t.startsWith("On the web:")), `${layout}: the header says the post is shown from the web`);
     const buttons = await text(".blyg-reader-actions button");
     check(["Reply in Obsidian", "Mark read", "Open in browser", "Show as text"].every((b) => buttons.includes(b)), `${layout}: the actions are there: ${buttons.join(", ")}`);
@@ -116,7 +118,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
       view.data.posts[0].sourceUrl = u;
       view.shown = view.data.posts[0];
       view.shownAs = "web";
-      view.frameVerdict = "unknown";
+      view.page = { s: "unknown" };
       view.draw();
     }, url);
     await open("http://127.0.0.1:18999/gone");
@@ -127,7 +129,8 @@ await runScenario({ data: fixtureData() }, async (s) => {
     // here; on mobile the header arrives and the post falls back to text (unit-tested in framePolicy, not checkable in this desktop harness).
     await open("http://127.0.0.1:18999/noframe");
     await wait(2500);
-    check((await page.$(".blyg-reader-frame")) !== null, "desktop: Obsidian strips X-Frame-Options, so a refusing page is still shown in the sandboxed frame (documented, not a choice of the plugin)");
+    const whole = await page.evaluate(() => document.querySelector(".blyg-reader-frame")?.getAttribute("src") ?? null);
+    check(whole === "http://127.0.0.1:18999/noframe", `a page without the contract's article is shown whole; and desktop Obsidian strips X-Frame-Options, so even this refusing page is framed (documented, not the plugin's choice) (${whole})`);
     await page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader").forEach((l) => l.detach()));
   }
 
