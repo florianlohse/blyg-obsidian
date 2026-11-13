@@ -17,7 +17,9 @@ await runScenario({ data }, async (s) => {
   const rev = (await s.studioItem(ownId)).json?.revision;
   const pub = await s.studio(`/items/${encodeURIComponent(ownId)}/publish`, { method: "POST", body: JSON.stringify({ expectedRevision: rev }) });
   check(made.status === 201 && pub.status === 200, `an item to answer is published in the Studio (HTTP ${made.status}, ${pub.status})`);
-  const imported = (await s.studio("/search?source=imported&limit=5")).json?.items?.[0];
+  // The item the picker search below finds ("remote fragment"), looked up by the same words: not "the first imported item", which is whatever the
+  // Studio imported last (another scenario in the same run, reader-poc, publishes newer posts on the second Studio).
+  const imported = (await s.studio("/search?source=imported&q=remote%20fragment&limit=5")).json?.items?.find((i) => /remote fragment/i.test(i.excerpt ?? ""));
   if (!imported) console.log("skip the reply to a blyg you read: the Studio holds no imported item (WITH_REMOTE=1 scripts/local-studio.sh start)");
 
   /** The note the plugin just made is the active one: wait for it and return its path. */
