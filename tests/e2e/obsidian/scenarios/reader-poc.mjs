@@ -11,7 +11,8 @@ let hits = 0;
 const referers = [];
 const imageServer = createServer((req, res) => {
   if ((req.url ?? "").startsWith("/pixel")) { hits++; referers.push(req.headers.referer ?? null); }
-  res.writeHead(200, { "content-type": "image/png" });
+  // no-store: a request the browser answers from its cache would not reach this counter, so every load must come here.
+  res.writeHead(200, { "content-type": "image/png", "cache-control": "no-store" });
   res.end(PNG);
 });
 await new Promise((resolve) => imageServer.listen(18999, "127.0.0.1", resolve));
@@ -129,7 +130,8 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await page.evaluate(() => { window.app.plugins.plugins.blyg.settings.readerPane.images = "always"; });
     hits = 0;
     referers.length = 0;
-    await show(`<p>pictures</p>${post("pixel1", "pixel2")}`, true);
+    // Fresh addresses: the two above were loaded already, and a browser may answer those from its image cache with no request at all (seen in CI).
+    await show(`<p>pictures</p>${post("pixel3", "pixel4")}`, true);
     check(hits === 2 && (await count("img")) === 2 && (await count(".blyg-reader-image")) === 0, `images, always load: both are drawn with the post (${hits} requests)`);
     check(referers.every((r) => r === null), `images, always load: no referrer is sent (${JSON.stringify(referers)})`);
     await page.evaluate(() => { window.app.plugins.plugins.blyg.settings.readerPane.images = "click"; });
