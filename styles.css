@@ -447,3 +447,17 @@
   overflow-y: auto;
   margin: var(--size-4-1) 0 var(--size-4-2);
 }
+
+/* PROOF OF CONCEPT (S15): the reader pane. Theme variables only; one column, so it holds on a phone. */
+.blyg-reader { padding: var(--size-4-3); max-width: 42rem; margin: 0 auto; }
+.blyg-reader-bar { display: flex; gap: var(--size-4-2); flex-wrap: wrap; margin-bottom: var(--size-4-3); }
+.blyg-reader-btn.is-active { background: var(--interactive-accent); color: var(--text-on-accent); }
+.blyg-reader-status { color: var(--text-muted); margin-bottom: var(--size-4-3); }
+.blyg-reader-row { padding: var(--size-4-3) 0; border-bottom: 1px solid var(--background-modifier-border); cursor: pointer; }
+.blyg-reader-row.is-unread .blyg-reader-excerpt { font-weight: var(--font-semibold); }
+.blyg-reader-meta { color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.blyg-reader-body { margin: var(--size-4-3) 0; }
+.blyg-reader-body img { max-width: 100%; }
+.blyg-reader-actions { display: flex; gap: var(--size-4-2); flex-wrap: wrap; }
+.blyg-reader-blocked { color: var(--text-faint); font-style: italic; }
+.blyg-reader-image { display: inline-block; margin: var(--size-4-1) 0; max-width: 100%; white-space: normal; text-align: left; height: auto; }

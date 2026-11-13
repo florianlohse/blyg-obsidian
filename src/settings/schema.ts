@@ -101,6 +101,12 @@ export interface BlygSettings {
     format: string;
     stripTracking: boolean;
   };
+  /**
+   * The reader pane (roadmap S15, proof of concept). Optional in data.json like `webQuote`. `images`: a post you read can carry images from the author's
+   * own server or from any server the author chose, and loading one tells that server you read the post. `click` (the default): each image is a
+   * button and loads when tapped; `always`: images load as the post is drawn.
+   */
+  readerPane: { images: "click" | "always" };
 }
 
 /** `dev` is the development build (manifest id ends in -dev): a fresh install starts with the test route `Studio test/`, so it never claims the real plugin's default folder `blyg/`. */
@@ -140,5 +146,6 @@ export function defaultSettings(flavour: "release" | "dev" = "release"): BlygSet
     respond: { draftsPrefix: "blyg/" },
     mentions: { repoPath: "data/mentions.json" },
     webQuote: { ...DEFAULT_WEB_QUOTE },
+    readerPane: { images: "click" },
   };
 }

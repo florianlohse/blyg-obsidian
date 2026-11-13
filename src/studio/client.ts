@@ -7,6 +7,7 @@ import { readWireStub, stubForWire, type StubTarget } from "./stub";
 import type { StudioHttp, StudioResponse } from "./http";
 import type { StudioCapabilities, StudioCommandDone, StudioFailure, StudioHit, StudioImported, StudioHopper, StudioItem, StudioItemKind, StudioListedItem, StudioManifest, StudioMediaDone, StudioPeek, StudioPreview, StudioProblem, StudioResolvedQuote, StudioResult, StudioSubscription } from "./types";
 import { contractVerdict, incompatibleMessage, type ContractVerdict } from "./version";
+import { readInboundMention, readReadingPost, type InboundMention, type ReadingPost } from "./reading";
 
 /** What the gate remembers about a Studio's contract (per plugin session, so a publish does not ask every time); "Check connection" asks again. */
 export interface ContractCache {
@@ -78,6 +79,12 @@ export interface StudioClient {
   countMentions(itemId: string): Promise<StudioResult<{ count: number; complete: boolean }>>;
   /** An imported item (its HTML is what a reader of this Studio sees, and what a passage is chosen from). */
   getImported(subscriptionId: string, id: string): Promise<StudioResult<StudioImported>>;
+  /** POC (S15): the posts the owner reads, newest first as the Studio orders them (`GET /reading/imported`, `owner:read`), at most `maxPages` pages of 50. */
+  listReading(maxPages?: number): Promise<StudioResult<{ posts: ReadingPost[]; complete: boolean; unreadable: number }>>;
+  /** POC (S15): inbound mentions of the owner's items (`GET /mentions?direction=inbound`, `owner:read`), verified and not hidden only. */
+  listInboundMentions(maxPages?: number): Promise<StudioResult<{ mentions: InboundMention[]; complete: boolean; unreadable: number }>>;
+  /** POC (S15): mark one version of a post read. Needs the token scope `reading:state`, which the plugin's token does not carry today: a 403 comes back as `forbidden`. */
+  markRead(subscriptionId: string, remoteId: string, version: number): Promise<StudioResult<{ readVersion: number | null }>>;
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -333,6 +340,26 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
       return { kind: "ok", value: { count, complete: walked.value.complete } };
     },
 
+    listReading: async (maxPages = 4) => {
+      const walked = await walk("/reading/imported", {}, 50, maxPages, readReadingPost);
+      if (walked.kind !== "ok") return walked;
+      return { kind: "ok", value: { posts: walked.value.rows, complete: walked.value.complete, unreadable: walked.value.unreadable } } as const;
+    },
+
+    listInboundMentions: async (maxPages = 2) => {
+      const walked = await walk("/mentions", { direction: "inbound" }, MENTION_PAGE, maxPages, readInboundMention);
+      if (walked.kind !== "ok") return walked;
+      const mentions = walked.value.rows.filter((m) => m.status === "verified" && !m.hidden);
+      return { kind: "ok", value: { mentions, complete: walked.value.complete, unreadable: walked.value.unreadable } } as const;
+    },
+
+    markRead: async (subscriptionId: string, remoteId: string, version: number) => {
+      const res = await http.send(token, { method: "PUT", area: "api", path: `/reading/${encodeURIComponent(subscriptionId)}/${encodeURIComponent(remoteId)}/read`, body: { version, readAt: new Date().toISOString() } });
+      if (res.status !== 200) return failure(res);
+      const readVersion = isRecord(res.json) && typeof res.json.readVersion === "number" ? res.json.readVersion : null;
+      return { kind: "ok", value: { readVersion } } as const;
+    },
+
     listItems: async (): Promise<StudioResult<{ items: StudioListedItem[]; complete: boolean; unreadable: number }>> => {
       const walked = await walk("/items", {}, ITEM_PAGE, ITEM_PAGES, readListedItem);
       if (walked.kind !== "ok") return walked;
@@ -418,6 +445,9 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
     withdraw: guard(inner.withdraw),
     countItems: guard(inner.countItems),
     listItems: guard(inner.listItems),
+    listReading: guard(inner.listReading),
+    listInboundMentions: guard(inner.listInboundMentions),
+    markRead: guard(inner.markRead),
     classifyLinks: guard(inner.classifyLinks),
     peekItem: guard(inner.peekItem),
     getSubscription: guard(inner.getSubscription),
