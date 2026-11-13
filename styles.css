@@ -461,3 +461,22 @@
 .blyg-reader-actions { display: flex; gap: var(--size-4-2); flex-wrap: wrap; }
 .blyg-reader-blocked { color: var(--text-faint); font-style: italic; }
 .blyg-reader-image { display: inline-block; margin: var(--size-4-1) 0; max-width: 100%; white-space: normal; text-align: left; height: auto; }
+/* S15 second round: cards, controls, and a post shown as its web page filling the pane. */
+.blyg-reader.is-post { display: flex; flex-direction: column; height: 100%; max-width: none; }
+.blyg-reader-controls { display: flex; gap: var(--size-4-2); flex-wrap: wrap; align-items: center; margin-bottom: var(--size-4-2); }
+.blyg-reader-select { max-width: 100%; }
+.blyg-reader-toggle { display: inline-flex; gap: var(--size-4-1); align-items: center; color: var(--text-muted); }
+.blyg-reader-card { padding: var(--size-4-3) var(--size-4-2); border-left: 3px solid transparent; }
+.blyg-reader-card.is-unread { border-left-color: var(--interactive-accent); }
+.blyg-reader-card.is-unread .blyg-reader-source { font-weight: var(--font-semibold); }
+.blyg-reader-cardhead { margin-bottom: var(--size-2-1); }
+.blyg-reader-source { color: var(--text-normal); }
+.blyg-reader-badges { display: flex; gap: var(--size-4-1); flex-wrap: wrap; margin-bottom: var(--size-2-2); }
+.blyg-reader-badges:empty { display: none; }
+.blyg-reader-badge { font-size: var(--font-ui-smaller); color: var(--text-muted); border: 1px solid var(--background-modifier-border); border-radius: var(--radius-s); padding: 0 var(--size-4-1); }
+.blyg-reader-badge.is-new { color: var(--text-accent); border-color: var(--interactive-accent); }
+.blyg-reader-quote { color: var(--text-muted); font-style: italic; border-left: 2px solid var(--background-modifier-border); padding-left: var(--size-4-2); margin-bottom: var(--size-2-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.blyg-reader-card .blyg-reader-excerpt { font-weight: var(--font-normal); display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
+.blyg-reader-card.is-unread .blyg-reader-excerpt { font-weight: var(--font-normal); }
+.blyg-reader.is-post .blyg-reader-actions { margin-bottom: var(--size-4-2); }
+.blyg-reader-frame { flex: 1 1 auto; width: 100%; min-height: 60vh; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); background: var(--background-primary); }

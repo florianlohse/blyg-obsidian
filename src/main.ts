@@ -44,6 +44,7 @@ import { BLYG_PANEL_VIEW, BlygPanelView, type PanelHost } from "./ui/BlygPanelVi
 import { promptForItem, promptForQuote } from "./ui/QuotePicker";
 import { promptForStudioItem } from "./ui/StudioPicker";
 import { BLYG_READER_VIEW, BlygReaderView, excerptOf, type ReaderHost } from "./ui/ReaderView";
+import { framePolicy } from "./ui/readerFeed";
 import { buildStudio } from "./app/run";
 import type { ReadingPost } from "./studio/reading";
 import { confirmWithModal } from "./ui/WritePreviewModal";
@@ -824,9 +825,52 @@ export default class BlygPlugin extends Plugin {
     await workspace.revealLeaf(leaf);
   }
 
+  /** When the reader last asked the Studio to fetch the blygs it reads (this session only). */
+  private readerCheckedAt = 0;
+
   private readerHost(): ReaderHost {
     return {
       imageMode: () => this.settings.readerPane.images,
+      viewMode: () => this.settings.readerPane.view,
+      checkForNew: async (force) => {
+        // A pause between checks: every check makes the Studio fetch every blyg it reads, so opening the reader again and again must not hammer them.
+        const pause = force ? 60_000 : 10 * 60_000;
+        if (Date.now() - this.readerCheckedAt < pause) return { asked: false };
+        const built = buildStudio(this.env());
+        if (!built.ok) return { asked: false, reason: built.message };
+        try {
+          const got = await built.studio.client.pollSubscriptions();
+          if (got.kind === "ok") {
+            this.readerCheckedAt = Date.now();
+            return { asked: true, polling: got.value.polling };
+          }
+          if (got.kind === "forbidden") return { asked: false, reason: "Your token cannot ask the Studio to check for new posts (it needs the permission “owner:manage”). The list shows what the Studio already has." };
+          return { asked: false, reason: "The Studio could not be asked to check for new posts. The list shows what it already has." };
+        } catch {
+          return { asked: false, reason: "The Studio could not be reached to check for new posts." };
+        }
+      },
+      readingMark: async () => {
+        const built = buildStudio(this.env());
+        if (!built.ok) return null;
+        try {
+          const got = await built.studio.client.changes();
+          return got.kind === "ok" ? `${got.value.epoch}:${got.value.domains.reading ?? ""}:${got.value.domains.subscriptions ?? ""}` : null;
+        } catch {
+          return null;
+        }
+      },
+      frameAllowed: async (url) => {
+        // Asked with a plain request (no token, no cookies), only to read the page's framing headers. On any doubt: no frame, the post is shown as text.
+        try {
+          let res = await obsidianTransport({ url, method: "HEAD", headers: {} });
+          if (res.status === 405 || res.status === 501) res = await obsidianTransport({ url, method: "GET", headers: {} });
+          if (res.status >= 400) return "unreachable";
+          return framePolicy(res.headers);
+        } catch {
+          return "unreachable";
+        }
+      },
       load: async () => {
         const built = buildStudio(this.env());
         if (!built.ok) return { ok: false, message: built.message };

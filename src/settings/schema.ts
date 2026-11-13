@@ -106,7 +106,12 @@ export interface BlygSettings {
    * own server or from any server the author chose, and loading one tells that server you read the post. `click` (the default): each image is a
    * button and loads when tapped; `always`: images load as the post is drawn.
    */
-  readerPane: { images: "click" | "always" };
+  readerPane: {
+    images: "click" | "always";
+    /** How a post opens: `web` shows the author's own page inside Obsidian (sandboxed, no scripts; it loads like a visit to that page), `text` draws the
+     *  post's text in Obsidian (images follow `images`). A page that refuses to be shown inside another app falls back to `text`. */
+    view: "web" | "text";
+  };
 }
 
 /** `dev` is the development build (manifest id ends in -dev): a fresh install starts with the test route `Studio test/`, so it never claims the real plugin's default folder `blyg/`. */
@@ -146,6 +151,6 @@ export function defaultSettings(flavour: "release" | "dev" = "release"): BlygSet
     respond: { draftsPrefix: "blyg/" },
     mentions: { repoPath: "data/mentions.json" },
     webQuote: { ...DEFAULT_WEB_QUOTE },
-    readerPane: { images: "click" },
+    readerPane: { images: "click", view: "web" },
   };
 }

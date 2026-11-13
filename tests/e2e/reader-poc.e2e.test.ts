@@ -45,6 +45,15 @@ run("reader PoC against a real Studio", () => {
     if (got.kind === "ok") say(`mentions: ${got.value.mentions.length}, unreadable=${got.value.unreadable}; ${relationWords("stub")}`);
   });
 
+  it("asks the Studio to fetch the blygs it reads (owner:manage), and reads its change counters", async () => {
+    const changes = await client.changes();
+    expect(changes.kind).toBe("ok");
+    if (changes.kind === "ok") expect(typeof changes.value.domains.reading).toBe("number");
+    const polled = await client.pollSubscriptions();
+    expect(polled.kind).toBe("ok");
+    if (polled.kind === "ok") expect(polled.value.polling).toBeGreaterThanOrEqual(1);
+  });
+
   it("marking read needs the extra scope: the plugin's four scopes are refused, plainly", async () => {
     const list = await client.listReading(1);
     if (list.kind !== "ok" || !list.value.posts[0]) throw new Error("e2e: no post to mark");
