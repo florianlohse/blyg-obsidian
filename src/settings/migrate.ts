@@ -105,7 +105,7 @@ export function migrateSettings(raw: unknown, flavour: "release" | "dev" = "rele
       stripTracking: typeof wq.stripTracking === "boolean" ? wq.stripTracking : d.webQuote.stripTracking,
     },
     // Anything but "always" is the safe default: a typo or a value from a later version never turns images on by accident.
-    readerPane: { images: rp.images === "always" ? "always" : "click" },
+    readerPane: { images: rp.images === "always" ? "always" : "click", view: rp.view === "text" ? "text" : "web" },
   };
 
   if (isPlain(bl.author) && typeof bl.author.name === "string") {

@@ -17,6 +17,10 @@ export interface ReadingPost {
   /** Highest version marked read; null = unread. A readVersion below `version` means a newer version arrived after it was read. */
   readVersion: number | null;
   observedAt: string;
+  /** When the author made it (the origin's own date), when known. */
+  created: string | null;
+  /** True when the post answers another item (`stubOf`). */
+  isReply: boolean;
   contentHtml: string;
   contentMd: string;
   authorName: string | null;
@@ -45,6 +49,8 @@ export function readReadingPost(row: unknown): ReadingPost | null {
     version: row.version,
     readVersion: typeof row.readVersion === "number" ? row.readVersion : null,
     observedAt: str(row.observedAt) ?? "",
+    created: str(row.created),
+    isReply: isRecord(row.stubOf),
     contentHtml,
     contentMd: str(row.contentMd) ?? "",
     authorName: author,

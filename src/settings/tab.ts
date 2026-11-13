@@ -205,9 +205,15 @@ export class BlygSettingTab extends PluginSettingTab {
       items: [
         {
           name: "Images in posts you read",
-          desc: "A post can carry images from its author's server, or from any server the author chose. Loading one tells that server that you read the post, and when. “Load on click” shows each image as a button and loads it only when you tap it; “Always load” draws images with the post. Frames and scripts in a post are never loaded.",
+          desc: "For posts shown as text (see “Open posts as”). A post can carry images from its author's server, or from any server the author chose. Loading one tells that server that you read the post, and when. “Load on click” shows each image as a button and loads it only when you tap it; “Always load” draws images with the post. The list of posts never loads images, and frames and scripts in a post are never loaded.",
           aliases: ["reader", "images", "privacy", "tracking"],
           control: { type: "dropdown", key: "readerPane.images", options: { click: "Load on click", always: "Always load" } },
+        },
+        {
+          name: "Open posts as",
+          desc: "“Web page” shows the post as its author's blyg shows it on the web, inside Obsidian (scripts are not run; the page and its images load as a visit would). “Text” draws only the post's text here, and images follow the setting above. A blyg that does not allow its pages inside other apps is always shown as text.",
+          aliases: ["reader", "web view", "page"],
+          control: { type: "dropdown", key: "readerPane.view", options: { web: "Web page", text: "Text" } },
         },
       ],
     });

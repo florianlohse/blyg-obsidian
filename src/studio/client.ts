@@ -85,6 +85,10 @@ export interface StudioClient {
   listInboundMentions(maxPages?: number): Promise<StudioResult<{ mentions: InboundMention[]; complete: boolean; unreadable: number }>>;
   /** POC (S15): mark one version of a post read. Needs the token scope `reading:state`, which the plugin's token does not carry today: a 403 comes back as `forbidden`. */
   markRead(subscriptionId: string, remoteId: string, version: number): Promise<StudioResult<{ readVersion: number | null }>>;
+  /** S15: ask the Studio to fetch every blyg it reads now (`POST /subscriptions/poll`, `owner:manage`). The fetch runs in the background; `polling` is how many. */
+  pollSubscriptions(): Promise<StudioResult<{ polling: number }>>;
+  /** S15: the Studio's change counters (`GET /changes`, `owner:read`): cheap, to see whether the reading list moved without walking it. */
+  changes(): Promise<StudioResult<{ epoch: string; domains: Record<string, number> }>>;
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -360,6 +364,23 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
       return { kind: "ok", value: { readVersion } } as const;
     },
 
+    pollSubscriptions: async () => {
+      const res = await http.send(token, { method: "POST", area: "api", path: "/subscriptions/poll", body: {} });
+      if (res.status !== 200) return failure(res);
+      if (!isRecord(res.json) || typeof res.json.polling !== "number") return unreadable(res);
+      return { kind: "ok", value: { polling: res.json.polling } } as const;
+    },
+
+    changes: async () => {
+      const res = await http.send(token, { area: "api", path: "/changes" });
+      if (res.status !== 200) return failure(res);
+      const j = res.json;
+      if (!isRecord(j) || typeof j.epoch !== "string" || !isRecord(j.domains)) return unreadable(res);
+      const domains: Record<string, number> = {};
+      for (const [k, v] of Object.entries(j.domains)) if (typeof v === "number") domains[k] = v;
+      return { kind: "ok", value: { epoch: j.epoch, domains } } as const;
+    },
+
     listItems: async (): Promise<StudioResult<{ items: StudioListedItem[]; complete: boolean; unreadable: number }>> => {
       const walked = await walk("/items", {}, ITEM_PAGE, ITEM_PAGES, readListedItem);
       if (walked.kind !== "ok") return walked;
@@ -448,6 +469,8 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
     listReading: guard(inner.listReading),
     listInboundMentions: guard(inner.listInboundMentions),
     markRead: guard(inner.markRead),
+    pollSubscriptions: guard(inner.pollSubscriptions),
+    changes: guard(inner.changes),
     classifyLinks: guard(inner.classifyLinks),
     peekItem: guard(inner.peekItem),
     getSubscription: guard(inner.getSubscription),

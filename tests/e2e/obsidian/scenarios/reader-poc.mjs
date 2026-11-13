@@ -10,12 +10,35 @@ const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
 let hits = 0;
 const referers = [];
 const imageServer = createServer((req, res) => {
+  if ((req.url ?? "").startsWith("/gone")) {
+    res.writeHead(404, { "content-type": "text/html" });
+    res.end("<p>gone</p>");
+    return;
+  }
+  if ((req.url ?? "").startsWith("/noframe")) {
+    res.writeHead(200, { "content-type": "text/html", "x-frame-options": "DENY" });
+    res.end("<p>This page refuses to be shown inside another app.</p>");
+    return;
+  }
   if ((req.url ?? "").startsWith("/pixel")) { hits++; referers.push(req.headers.referer ?? null); }
   // no-store: a request the browser answers from its cache would not reach this counter, so every load must come here.
   res.writeHead(200, { "content-type": "image/png", "cache-control": "no-store" });
   res.end(PNG);
 });
 await new Promise((resolve) => imageServer.listen(18999, "127.0.0.1", resolve));
+
+/** Publish a fragment on the second local Studio ("Blog B", which the first one reads), as its owner would in the web app. Port and password: scripts/local-studio.sh. */
+async function publishOnBlogB(text) {
+  const B = "http://localhost:8788";
+  const login = await fetch(`${B}/studio/login`, { method: "POST", redirect: "manual", headers: { Origin: B, "content-type": "application/x-www-form-urlencoded" }, body: "password=local-test-password-123" });
+  const cookie = (login.headers.getSetCookie?.() ?? []).map((c) => c.split(";")[0]).join("; ");
+  const json = async (path, init) => (await fetch(`${B}${path}`, { ...init, headers: { Origin: B, "content-type": "application/json", ...(init.headers ?? {}) } })).json();
+  const minted = await json("/api/authorizations", { method: "POST", headers: { cookie }, body: JSON.stringify({ name: "reader scenario", resource: "api", scope: ["owner:read", "owner:draft", "owner:publish"] }) });
+  const auth = { authorization: `Bearer ${minted.accessToken}` };
+  const item = await json("/api/items", { method: "POST", headers: auth, body: JSON.stringify({ mode: "blank", kind: "fragment", contentMd: text }) });
+  await json(`/api/items/${item.id}/publish`, { method: "POST", headers: auth, body: JSON.stringify({ expectedRevision: item.revision }) });
+  return item.id;
+}
 
 await runScenario({ data: fixtureData() }, async (s) => {
   const { check } = s;
@@ -33,25 +56,43 @@ await runScenario({ data: fixtureData() }, async (s) => {
 
   async function pass(layout) {
     await page.evaluate(() => window.app.commands.executeCommandById("blyg:open-reader-poc"));
-    await page.waitForSelector(".blyg-reader-row", { timeout: 20000 }).catch(() => {});
-    const rows = await text(".blyg-reader-row");
-    check(rows.length > 0, `${layout}: the stream shows the post the Studio holds (${rows.length} row)`);
-    check(!(await text(".blyg-reader-row.is-unread")).every((t) => t === ""), `${layout}: an unread post is marked as unread`);
-    await shot(`${layout}-1-stream`);
+    await page.waitForSelector(".blyg-reader-card", { timeout: 20000 }).catch(() => {});
+    const cards = await text(".blyg-reader-card");
+    check(cards.length > 0 && cards.some((c) => c.includes("Blog B")), `${layout}: the feed shows cards naming the blyg (${cards.length} cards)`);
+    check((await text(".blyg-reader-card.is-unread .blyg-reader-badge.is-new")).length > 0, `${layout}: an unread post carries an "unread" badge`);
+    const options = await page.evaluate(() => [...document.querySelectorAll(".blyg-reader-controls select")].map((s) => [...s.options].map((o) => o.textContent)));
+    check(options.length === 2 && options[0].includes("Newest first") && options[1].some((o) => /^Blog B \(\d+\)$/.test(o ?? "")), `${layout}: order and blyg pickers are there (${JSON.stringify(options)})`);
+    check((await text(".blyg-reader-toggle")).some((t) => t.includes("Unread only")), `${layout}: the "Unread only" switch is there`);
+    await shot(`${layout}-1-feed`);
 
-    await page.evaluate(() => document.querySelector(".blyg-reader-row")?.click());
+    // A post opens as its web page, sandboxed, inside Obsidian.
+    const url = await page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader")[0].view.data.posts.find((p) => p.sourceUrl)?.sourceUrl ?? null);
+    await page.evaluate((u) => [...document.querySelectorAll(".blyg-reader-card")].find((c, i) => window.app.workspace.getLeavesOfType("blyg-reader")[0].view.data.posts.length > i)?.click(), url);
+    await page.waitForSelector(".blyg-reader-frame", { timeout: 15000 }).catch(() => {});
+    const frame = await page.evaluate(() => {
+      const f = document.querySelector(".blyg-reader-frame");
+      return f ? { src: f.getAttribute("src"), sandbox: f.getAttribute("sandbox") ?? "" } : null;
+    });
+    check(frame !== null && frame.src?.startsWith("http"), `${layout}: tapping a post shows its web page inside Obsidian (${frame?.src ?? "no frame"})`);
+    check(frame !== null && !/allow-scripts|allow-same-origin/.test(frame.sandbox), `${layout}: the page runs sandboxed, without scripts and without its origin (${frame?.sandbox})`);
+    await wait(1500);
+    const framed = page.frames().find((f) => f.url() === frame?.src);
+    const framedText = framed ? await framed.evaluate(() => document.body?.innerText ?? "").catch(() => "") : "";
+    check(framedText.length > 0, `${layout}: the page really rendered in the frame (${framedText.replace(/\s+/g, " ").slice(0, 60)}…)`);
+    check((await text(".blyg-reader-meta")).some((t) => t.startsWith("On the web:")), `${layout}: the header says the post is shown from the web`);
+    const buttons = await text(".blyg-reader-actions button");
+    check(["Reply in Obsidian", "Mark read", "Open in browser", "Show as text"].every((b) => buttons.includes(b)), `${layout}: the actions are there: ${buttons.join(", ")}`);
+    await shot(`${layout}-2-web`);
+
+    check(await click("Show as text"), `${layout}: "Show as text" can be tapped`);
     await wait(500);
     const body = (await text(".blyg-reader-body"))[0] ?? "";
-    check(body.length > 0 && !/does not draw/.test(body), `${layout}: tapping a post opens its text, drawn, not refused (${body.length} characters)`);
-    const buttons = await text(".blyg-reader-actions button");
-    check(["Reply in Obsidian", "Open on the web", "Mark read"].every((b) => buttons.includes(b)), `${layout}: the three hand-offs are there: ${buttons.join(", ")}`);
-    await shot(`${layout}-2-post`);
+    check(body.length > 0 && (await page.$(".blyg-reader-frame")) === null, `${layout}: the same post as text, the frame gone (${body.length} characters)`);
 
     check(await click("Mark read"), `${layout}: Mark read can be tapped`);
     await wait(1500);
     const status = (await text(".blyg-reader-status"))[0] ?? "";
     check(/reading:state/.test(status), `${layout}: with the plugin's scopes the refusal is explained in words: "${status.slice(0, 90)}"`);
-    await shot(`${layout}-3-markread`);
 
     const before = await page.evaluate(() => window.app.vault.getMarkdownFiles().length);
     check(await click("Reply in Obsidian"), `${layout}: Reply can be tapped`);
@@ -63,7 +104,60 @@ await runScenario({ data: fixtureData() }, async (s) => {
     });
     check(after === before + 1 && !!reply, `${layout}: Reply made one new note (${before} to ${after}): ${reply?.path ?? "none"}`);
     check(/blyg_stub_of/.test(reply?.text ?? ""), `${layout}: the new note names the post it answers (blyg_stub_of)`);
-    await shot(`${layout}-4-reply`);
+    await page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader").forEach((l) => l.detach()));
+  }
+
+  /** A page that cannot be shown: the post falls back to text, with a line that says why. And what desktop Obsidian does with a page that refuses framing. */
+  async function noFrame() {
+    await page.evaluate(() => window.app.commands.executeCommandById("blyg:open-reader-poc"));
+    await page.waitForSelector(".blyg-reader-card", { timeout: 20000 });
+    const open = (url) => page.evaluate((u) => {
+      const view = window.app.workspace.getLeavesOfType("blyg-reader")[0].view;
+      view.data.posts[0].sourceUrl = u;
+      view.shown = view.data.posts[0];
+      view.shownAs = "web";
+      view.frameVerdict = "unknown";
+      view.draw();
+    }, url);
+    await open("http://127.0.0.1:18999/gone");
+    await wait(2500);
+    const meta = (await text(".blyg-reader-meta")).join(" ");
+    check((await page.$(".blyg-reader-frame")) === null && /could not be reached/.test(meta) && ((await text(".blyg-reader-body"))[0] ?? "").length > 0, `a page that does not answer falls back to text, and says why ("${meta.slice(0, 70)}")`);
+    // Desktop Obsidian removes X-Frame-Options and CSP frame-ancestors from every response (its own session hook), so a refusing page is framed anyway
+    // here; on mobile the header arrives and the post falls back to text (unit-tested in framePolicy, not checkable in this desktop harness).
+    await open("http://127.0.0.1:18999/noframe");
+    await wait(2500);
+    check((await page.$(".blyg-reader-frame")) !== null, "desktop: Obsidian strips X-Frame-Options, so a refusing page is still shown in the sandboxed frame (documented, not a choice of the plugin)");
+    await page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader").forEach((l) => l.detach()));
+  }
+
+  /** New posts: the reader asks the Studio to fetch the blygs it reads, so a post published a moment ago appears after Refresh, without the web app. */
+  async function freshness() {
+    await page.evaluate(() => window.app.commands.executeCommandById("blyg:open-reader-poc"));
+    await page.waitForSelector(".blyg-reader-card", { timeout: 20000 });
+    const stamp = `Fresh post ${Date.now().toString(36)}`;
+    const id = await publishOnBlogB(`${stamp}. Published while the reader was open.`);
+    // The other blyg lists a new post in its feed a moment after publishing; a reader only ever sees it from then on. Wait for that, as a person would.
+    for (let i = 0; i < 90; i++) {
+      const feed = await fetch("http://localhost:8788/feed.xml").then((x) => x.text()).catch(() => "");
+      if (feed.includes(id)) break;
+      await wait(1000);
+    }
+    // The reader asked once already when it opened; Refresh waits a minute between asks. A person would wait; the test resets the pause.
+    await page.evaluate(() => { window.app.plugins.plugins.blyg.readerCheckedAt = 0; });
+    check(await click("Refresh"), "freshness: Refresh can be tapped");
+    let saw = "";
+    let found = false;
+    for (let i = 0; i < 40 && !found; i++) {
+      await wait(1000);
+      const st = (await text(".blyg-reader-status"))[0] ?? "";
+      if (/Checking/.test(st)) saw = st;
+      found = (await text(".blyg-reader-card")).some((c) => c.includes(stamp));
+    }
+    check(saw !== "", `freshness: the status says the Studio is checking ("${saw}")`);
+    check(found, "freshness: a post published on the other blyg a moment ago appears after Refresh");
+    await shot("freshness");
+    await page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader").forEach((l) => l.detach()));
   }
 
   /** Foreign markup through the reader's own drawing code: nothing runs, nothing is loaded from a stranger's server, and anything not understood is refused, not guessed. */
@@ -74,6 +168,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
       const view = window.app.workspace.getLeavesOfType("blyg-reader")[0].view;
       view.data.posts[0].contentHtml = h;
       view.shown = view.data.posts[0];
+      view.shownAs = "text";
       view.draw();
       await new Promise((r) => setTimeout(r, 800));
       const body = document.querySelector(".blyg-reader-body");
@@ -99,6 +194,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
       const view = window.app.workspace.getLeavesOfType("blyg-reader")[0].view;
       view.data.posts[0].contentHtml = h;
       view.shown = one ? view.data.posts[0] : null;
+      view.shownAs = "text";
       view.draw();
       await new Promise((r) => setTimeout(r, 1200));
     }, [html, asPost]);
@@ -158,6 +254,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
         const view = window.app.workspace.getLeavesOfType("blyg-reader")[0].view;
         view.data.posts[0].contentHtml = h;
         view.shown = view.data.posts[0];
+      view.shownAs = "text";
         view.draw();
         await new Promise((r) => setTimeout(r, 1500));
         return /does not draw/.test(document.querySelector(".blyg-reader-body")?.textContent ?? "");
@@ -170,6 +267,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
       const view = window.app.workspace.getLeavesOfType("blyg-reader")[0].view;
       view.data.posts[0].contentHtml = `<p><img src="http://localhost:8787/x&#39; style=&#39;background-image:url(${pixel})" alt="y"></p>`;
       view.shown = view.data.posts[0];
+      view.shownAs = "text";
       view.draw();
       await new Promise((r) => setTimeout(r, 1500));
       const img = document.querySelector(".blyg-reader-body img");
@@ -179,6 +277,8 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader").forEach((l) => l.detach()));
   }
 
+  await freshness();
+  await noFrame();
   await bypasses();
   await images();
   await hostile();

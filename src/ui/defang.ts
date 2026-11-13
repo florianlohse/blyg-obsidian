@@ -74,7 +74,9 @@ const hostOf = (src: string): string | null => {
 
 /** The visible text of a post for a list, taken from the string (never inserted as markup, so an imperfect strip can only look odd). */
 export function plainText(html: string): string {
-  return decode(html.replace(/<[^>]*>/g, " ")).replace(/\s+/g, " ").trim();
+  // Inline tags join their words to the text around them ("a <a>link</a>." stays "a link."); every other tag separates words.
+  const INLINE = /<\/?(?:a|em|strong|b|i|s|del|code|sup|sub|span|mark|abbr|small)(?:\s[^>]*)?>/gi;
+  return decode(html.replace(INLINE, "").replace(/<[^>]*>/g, " ")).replace(/\s+/g, " ").trim();
 }
 
 export interface Rewrite {
