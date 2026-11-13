@@ -8,6 +8,11 @@ becomes the release notes. Write entries for people who use the plugin, not for 
 
 ## [Unreleased]
 
+### Added
+
+- **Reader (experimental).** The command "Open reader (proof of concept)" opens a tab with the posts of the blygs your Studio reads, newest first, unread ones in bold, and the mentions of your items. Tap a post to read it, then "Reply in Obsidian" (a new thread that answers it), "Open on the web" or "Mark read". Marking read needs a token with every permission (the extra one is "reading:state"); without it the reader says so.
+- **Setting "Images in posts you read".** "Load on click" (the default) shows each image in a post you read as a button that names the server it comes from, and loads it only when you tap it; "Always load" draws images with the post. Loading an image tells its server that you read the post. A post whose markup the reader does not recognise is not drawn; it offers "Open on the web" instead.
+
 ## [0.11.0] — 2026-11-12
 
 You can now put images in your Studio notes. Nothing else changes, and your settings carry over unchanged.

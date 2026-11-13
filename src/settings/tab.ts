@@ -201,6 +201,19 @@ export class BlygSettingTab extends PluginSettingTab {
 
     items.push({
       type: "group",
+      heading: "Reader",
+      items: [
+        {
+          name: "Images in posts you read",
+          desc: "A post can carry images from its author's server, or from any server the author chose. Loading one tells that server that you read the post, and when. “Load on click” shows each image as a button and loads it only when you tap it; “Always load” draws images with the post. Frames and scripts in a post are never loaded.",
+          aliases: ["reader", "images", "privacy", "tracking"],
+          control: { type: "dropdown", key: "readerPane.images", options: { click: "Load on click", always: "Always load" } },
+        },
+      ],
+    });
+
+    items.push({
+      type: "group",
       heading: "Safety",
       items: [
         {

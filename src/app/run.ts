@@ -60,7 +60,7 @@ export interface AppEnv {
 const refuse = (message: string): Outcome => ({ status: "refused", notices: [message] });
 
 /** The Studio client for the settings, or why there is none. A missing Studio never blocks essays and pages: only a Studio route is refused. */
-function buildStudio(env: AppEnv): { ok: true; studio: NonNullable<PublishDeps["studio"]>; token: string } | { ok: false; message: string } {
+export function buildStudio(env: AppEnv): { ok: true; studio: NonNullable<PublishDeps["studio"]>; token: string } | { ok: false; message: string } {
   const address = studioAddress(env.settings.studio);
   if (!address || !env.studio) return { ok: false, message: devStudioProblem(env.settings.studio.baseUrl) ?? M.studioNotConfigured };
   const token = readToken(env.keychain, env.settings.studio.tokenSecretName, "Studio");

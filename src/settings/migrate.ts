@@ -56,6 +56,7 @@ export function migrateSettings(raw: unknown, flavour: "release" | "dev" = "rele
   const rs = isPlain(raw.respond) ? raw.respond : {};
   const mn = isPlain(raw.mentions) ? raw.mentions : {};
   const wq = isPlain(raw.webQuote) ? raw.webQuote : {};
+  const rp = isPlain(raw.readerPane) ? raw.readerPane : {};
 
   const settings: BlygSettings = {
     schemaVersion: SCHEMA_VERSION,
@@ -103,6 +104,8 @@ export function migrateSettings(raw: unknown, flavour: "release" | "dev" = "rele
       format: typeof wq.format === "string" && wq.format.trim() !== "" ? wq.format.replace(/\r\n?/g, "\n").trim() : d.webQuote.format,
       stripTracking: typeof wq.stripTracking === "boolean" ? wq.stripTracking : d.webQuote.stripTracking,
     },
+    // Anything but "always" is the safe default: a typo or a value from a later version never turns images on by accident.
+    readerPane: { images: rp.images === "always" ? "always" : "click" },
   };
 
   if (isPlain(bl.author) && typeof bl.author.name === "string") {

@@ -43,6 +43,9 @@ import { BlygSettingTab } from "./settings/tab";
 import { BLYG_PANEL_VIEW, BlygPanelView, type PanelHost } from "./ui/BlygPanelView";
 import { promptForItem, promptForQuote } from "./ui/QuotePicker";
 import { promptForStudioItem } from "./ui/StudioPicker";
+import { BLYG_READER_VIEW, BlygReaderView, excerptOf, type ReaderHost } from "./ui/ReaderView";
+import { buildStudio } from "./app/run";
+import type { ReadingPost } from "./studio/reading";
 import { confirmWithModal } from "./ui/WritePreviewModal";
 import { chooseImports } from "./ui/ImportModal";
 import { chooseHoppers } from "./ui/HopperModal";
@@ -100,6 +103,8 @@ export default class BlygPlugin extends Plugin {
 
     this.registerView(BLYG_PANEL_VIEW, (leaf) => new BlygPanelView(leaf, this.panelHost()));
     this.addRibbonIcon("send", "Open panel", () => void this.openPanel());
+    this.registerView(BLYG_READER_VIEW, (leaf) => new BlygReaderView(leaf, this.readerHost()));
+    this.addCommand({ id: "open-reader-poc", name: "Open reader (proof of concept)", callback: () => void this.openReader() });
     this.registerPanelRefresh();
 
     this.addCommand({
@@ -807,6 +812,53 @@ export default class BlygPlugin extends Plugin {
       editor.setCursor(endOf(plan.from, plan.text));
       return true;
     });
+  }
+
+  /** PROOF OF CONCEPT (S15): the reader pane opens in the main area; what it asks of the plugin is answered here, through the same Studio plumbing as publishing. */
+  private async openReader(): Promise<void> {
+    const { workspace } = this.app;
+    const existing = workspace.getLeavesOfType(BLYG_READER_VIEW)[0];
+    if (existing) return void (await workspace.revealLeaf(existing));
+    const leaf = workspace.getLeaf("tab");
+    await leaf.setViewState({ type: BLYG_READER_VIEW, active: true });
+    await workspace.revealLeaf(leaf);
+  }
+
+  private readerHost(): ReaderHost {
+    return {
+      imageMode: () => this.settings.readerPane.images,
+      load: async () => {
+        const built = buildStudio(this.env());
+        if (!built.ok) return { ok: false, message: built.message };
+        try {
+          const { client } = built.studio;
+          const [reading, mentions] = await Promise.all([client.listReading(), client.listInboundMentions()]);
+          if (reading.kind !== "ok") return { ok: false, message: "message" in reading ? reading.message : "The Studio could not list what you read." };
+          const cut = !reading.value.complete || (mentions.kind === "ok" && !mentions.value.complete);
+          const bad = reading.value.unreadable + (mentions.kind === "ok" ? mentions.value.unreadable : 0);
+          const note = [cut ? "Showing the newest posts only." : "", bad > 0 ? `${bad} could not be read.` : "", mentions.kind === "ok" ? "" : "Mentions are not available."].filter(Boolean).join(" ");
+          return { ok: true, data: { posts: reading.value.posts, mentions: mentions.kind === "ok" ? mentions.value.mentions : [], note, studioOrigin: built.studio.address.origin } };
+        } catch (err) {
+          this.logger().warn(`reader load failed: ${err instanceof Error ? err.message : String(err)}`);
+          return { ok: false, message: "The Studio could not be reached." };
+        }
+      },
+      openWeb: (url) => window.open(url, "_blank"),
+      replyTo: async (post: ReadingPost) => {
+        const pick: StudioPick = { source: "studio", id: post.remoteId, kind: post.kind, title: excerptOf(post.contentHtml, 60), detail: post.subscriptionTitle, subscriptionId: post.subscriptionId, label: post.subscriptionTitle, origin: post.origin, version: post.version, quotable: true };
+        const target = await runStudioReplyTarget(this.env(), pick);
+        if (!target.ok) return void new Notice(target.message, 10000);
+        await this.createNote("thread", `![[${writtenRef(pick, "")}]]\n\n`, target.target);
+      },
+      markRead: async (post: ReadingPost) => {
+        const built = buildStudio(this.env());
+        if (!built.ok) return built.message;
+        const done = await built.studio.client.markRead(post.subscriptionId, post.remoteId, post.version);
+        if (done.kind === "ok") return "Marked read.";
+        if (done.kind === "forbidden") return "Your token cannot mark posts read. It needs the permission “reading:state”: make a new token with every permission.";
+        return "message" in done ? done.message : "Could not mark it read.";
+      },
+    };
   }
 
   private async openPanel(): Promise<void> {
