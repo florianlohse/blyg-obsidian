@@ -7,6 +7,32 @@ const nodeBuiltins = [
   "util", "url", "buffer", "events", "worker_threads", "electron",
 ];
 
+// Foreign HTML reaches the DOM only through sanitizeHTMLToDom (docs/SECURITY.md §2).
+const htmlSinks = [
+  {
+    selector: "AssignmentExpression[left.property.name=/^(innerHTML|outerHTML)$/]",
+    message: "No innerHTML/outerHTML. Build DOM with createEl, or sanitizeHTMLToDom for foreign HTML.",
+  },
+  {
+    selector: "CallExpression[callee.property.name='insertAdjacentHTML']",
+    message: "No insertAdjacentHTML. Build DOM with createEl, or sanitizeHTMLToDom for foreign HTML.",
+  },
+  {
+    selector: "CallExpression[callee.property.name=/^(createContextualFragment|setHTMLUnsafe|parseFromString)$/], NewExpression[callee.name='DOMParser']",
+    message: "No other HTML sinks: foreign HTML goes through sanitizeHTMLToDom only (docs/SECURITY.md §2).",
+  },
+  {
+    selector: "CallExpression[callee.property.name='write'][callee.object.name='document'], AssignmentExpression[left.property.name='srcdoc'], NewExpression[callee.name='Function'], CallExpression[callee.name='eval']",
+    message: "No document.write, srcdoc, eval or new Function (docs/SECURITY.md §2, Obsidian's plugin guidelines).",
+  },
+];
+// Building an HTML document from a string (a blob: or object URL) is one more sink. ONE file may do it: src/ui/trimmedPage.ts, which turns a post's own
+// page into a document for a frame sandboxed without scripts and without an origin (Florian's decision, 2026-11-13, reader round 3). Nowhere else.
+const documentSink = {
+  selector: "NewExpression[callee.name='Blob'], CallExpression[callee.property.name='createObjectURL']",
+  message: "No HTML documents from strings. The only exception is src/ui/trimmedPage.ts (a sandboxed frame without scripts or origin); see the comment there.",
+};
+
 export default defineConfig([
   globalIgnores(["main.js", "node_modules/**", "coverage/**", "docs/**", "reference/**", "*.json", "scripts/**", "tests/e2e/obsidian/**", "dist/**", "src/studio/api-types.ts"]),
   ...obsidianmd.configs.recommended,
@@ -40,26 +66,13 @@ export default defineConfig([
         { name: "Buffer", message: "Node-only. Use Uint8Array / TextEncoder." },
         { name: "process", message: "Node-only." },
       ],
-      "no-restricted-syntax": [
-        "error",
-        {
-          selector: "AssignmentExpression[left.property.name=/^(innerHTML|outerHTML)$/]",
-          message: "No innerHTML/outerHTML. Build DOM with createEl, or sanitizeHTMLToDom for foreign HTML.",
-        },
-        {
-          selector: "CallExpression[callee.property.name='insertAdjacentHTML']",
-          message: "No insertAdjacentHTML. Build DOM with createEl, or sanitizeHTMLToDom for foreign HTML.",
-        },
-        {
-          selector: "CallExpression[callee.property.name=/^(createContextualFragment|setHTMLUnsafe|parseFromString)$/], NewExpression[callee.name='DOMParser']",
-          message: "No other HTML sinks: foreign HTML goes through sanitizeHTMLToDom only (docs/SECURITY.md §2).",
-        },
-        {
-          selector: "CallExpression[callee.property.name='write'][callee.object.name='document'], AssignmentExpression[left.property.name='srcdoc'], NewExpression[callee.name='Function'], CallExpression[callee.name='eval']",
-          message: "No document.write, srcdoc, eval or new Function (docs/SECURITY.md §2, Obsidian's plugin guidelines).",
-        },
-      ],
+      "no-restricted-syntax": ["error", ...htmlSinks, documentSink],
     },
+  },
+  {
+    // The one exception to documentSink (see above): every other HTML sink stays forbidden here too.
+    files: ["src/ui/trimmedPage.ts"],
+    rules: { "no-restricted-syntax": ["error", ...htmlSinks] },
   },
   {
     // Build tooling runs in Node, not in Obsidian.

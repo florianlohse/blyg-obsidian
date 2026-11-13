@@ -5,6 +5,7 @@ import { ItemView, sanitizeHTMLToDom, type WorkspaceLeaf } from "obsidian";
 import { plainText, renderForeign, type ImageMode } from "./defang";
 import { isUnread, relationWords, type InboundMention, type ReadingPost } from "../studio/reading";
 import { arrange, cardOf, DEFAULT_FILTER, frameable, relativeTime, sourcesOf, type FeedFilter, type FeedSort } from "./readerFeed";
+import { frameUrlFor, READER_FRAME_SANDBOX } from "./trimmedPage";
 
 export const BLYG_READER_VIEW = "blyg-reader";
 
@@ -37,11 +38,12 @@ export interface ReaderHost {
   /** A mark that changes when the Studio's reading list changes (from its change counters), or null when it cannot be read. */
   readingMark(): Promise<string | null>;
   /**
-   * May this page be shown inside Obsidian? `forbidden`: its headers refuse framing; `unreachable`: it did not answer (or answered with an error).
+   * Prepare a post's page for the frame: `trimmed` (the post alone, with the blyg's stylesheets, see trimmedPage.ts), `full` (the page has no article
+   * the reader recognises, and allows framing: the whole page is shown), `forbidden` (no article, and its headers refuse framing), `unreachable`.
    * Note: Obsidian DESKTOP removes `X-Frame-Options` and CSP `frame-ancestors` from every response (its own session hook, read in Obsidian 1.14.5), so
-   * there the check sees no refusal and the page shows anyway; on mobile the headers arrive and a refusing page falls back to text.
+   * there `forbidden` is never seen; on mobile the headers arrive.
    */
-  frameAllowed(url: string): Promise<"allowed" | "forbidden" | "unreachable">;
+  preparePage(url: string): Promise<{ kind: "trimmed"; doc: string } | { kind: "full" } | { kind: "forbidden" } | { kind: "unreachable" }>;
 }
 
 /** The first words of a post, as plain text. Read from an inert document: a list of posts must not request a single image. */
@@ -50,13 +52,20 @@ export function excerptOf(html: string, max = 140): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
+type PageState = { s: "unknown" } | { s: "asking" } | { s: "trimmed"; url: string } | { s: "full" } | { s: "forbidden" } | { s: "unreachable" };
+
 export class BlygReaderView extends ItemView {
   private data: ReaderData | null = null;
   private tab: "stream" | "mentions" = "stream";
   private shown: ReadingPost | null = null;
   /** How the open post is shown, and whether its page may be framed (asked once per post). */
   private shownAs: "web" | "text" = "web";
-  private frameVerdict: "unknown" | "asking" | "allowed" | "forbidden" | "unreachable" = "unknown";
+  /** The open post's page, once prepared. `trimmed` holds an object URL that must be revoked when the post closes. */
+  private page: PageState = { s: "unknown" };
+  /** Read through a call, so a check after an assignment in the same function is not narrowed away by the type checker. */
+  private pageState(): PageState {
+    return this.page;
+  }
   private filter: FeedFilter = { ...DEFAULT_FILTER };
   private status = "";
   private statusEl: HTMLElement | null = null;
@@ -84,7 +93,14 @@ export class BlygReaderView extends ItemView {
 
   override async onClose(): Promise<void> {
     this.checking++;
+    this.releasePage();
     await Promise.resolve();
+  }
+
+  /** Forget the open post's page (and free its object URL). */
+  private releasePage(): void {
+    if (this.page.s === "trimmed") URL.revokeObjectURL(this.page.url);
+    this.page = { s: "unknown" };
   }
 
   /** Read the list from the Studio. `quiet`: keep the status line and do not redraw an open post (its page would reload). */
@@ -147,6 +163,7 @@ export class BlygReaderView extends ItemView {
     if (this.shown) {
       bar.createEl("button", { text: "Back", cls: "blyg-reader-btn" }).addEventListener("click", () => {
         this.shown = null;
+        this.releasePage();
         this.draw();
       });
     } else {
@@ -221,9 +238,9 @@ export class BlygReaderView extends ItemView {
         if (c.images > 0) card.createDiv({ cls: "blyg-reader-meta", text: `${c.images} image${c.images === 1 ? "" : "s"}` });
       }
       card.addEventListener("click", () => {
+        this.releasePage();
         this.shown = p;
         this.shownAs = this.host.viewMode();
-        this.frameVerdict = "unknown";
         this.draw();
       });
     }
@@ -260,27 +277,28 @@ export class BlygReaderView extends ItemView {
     const source = root.createDiv({ cls: "blyg-reader-meta" });
 
     if (this.shownAs === "web" && web && !p.withdrawn) {
-      if (this.frameVerdict === "unknown") {
-        this.frameVerdict = "asking";
-        void this.host.frameAllowed(web).then((verdict) => {
+      const host = new URL(web).host;
+      if (this.page.s === "unknown") {
+        this.page = { s: "asking" };
+        void this.host.preparePage(web).then((prepared) => {
           if (this.shown !== p) return;
-          this.frameVerdict = verdict;
+          this.page = prepared.kind === "trimmed" ? { s: "trimmed", url: frameUrlFor(prepared.doc) } : { s: prepared.kind };
           this.draw();
         });
       }
-      const verdict: string = this.frameVerdict;
-      if (verdict === "unknown" || verdict === "asking") {
-        source.setText(`Opening the page on ${new URL(web).host}…`);
+      const page = this.pageState();
+      if (page.s === "unknown" || page.s === "asking") {
+        source.setText(`Opening the post on ${host}…`);
         return;
       }
-      if (this.frameVerdict === "allowed") {
-        source.setText(`On the web: ${new URL(web).host} · ${p.subscriptionTitle}`);
-        // The author's own page, as a visit would show it. Sandboxed without scripts, without access to Obsidian or to its own origin's storage;
-        // links open outside. It loads its images and styles like any visit: that is what "as on the web" means (the setting says so).
-        root.createEl("iframe", { cls: "blyg-reader-frame", attr: { src: web, sandbox: "allow-popups allow-popups-to-escape-sandbox", referrerpolicy: "no-referrer", title: `${p.subscriptionTitle} on the web` } });
+      if (page.s === "trimmed" || page.s === "full") {
+        source.setText(page.s === "trimmed" ? `On the web: ${host} · ${p.subscriptionTitle} · the post only (the whole page: “Open in browser”)` : `On the web: ${host} · ${p.subscriptionTitle}`);
+        // The post's own page (trimmed to the post, or whole), as a visit would show it. Sandboxed without scripts and without an origin, so it cannot
+        // reach Obsidian; links open outside. It loads its images like any visit: that is what "as on the web" means (the setting says so).
+        root.createEl("iframe", { cls: "blyg-reader-frame", attr: { src: page.s === "trimmed" ? page.url : web, sandbox: READER_FRAME_SANDBOX, referrerpolicy: "no-referrer", title: `${p.subscriptionTitle} on the web` } });
         return;
       }
-      source.setText(this.frameVerdict === "forbidden" ? "This blyg does not allow its pages inside other apps, so the post is shown as text." : "The page could not be reached, so the post is shown as text.");
+      source.setText(page.s === "forbidden" ? "This blyg does not allow its pages inside other apps, so the post is shown as text." : "The page could not be reached, so the post is shown as text.");
     } else {
       source.setText([p.subscriptionTitle, p.authorName, `version ${p.version}`].filter(Boolean).join(" · "));
     }
