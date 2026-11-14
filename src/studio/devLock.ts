@@ -18,6 +18,8 @@ export const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 export const DEV_STUDIO_RULE = "an address ending in .workers.dev, or localhost";
 
 let locked = false;
+/** The owner's own opt-out (setting `dev.allowLiveStudio`, Florian 2026-11-14): this dev build may use any Studio. Off unless the setting says true. */
+let liveAllowed = false;
 
 /** True for the development flavour: a manifest id like "blyg-dev". */
 export function isDevBuildId(id: string): boolean {
@@ -33,6 +35,11 @@ export function isDevStudioLock(): boolean {
   return locked;
 }
 
+/** Applied from the settings at load and on every save. Only meaningful while the lock is on. */
+export function setLiveStudioAllowed(on: boolean): void {
+  liveAllowed = on;
+}
+
 /** A test Studio's host: `something.workers.dev` (a bare `workers.dev` is not one), or the local machine. */
 export function isTestStudioHost(hostname: string): boolean {
   const h = hostname.toLowerCase().replace(/\.$/, "");
@@ -41,7 +48,7 @@ export function isTestStudioHost(hostname: string): boolean {
 
 /** Why a dev build refuses this address, or null (the lock is off, the address is a test Studio's, or it is not an address at all: the other checks say that). */
 export function devStudioProblem(baseUrl: string): string | null {
-  if (!locked) return null;
+  if (!locked || liveAllowed) return null;
   let url: URL;
   try {
     url = new URL(baseUrl);
@@ -49,7 +56,7 @@ export function devStudioProblem(baseUrl: string): string | null {
     return null;
   }
   if (isTestStudioHost(url.hostname)) return null;
-  return `This development build only connects to test Studios (${DEV_STUDIO_RULE}); it will not use ${url.hostname}.`;
+  return `This development build only connects to test Studios (${DEV_STUDIO_RULE}); it will not use ${url.hostname}. To use it anyway, turn on “Allow a live Studio” under Development build in these settings.`;
 }
 
 /** The id of the real plugin a development build belongs to: "blyg-dev" → "blyg". */

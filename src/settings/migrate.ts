@@ -57,6 +57,7 @@ export function migrateSettings(raw: unknown, flavour: "release" | "dev" = "rele
   const mn = isPlain(raw.mentions) ? raw.mentions : {};
   const wq = isPlain(raw.webQuote) ? raw.webQuote : {};
   const rp = isPlain(raw.readerPane) ? raw.readerPane : {};
+  const dv = isPlain(raw.dev) ? raw.dev : {};
 
   const settings: BlygSettings = {
     schemaVersion: SCHEMA_VERSION,
@@ -106,6 +107,8 @@ export function migrateSettings(raw: unknown, flavour: "release" | "dev" = "rele
     },
     // Anything but "always" is the safe default: a typo or a value from a later version never turns images on by accident.
     readerPane: { images: rp.images === "always" ? "always" : "click", view: rp.view === "text" ? "text" : "web" },
+    // Only a literal true lifts the lock: anything else, or a missing key, keeps the dev build on test Studios.
+    dev: { allowLiveStudio: dv.allowLiveStudio === true },
   };
 
   if (isPlain(bl.author) && typeof bl.author.name === "string") {

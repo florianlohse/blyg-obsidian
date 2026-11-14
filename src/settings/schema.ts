@@ -112,6 +112,8 @@ export interface BlygSettings {
      *  post's text in Obsidian (images follow `images`). A page that refuses to be shown inside another app falls back to `text`. */
     view: "web" | "text";
   };
+  /** Development build only (ignored by the release plugin). `allowLiveStudio`: lift the test-Studio lock (studio/devLock.ts) on the owner's say. */
+  dev: { allowLiveStudio: boolean };
 }
 
 /** `dev` is the development build (manifest id ends in -dev): a fresh install starts with the test route `Studio test/`, so it never claims the real plugin's default folder `blyg/`. */
@@ -152,5 +154,6 @@ export function defaultSettings(flavour: "release" | "dev" = "release"): BlygSet
     mentions: { repoPath: "data/mentions.json" },
     webQuote: { ...DEFAULT_WEB_QUOTE },
     readerPane: { images: "click", view: "web" },
+    dev: { allowLiveStudio: false },
   };
 }

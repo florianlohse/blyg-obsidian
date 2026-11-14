@@ -84,8 +84,14 @@ export class BlygSettingTab extends PluginSettingTab {
     if (isDevStudioLock()) {
       items.push({
         name: "Development build",
-        desc: `This build connects only to test Studios (${DEV_STUDIO_RULE}). Any other Studio address is refused, so it can never publish to your real Studio.`,
+        desc: `This build connects only to test Studios (${DEV_STUDIO_RULE}). Any other Studio address is refused, so it can never publish to your real Studio, unless you allow it below.`,
         searchable: false,
+      });
+      items.push({
+        name: "Allow a live Studio",
+        desc: "Lets this development build use any Studio address, your real Studio included. What it publishes there is public for good (a withdrawal leaves a notice; readers may have copies). A folder whose route is set to “Drafts only” never publishes. Off by default.",
+        aliases: ["dev", "live", "test studio"],
+        control: { type: "toggle", key: "dev.allowLiveStudio", defaultValue: false },
       });
     }
 

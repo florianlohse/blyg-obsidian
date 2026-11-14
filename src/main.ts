@@ -36,7 +36,7 @@ import { noteRefOf, obsidianBinaryVault, obsidianNoteEdit, obsidianVault, obsidi
 import { redactingLogger } from "./platform/redact";
 import type { Outcome } from "./publish/types";
 import { migrateSettings } from "./settings/migrate";
-import { devGuardProblem, isDevBuildId, isDevStudioLock, realPluginId, setDevStudioLock } from "./studio/devLock";
+import { devGuardProblem, isDevBuildId, isDevStudioLock, realPluginId, setDevStudioLock, setLiveStudioAllowed } from "./studio/devLock";
 import { defaultSettings, type BlygSettings } from "./settings/schema";
 import { isStudioOnly } from "./settings/studioOnly";
 import { BlygSettingTab } from "./settings/tab";
@@ -262,6 +262,7 @@ export default class BlygPlugin extends Plugin {
   async loadSettings(): Promise<void> {
     const loaded = migrateSettings((await this.loadData()) as unknown, isDevStudioLock() ? "dev" : "release");
     this.settings = loaded.settings;
+    setLiveStudioAllowed(this.settings.dev.allowLiveStudio);
     this.settingsLocked = loaded.fromNewerVersion;
     if (this.settingsLocked) {
       new Notice(
@@ -272,6 +273,7 @@ export default class BlygPlugin extends Plugin {
   }
 
   async saveSettings(): Promise<void> {
+    setLiveStudioAllowed(this.settings.dev.allowLiveStudio);
     if (this.settingsLocked) return;
     // Merged into what is on disk, so the other keys of data.json (the published records, which Obsidian Sync may have updated since
     // this device loaded) are kept.
