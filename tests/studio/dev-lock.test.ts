@@ -5,11 +5,15 @@ import { validateSettings } from "../../src/settings/validate";
 import { defaultSettings } from "../../src/settings/schema";
 import { studioAddress, studioBaseProblem } from "../../src/studio/address";
 import { checkStudioConnection } from "../../src/studio/connection";
-import { DEV_STUDIO_RULE, devGuardProblem, devStudioProblem, isDevBuildId, isTestStudioHost, realPluginId, setDevStudioLock } from "../../src/studio/devLock";
+import { DEV_STUDIO_RULE, devGuardProblem, devStudioProblem, isDevBuildId, isTestStudioHost, realPluginId, setDevStudioLock, setLiveStudioAllowed } from "../../src/studio/devLock";
+import { migrateSettings } from "../../src/settings/migrate";
 import { fakeKeychain, idleTimers } from "../helpers";
 import { FakeStudio, STUDIO_HOST } from "./fake-studio";
 
-afterEach(() => setDevStudioLock(false));
+afterEach(() => {
+  setDevStudioLock(false);
+  setLiveStudioAllowed(false);
+});
 
 describe("which plugin is the development build", () => {
   it("by its manifest id: only an id ending in -dev", () => {
@@ -103,5 +107,25 @@ describe("the development build stays idle while the real plugin is enabled (one
     expect(devGuardProblem("blyg", true)).toBeNull(); // the release plugin never stays idle because of this
     expect(devGuardProblem("blyg", false)).toBeNull();
     expect(devGuardProblem("obsidian-blyg", true)).toBeNull();
+  });
+});
+
+describe("the owner's opt-out: \"Allow a live Studio\" (Florian, 2026-11-14)", () => {
+  it("lifts the lock for any address while it is on, and the lock is back when it is off", () => {
+    setDevStudioLock(true);
+    setLiveStudioAllowed(true);
+    expect(studioBaseProblem("https://blyg.example.com")).toBeNull();
+    expect(studioAddress({ baseUrl: "https://blyg.example.com", mount: "" })).not.toBeNull();
+    setLiveStudioAllowed(false);
+    expect(studioBaseProblem("https://blyg.example.com")).toContain("only connects to test Studios");
+  });
+  it("the refusal says where the switch is", () => {
+    setDevStudioLock(true);
+    expect(devStudioProblem("https://blyg.example.com")).toContain("Allow a live Studio");
+  });
+  it("is off unless the settings say exactly true (a missing key, a typo, a string never lift it)", () => {
+    expect(defaultSettings().dev.allowLiveStudio).toBe(false);
+    for (const v of [undefined, "true", 1, "yes", null, {}]) expect(migrateSettings({ dev: { allowLiveStudio: v } }).settings.dev.allowLiveStudio, JSON.stringify(v) ?? "undefined").toBe(false);
+    expect(migrateSettings({ dev: { allowLiveStudio: true } }).settings.dev.allowLiveStudio).toBe(true);
   });
 });
