@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { readReadingPost, type ReadingPost } from "../src/studio/reading";
-import { activeFilters, arrange, cardOf, DEFAULT_FILTER, framePolicy, frameable, nextAfter, PULL_THRESHOLD, pullProgress, readingMinutes, readingTimeLabel, relativeTime, sourcesOf } from "../src/ui/readerFeed";
+import { activeFilters, arrange, cardOf, DEFAULT_FILTER, framePolicy, frameable, nextAfter, postOfQuote, PULL_THRESHOLD, pullProgress, readingMinutes, readingTimeLabel, relativeTime, sourcesOf } from "../src/ui/readerFeed";
 
 const fixture = (name: string): string => readFileSync(new URL(`./fixtures/studio/reader/${name}-0.51.0.html`, import.meta.url), "utf8");
 const post = (patch: Record<string, unknown>): ReadingPost =>
@@ -144,5 +144,20 @@ describe("pullProgress: the pull-up at the end of a post", () => {
     expect(pullProgress(PULL_THRESHOLD / 2)).toBeCloseTo(0.5);
     expect(pullProgress(PULL_THRESHOLD)).toBe(1);
     expect(pullProgress(PULL_THRESHOLD * 5)).toBe(1);
+  });
+});
+
+describe("postOfQuote: where a quote comes from", () => {
+  const mk = (id: string, withdrawn = false): ReadingPost => ({ subscriptionId: "s", subscriptionTitle: "S", origin: null, remoteId: id, kind: "fragment", withdrawn, version: 1, readVersion: null, observedAt: "", created: null, isReply: false, contentHtml: "", contentMd: "", authorName: null, authorUrl: null, sourceUrl: null });
+  it("finds the post of a blyg the Studio reads, by the quote's item id", () => {
+    const posts = [mk("a"), mk("b")];
+    expect(postOfQuote(posts, "b")).toBe(posts[1]);
+    expect(postOfQuote(posts, "zzz")).toBeNull();
+    expect(postOfQuote(posts, "")).toBeNull();
+  });
+  it("prefers a copy that is not withdrawn", () => {
+    const posts = [mk("a", true), mk("a")];
+    expect(postOfQuote(posts, "a")).toBe(posts[1]);
+    expect(postOfQuote([mk("a", true)], "a")?.withdrawn).toBe(true);
   });
 });

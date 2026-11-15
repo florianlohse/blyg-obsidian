@@ -718,6 +718,28 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await closeReader();
   }
 
+  /** Under a blyg's quote: where it comes from (a post of a blyg you read opens here, Back returns), and the quote of an unknown item keeps only its label. */
+  async function quoteSource(layout) {
+    await openReader();
+    await wait(1000);
+    const ids = await page.evaluate(() => { const v = window.app.workspace.getLeavesOfType("blyg-reader")[0].view; return { a: v.data.posts[0].remoteId, b: v.data.posts[1].remoteId, title: v.data.posts[1].subscriptionTitle }; });
+    await showText(`<p>Words.</p><blockquote class="blyg-transclusion" data-blyg-id="${ids.b}" data-blyg-version="1"><p>Quoted.</p></blockquote><blockquote class="blyg-transclusion" data-blyg-id="nosuchitem1" data-blyg-version="1"><p>Unknown source.</p></blockquote>`);
+    await wait(500);
+    const lines = await text(".blyg-quote-source");
+    check(lines.length === 1 && lines[0].startsWith("↗") && lines[0].includes(ids.title), `${layout}: quote source: a quote of a post you read names where it comes from (${JSON.stringify(lines)})`);
+    await page.evaluate(() => document.querySelector(".blyg-quote-source.is-link")?.click());
+    await wait(600);
+    check((await page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader")[0].view.shown?.remoteId)) === ids.b, `${layout}: quote source: a tap opens that post here`);
+    check((await page.evaluate(() => document.querySelector(".blyg-reader-back")?.getAttribute("title"))) === "Back to the post you came from", `${layout}: quote source: Back says it returns to the post you came from`);
+    await click("Back");
+    await wait(400);
+    check((await page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader")[0].view.shown?.remoteId)) === ids.a, `${layout}: quote source: Back returns to the post with the quote`);
+    await click("Back");
+    await wait(400);
+    check((await page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader")[0].view.shown)) === null && (await page.$(".blyg-reader-card")) !== null, `${layout}: quote source: and one more Back is the list`);
+    await closeReader();
+  }
+
   /** Mentions: what they are about is drawn, a mention opens like a post, and a post the Studio does not read has no read mark or reply. */
   async function mentions(layout) {
     await openReader();
@@ -761,11 +783,13 @@ await runScenario({ data: fixtureData() }, async (s) => {
   await font();
   await sidebar();
   await defaultView();
+  await quoteSource("desktop");
   await surface("desktop");
   await nextPost("desktop");
   await mentions("desktop");
   await pass("desktop");
   await s.phone();
+  await quoteSource("phone");
   await surface("phone");
   await nextPost("phone");
   await mentions("phone");

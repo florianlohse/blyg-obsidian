@@ -952,6 +952,11 @@ export default class BlygPlugin extends Plugin {
         const got = await built.studio.client.peekItem(m.sourceOrigin, m.sourceId);
         return got.kind === "ok" ? postFromPeek(m, got.value) : null;
       },
+      isOwnItem: async (itemId) => {
+        const built = buildStudio(this.env());
+        if (!built.ok) return false;
+        return (await built.studio.client.getItem(itemId)).kind === "ok";
+      },
       ownExcerpt: async (itemId) => {
         const built = buildStudio(this.env());
         if (!built.ok) return null;

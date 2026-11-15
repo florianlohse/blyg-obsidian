@@ -7,7 +7,7 @@
 import { ItemView, sanitizeHTMLToDom, type WorkspaceLeaf } from "obsidian";
 import { isUnread, type InboundMention, type ReadingPost } from "../studio/reading";
 import { plainText, renderForeign, type ImageMode } from "./defang";
-import { activeFilters, arrange, cardOf, DEFAULT_FILTER, frameable, LENGTH_LABELS, nextAfter, pullProgress, readingTimeLabel, relativeTime, SORT_LABELS, sourcesOf, type FeedFilter, type FeedLength, type FeedSort } from "./readerFeed";
+import { activeFilters, arrange, cardOf, DEFAULT_FILTER, frameable, LENGTH_LABELS, nextAfter, postOfQuote, pullProgress, readingTimeLabel, relativeTime, SORT_LABELS, sourcesOf, type FeedFilter, type FeedLength, type FeedSort } from "./readerFeed";
 import { FONT_LABELS, isReaderFont, type ReaderFont } from "./readerFonts";
 import { CONTRAST_LABELS, CONTRASTS, isReaderContrast, type ReaderContrast } from "./readerLook";
 import { limiter, mentionLead, postOfMention, visibleMentions } from "./readerMentions";
@@ -50,6 +50,8 @@ export interface ReaderHost {
   mentionPost(m: InboundMention, posts: ReadingPost[]): Promise<ReadingPost | null>;
   /** A short excerpt of the owner's own item that was mentioned; null when it cannot be had. */
   ownExcerpt(itemId: string): Promise<string | null>;
+  /** Whether this id is one of the owner's own items (a quote of it is "you"); false when it is not or cannot be told. */
+  isOwnItem(itemId: string): Promise<boolean>;
   markRead(post: ReadingPost): Promise<ReadResult>;
   markUnread(post: ReadingPost): Promise<ReadResult>;
   /** The owner's choices (settings): how a post opens, and what happens to images in the text view. */
@@ -405,6 +407,7 @@ export class BlygReaderView extends ItemView {
       await this.markedMoment(wasUnread);
       if (after) this.openPost(after);
       else {
+        this.trail = []; // nothing is left to read: the list, not the post a quote was followed from
         this.closePost();
         this.setStatus("No more unread posts in this order.");
       }
@@ -498,16 +501,29 @@ export class BlygReaderView extends ItemView {
     root.style.setProperty("--blyg-bottom-clear", `${Math.ceil(overlap)}px`);
   }
 
+  /** The posts you came from by following a quote to its source: Back goes to the last of them, and to the list when there is none. */
+  private trail: ReadingPost[] = [];
+
   private closePost(): void {
+    const back = this.trail.pop();
+    if (back) {
+      this.openPost(back, "back");
+      return;
+    }
     this.shown = null;
     this.releasePage();
     this.drawHeader();
     this.drawBody();
   }
 
-  /** Open a post from the feed (or the next one): the page state starts afresh, the post starts at its top. */
-  private openPost(p: ReadingPost): void {
+  /**
+   * Open a post from the feed (or the next one): the page state starts afresh, the post starts at its top. `via`: "quote" follows a quote to its source
+   * (the post you leave is kept for Back), "back" is that Back; anything else starts a fresh trail.
+   */
+  private openPost(p: ReadingPost, via: "feed" | "quote" | "back" = "feed"): void {
     if (this.shown === null) this.feedScroll = this.scrollEl?.scrollTop ?? 0;
+    if (via === "quote" && this.shown) this.trail.push(this.shown);
+    else if (via === "feed") this.trail = [];
     this.releasePage();
     this.shown = p;
     this.shownAs = this.host.viewMode();
@@ -588,7 +604,7 @@ export class BlygReaderView extends ItemView {
     const unread = isUnread(p);
     // The two things done most come first and large: the way back, and on to the next post. The rest sits below them.
     const main = h.createDiv({ cls: "blyg-reader-bar blyg-reader-bar-main" });
-    this.button(main, "Back", () => this.closePost(), { cls: "blyg-reader-back", title: "Back to the list" });
+    this.button(main, "Back", () => this.closePost(), { cls: "blyg-reader-back", title: this.trail.length > 0 ? "Back to the post you came from" : "Back to the list" });
     main.createDiv({ cls: "blyg-reader-spacer" });
     if (this.inFeed(p)) {
       const next = this.data ? nextAfter(this.data.posts, this.filter, p) : null;
@@ -755,7 +771,34 @@ export class BlygReaderView extends ItemView {
   private drawText(into: HTMLElement, p: ReadingPost): void {
     const guard = renderForeign(p.contentHtml, { trustedOrigin: this.data?.studioOrigin ?? null, mode: this.host.imageMode(), baseUrl: p.sourceUrl ?? p.origin }, sanitizeHTMLToDom);
     if (guard.blocked > 0) this.button(into, `Load images (${guard.blocked})`, () => guard.loadAll(), { cls: "blyg-reader-loadall" });
-    into.createDiv({ cls: "blyg-reader-body" }).appendChild(guard.fragment);
+    const body = into.createDiv({ cls: "blyg-reader-body" });
+    body.appendChild(guard.fragment);
+    this.nameQuoteSources(body, p);
+  }
+
+  /**
+   * Under each quote of another blyg's item say where it comes from, as far as the Studio can tell: a post of a blyg you read (author and blyg; a tap
+   * opens it here, and Back returns to this post), or your own item ("you"). Otherwise the quote keeps only its label. Text only, set as text.
+   */
+  private nameQuoteSources(body: HTMLElement, p: ReadingPost): void {
+    for (const quote of Array.from(body.querySelectorAll("blockquote.blyg-transclusion"))) {
+      if (!quote.instanceOf(HTMLElement)) continue;
+      const id = quote.getAttribute("data-blyg-id") ?? "";
+      const from = postOfQuote(this.data?.posts ?? [], id);
+      if (from && !(from.subscriptionId === p.subscriptionId && from.remoteId === p.remoteId)) {
+        const who = [from.authorName, from.subscriptionTitle].filter((x): x is string => !!x && x !== "").join(" · ");
+        const line = quote.createDiv({ cls: "blyg-quote-source is-link", text: `↗ ${who || "Open the post"}`, attr: { role: "link", tabindex: "0", title: "Open this post here" } });
+        const open = (): void => this.openPost(from, "quote");
+        line.addEventListener("click", open);
+        line.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") open();
+        });
+      } else if (id !== "") {
+        void this.host.isOwnItem(id).then((own) => {
+          if (own && quote.isConnected) quote.createDiv({ cls: "blyg-quote-source", text: "You, in your own item" });
+        }).catch(() => undefined);
+      }
+    }
   }
 
   private drawPostBody(body: HTMLElement, p: ReadingPost): void {
