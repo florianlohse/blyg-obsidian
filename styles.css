@@ -450,6 +450,11 @@
 
 /* S15: the reader. A header that stays put, a body that scrolls by itself, theme variables only; one column, so it holds on a phone. */
 .blyg-reader { display: flex; flex-direction: column; height: 100%; padding: 0; }
+/* On a phone Obsidian's bar floats over the pane: keep the pane's last line, and the bar below a post, clear of it. */
+.is-mobile .blyg-reader { padding-bottom: calc(var(--mobile-navbar-height, 0px) + env(safe-area-inset-bottom, 0px)); }
+.blyg-reader-postfoot { flex: none; display: none; padding: var(--size-4-2) var(--size-4-3); border-top: 1px solid var(--background-modifier-border); background: var(--background-primary); }
+.blyg-reader-postfoot.is-shown { display: flex; justify-content: center; }
+.blyg-reader-postfoot .blyg-reader-btn { flex: 1 1 auto; max-width: 42rem; height: auto; padding: var(--size-4-2) var(--size-4-3); }
 .blyg-reader-header { flex: none; padding: var(--size-4-2) var(--size-4-3) var(--size-2-2); border-bottom: 1px solid var(--background-modifier-border); background: var(--background-primary); }
 .blyg-reader-bodywrap { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .blyg-reader-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--size-4-3); -webkit-user-select: text; user-select: text; }
@@ -458,6 +463,8 @@
 .blyg-reader-controls { margin-top: var(--size-4-1); }
 .blyg-reader-spacer { flex: 1 1 auto; }
 .blyg-reader-header .blyg-reader-btn { height: auto; padding: var(--size-2-1) var(--size-4-3); font-size: var(--font-ui-small); }
+/* Our own corners, whatever the theme does to buttons (Minimal makes them pills). */
+.blyg-reader .blyg-reader-btn { border-radius: var(--radius-s); box-shadow: none; }
 .blyg-reader-btn.is-active { background: var(--interactive-accent); color: var(--text-on-accent); }
 .blyg-reader-select { max-width: 100%; font-size: var(--font-ui-small); }
 .blyg-reader-toggle { display: inline-flex; gap: var(--size-4-1); align-items: center; color: var(--text-muted); font-size: var(--font-ui-small); }
@@ -506,3 +513,6 @@
 .blyg-reader.is-font-serif .blyg-reader-body { font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif; }
 .blyg-reader.is-font-sans .blyg-reader-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
 .blyg-reader.is-font-mono .blyg-reader-body { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.blyg-reader-mention .blyg-reader-excerpt { margin-top: var(--size-2-2); }
+.blyg-reader-ownitem { margin-top: var(--size-2-2); font-style: italic; }
+.blyg-reader-ownitem.is-empty { display: none; }

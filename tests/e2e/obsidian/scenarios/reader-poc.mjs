@@ -291,7 +291,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await closeReader();
   }
 
-  /** The font of a post's content: in the text view, and in the web page's own document; the interface keeps Obsidian's. */
+  /** The font of a post in the text view only; the interface keeps Obsidian's, and the web page view is never changed. */
   async function font() {
     await openReader();
     await wait(1000);
@@ -316,7 +316,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await wait(500);
     const textFont = await page.evaluate(() => ({ body: getComputedStyle(document.querySelector(".blyg-reader-body")).fontFamily, ui: getComputedStyle(document.querySelector(".blyg-reader-btn")).fontFamily }));
     check(/Iowan|Palatino|Georgia/.test(textFont.body) && !/Iowan/.test(textFont.ui), `font: the text view's content is serif and the buttons keep Obsidian's font (${textFont.body.slice(0, 30)} / ${textFont.ui.slice(0, 20)})`);
-    // web page view: a fresh document with the font laid over the blyg's own
+    // web page view: a fresh document that the font setting does not touch
     await page.evaluate(() => {
       const view = window.app.workspace.getLeavesOfType("blyg-reader")[0].view;
       view.releasePage();
@@ -328,8 +328,20 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await wait(1500);
     const src = await page.evaluate(() => document.querySelector(".blyg-reader-frame")?.getAttribute("src") ?? "");
     const framed = page.frames().find((f) => f.url() === src);
-    const webFont = framed ? await framed.evaluate(() => getComputedStyle(document.querySelector(".item-content p") ?? document.body).fontFamily).catch(() => "") : "";
-    check(/Iowan|Palatino|Georgia/.test(webFont), `font: the web page's content is serif too (${webFont.slice(0, 40)})`);
+    const webFontOf = (f) => (f ? f.evaluate(() => getComputedStyle(document.querySelector(".item-content p") ?? document.body).fontFamily).catch(() => "") : Promise.resolve(""));
+    const webFont = await webFontOf(framed);
+    // The blyg's own stylesheet may well name a serif of its own, so the proof is the same page with the setting on "default": the same type.
+    await page.evaluate(() => {
+      window.app.plugins.plugins.blyg.settings.readerPane.font = "default";
+      const view = window.app.workspace.getLeavesOfType("blyg-reader")[0].view;
+      view.releasePage();
+      view.drawBody();
+    });
+    await page.waitForSelector(".blyg-reader-frame", { timeout: 15000 }).catch(() => {});
+    await wait(1500);
+    const src2 = await page.evaluate(() => document.querySelector(".blyg-reader-frame")?.getAttribute("src") ?? "");
+    const webFontDefault = await webFontOf(page.frames().find((f) => f.url() === src2));
+    check(Boolean(framed) && webFont !== "" && webFont === webFontDefault, `font: the web page view has the blyg's own type whatever the setting says (serif setting: ${webFont.slice(0, 30)}; default: ${webFontDefault.slice(0, 30)})`);
     await page.evaluate(() => { window.app.plugins.plugins.blyg.settings.readerPane.font = "default"; });
     await closeReader();
   }
@@ -546,6 +558,65 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await closeReader();
   }
 
+  /** The bar below an open post: "Mark read and next" through the feed's order to its end, then back; buttons with the plugin's own corners. */
+  async function postFoot(layout) {
+    await openReader();
+    await wait(1000);
+    check(await resetReadMarks(), `${layout}: post bar: every post starts unread`);
+    await page.evaluate(() => { window.app.workspace.getLeavesOfType("blyg-reader")[0].view.host.viewMode = () => "text"; });
+    check((await page.$(".blyg-reader-postfoot.is-shown")) === null, `${layout}: post bar: nothing below the feed`);
+    await page.evaluate(() => document.querySelector(".blyg-reader-card")?.click());
+    await wait(500);
+    const first = await page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader")[0].view.shown?.remoteId);
+    check((await text(".blyg-reader-postfoot button"))[0] === "Mark read and next", `${layout}: post bar: an unread post offers "Mark read and next" (${(await text(".blyg-reader-postfoot button"))[0]})`);
+    const look = await page.evaluate(() => {
+      const b = document.querySelector(".blyg-reader-postfoot button"); const r = b.getBoundingClientRect();
+      return { radius: parseFloat(getComputedStyle(b).borderTopLeftRadius), bottom: r.bottom, inner: window.innerHeight, h: r.height };
+    });
+    check(look.radius <= 10 && look.h > 0 && look.bottom <= look.inner, `${layout}: post bar: square-cornered, in view (radius ${look.radius}, bottom ${Math.round(look.bottom)} of ${look.inner})`);
+    let hops = 0;
+    while (hops < 30 && (await page.$(".blyg-reader-postfoot.is-shown"))) {
+      const label = (await text(".blyg-reader-postfoot button"))[0];
+      await page.evaluate(() => document.querySelector(".blyg-reader-postfoot button")?.click());
+      await wait(700);
+      hops++;
+      if (hops === 1) {
+        const state = await page.evaluate((id) => { const v = window.app.workspace.getLeavesOfType("blyg-reader")[0].view; return { now: v.shown?.remoteId, was: v.data.posts.find((p) => p.remoteId === id)?.readVersion }; }, first);
+        check(state.now !== first && state.was !== null, `${layout}: post bar: one tap marks the post read and opens another (${label})`);
+      }
+    }
+    check(hops >= 2 && (await page.$(".blyg-reader-card")) !== null && (await text(".blyg-reader-status")).some((t) => t.includes("No more unread")), `${layout}: post bar: the last post goes back to the feed and says so (${hops} taps)`);
+    check(await resetReadMarks(), `${layout}: post bar: housekeeping afterwards`);
+    await closeReader();
+  }
+
+  /** Mentions: what they are about is drawn, a mention opens like a post, and a post the Studio does not read has no read mark or reply. */
+  async function mentions(layout) {
+    await openReader();
+    await wait(1000);
+    await page.evaluate(() => {
+      const view = window.app.workspace.getLeavesOfType("blyg-reader")[0].view;
+      view.data.mentions = [{ id: "m1", targetItemId: "t1", relation: "stub", status: "verified", hidden: false, sourceOrigin: "https://far.example", sourceId: "z1", sourcePage: null, sourceAuthorName: "Far Author", firstSeen: new Date().toISOString() }, { id: "m2", targetItemId: "t1", relation: "stub", status: "gone", hidden: false, sourceOrigin: "https://far.example", sourceId: "z2", sourcePage: null, sourceAuthorName: "Gone", firstSeen: new Date().toISOString() }];
+      view.host.mentionPost = async (m) => ({ subscriptionId: "", subscriptionTitle: "Far", origin: m.sourceOrigin, remoteId: m.sourceId, kind: "fragment", withdrawn: false, version: 1, readVersion: null, observedAt: m.firstSeen, created: m.firstSeen, isReply: true, contentHtml: "<p>Reply words here</p>", contentMd: "", authorName: m.sourceAuthorName, authorUrl: null, sourceUrl: null });
+      view.host.ownExcerpt = async () => "my own words";
+      view.tab = "mentions";
+      view.draw();
+    });
+    await wait(800);
+    const rows = await text(".blyg-reader-mention");
+    check(rows.length === 1 && rows[0].includes("Far Author replied to your item") && rows[0].includes("Reply words here") && rows[0].includes("On: my own words"), `${layout}: mentions: a row says who, what they wrote and what it was about (${JSON.stringify(rows).slice(0, 150)})`);
+    await page.evaluate(() => document.querySelector(".blyg-reader-mention")?.click());
+    await wait(600);
+    const open = await page.evaluate(() => ({ body: document.querySelector(".blyg-reader-body")?.textContent ?? "", btns: [...document.querySelectorAll(".blyg-reader-header button")].map((b) => [b.textContent?.trim(), b.disabled]), foot: [...document.querySelectorAll(".blyg-reader-postfoot button")].map((b) => b.textContent?.trim()) }));
+    check(open.body.includes("Reply words here"), `${layout}: mentions: tapping one opens the post in the reader`);
+    check(open.btns.some(([t, d]) => t === "Reply" && d === true) && open.btns.some(([t, d]) => /Mark read/.test(t ?? "") && d === true), `${layout}: mentions: a post of a blyg the Studio does not read has no read mark and no reply here`);
+    check(JSON.stringify(open.foot) === '["Back to the mentions"]', `${layout}: mentions: the bar below it offers only the way back (${JSON.stringify(open.foot)})`);
+    await page.evaluate(() => document.querySelector(".blyg-reader-postfoot button")?.click());
+    await wait(400);
+    check((await page.$(".blyg-reader-mention")) !== null && (await page.$(".blyg-reader-postfoot.is-shown")) === null, `${layout}: mentions: back to the list of mentions`);
+    await closeReader();
+  }
+
   await refusal();
   FULL = await mintFullToken();
   await useToken(FULL); // set once: the rest of the scenario uses a token with every permission
@@ -562,8 +633,12 @@ await runScenario({ data: fixtureData() }, async (s) => {
   await font();
   await sidebar();
   await defaultView();
+  await postFoot("desktop");
+  await mentions("desktop");
   await pass("desktop");
   await s.phone();
+  await postFoot("phone");
+  await mentions("phone");
   await pass("phone");
   imageServer.close();
 });

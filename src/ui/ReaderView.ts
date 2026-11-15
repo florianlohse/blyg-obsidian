@@ -5,10 +5,11 @@
 // Layout: a header that never scrolls away (tabs and controls, or the post's buttons and its blyg, author and read state, then one status line) above a
 // body that scrolls by itself. Read state changes at once, in place, and is put back if the Studio refuses.
 import { ItemView, sanitizeHTMLToDom, type WorkspaceLeaf } from "obsidian";
-import { isUnread, relationWords, type InboundMention, type ReadingPost } from "../studio/reading";
+import { isUnread, type InboundMention, type ReadingPost } from "../studio/reading";
 import { plainText, renderForeign, type ImageMode } from "./defang";
-import { activeFilters, arrange, cardOf, DEFAULT_FILTER, frameable, LENGTH_LABELS, readingTimeLabel, relativeTime, SORT_LABELS, sourcesOf, type FeedFilter, type FeedLength, type FeedSort } from "./readerFeed";
+import { activeFilters, arrange, cardOf, DEFAULT_FILTER, frameable, LENGTH_LABELS, nextAfter, readingTimeLabel, relativeTime, SORT_LABELS, sourcesOf, type FeedFilter, type FeedLength, type FeedSort } from "./readerFeed";
 import { FONT_LABELS, isReaderFont, type ReaderFont } from "./readerFonts";
+import { limiter, mentionLead, postOfMention, visibleMentions } from "./readerMentions";
 import { frameUrlFor, READER_FRAME_SANDBOX } from "./trimmedPage";
 
 export const BLYG_READER_VIEW = "blyg-reader";
@@ -42,13 +43,17 @@ export interface ReaderHost {
   /** Start a reply thread to this post (the same path as "Reply to an item"). */
   replyTo(post: ReadingPost): Promise<void>;
   /** Mark this version read, or unread again. Needs the token permission `reading:state`; the message says so when it is missing. */
+  /** The text of what a mention is about, as a post to open: from the list when the Studio reads that blyg, else a peek at it. Null when it cannot be had. */
+  mentionPost(m: InboundMention, posts: ReadingPost[]): Promise<ReadingPost | null>;
+  /** A short excerpt of the owner's own item that was mentioned; null when it cannot be had. */
+  ownExcerpt(itemId: string): Promise<string | null>;
   markRead(post: ReadingPost): Promise<ReadResult>;
   markUnread(post: ReadingPost): Promise<ReadResult>;
   /** The owner's choices (settings): how a post opens, and what happens to images in the text view. */
   imageMode(): ImageMode;
   viewMode(): "web" | "text";
   setViewMode(mode: "web" | "text"): Promise<void>;
-  /** The font of a post's content (the setting "Font for posts"); a web page picks it up the next time it is opened. */
+  /** The font of the text view's content (the setting "Font for posts"). A web page is never changed by it. */
   font(): ReaderFont;
   setFont(font: ReaderFont): Promise<void>;
   /**
@@ -98,6 +103,10 @@ export class BlygReaderView extends ItemView {
   /** Bumped by every check for new posts, so an older check stops when a newer one starts. */
   private checking = 0;
   private headerEl: HTMLElement | null = null;
+  private footEl: HTMLElement | null = null;
+  /** What mentions have shown so far (the mentioning post, the item it was about): asked for once, a few at a time. */
+  private readonly mentionInfo = new Map<string, { post: ReadingPost | null; own: string | null; done: boolean }>();
+  private readonly mentionSlot = limiter(3);
   private bodyEl: HTMLElement | null = null;
   private statusEl: HTMLElement | null = null;
   private refreshEl: HTMLButtonElement | null = null;
@@ -148,7 +157,7 @@ export class BlygReaderView extends ItemView {
     this.page = { s: "unknown" };
   }
 
-  /** The font of the post's content, as a class on the pane (the text view's CSS reads it; a web page gets it in its own document). */
+  /** The font of the post's content, as a class on the pane (the text view's CSS reads it; the web page view is never changed). */
   private applyFont(): void {
     const font = this.host.font();
     for (const f of ["default", "serif", "sans", "mono"] as const) this.contentEl.toggleClass(`is-font-${f}`, f === font);
@@ -307,6 +316,7 @@ export class BlygReaderView extends ItemView {
     this.applyFont();
     this.headerEl = root.createDiv({ cls: "blyg-reader-header" });
     this.bodyEl = root.createDiv({ cls: "blyg-reader-bodywrap" });
+    this.footEl = root.createDiv({ cls: "blyg-reader-postfoot" });
     this.drawHeader();
     this.drawBody();
   }
@@ -340,6 +350,49 @@ export class BlygReaderView extends ItemView {
     else this.drawFeedHeader(h);
     this.statusEl = h.createDiv({ cls: "blyg-reader-status", text: this.status });
     this.statusEl.toggleClass("is-busy", this.busyCount > 0);
+    this.drawPostFoot();
+  }
+
+  /** Below an open post, always in reach: mark it read and go to the next unread one (or, with none left, back to the feed). Nothing in the feed. */
+  private drawPostFoot(): void {
+    const f = this.footEl;
+    if (!f) return;
+    f.empty();
+    const p = this.shown;
+    f.toggleClass("is-shown", p !== null);
+    if (!p) return;
+    // A post that is not in the feed (a mention's post from a blyg the Studio does not read) has no read mark and no "next": only the way back.
+    const inFeed = p.subscriptionId !== "" && (this.data?.posts.some((q) => keyOf(q) === keyOf(p)) ?? false);
+    const next = inFeed && this.data ? nextAfter(this.data.posts, this.filter, p) : null;
+    const unread = inFeed && isUnread(p);
+    const back = this.tab === "mentions" && !inFeed ? "Back to the mentions" : "Back to the feed";
+    const label = unread ? (next ? "Mark read and next" : `Mark read and ${back.toLowerCase()}`) : next ? "Next unread" : back;
+    this.button(f, label, async () => {
+      if (unread && !p.withdrawn) await this.setRead(p, true);
+      const after = inFeed && this.data ? nextAfter(this.data.posts, this.filter, p) : null;
+      if (after) this.openPost(after);
+      else {
+        this.closePost();
+        if (inFeed && this.data) this.setStatus("No more unread posts in this order.");
+      }
+    }, { cls: "blyg-reader-nextbtn", active: unread });
+  }
+
+  private closePost(): void {
+    this.shown = null;
+    this.releasePage();
+    this.drawHeader();
+    this.drawBody();
+  }
+
+  /** Open a post from the feed (or the next one): the page state starts afresh, the post starts at its top. */
+  private openPost(p: ReadingPost): void {
+    if (this.shown === null) this.feedScroll = this.scrollEl?.scrollTop ?? 0;
+    this.releasePage();
+    this.shown = p;
+    this.shownAs = this.host.viewMode();
+    this.drawHeader();
+    this.drawBody();
   }
 
   private drawFeedHeader(h: HTMLElement): void {
@@ -408,16 +461,12 @@ export class BlygReaderView extends ItemView {
   private drawPostHeader(h: HTMLElement, p: ReadingPost): void {
     const web = frameable(p.sourceUrl) ? p.sourceUrl : null;
     const row = h.createDiv({ cls: "blyg-reader-bar" });
-    this.button(row, "Back", () => {
-      this.shown = null;
-      this.releasePage();
-      this.drawHeader();
-      this.drawBody();
-    });
-    this.button(row, "Reply", () => this.host.replyTo(p), { disabled: p.withdrawn, title: "Reply in Obsidian: a new thread that answers this post" });
+    this.button(row, "Back", () => this.closePost());
+    const held = p.subscriptionId !== ""; // the Studio reads this blyg; otherwise (a mention's post) there is no read mark and nothing to quote from
+    this.button(row, "Reply", () => this.host.replyTo(p), { disabled: p.withdrawn || !held, title: held ? "Reply in Obsidian: a new thread that answers this post" : "Subscribe to this blyg in your Studio to reply to its posts from here" });
     const unread = isUnread(p);
     this.button(row, unread ? "○ Mark read" : "✓ Read", () => this.setRead(p, unread), {
-      disabled: p.withdrawn,
+      disabled: p.withdrawn || !held,
       active: !unread,
       cls: "blyg-reader-readtoggle",
       title: unread ? "Mark this post read" : "Read. Tap to mark it unread again",
@@ -484,12 +533,7 @@ export class BlygReaderView extends ItemView {
       card.addEventListener("click", () => {
         // A press that selected some text is a selection, not a tap.
         if ((activeWindow.getSelection()?.toString() ?? "") !== "") return;
-        this.feedScroll = this.scrollEl?.scrollTop ?? 0;
-        this.releasePage();
-        this.shown = p;
-        this.shownAs = this.host.viewMode();
-        this.drawHeader();
-        this.drawBody();
+        this.openPost(p);
       });
     }
   }
@@ -531,14 +575,49 @@ export class BlygReaderView extends ItemView {
   }
 
   private drawMentions(col: HTMLElement, mentions: InboundMention[]): void {
-    if (mentions.length === 0) col.createDiv({ cls: "blyg-reader-note", text: "No one has mentioned your items yet." });
-    for (const m of mentions) {
-      const row = col.createDiv({ cls: "blyg-reader-row" });
-      row.createDiv({ cls: "blyg-reader-meta", text: `${m.sourceAuthorName ?? m.sourceOrigin ?? "Someone"} ${relationWords(m.relation)} one of your items` });
-      row.createDiv({ cls: "blyg-reader-excerpt", text: m.firstSeen.slice(0, 10) });
-      const web = m.sourcePage;
-      if (web) row.addEventListener("click", () => this.host.openWeb(web));
+    const shown = visibleMentions(mentions);
+    if (shown.length === 0) col.createDiv({ cls: "blyg-reader-note", text: "No one has mentioned your items yet." });
+    for (const m of shown) {
+      const row = col.createDiv({ cls: "blyg-reader-row blyg-reader-mention" });
+      row.createDiv({ cls: "blyg-reader-meta", text: `${mentionLead(m)} · ${relativeTime(m.firstSeen, Date.now())}` });
+      const text = row.createDiv({ cls: "blyg-reader-excerpt" });
+      const own = row.createDiv({ cls: "blyg-reader-meta blyg-reader-ownitem" });
+      const fill = (): void => {
+        const info = this.mentionInfo.get(m.id);
+        text.setText(info?.post ? excerptOf(info.post.contentHtml, 220) || "(no text)" : info?.done ? "Its text could not be shown here." : "…");
+        own.setText(info?.own ? `On: ${info.own}` : "");
+        own.toggleClass("is-empty", !info?.own);
+      };
+      fill();
+      void this.loadMention(m).then(fill);
+      row.addEventListener("click", () => {
+        if ((activeWindow.getSelection()?.toString() ?? "") !== "") return;
+        void this.openMention(m);
+      });
     }
+  }
+
+  /** What a mention shows, fetched once and a few at a time; a card redraws itself when its answer is there. */
+  private loadMention(m: InboundMention): Promise<void> {
+    const have = this.mentionInfo.get(m.id);
+    if (have?.done) return Promise.resolve();
+    return this.mentionSlot(async () => {
+      const posts = this.data?.posts ?? [];
+      const [post, own] = await Promise.all([
+        postOfMention(posts, m) ?? this.host.mentionPost(m, posts).catch(() => null),
+        this.host.ownExcerpt(m.targetItemId).catch(() => null),
+      ]);
+      this.mentionInfo.set(m.id, { post, own, done: true });
+    });
+  }
+
+  /** Open the mentioning post like any post: the web page or the text, the same header, the same bar below. */
+  private async openMention(m: InboundMention): Promise<void> {
+    await this.loadMention(m);
+    const post = this.mentionInfo.get(m.id)?.post;
+    if (post) this.openPost(post);
+    else if (m.sourcePage) this.host.openWeb(m.sourcePage);
+    else this.setStatus("That item could not be opened here.");
   }
 
   /** The post as text: images and markup decided before the sanitiser builds an element (see defang.ts). */

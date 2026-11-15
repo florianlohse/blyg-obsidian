@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { readReadingPost, type ReadingPost } from "../src/studio/reading";
-import { activeFilters, arrange, cardOf, DEFAULT_FILTER, framePolicy, frameable, readingMinutes, readingTimeLabel, relativeTime, sourcesOf } from "../src/ui/readerFeed";
+import { activeFilters, arrange, cardOf, DEFAULT_FILTER, framePolicy, frameable, nextAfter, readingMinutes, readingTimeLabel, relativeTime, sourcesOf } from "../src/ui/readerFeed";
 
 const fixture = (name: string): string => readFileSync(new URL(`./fixtures/studio/reader/${name}-0.51.0.html`, import.meta.url), "utf8");
 const post = (patch: Record<string, unknown>): ReadingPost =>
@@ -116,5 +116,23 @@ describe("sorting and filtering by reading time", () => {
   it("counts the choices that differ from the start", () => {
     expect(activeFilters(DEFAULT_FILTER)).toBe(0);
     expect(activeFilters({ ...DEFAULT_FILTER, sort: "longest", length: "long", unreadOnly: true, source: "s1" })).toBe(4);
+  });
+});
+
+describe("nextAfter: the post to open after this one", () => {
+  const mk = (id: string, read: boolean, t: string): ReadingPost => ({ subscriptionId: "s", subscriptionTitle: "S", origin: null, remoteId: id, kind: "fragment", withdrawn: false, version: 1, readVersion: read ? 1 : null, observedAt: t, created: t, isReply: false, contentHtml: "<p>x</p>", contentMd: "x", authorName: null, authorUrl: null, sourceUrl: null });
+  const posts = [mk("a", false, "2026-11-01T00:00:00Z"), mk("b", true, "2026-11-02T00:00:00Z"), mk("c", false, "2026-11-03T00:00:00Z"), mk("d", false, "2026-11-04T00:00:00Z")];
+  it("is the next unread one in the order shown, skipping what is read", () => {
+    expect(nextAfter(posts, DEFAULT_FILTER, posts[3] as ReadingPost)?.remoteId).toBe("c"); // newest first: d, c, b, a
+    expect(nextAfter(posts, DEFAULT_FILTER, posts[2] as ReadingPost)?.remoteId).toBe("a"); // b is read
+    expect(nextAfter(posts, { ...DEFAULT_FILTER, sort: "oldest" }, posts[0] as ReadingPost)?.remoteId).toBe("c");
+  });
+  it("is none at the end of the order (no wrapping round), and never the post itself", () => {
+    expect(nextAfter(posts, DEFAULT_FILTER, posts[0] as ReadingPost)).toBeNull();
+    expect(nextAfter([mk("only", false, "2026-11-01T00:00:00Z")], DEFAULT_FILTER, mk("only", false, "2026-11-01T00:00:00Z"))).toBeNull();
+  });
+  it("still finds it when the post just read is no longer unread and the feed shows only unread", () => {
+    posts[3] = mk("d", true, "2026-11-04T00:00:00Z");
+    expect(nextAfter(posts, { ...DEFAULT_FILTER, unreadOnly: true }, posts[3])?.remoteId).toBe("c");
   });
 });

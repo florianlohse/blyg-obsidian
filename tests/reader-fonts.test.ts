@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { migrateSettings } from "../src/settings/migrate";
 import { defaultSettings } from "../src/settings/schema";
 import { FONT_LABELS, isReaderFont, READER_FONTS } from "../src/ui/readerFonts";
-import { fontCss, trimmedDocument } from "../src/ui/trimmedPage";
+import { trimmedDocument } from "../src/ui/trimmedPage";
 
 const fixture = (name: string): string => readFileSync(new URL(`./fixtures/studio/pages/${name}-0.51.0.html`, import.meta.url), "utf8");
 const styles = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
@@ -22,19 +22,12 @@ describe("the font stacks", () => {
   });
 });
 
-describe("a web page document with the owner's font", () => {
-  const doc = (font?: "default" | "serif" | "sans" | "mono"): string => trimmedDocument({ pageHtml: fixture("fragment"), pageUrl: "http://localhost:8788/f/abc/", css: ["body{color:red}"], ...(font ? { font } : {}) }) ?? "";
-  it("the default adds nothing: the blyg keeps its own type", () => {
-    expect(doc()).not.toContain("font-family");
-    expect(doc("default")).not.toContain("font-family");
-    expect(fontCss("default")).toBe("");
-  });
-  it.each(["serif", "sans", "mono"] as const)("%s is laid over the content only, after the blyg's own CSS, and code keeps its own font", (font) => {
-    const d = doc(font);
-    expect(d).toContain(`font-family:${READER_FONTS[font]}!important`);
-    expect(d.indexOf("body{color:red}")).toBeLessThan(d.indexOf("font-family:"));
-    expect(d).toContain(".item-content :not(pre):not(code):not(kbd):not(samp)");
-    expect(d).not.toContain("<script");
+describe("the web page view is never changed by a setting", () => {
+  const doc = trimmedDocument({ pageHtml: fixture("fragment"), pageUrl: "http://localhost:8788/f/abc/", css: ["body{color:red}"] }) ?? "";
+  it("the document carries the blyg's own CSS and our layout lines only: no font, no colour of ours", () => {
+    expect(doc).toContain("body{color:red}");
+    expect(doc).not.toContain("font-family");
+    expect(doc).not.toContain("!important");
   });
 });
 

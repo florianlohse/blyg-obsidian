@@ -43,6 +43,7 @@ import { BlygSettingTab } from "./settings/tab";
 import { BLYG_PANEL_VIEW, BlygPanelView, type PanelHost } from "./ui/BlygPanelView";
 import { promptForItem, promptForQuote } from "./ui/QuotePicker";
 import { promptForStudioItem } from "./ui/StudioPicker";
+import { postFromPeek, postOfMention } from "./ui/readerMentions";
 import { BLYG_READER_VIEW, BlygReaderView, excerptOf, type PreparedPage, type ReaderHost, type ReadResult } from "./ui/ReaderView";
 import { framePolicy } from "./ui/readerFeed";
 import { stylesheetsOf, trimmedDocument } from "./ui/trimmedPage";
@@ -907,6 +908,23 @@ export default class BlygPlugin extends Plugin {
         if (!target.ok) return void new Notice(target.message, 10000);
         await this.createNote("thread", `![[${writtenRef(pick, "")}]]\n\n`, target.target);
       },
+      mentionPost: async (m, posts) => {
+        const known = postOfMention(posts, m);
+        if (known) return known;
+        if (!m.sourceOrigin || !m.sourceId) return null;
+        const built = buildStudio(this.env());
+        if (!built.ok) return null;
+        const got = await built.studio.client.peekItem(m.sourceOrigin, m.sourceId);
+        return got.kind === "ok" ? postFromPeek(m, got.value) : null;
+      },
+      ownExcerpt: async (itemId) => {
+        const built = buildStudio(this.env());
+        if (!built.ok) return null;
+        const got = await built.studio.client.getItem(itemId);
+        if (got.kind !== "ok") return null;
+        const text = got.value.published?.contentHtml ? excerptOf(got.value.published.contentHtml, 90) : excerptOf(`<p>${got.value.contentMd.replace(/[<>&]/g, " ")}</p>`, 90);
+        return text || null;
+      },
       markRead: (post) => this.readerMark(post, true),
       markUnread: (post) => this.readerMark(post, false),
     };
@@ -934,9 +952,7 @@ export default class BlygPlugin extends Plugin {
   /** A post's page for the reader's frame (see trimmedPage.ts): plain requests (no token, no cookies), the stylesheets fetched side by side. */
   private async readerPage(url: string): Promise<PreparedPage> {
     const now = Date.now();
-    const font = this.settings.readerPane.font;
-    const cacheKey = `${url}|${font}`; // the font is part of the prepared document
-    const cached = this.readerPages.get(cacheKey);
+    const cached = this.readerPages.get(url); // the web page is never changed by a setting, so the address is the whole key
     if (cached && now - cached.at < 120_000) return cached.page;
     const sheet = async (href: string): Promise<string | null> => {
       const kept = this.readerSheets.get(href);
@@ -955,12 +971,12 @@ export default class BlygPlugin extends Plugin {
       const res = await obsidianTransport({ url, method: "GET", headers: {} });
       if (res.status >= 400) return { kind: "unreachable" };
       const css = (await Promise.all(stylesheetsOf(res.text, url).map(sheet))).filter((c): c is string => c !== null);
-      const doc = trimmedDocument({ pageHtml: res.text, pageUrl: url, css, font });
+      const doc = trimmedDocument({ pageHtml: res.text, pageUrl: url, css });
       page = doc !== null ? { kind: "trimmed", doc } : framePolicy(res.headers) === "allowed" ? { kind: "full" } : { kind: "forbidden" };
     } catch {
       return { kind: "unreachable" };
     }
-    this.readerPages.set(cacheKey, { at: Date.now(), page });
+    this.readerPages.set(url, { at: Date.now(), page });
     return page;
   }
 
