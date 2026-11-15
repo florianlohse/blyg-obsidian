@@ -30,13 +30,13 @@ export function responsesTo(post: ReadingPost, mine: StudioListedItem[], read: R
   return out.sort((a, b) => (Date.parse(b.when) || 0) - (Date.parse(a.when) || 0));
 }
 
-/** The words on the chip that opens the list, and what it says when held: green when the owner replied. */
+/** The words on the chip that opens the list (an icon goes before them, drawn by the reader), and what it says when held: green when the owner replied. */
 export function responseChip(entries: ResponseEntry[]): { text: string; title: string; mine: boolean } | null {
   if (entries.length === 0) return null;
   const mine = entries.filter((e) => e.kind === "mine").length;
   const others = entries.length - mine;
   if (mine > 0) {
-    return { text: others > 0 ? `↩ You + ${others}` : mine > 1 ? `↩ You ×${mine}` : "↩ You", title: others > 0 ? `You replied, and ${others} more ${others === 1 ? "reply" : "replies"} in blygs you read` : mine > 1 ? `You replied ${mine} times` : "You replied to this post", mine: true };
+    return { text: others > 0 ? `You + ${others}` : mine > 1 ? `You replied ×${mine}` : "You replied", title: others > 0 ? `You replied, and ${others} more ${others === 1 ? "reply" : "replies"} in blygs you read` : mine > 1 ? `You replied ${mine} times` : "You replied to this post", mine: true };
   }
-  return { text: `↩ ${others}`, title: `${others} ${others === 1 ? "reply" : "replies"} in blygs you read`, mine: false };
+  return { text: `${others} ${others === 1 ? "reply" : "replies"}`, title: `${others} ${others === 1 ? "reply" : "replies"} in blygs you read`, mine: false };
 }

@@ -100,7 +100,7 @@ export function migrateSettings(raw: unknown, flavour: "release" | "dev" = "rele
       userAgent: str(rd.userAgent, d.reader.userAgent),
     },
     templates: { fragment: str(tp.fragment, d.templates.fragment), thread: str(tp.thread, d.templates.thread) },
-    respond: { draftsPrefix: str(rs.draftsPrefix, d.respond.draftsPrefix) },
+    respond: { draftsPrefix: str(rs.draftsPrefix, d.respond.draftsPrefix), writeAbove: typeof rs.writeAbove === "boolean" ? rs.writeAbove : d.respond.writeAbove },
     mentions: { repoPath: str(mn.repoPath, d.mentions.repoPath) },
     webQuote: {
       // A format with nothing in it is the same as none: the default applies (an unusable but non-empty one is kept as typed, and the tab says what is wrong).

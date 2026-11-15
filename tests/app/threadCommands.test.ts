@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockToInsert, embedReplacement, extractedItemBody, extractionVerdict, newItemName, newThreadName, NEW_NOTE_TEXT, NEW_THREAD_TEXT, pickerCandidates, quoteBlock, quoteBoxRows, renamedForThread, threadConversion, type PickerEntry } from "../../src/app/threadCommands";
+import { blockToInsert, cursorLineAboveQuote, replyBody, embedReplacement, extractedItemBody, extractionVerdict, newItemName, newThreadName, NEW_NOTE_TEXT, NEW_THREAD_TEXT, pickerCandidates, quoteBlock, quoteBoxRows, renamedForThread, threadConversion, type PickerEntry } from "../../src/app/threadCommands";
 import { renderQuoteSelection } from "../../src/core/quote";
 import { scanThread } from "../../src/core/thread";
 
@@ -8,7 +8,7 @@ const B = "1vgtgz0gq5b2c9k7d3m8r4n6xy";
 
 describe("a new thread note", () => {
   it("is a note whose first property makes it a thread, with an empty body", () => {
-    expect(NEW_THREAD_TEXT).toBe("---\nblyg_kind: thread\n---\n\n");
+    expect(NEW_THREAD_TEXT).toBe("---\nblyg_kind: thread\n---\n");
   });
   it("is named by the local time, and numbered when that name is taken", () => {
     const now = new Date(2026, 9, 10, 9, 5, 30);
@@ -143,5 +143,21 @@ describe("extracting a selection into a new item (Florian, 2026-10-16)", () => {
     expect(embedReplacement({ before: "Intro sentence. ", after: "" }, "X")).toBe("\n\n![[X]]");
     expect(embedReplacement({ before: "", after: " and the rest" }, "X")).toBe("![[X]]\n\n");
     expect(embedReplacement({ before: "a", after: "b" }, "folder/X")).toBe("\n\n![[folder/X]]\n\n");
+  });
+});
+
+describe("a reply's first lines", () => {
+  it("starts with the quote (the reference client's order) or leaves room for your words above it", () => {
+    expect(replyBody("id | label", false)).toBe("![[id | label]]\n\n");
+    expect(replyBody("id | label", true)).toBe("\n\n![[id | label]]\n");
+  });
+  it("puts the cursor on the first blank line over the quote", () => {
+    const lines = `---\nblyg_kind: thread\n---\n${replyBody("x", true)}`.split("\n");
+    expect(cursorLineAboveQuote(lines)).toBe(3);
+    expect(lines[3]).toBe("");
+    expect(lines[5]).toBe("![[x]]");
+    expect(cursorLineAboveQuote(["# Heading", "", "![[x]]"])).toBe(1);
+    expect(cursorLineAboveQuote(["# Heading", "![[x]]"])).toBe(0);
+    expect(cursorLineAboveQuote(["no quote here"])).toBeNull();
   });
 });

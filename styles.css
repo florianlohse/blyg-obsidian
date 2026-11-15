@@ -465,11 +465,17 @@
 .blyg-reader-bar, .blyg-reader-controls { display: flex; gap: var(--size-4-1); flex-wrap: wrap; align-items: center; }
 .blyg-reader-controls { margin-top: var(--size-4-1); }
 .blyg-reader-spacer { flex: 1 1 auto; }
-.blyg-reader-header .blyg-reader-btn { height: auto; padding: var(--size-2-1) var(--size-4-3); font-size: var(--font-ui-small); }
+/* Buttons take the theme's own shape (a pill in some themes, a rounded box in others): only their SIZE is ours, scaled from one height, so any shape has room for its text. */
+.blyg-reader { --blyg-btn-h: var(--input-height, 30px); }
+.blyg-reader .blyg-reader-btn, .blyg-reader .blyg-reader-select { box-sizing: border-box; height: auto; min-height: var(--blyg-btn-h); padding-block: 0; font-size: var(--font-ui-small); line-height: 1.2; }
+.blyg-reader .blyg-reader-btn { padding-inline: calc(var(--blyg-btn-h) * 0.5); }
+.blyg-reader .blyg-reader-select { padding-left: calc(var(--blyg-btn-h) * 0.5); }
+.blyg-reader .blyg-reader-btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.35em; box-shadow: none; }
+.blyg-reader-icon { display: inline-flex; align-items: center; }
+.blyg-reader-icon .svg-icon { width: 1.1em; height: 1.1em; }
 /* Our own corners, whatever the theme does to buttons (Minimal makes them pills). */
-.blyg-reader .blyg-reader-btn { border-radius: var(--radius-s); box-shadow: none; }
 .blyg-reader-btn.is-active { background: var(--interactive-accent); color: var(--text-on-accent); }
-.blyg-reader-select { max-width: 100%; font-size: var(--font-ui-small); }
+.blyg-reader-select { max-width: 100%; }
 .blyg-reader-toggle { display: inline-flex; gap: var(--size-4-1); align-items: center; color: var(--text-muted); font-size: var(--font-ui-small); }
 .blyg-reader-segment { display: inline-flex; gap: 1px; margin-left: auto; }
 .blyg-reader-status { color: var(--text-muted); font-size: var(--font-ui-smaller); min-height: 1.4em; padding-top: var(--size-2-1); -webkit-user-select: text; user-select: text; }
@@ -548,9 +554,9 @@
 
 /* Header: the way back and on to the next post are large and first. */
 .blyg-reader-bar-main { margin-bottom: var(--size-4-1); }
-.blyg-reader-bar-main .blyg-reader-btn { min-height: 44px; padding: 0 var(--size-4-5); font-size: var(--font-ui-medium); }
+.blyg-reader-bar-main { --blyg-btn-h: 44px; }
+.blyg-reader-bar-main .blyg-reader-btn { font-size: var(--font-ui-medium); }
 .blyg-reader-back::before { content: "‹\00a0"; font-size: 1.3em; line-height: 1; }
-.blyg-reader-header .blyg-reader-bar-main .blyg-reader-btn { height: auto; padding: var(--size-4-2) var(--size-4-5); }
 
 /* Between two posts: the text fades and "Marked read" shows for a moment. */
 .blyg-reader-bodywrap.is-leaving .blyg-reader-surface .blyg-reader-column, .blyg-reader-bodywrap.is-leaving .blyg-reader-frame { opacity: 0.12; transition: opacity 0.3s ease; }
@@ -585,6 +591,6 @@
 .blyg-reply-preview-body.is-clamped { max-height: 9em; -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
 .blyg-reply-preview-body p { margin: 0 0 0.6em; }
 .blyg-reply-preview-body blockquote { margin: 0.5em 0; padding-left: 0.8em; border-left: 2px solid var(--background-modifier-border); }
-.blyg-reply-preview button { font-size: var(--font-ui-smaller); border-radius: var(--radius-s); box-shadow: none; height: auto; padding: var(--size-2-1) var(--size-4-2); }
+.blyg-reply-preview button { font-size: var(--font-ui-smaller); box-shadow: none; height: auto; min-height: 0; padding: var(--size-2-1) var(--size-4-3); }
 .blyg-reply-preview-more { margin-top: var(--size-2-2); }
 .blyg-reply-preview-body > :last-child { margin-bottom: 0; }

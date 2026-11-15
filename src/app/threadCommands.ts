@@ -6,8 +6,24 @@ import { stripFrontmatter } from "../core/frontmatter";
 import { quoteFromSelection } from "../core/quote";
 import { normalizeSelection } from "../core/textContent";
 
-/** The text of a new thread note: the property that makes it a thread, then an empty body. */
-export const NEW_THREAD_TEXT = "---\nblyg_kind: thread\n---\n\n";
+/** The text of a new thread note: the property that makes it a thread, then an empty body: the cursor starts on the first line under the properties. */
+export const NEW_THREAD_TEXT = "---\nblyg_kind: thread\n---\n";
+
+/**
+ * What a reply starts with, after the properties: the quote of the item it answers. The protocol leaves the order to the author (spec 0.4 §10.6: "the body
+ * is the author's"; the reference client starts with the quote, and the page shows an "In response to" citation above the body either way). With
+ * `above` the author's words come first, the newest on top, like a feed reads: two blank lines, then the quote, so the cursor can start on the first.
+ */
+export function replyBody(ref: string, above: boolean): string {
+  return above ? `\n\n![[${ref}]]\n` : `![[${ref}]]\n\n`;
+}
+
+/** The line to put the cursor on in a reply written above its quote: the first blank line over the quote (0-based), or null when there is no quote line. */
+export function cursorLineAboveQuote(lines: string[]): number | null {
+  const at = lines.findIndex((l) => /^\s*!\[\[/.test(l));
+  if (at < 0) return null;
+  return Math.max(0, (lines[at - 2] ?? "x").trim() === "" ? at - 2 : at - 1);
+}
 
 const two = (n: number): string => String(n).padStart(2, "0");
 

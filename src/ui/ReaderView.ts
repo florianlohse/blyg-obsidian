@@ -4,7 +4,7 @@
 //
 // Layout: a header that never scrolls away (tabs and controls, or the post's buttons and its blyg, author and read state, then one status line) above a
 // body that scrolls by itself. Read state changes at once, in place, and is put back if the Studio refuses.
-import { ItemView, sanitizeHTMLToDom, type WorkspaceLeaf } from "obsidian";
+import { ItemView, sanitizeHTMLToDom, setIcon, type WorkspaceLeaf } from "obsidian";
 import { isUnread, type InboundMention, type ReadingPost } from "../studio/reading";
 import { plainText, renderForeign, type ImageMode } from "./defang";
 import { activeFilters, arrange, cardOf, DEFAULT_FILTER, frameable, LENGTH_LABELS, nextAfter, postOfQuote, pullProgress, readingTimeLabel, relativeTime, SORT_LABELS, sourcesOf, type FeedFilter, type FeedLength, type FeedSort } from "./readerFeed";
@@ -162,6 +162,9 @@ export class BlygReaderView extends ItemView {
 
   override async onOpen(): Promise<void> {
     this.loadMine();
+    this.registerInterval(window.setInterval(() => {
+      if (this.checkedAt !== null && this.status.includes(" · checked ")) this.setStatus(this.checkedText());
+    }, 20_000));
     this.registerEvent(this.app.workspace.on("layout-change", () => this.clearBottom()));
     this.registerDomEvent(activeWindow, "resize", () => this.clearBottom());
     this.draw();
@@ -196,6 +199,14 @@ export class BlygReaderView extends ItemView {
     this.headerEl?.toggleClass("is-busy", this.busyCount > 0);
     this.statusEl?.toggleClass("is-busy", this.busyCount > 0);
     if (this.refreshEl?.isConnected) this.refreshEl.disabled = this.busyCount > 0;
+  }
+
+  /** When the Studio was last asked to look for new posts, and what it found: shown as "checked 2 min ago" and kept current while the reader is open. */
+  private checkedAt: number | null = null;
+  private checkedFresh = 0;
+  private checkedText(): string {
+    const ago = this.checkedAt === null ? "" : relativeTime(new Date(this.checkedAt).toISOString(), Date.now());
+    return `${this.checkedFresh > 0 ? `${this.checkedFresh} new or changed post${this.checkedFresh === 1 ? "" : "s"}` : "Up to date"} · checked ${ago}`;
   }
 
   private setStatus(text: string): void {
@@ -280,8 +291,9 @@ export class BlygReaderView extends ItemView {
       if (run !== this.checking) return;
       await this.reload(true);
       const fresh = (this.data?.posts ?? []).filter((p) => !known.has(`${keyOf(p)}/${p.version}`)).length;
-      const at = new Date().toTimeString().slice(0, 5);
-      this.setStatus(fresh > 0 ? `${fresh} new or changed post${fresh === 1 ? "" : "s"} · checked ${at}` : `Up to date · checked ${at}`);
+      this.checkedAt = Date.now();
+      this.checkedFresh = fresh;
+      this.setStatus(this.checkedText());
     } finally {
       this.busy(-1);
     }
@@ -369,6 +381,13 @@ export class BlygReaderView extends ItemView {
     b.disabled = opts.disabled === true;
     b.addEventListener("click", () => void run());
     return b;
+  }
+
+  /** An icon of Obsidian's own set before an element's text (never an emoji character: on a phone those draw as colour pictures). */
+  private addIcon(el: HTMLElement, icon: string): void {
+    const span = createSpan({ cls: "blyg-reader-icon" });
+    setIcon(span, icon);
+    el.prepend(span);
   }
 
   private link(parent: HTMLElement, text: string, url: string | null): void {
@@ -692,7 +711,8 @@ export class BlygReaderView extends ItemView {
     });
     const chip = responseChip(responsesTo(p, this.mine ?? [], this.data?.posts ?? []));
     if (chip) {
-      this.button(row, chip.text, () => (this.responsesEl ? this.closeResponses() : this.showResponses(p, responsesTo(p, this.mine ?? [], this.data?.posts ?? []))), { cls: `blyg-reader-resp${chip.mine ? " is-mine" : ""}`, title: chip.title });
+      const b = this.button(row, chip.text, () => (this.responsesEl ? this.closeResponses() : this.showResponses(p, responsesTo(p, this.mine ?? [], this.data?.posts ?? []))), { cls: `blyg-reader-resp${chip.mine ? " is-mine" : ""}`, title: chip.title });
+      this.addIcon(b, "reply");
     }
     this.button(row, "Browser", () => (web ? this.host.openWeb(web) : undefined), { disabled: web === null, title: "Open the whole page in the browser" });
     if (web) {
@@ -791,7 +811,7 @@ export class BlygReaderView extends ItemView {
     else if (!p.withdrawn) badges.createSpan({ cls: "blyg-reader-badge is-done", text: "✓ read" });
     // The replies you can see (same rule as in an open post): green when one of them is yours.
     const chip = this.mine !== null || (this.data?.posts.length ?? 0) > 0 ? responseChip(responsesTo(p, this.mine ?? [], this.data?.posts ?? [])) : null;
-    if (chip) badges.createSpan({ cls: `blyg-reader-badge blyg-reader-resp-badge${chip.mine ? " is-mine" : ""}`, text: chip.text, attr: { title: chip.title } });
+    if (chip) this.addIcon(badges.createSpan({ cls: `blyg-reader-badge blyg-reader-resp-badge${chip.mine ? " is-mine" : ""}`, text: chip.text, attr: { title: chip.title } }), "reply");
     if (!p.withdrawn) {
       const c = cardOf(p);
       if (c.quote) card.createDiv({ cls: "blyg-reader-quote", text: c.quote });
@@ -859,8 +879,8 @@ export class BlygReaderView extends ItemView {
    * Under each quote of another blyg's item say where it comes from, as far as the post and the Studio can tell. The quote carries the item's id, the
    * origin of a REMOTE source (the post's own blyg is the source when there is none) and, when the author gave one, a label: the quoter's own name for
    * the quoted item, which a reader may use as the anchor text of its attribution line and for nothing else (spec 0.4 §10.1).
-   *   - a post of a blyg you read: "↗ label · Author · Blog", a tap opens it here (Back returns to this post);
-   *   - another blyg's item: "↗ label · host", a tap looks the item up through your Studio and opens its page in the browser;
+   *   - a post of a blyg you read: "label · Author · Blog", a tap opens it here (Back returns to this post);
+   *   - another blyg's item: "label · host", a tap looks the item up through your Studio and opens its page in the browser;
    *   - your own item: "You, in your own item".
    * Text only, set as text.
    */
@@ -873,6 +893,7 @@ export class BlygReaderView extends ItemView {
       const from = postOfQuote(this.data?.posts ?? [], id);
       const link = (text: string, title: string, open: () => void): void => {
         const line = quote.createDiv({ cls: "blyg-quote-source is-link", text, attr: { role: "link", tabindex: "0", title } });
+        this.addIcon(line, "arrow-up-right");
         line.addEventListener("click", open);
         line.addEventListener("keydown", (e) => {
           if (e.key === "Enter") open();
@@ -880,7 +901,7 @@ export class BlygReaderView extends ItemView {
       };
       if (from && !(from.subscriptionId === p.subscriptionId && from.remoteId === p.remoteId)) {
         const who = [from.authorName, from.subscriptionTitle].filter((x): x is string => !!x && x !== "").join(" · ");
-        link(`↗ ${[label, who].filter((x) => x !== "").join(" · ") || "Open the post"}`, "Open this post here", () => this.openPost(from, "quote"));
+        link(`${[label, who].filter((x) => x !== "").join(" · ") || "Open the post"}`, "Open this post here", () => this.openPost(from, "quote"));
         continue;
       }
       if (id === "") continue;
@@ -895,7 +916,7 @@ export class BlygReaderView extends ItemView {
           } catch {
             return;
           }
-          link(`↗ ${[label, host].filter((x) => x !== "").join(" · ")}`, "Look this item up and open its page in the browser", () => {
+          link(`${[label, host].filter((x) => x !== "").join(" · ")}`, "Look this item up and open its page in the browser", () => {
             void this.host.openQuotedItem(origin, id).then((ok) => {
               if (!ok) this.setStatus("That item could not be found.");
             });
