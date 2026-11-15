@@ -11,7 +11,6 @@
 // Obsidian even though an object URL is created in Obsidian's origin. That is the same protection as framing the author's page itself, which shows
 // strictly more of it. Never add allow-same-origin or allow-scripts to this sandbox.
 
-import { READER_FONTS, type ReaderFont } from "./readerFonts";
 
 /** The sandbox of every reader frame. Links open outside (popups escape the sandbox); nothing else is allowed. */
 export const READER_FRAME_SANDBOX = "allow-popups allow-popups-to-escape-sandbox";
@@ -50,12 +49,6 @@ export function stylesheetsOf(pageHtml: string, pageUrl: string): string[] {
 
 const escapeAttr = (t: string): string => t.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-/** The owner's font for the post's content, laid over the blyg's own (code stays as it is). Fixed strings only: nothing from the page goes into it. */
-export function fontCss(font: ReaderFont): string {
-  if (font === "default") return "";
-  return `.item-content,.item-content :not(pre):not(code):not(kbd):not(samp){font-family:${READER_FONTS[font]}!important}`;
-}
-
 /** A few lines so the post sits well in a narrow pane; everything else is the blyg's own stylesheet. */
 const READER_TWEAKS = "html,body{margin:0}body{padding:12px 16px}.blyg{max-width:none}article{margin-top:0}";
 
@@ -64,7 +57,7 @@ const READER_TWEAKS = "html,body{margin:0}body{padding:12px 16px}.blyg{max-width
  * with its stylesheets inline and a base address so the article's links and images resolve against the page (links open outside). Null when the page
  * has no article: the caller then shows the whole page.
  */
-export function trimmedDocument(input: { pageHtml: string; pageUrl: string; css: string[]; font?: ReaderFont }): string | null {
+export function trimmedDocument(input: { pageHtml: string; pageUrl: string; css: string[] }): string | null {
   const article = articleOf(input.pageHtml);
   if (article === null) return null;
   const lang = /<html\b[^>]*\blang="([A-Za-z-]{1,20})"/i.exec(input.pageHtml)?.[1] ?? "";
@@ -74,7 +67,7 @@ export function trimmedDocument(input: { pageHtml: string; pageUrl: string; css:
     `<!doctype html><html${lang ? ` lang="${lang}"` : ""}><head><meta charset="utf-8">`,
     `<meta name="viewport" content="width=device-width, initial-scale=1">`,
     `<base href="${escapeAttr(input.pageUrl)}" target="_blank">`,
-    `<style>${css}</style><style>${READER_TWEAKS}${fontCss(input.font ?? "default")}</style></head>`,
+    `<style>${css}</style><style>${READER_TWEAKS}</style></head>`,
     `<body><div class="blyg"><div class="blyg-body"><div class="blyg-main">${article}</div></div></div></body></html>`,
   ].join("");
 }

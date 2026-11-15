@@ -88,6 +88,16 @@ export function arrange(posts: ReadingPost[], f: FeedFilter): ReadingPost[] {
     .map((x) => x.p);
 }
 
+/**
+ * The post to open after `current`: the next unread one in the order the feed shows now (its sort, blyg and length choices; "unread only" does not
+ * matter, because the post just read is no longer unread). Not wrapping round: at the end there is none, and the reader goes back to the feed.
+ */
+export function nextAfter(posts: ReadingPost[], f: FeedFilter, current: ReadingPost): ReadingPost | null {
+  const order = arrange(posts, { ...f, unreadOnly: false });
+  const at = order.findIndex((q) => q.subscriptionId === current.subscriptionId && q.remoteId === current.remoteId);
+  return order.slice(at + 1).find((q) => isUnread(q) && !(q.subscriptionId === current.subscriptionId && q.remoteId === current.remoteId)) ?? null;
+}
+
 /** The blygs in the list, for the source picker: id, title and how many posts, by title. */
 export function sourcesOf(posts: ReadingPost[]): Array<{ id: string; title: string; count: number }> {
   const by = new Map<string, { id: string; title: string; count: number }>();
