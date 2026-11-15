@@ -463,6 +463,8 @@ await runScenario({ data: fixtureData() }, async (s) => {
     check(spinning, "freshness: while it checks, the Refresh button is disabled and the header shows it is busy (a spinning ring)");
     check(found, "freshness: a post published on the other blyg a moment ago appears after Refresh");
     check(doneAt > 0 && doneAt - t0 < 15000, `freshness: the check ends as soon as the blyg has reported, not after the full half minute (${doneAt ? Math.round((doneAt - t0) / 100) / 10 : "never"} s)`);
+    const checkedWords = await page.evaluate(() => document.querySelector(".blyg-reader-status")?.textContent ?? "");
+    check(/checked (just now|\d+ min ago)$/.test(checkedWords), `freshness: it says how long ago it checked, not a clock time ("${checkedWords}")`);
     await shot("freshness");
     await closeReader();
   }
@@ -578,7 +580,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
     check((await text(".blyg-reader-header .blyg-reader-nextbtn"))[0] === "Read & next ›", `${layout}: next: an unread post's header offers "Read & next ›" (${(await text(".blyg-reader-nextbtn"))[0]})`);
     check((await page.$(".blyg-reader-postfoot")) === null, `${layout}: next: no bar below the post any more`);
     const look = await page.evaluate(() => { const b = document.querySelector(".blyg-reader-nextbtn"); return { radius: parseFloat(getComputedStyle(b).borderTopLeftRadius), h: b.getBoundingClientRect().height }; });
-    check(look.radius <= 10 && look.h > 0, `${layout}: next: the buttons are square-cornered (radius ${look.radius})`);
+    check(look.h >= 40, `${layout}: next: the main buttons are tall enough to tap (${Math.round(look.h)} px), in the theme\'s own shape (radius ${look.radius})`);
     // The pull-up: a short post fits the pane, so it is "at the end" already. Touch events as a finger makes them.
     const touch = (type, y) => page.evaluate(([t, yy]) => {
       const el = document.querySelector(".blyg-reader-scroll");
@@ -731,8 +733,8 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await showText(`<p>Words.</p><blockquote class="blyg-transclusion" data-blyg-id="${ids.b}" data-blyg-version="1"><p>Quoted.</p></blockquote><blockquote class="blyg-transclusion" data-blyg-id="nosuchitem1" data-blyg-version="1" data-blyg-origin="https://remote.example/" data-blyg-label="my label"><p>Unknown source.</p></blockquote>`);
     await wait(500);
     const lines = await text(".blyg-quote-source");
-    check(lines.length === 2 && lines[0].startsWith("↗") && lines[0].includes(ids.title), `${layout}: quote source: a quote of a post you read names where it comes from (${JSON.stringify(lines)})`);
-    check(lines[1] === "↗ my label · remote.example", `${layout}: quote source: a quote of another blyg's item shows the author's label and the blyg's host (${JSON.stringify(lines[1])})`);
+    check(lines.length === 2 && !/[↗↩]/.test(lines[0]) && lines[0].includes(ids.title), `${layout}: quote source: a quote of a post you read names where it comes from (${JSON.stringify(lines)})`);
+    check(lines[1] === "my label · remote.example", `${layout}: quote source: a quote of another blyg's item shows the author's label and the blyg's host (${JSON.stringify(lines[1])})`);
     await page.evaluate(() => document.querySelector(".blyg-quote-source.is-link")?.click());
     await wait(600);
     check((await page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader")[0].view.shown?.remoteId)) === ids.b, `${layout}: quote source: a tap opens that post here`);
@@ -743,6 +745,24 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await click("Back");
     await wait(400);
     check((await page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader")[0].view.shown)) === null && (await page.$(".blyg-reader-card")) !== null, `${layout}: quote source: and one more Back is the list`);
+    await closeReader();
+  }
+
+  /** Buttons take the theme's own shape (no radius of ours) and scale from the theme's input height, so a pill has room for its text. */
+  async function buttons(layout) {
+    await openReader();
+    await wait(800);
+    const look = await page.evaluate(() => {
+      const root = document.querySelector(".blyg-reader");
+      const plain = document.createElement("button");
+      root.appendChild(plain);
+      const ref = getComputedStyle(plain).borderTopLeftRadius;
+      plain.remove();
+      const rows = [...document.querySelectorAll(".blyg-reader-btn")].map((b) => { const c = getComputedStyle(b); const r = b.getBoundingClientRect(); return { radius: c.borderTopLeftRadius, h: r.height, pad: parseFloat(c.paddingLeft) }; });
+      return { ref, rows };
+    });
+    check(look.rows.length > 0 && look.rows.every((r) => r.radius === look.ref), `${layout}: buttons: the shape is the theme's own (${look.ref}) on all ${look.rows.length} buttons`);
+    check(look.rows.every((r) => r.pad >= r.h * 0.35), `${layout}: buttons: the side padding scales with the height, so a round shape has room (${look.rows.map((r) => Math.round(r.pad) + "/" + Math.round(r.h)).join(" ")})`);
     await closeReader();
   }
 
@@ -768,7 +788,8 @@ await runScenario({ data: fixtureData() }, async (s) => {
     });
     await wait(800);
     const chip = await page.evaluate(() => { const c = document.querySelector(".blyg-reader-resp"); return c ? { text: c.textContent, mine: c.classList.contains("is-mine"), color: getComputedStyle(c).color } : null; });
-    check(chip?.text === "↩ You + 1" && chip.mine, `${layout}: replies: the chip says you replied, and one more reply in a blyg you read (${JSON.stringify(chip)})`);
+    check(await page.evaluate(() => !!document.querySelector(".blyg-reader-resp .blyg-reader-icon svg")) && !/[\u21a9\u2197]/.test(chip?.text ?? ""), `${layout}: replies: the chip carries an icon of Obsidian's set, not an emoji character`);
+    check(chip?.text === "You + 1" && chip.mine, `${layout}: replies: the chip says you replied, and one more reply in a blyg you read (${JSON.stringify(chip)})`);
     await page.evaluate(() => document.querySelector(".blyg-reader-resp")?.click());
     await wait(300);
     const cards = await page.evaluate(() => [...document.querySelectorAll(".blyg-reader-response")].map((c) => ({ mine: c.classList.contains("is-mine"), badge: c.querySelector(".blyg-reader-badge")?.textContent ?? "", text: c.textContent })));
@@ -789,13 +810,13 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await click("Back");
     await wait(500);
     const badges = await page.evaluate(() => [...document.querySelectorAll(".blyg-reader-resp-badge")].map((b) => [b.textContent, b.classList.contains("is-mine")]));
-    check(badges.length === 1 && badges[0][0] === "↩ You + 1" && badges[0][1] === true, `${layout}: replies: the post's card in the feed has the green badge too (${JSON.stringify(badges)})`);
+    check(badges.length === 1 && badges[0][0] === "You + 1" && badges[0][1] === true, `${layout}: replies: the post's card in the feed has the green badge too (${JSON.stringify(badges)})`);
     await page.evaluate(() => { const v = window.app.workspace.getLeavesOfType("blyg-reader")[0].view; v.openPost(v.data.posts[0]); });
     await wait(400);
     // Without your own reply: a plain count.
     await page.evaluate(() => { const v = window.app.workspace.getLeavesOfType("blyg-reader")[0].view; v.host.myItems = async () => []; v.mine = []; v.drawHeader(); });
     const plain = await page.evaluate(() => { const c = document.querySelector(".blyg-reader-resp"); return c ? { text: c.textContent, mine: c.classList.contains("is-mine") } : null; });
-    check(plain?.text === "↩ 1" && !plain.mine, `${layout}: replies: with none of yours it is a plain count (${JSON.stringify(plain)})`);
+    check(plain?.text === "1 reply" && !plain.mine, `${layout}: replies: with none of yours it is a plain count (${JSON.stringify(plain)})`);
     await page.evaluate(() => { const v = window.app.workspace.getLeavesOfType("blyg-reader")[0].view; const [a, b] = v.data.posts; v.host.load = async () => ({ ok: true, data: { ...v.data, posts: v.data.posts.map((p) => (p === b ? { ...p, stubTarget: null } : p)) } }); b.stubTarget = null; v.drawHeader(); });
     check((await page.$(".blyg-reader-resp")) === null, `${layout}: replies: and with nothing to see there is no chip`);
     await closeReader();
@@ -844,6 +865,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
   await font();
   await sidebar();
   await defaultView();
+  await buttons("desktop");
   await responses("desktop");
   await quoteSource("desktop");
   await surface("desktop");
@@ -851,6 +873,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
   await mentions("desktop");
   await pass("desktop");
   await s.phone();
+  await buttons("phone");
   await responses("phone");
   await quoteSource("phone");
   await surface("phone");

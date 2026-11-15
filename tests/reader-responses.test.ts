@@ -34,13 +34,13 @@ describe("responseChip", () => {
   const r = { kind: "read", post: post(), when: "" } as const;
   it("is nothing when there is nothing to see", () => expect(responseChip([])).toBeNull());
   it("is green and says \"You\" when the owner replied, with how many more there are", () => {
-    expect(responseChip([m])).toMatchObject({ text: "↩ You", mine: true });
-    expect(responseChip([m, m])).toMatchObject({ text: "↩ You ×2", mine: true });
-    expect(responseChip([m, r, r])).toMatchObject({ text: "↩ You + 2", mine: true });
+    expect(responseChip([m])).toMatchObject({ text: "You replied", mine: true });
+    expect(responseChip([m, m])).toMatchObject({ text: "You replied ×2", mine: true });
+    expect(responseChip([m, r, r])).toMatchObject({ text: "You + 2", mine: true });
   });
   it("is a plain count of replies in blygs you read otherwise", () => {
-    expect(responseChip([r])).toMatchObject({ text: "↩ 1", mine: false });
-    expect(responseChip([r, r, r])).toMatchObject({ text: "↩ 3", mine: false });
+    expect(responseChip([r])).toMatchObject({ text: "1 reply", mine: false });
+    expect(responseChip([r, r, r])).toMatchObject({ text: "3 replies", mine: false });
   });
 });
 

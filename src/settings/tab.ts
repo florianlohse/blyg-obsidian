@@ -184,6 +184,12 @@ export class BlygSettingTab extends PluginSettingTab {
           "templates.thread",
           "Templates/Thread.md",
         ),
+        {
+          name: "Write a reply above the quote",
+          desc: "A reply starts with your cursor above the quote of the item you answer, so your words come first and the newest thing reads on top (as in a feed, and in a preview of the note). Turn it off to start under the quote. The protocol leaves the order to you.",
+          aliases: ["reply", "quote", "cursor", "order"],
+          control: { type: "toggle", key: "respond.writeAbove", defaultValue: true },
+        },
       ],
     });
 

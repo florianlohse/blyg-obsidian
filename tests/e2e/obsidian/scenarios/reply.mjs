@@ -45,7 +45,12 @@ await runScenario({ data }, async (s) => {
       const fm = await s.becomes(async () => (await s.frontmatter(reply))?.blyg_stub_of, 15000, "blyg_stub_of");
       check(Boolean(fm) && fm.id === ownId && fm.version === 1 && typeof fm.origin === "string", `${layout}: blyg_stub_of holds origin, id and version of the item (${JSON.stringify(fm)})`);
       check((await s.frontmatter(reply))?.blyg_kind === "thread", `${layout}: the note is a thread`);
-      check((await s.editorText(reply)).includes(`![[${ownId}`), `${layout}: it starts with a quote of the item`);
+      check((await s.editorText(reply)).includes(`![[${ownId}`), `${layout}: it holds a quote of the item`);
+      // Your words come first: the cursor is on the first blank line over the quote, and there are no blank lines above that line.
+      const place = await s.page.evaluate((p) => { const ed = window.app.workspace.getLeavesOfType("markdown").find((l) => l.view.file?.path === p)?.view.editor; const lines = ed.getValue().split("\n"); return { cursor: ed.getCursor().line, quote: lines.findIndex((l) => l.startsWith("![[")), lines }; }, reply);
+      check(place.quote - place.cursor === 2 && place.lines[place.cursor] === "" && place.lines[place.cursor + 1] === "", `${layout}: the cursor starts above the quote, with a blank line between (cursor line ${place.cursor}, quote line ${place.quote})`);
+      const fenceEnd = place.lines.findIndex((l, i) => i > 0 && l === "---");
+      check(place.cursor === fenceEnd + 1, `${layout}: the cursor is on the first line under the properties, no blank line before it (cursor line ${place.cursor}, properties end at ${fenceEnd})`);
       await s.openNote(reply);
       check(Boolean(await s.becomes(async () => /^a reply to /.test((await s.panelFacts()).Stub ?? ""), 15000, "the Stub row")), `${layout}: the panel's Stub row says “a reply to …” (${(await s.panelFacts()).Stub ?? "no row"})`);
     }

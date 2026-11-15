@@ -90,7 +90,8 @@ export interface BlygSettings {
   };
   /** Vault paths of the template notes a new fragment / thread starts from. Empty: a bare new note. */
   templates: { fragment: string; thread: string };
-  respond: { draftsPrefix: string };
+  /** `writeAbove`: a reply starts with your cursor ABOVE the quote of the item it answers, so your words come first (the order is the author's to choose, spec 0.4 §10.6). */
+  respond: { draftsPrefix: string; writeAbove: boolean };
   mentions: { repoPath: string };
   /**
    * "Insert web quote" (roadmap S20): a plain Markdown quote with an attribution link, nothing to do with blyg items. Optional in data.json (added without a
@@ -156,7 +157,7 @@ export function defaultSettings(flavour: "release" | "dev" = "release"): BlygSet
       userAgent: "blyg/{version}",
     },
     templates: { fragment: "", thread: "" },
-    respond: { draftsPrefix: "blyg/" },
+    respond: { draftsPrefix: "blyg/", writeAbove: true },
     mentions: { repoPath: "data/mentions.json" },
     webQuote: { ...DEFAULT_WEB_QUOTE },
     readerPane: { images: "click", view: "web", font: "default", contrast: "normal", filter: { sort: "newest", source: null, unreadOnly: false, length: "any" } },
