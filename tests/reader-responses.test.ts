@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { readReadingPost, type ReadingPost } from "../src/studio/reading";
 import type { StudioListedItem } from "../src/studio/types";
-import { responseChip, responsesTo } from "../src/ui/readerResponses";
+import { responseChip, responseIndex, responsesTo } from "../src/ui/readerResponses";
 
 const post = (over: Partial<ReadingPost> = {}): ReadingPost => ({ subscriptionId: "s1", subscriptionTitle: "B", origin: "https://b.example", remoteId: "p1", kind: "fragment", withdrawn: false, version: 1, readVersion: null, observedAt: "2026-11-01T00:00:00Z", created: "2026-11-01T00:00:00Z", isReply: false, contentHtml: "<p>x</p>", contentMd: "x", authorName: null, authorUrl: null, sourceUrl: null, ...over });
 const mine = (id: string, stub: unknown, when = "2026-11-05T00:00:00Z", status: "draft" | "public" = "public"): StudioListedItem => ({ id, revision: 1, kind: "thread", status, version: status === "draft" ? 0 : 1, contentMd: `my words ${id}`, dirty: false, stubOf: stub as StudioListedItem["stubOf"], published: null, created: when });
@@ -51,5 +51,14 @@ describe("a reading row's stub", () => {
     expect(readReadingPost(row({ url: "https://web.example/x" }))?.stubTarget).toBeNull();
     expect(readReadingPost(row(null))?.stubTarget).toBeNull();
     expect(readReadingPost(row({ origin: "https://b.example", id: "p1", version: 2 }))?.isReply).toBe(true);
+  });
+});
+
+describe("responseIndex: the same answers as responsesTo, by lookup", () => {
+  it("agrees with responsesTo on a mixed list", () => {
+    const items = [mine("m1", { origin: "https://B.example/", id: "p1", version: 1 }), mine("m2", { origin: "https://b.example", id: "other", version: 1 }), mine("m3", null)];
+    const posts = [post(), post({ subscriptionId: "s2", remoteId: "r1", created: "2026-11-09T00:00:00Z", stubTarget: { origin: "https://b.example", id: "p1" } }), post({ subscriptionId: "s2", remoteId: "r2", withdrawn: true, stubTarget: { origin: "https://b.example", id: "p1" } }), post({ remoteId: "q", origin: null })];
+    const index = responseIndex(items, posts);
+    for (const p of posts) expect(index(p).map((e) => (e.kind === "mine" ? `m:${e.itemId}` : `r:${e.post.remoteId}`)), p.remoteId).toEqual(responsesTo(p, items, posts).map((e) => (e.kind === "mine" ? `m:${e.itemId}` : `r:${e.post.remoteId}`)));
   });
 });

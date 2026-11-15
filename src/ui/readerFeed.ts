@@ -106,9 +106,14 @@ export function arrange(posts: ReadingPost[], f: FeedFilter): ReadingPost[] {
  * matter, because the post just read is no longer unread). Not wrapping round: at the end there is none, and the reader goes back to the feed.
  */
 export function nextAfter(posts: ReadingPost[], f: FeedFilter, current: ReadingPost): ReadingPost | null {
-  const order = arrange(posts, { ...f, unreadOnly: false });
-  const at = order.findIndex((q) => q.subscriptionId === current.subscriptionId && q.remoteId === current.remoteId);
-  return order.slice(at + 1).find((q) => isUnread(q) && !(q.subscriptionId === current.subscriptionId && q.remoteId === current.remoteId)) ?? null;
+  return nextInOrder(arrange(posts, { ...f, unreadOnly: false }), current);
+}
+
+/** The same, from an order already worked out (the reader keeps it while the list and the order choices stay as they are). */
+export function nextInOrder(order: ReadingPost[], current: ReadingPost): ReadingPost | null {
+  const same = (q: ReadingPost): boolean => q.subscriptionId === current.subscriptionId && q.remoteId === current.remoteId;
+  const at = order.findIndex(same);
+  return order.slice(at + 1).find((q) => isUnread(q) && !same(q)) ?? null;
 }
 
 /** The post a quote (`blockquote.blyg-transclusion`, `data-blyg-id`) was taken from, when the Studio reads that blyg and holds it. Null otherwise. */

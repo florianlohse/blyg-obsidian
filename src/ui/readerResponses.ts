@@ -40,3 +40,34 @@ export function responseChip(entries: ResponseEntry[]): { text: string; title: s
   }
   return { text: `${others} ${others === 1 ? "reply" : "replies"}`, title: `${others} ${others === 1 ? "reply" : "replies"} in blygs you read`, mine: false };
 }
+
+const norm = (origin: string): string => origin.trim().replace(/\/+$/, "").toLowerCase();
+
+/**
+ * The same rule as `responsesTo`, for many posts at once: the list and the owner's items are read once, and each post is then answered by a lookup. (The feed's
+ * cards and the open post ask for every post of the list; asking each time by scanning the list is linear in the list for every card.)
+ */
+export function responseIndex(mine: StudioListedItem[], read: ReadingPost[]): (post: ReadingPost) => ResponseEntry[] {
+  const mineBy = new Map<string, StudioListedItem[]>();
+  for (const item of mine) {
+    const t = item.stubOf;
+    if (t && isBlygStub(t)) {
+      const k = `${norm(t.origin)}|${t.id}`;
+      mineBy.set(k, [...(mineBy.get(k) ?? []), item]);
+    }
+  }
+  const readBy = new Map<string, ReadingPost[]>();
+  for (const q of read) {
+    if (q.withdrawn || !q.stubTarget) continue;
+    const k = `${norm(q.stubTarget.origin)}|${q.stubTarget.id}`;
+    readBy.set(k, [...(readBy.get(k) ?? []), q]);
+  }
+  return (post) => {
+    if (!post.origin) return [];
+    const k = `${norm(post.origin)}|${post.remoteId}`;
+    const out: ResponseEntry[] = [];
+    for (const item of mineBy.get(k) ?? []) out.push({ kind: "mine", itemId: item.id, text: item.published?.contentMd || item.contentMd, when: item.created ?? item.updated ?? "", draft: item.status === "draft" });
+    for (const q of readBy.get(k) ?? []) if (!(q.subscriptionId === post.subscriptionId && q.remoteId === post.remoteId)) out.push({ kind: "read", post: q, when: q.created ?? q.observedAt });
+    return out.sort((a, b) => (Date.parse(b.when) || 0) - (Date.parse(a.when) || 0));
+  };
+}

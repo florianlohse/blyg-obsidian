@@ -80,7 +80,11 @@ export interface StudioClient {
   /** An imported item (its HTML is what a reader of this Studio sees, and what a passage is chosen from). */
   getImported(subscriptionId: string, id: string): Promise<StudioResult<StudioImported>>;
   /** POC (S15): the posts the owner reads, newest first as the Studio orders them (`GET /reading/imported`, `owner:read`), at most `maxPages` pages of 50. */
-  listReading(maxPages?: number, onPage?: (postsSoFar: ReadingPost[]) => void): Promise<StudioResult<{ posts: ReadingPost[]; complete: boolean; unreadable: number }>>;
+  listReading(
+    maxPages?: number,
+    onPage?: (postsSoFar: ReadingPost[]) => void,
+    opts?: { pageSize?: number; stopAfter?: (pageRows: ReadingPost[]) => boolean },
+  ): Promise<StudioResult<{ posts: ReadingPost[]; complete: boolean; unreadable: number; stopped: boolean }>>;
   /** POC (S15): inbound mentions of the owner's items (`GET /mentions?direction=inbound`, `owner:read`), verified and not hidden only. */
   listInboundMentions(maxPages?: number): Promise<StudioResult<{ mentions: InboundMention[]; complete: boolean; unreadable: number }>>;
   /** POC (S15): mark one version of a post read. Needs the token scope `reading:state`, which the plugin's token does not carry today: a 403 comes back as `forbidden`. */
@@ -210,13 +214,14 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
    * answers 409 `cursor-expired`: the walk is thrown away and started again from page 1, once (never appended to the old prefix); a second
    * expiry is reported. `complete` is false when the page cap was hit with more to read.
    */
-  async function walk<T>(path: string, query: Record<string, string>, pageSize: number, maxPages: number, readRow: (row: unknown) => T | null, onPage?: (rowsSoFar: T[]) => void): Promise<StudioResult<{ rows: T[]; complete: boolean; unreadable: number }>> {
+  async function walk<T>(path: string, query: Record<string, string>, pageSize: number, maxPages: number, readRow: (row: unknown) => T | null, onPage?: (rowsSoFar: T[]) => void, stopAfter?: (pageRows: T[]) => boolean): Promise<StudioResult<{ rows: T[]; complete: boolean; unreadable: number; stopped?: boolean }>> {
     for (let restart = 0; restart < 2; restart++) {
       const rows: T[] = [];
       let skipped = 0;
       let cursor: string | null = null;
       let expired = false;
       for (let page = 0; page < maxPages; page++) {
+        const before = rows.length;
         const res: StudioResponse = await http.send(token, { area: "api", path, query: { ...query, limit: String(pageSize), ...(cursor !== null ? { cursor } : {}) } });
         if (res.status === 409 && codeOf(res) === "cursor-expired") {
           expired = true;
@@ -237,6 +242,8 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
           /* ignored */
         }
         if (next === null) return { kind: "ok", value: { rows, complete: true, unreadable: skipped } };
+        // The caller may know that nothing new lies further on (the list is newest first): stop, and say it was a choice, not a cut-off.
+        if (stopAfter?.(rows.slice(before))) return { kind: "ok", value: { rows, complete: false, unreadable: skipped, stopped: true } };
         cursor = next;
       }
       if (!expired) return { kind: "ok", value: { rows, complete: false, unreadable: skipped } };
@@ -351,10 +358,10 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
       return { kind: "ok", value: { count, complete: walked.value.complete } };
     },
 
-    listReading: async (maxPages = 4, onPage?: (postsSoFar: ReadingPost[]) => void) => {
-      const walked = await walk("/reading/imported", {}, 50, maxPages, readReadingPost, onPage);
+    listReading: async (maxPages = 4, onPage?: (postsSoFar: ReadingPost[]) => void, opts?: { pageSize?: number; stopAfter?: (pageRows: ReadingPost[]) => boolean }) => {
+      const walked = await walk("/reading/imported", {}, Math.min(100, opts?.pageSize ?? 50), maxPages, readReadingPost, onPage, opts?.stopAfter);
       if (walked.kind !== "ok") return walked;
-      return { kind: "ok", value: { posts: walked.value.rows, complete: walked.value.complete, unreadable: walked.value.unreadable } } as const;
+      return { kind: "ok", value: { posts: walked.value.rows, complete: walked.value.complete, unreadable: walked.value.unreadable, stopped: walked.value.stopped === true } } as const;
     },
 
     listInboundMentions: async (maxPages = 2) => {

@@ -444,7 +444,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
       if (feed.includes(id)) break;
       await wait(1000);
     }
-    // The reader asked once already when it opened; Refresh waits a minute between asks. A person would wait; the test resets the pause.
+    // Refresh waits a minute between asks of the blygs; the test resets the pause, as a person waiting would.
     await page.evaluate(() => { window.app.plugins.plugins.blyg.readerCheckedAt = 0; });
     const t0 = Date.now();
     check(await click("Refresh"), "freshness: Refresh can be tapped");
@@ -766,6 +766,56 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await closeReader();
   }
 
+  /** Reading less: opening asks nothing of the blygs, Refresh reads the list once, the list is saved for the next session and shows at once, and a failing Studio is left alone. */
+  async function economy(layout) {
+    await page.evaluate(() => {
+      const b = window.app.plugins.plugins.blyg;
+      window.__calls = { load: 0, checkForNew: 0, changeMarks: 0, readCache: 0 };
+      if (!b.__origHost) b.__origHost = b.readerHost.bind(b);
+      b.readerHost = () => {
+        const h = b.__origHost();
+        for (const k of Object.keys(window.__calls)) { const f = h[k].bind(h); h[k] = (...a) => { window.__calls[k]++; return f(...a); }; }
+        return h;
+      };
+    });
+    await openReader();
+    await page.waitForFunction(() => !/^Loading|updating/.test(document.querySelector(".blyg-reader-status")?.textContent ?? ""), null, { timeout: 20000 }).catch(() => {});
+    const opened = await page.evaluate(() => ({ ...window.__calls }));
+    check(opened.checkForNew === 0 && opened.load >= 1 && opened.readCache === 1, `${layout}: economy: opening the reader asks no blyg to be checked, only reads the list (${JSON.stringify(opened)})`);
+    // Refresh: one read of the list at the end, however often the counters moved
+    await publishOnBlogB(`${Date.now().toString(36)} economy. A new post.`);
+    await page.evaluate(() => { window.app.plugins.plugins.blyg.readerCheckedAt = 0; window.__calls = { load: 0, checkForNew: 0, changeMarks: 0, readCache: 0 }; });
+    check(await click("Refresh"), `${layout}: economy: Refresh can be tapped`);
+    await page.waitForFunction(() => /checked (just now|\d+ min ago)$/.test(document.querySelector(".blyg-reader-status")?.textContent ?? ""), null, { timeout: 45000 }).catch(() => {});
+    const refreshed = await page.evaluate(() => ({ ...window.__calls }));
+    check(refreshed.checkForNew === 1 && refreshed.load === 1 && refreshed.changeMarks >= 2, `${layout}: economy: Refresh asks the blygs once and reads the list once (${JSON.stringify(refreshed)})`);
+    // the saved list
+    await wait(3600);
+    const saved = await page.evaluate(async () => {
+      const b = window.app.plugins.plugins.blyg;
+      const path = `${b.manifest.dir}/reader-cache.json`;
+      if (!(await window.app.vault.adapter.exists(path))) return null;
+      const f = JSON.parse(await window.app.vault.adapter.read(path));
+      return { posts: f.posts.length, mdLeft: f.posts.filter((p) => p.contentMd !== "").length, origin: f.origin, inVaultNotes: window.app.vault.getMarkdownFiles().filter((x) => /reader-cache/.test(x.path)).length };
+    });
+    check(saved !== null && saved.posts > 0 && saved.mdLeft === 0 && saved.inVaultNotes === 0, `${layout}: economy: the list is saved for the next session in the plugin's own folder, without the posts' Markdown (${JSON.stringify(saved)})`);
+    await closeReader();
+    // the saved list shows at once, even while the Studio is not answering; and it says so in words
+    await page.evaluate(() => { window.app.plugins.plugins.blyg.readerTrouble = { failures: 2, until: Date.now() + 120000 }; });
+    await openReader();
+    const cached = await page.evaluate(() => ({ cards: document.querySelectorAll(".blyg-reader-card").length, status: document.querySelector(".blyg-reader-status")?.textContent ?? "" }));
+    check(cached.cards > 0, `${layout}: economy: the saved list shows at once (${cached.cards} cards)`);
+    await wait(1500);
+    const backed = await page.evaluate(() => document.querySelector(".blyg-reader-status")?.textContent ?? "");
+    check(/not answering; the reader tries again in about \d+ min/.test(backed), `${layout}: economy: a failing Studio is left alone and the status says when the reader tries again ("${backed.slice(0, 90)}")`);
+    await page.evaluate(() => { window.app.plugins.plugins.blyg.readerTrouble = { failures: 0, until: 0 }; });
+    await closeReader();
+    await page.evaluate(() => window.app.commands.executeCommandById("blyg:clear-reader-cache"));
+    await wait(500);
+    check(await page.evaluate(async () => !(await window.app.vault.adapter.exists(`${window.app.plugins.plugins.blyg.manifest.dir}/reader-cache.json`))), `${layout}: economy: "Clear the reader's saved list" removes it`);
+    await page.evaluate(() => { const b = window.app.plugins.plugins.blyg; if (b.__origHost) { b.readerHost = b.__origHost; delete b.__origHost; } });
+  }
+
   /** The replies chip of an open post: your own reply (green), replies in blygs you read, the list they open, and what a tap does. */
   async function responses(layout) {
     await openReader();
@@ -817,7 +867,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await page.evaluate(() => { const v = window.app.workspace.getLeavesOfType("blyg-reader")[0].view; v.host.myItems = async () => []; v.mine = []; v.drawHeader(); });
     const plain = await page.evaluate(() => { const c = document.querySelector(".blyg-reader-resp"); return c ? { text: c.textContent, mine: c.classList.contains("is-mine") } : null; });
     check(plain?.text === "1 reply" && !plain.mine, `${layout}: replies: with none of yours it is a plain count (${JSON.stringify(plain)})`);
-    await page.evaluate(() => { const v = window.app.workspace.getLeavesOfType("blyg-reader")[0].view; const [a, b] = v.data.posts; v.host.load = async () => ({ ok: true, data: { ...v.data, posts: v.data.posts.map((p) => (p === b ? { ...p, stubTarget: null } : p)) } }); b.stubTarget = null; v.drawHeader(); });
+    await page.evaluate(() => { const v = window.app.workspace.getLeavesOfType("blyg-reader")[0].view; const [a, b] = v.data.posts; v.host.load = async () => ({ ok: true, data: { ...v.data, posts: v.data.posts.map((p) => (p === b ? { ...p, stubTarget: null } : p)) } }); b.stubTarget = null; v.respMemo = null; v.drawHeader(); });
     check((await page.$(".blyg-reader-resp")) === null, `${layout}: replies: and with nothing to see there is no chip`);
     await closeReader();
   }
@@ -854,6 +904,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
   await useToken(FULL); // set once: the rest of the scenario uses a token with every permission
   await ribbon();
   await freshness();
+  await economy("desktop");
   await textFirst();
   await noFrame();
   await markup();

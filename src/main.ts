@@ -49,11 +49,13 @@ import { replyPreviewExtension } from "./editor/replyPreviewExtension";
 import { resolvePreview, type PreviewResult } from "./studio/previewResolver";
 import { drawPreview, type PreviewDeps } from "./ui/replyPreview";
 import { limiter, postFromPeek, postOfMention } from "./ui/readerMentions";
+import { parseReaderCache, readerCacheOf } from "./ui/readerCache";
+import { backoffDelay, READER_PAGE, READER_PAGES, reachedKnown } from "./ui/readerSync";
 import { BLYG_READER_VIEW, BlygReaderView, excerptOf, type PreparedPage, type ReaderHost, type ReadResult } from "./ui/ReaderView";
 import { framePolicy } from "./ui/readerFeed";
 import { stylesheetsOf, trimmedDocument } from "./ui/trimmedPage";
 import { buildStudio } from "./app/run";
-import type { ReadingPost } from "./studio/reading";
+import type { InboundMention, ReadingPost } from "./studio/reading";
 import { confirmWithModal } from "./ui/WritePreviewModal";
 import { chooseImports } from "./ui/ImportModal";
 import { chooseHoppers } from "./ui/HopperModal";
@@ -117,6 +119,13 @@ export default class BlygPlugin extends Plugin {
     this.registerView(BLYG_READER_VIEW, (leaf) => new BlygReaderView(leaf, this.readerHost()));
     this.addCommand({ id: "open-reader", name: "Open reader", callback: () => void this.openReader() });
     this.addCommand({ id: "open-reader-sidebar", name: "Open reader in the sidebar", callback: () => void this.openReader("sidebar") });
+    this.addCommand({
+      id: "clear-reader-cache",
+      name: "Clear the reader's saved list",
+      callback: () => {
+        void this.app.vault.adapter.remove(this.readerCachePath()).then(() => new Notice("The reader's saved list is cleared."), () => new Notice("There was no saved list."));
+      },
+    });
     this.registerPanelRefresh();
 
     this.addCommand({
@@ -868,6 +877,57 @@ export default class BlygPlugin extends Plugin {
     await workspace.revealLeaf(leaf);
   }
 
+  // ---- how the reader treats the Studio: leave it alone when it fails (Burrow's rule), and keep the list between sessions ----------------------------------
+
+  private readerTrouble = { failures: 0, until: 0 };
+
+  /** In words, why the reader is not asking the Studio now, or null. */
+  private readerBackedOff(): string | null {
+    const wait = this.readerTrouble.until - Date.now();
+    return wait > 0 ? `The Studio is not answering; the reader tries again in about ${Math.max(1, Math.ceil(wait / 60_000))} min (Refresh asks now).` : null;
+  }
+  private readerFailed(): void {
+    this.readerTrouble.failures++;
+    this.readerTrouble.until = Date.now() + backoffDelay(this.readerTrouble.failures);
+  }
+  private readerWorked(): void {
+    this.readerTrouble = { failures: 0, until: 0 };
+  }
+
+  private readerCachePath(): string {
+    return normalizePath(`${this.manifest.dir ?? `${this.app.vault.configDir}/plugins/${this.manifest.id}`}/reader-cache.json`);
+  }
+  private readerCacheTimer: number | null = null;
+
+  /**
+   * The list from the last session, so the feed shows at once and is brought up to date behind it. It lives in the plugin's own folder (inside the vault's
+   * configuration folder, never in a note), is only used for the Studio it came from, and only while it is fresh (two weeks); the posts' Markdown is left out.
+   */
+  private async readReaderCache(): Promise<{ posts: ReadingPost[]; mentions: InboundMention[]; savedAt: number; studioOrigin: string } | null> {
+    try {
+      const path = this.readerCachePath();
+      const adapter = this.app.vault.adapter;
+      if (!(await adapter.exists(path))) return null;
+      const raw = JSON.parse(await adapter.read(path)) as unknown;
+      const built = buildStudio(this.env());
+      if (!built.ok) return null;
+      const got = parseReaderCache(raw, built.studio.address.origin, Date.now());
+      return got;
+    } catch {
+      return null;
+    }
+  }
+  private writeReaderCache(data: { posts: ReadingPost[]; mentions: InboundMention[] }): void {
+    if (this.readerCacheTimer !== null) window.clearTimeout(this.readerCacheTimer);
+    this.readerCacheTimer = window.setTimeout(() => {
+      this.readerCacheTimer = null;
+      const built = buildStudio(this.env());
+      if (!built.ok) return;
+      const text = JSON.stringify(readerCacheOf(data.posts, data.mentions, built.studio.address.origin, Date.now()));
+      void this.app.vault.adapter.write(this.readerCachePath(), text).catch((err: unknown) => this.logger().warn(`reader cache not written: ${err instanceof Error ? err.message : String(err)}`));
+    }, 3000);
+  }
+
   /** The owner's own items, kept for a few minutes for the replies chip of the reader. */
   private readerMine: { at: number; items: StudioListedItem[] } | null = null;
 
@@ -944,50 +1004,80 @@ export default class BlygPlugin extends Plugin {
       },
       checkForNew: async (force) => {
         // A pause between checks: every check makes the Studio fetch every blyg it reads, so opening the reader again and again must not hammer them.
-        const pause = force ? 60_000 : 10 * 60_000;
+        // (The reader asks only when the person pressed Refresh: the Studio fetches the blygs itself every half hour.)
+        const pause = 60_000;
         if (Date.now() - this.readerCheckedAt < pause) return { asked: false };
+        const waiting = force ? null : this.readerBackedOff();
+        if (waiting) return { asked: false, reason: waiting };
         const built = buildStudio(this.env());
         if (!built.ok) return { asked: false, reason: built.message };
         try {
           const got = await built.studio.client.pollSubscriptions();
           if (got.kind === "ok") {
             this.readerCheckedAt = Date.now();
+            this.readerWorked();
             return { asked: true, polling: got.value.polling };
           }
           if (got.kind === "forbidden") return { asked: false, reason: "Your token cannot ask the Studio to check for new posts (it needs the permission “owner:manage”). The list shows what the Studio already has." };
+          if (got.kind === "error") this.readerFailed();
           return { asked: false, reason: "The Studio could not be asked to check for new posts. The list shows what it already has." };
         } catch {
+          this.readerFailed();
           return { asked: false, reason: "The Studio could not be reached to check for new posts." };
         }
       },
       changeMarks: async () => {
+        if (this.readerBackedOff()) return null;
         const built = buildStudio(this.env());
         if (!built.ok) return null;
         try {
           const got = await built.studio.client.changes();
-          if (got.kind !== "ok") return null;
+          if (got.kind !== "ok") {
+            if (got.kind === "error") this.readerFailed();
+            return null;
+          }
+          this.readerWorked();
           return { epoch: got.value.epoch, reading: got.value.domains.reading ?? 0, subscriptions: got.value.domains.subscriptions ?? 0 };
         } catch {
+          this.readerFailed();
           return null;
         }
       },
       preparePage: (url) => this.readerPage(url),
-      load: async (onProgress) => {
+      load: async (onProgress, opts) => {
+        const waiting = opts?.force ? null : this.readerBackedOff();
+        if (waiting) return { ok: false, message: waiting };
         const built = buildStudio(this.env());
         if (!built.ok) return { ok: false, message: built.message };
         try {
           const { client } = built.studio;
-          const [reading, mentions] = await Promise.all([client.listReading(4, onProgress), client.listInboundMentions()]);
-          if (reading.kind !== "ok") return { ok: false, message: "message" in reading ? reading.message : "The Studio could not list what you read." };
-          const cut = !reading.value.complete || (mentions.kind === "ok" && !mentions.value.complete);
-          const bad = reading.value.unreadable + (mentions.kind === "ok" ? mentions.value.unreadable : 0);
-          const note = [cut ? "Showing the newest posts only." : "", bad > 0 ? `${bad} could not be read.` : "", mentions.kind === "ok" ? "" : "Mentions are not available."].filter(Boolean).join(" ");
-          return { ok: true, data: { posts: reading.value.posts, mentions: mentions.kind === "ok" ? mentions.value.mentions : [], note, studioOrigin: built.studio.address.origin } };
+          const known = opts?.known ?? null;
+          const wantMentions = opts?.mentions !== false;
+          const [reading, mentions] = await Promise.all([
+            client.listReading(READER_PAGES, onProgress, { pageSize: READER_PAGE, ...(known ? { stopAfter: (rows: ReadingPost[]) => reachedKnown(rows, known) } : {}) }),
+            wantMentions ? client.listInboundMentions() : Promise.resolve(null),
+          ]);
+          if (reading.kind !== "ok") {
+            if (reading.kind === "error") this.readerFailed();
+            return { ok: false, message: "message" in reading ? reading.message : "The Studio could not list what you read." };
+          }
+          this.readerWorked();
+          // The window is the newest posts only: older unread posts are not reachable yet ("load older" is planned).
+          const cut = !reading.value.complete && !reading.value.stopped;
+          const bad = reading.value.unreadable + (mentions !== null && mentions.kind === "ok" ? mentions.value.unreadable : 0);
+          const note = [cut ? `Showing the newest ${READER_PAGE * READER_PAGES} posts; older ones are not loaded yet.` : "", bad > 0 ? `${bad} could not be read.` : "", mentions !== null && mentions.kind !== "ok" ? "Mentions are not available." : ""].filter(Boolean).join(" ");
+          return {
+            ok: true,
+            data: { posts: reading.value.posts, mentions: mentions !== null && mentions.kind === "ok" ? mentions.value.mentions : [], mentionsFetched: mentions !== null && mentions.kind === "ok", note, studioOrigin: built.studio.address.origin, incremental: reading.value.stopped },
+          };
         } catch (err) {
+          this.readerFailed();
           this.logger().warn(`reader load failed: ${err instanceof Error ? err.message : String(err)}`);
           return { ok: false, message: "The Studio could not be reached." };
         }
       },
+      readCache: () => this.readReaderCache(),
+      writeCache: (data) => this.writeReaderCache(data),
       openWeb: (url) => window.open(url, "_blank"),
       replyTo: async (post: ReadingPost) => {
         const pick: StudioPick = { source: "studio", id: post.remoteId, kind: post.kind, title: excerptOf(post.contentHtml, 60), detail: post.subscriptionTitle, subscriptionId: post.subscriptionId, label: post.subscriptionTitle, origin: post.origin, version: post.version, quotable: true };
