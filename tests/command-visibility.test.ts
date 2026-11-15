@@ -12,6 +12,8 @@ vi.mock("obsidian", () => {
     }
     addSettingTab() {}
     registerView() {}
+    registerEditorExtension() {}
+    registerMarkdownPostProcessor() {}
     addRibbonIcon() {}
     registerEvent() {}
     registerInterval() {}
@@ -30,7 +32,7 @@ vi.mock("obsidian", () => {
     Plugin,
     PluginSettingTab: class { update() {} hide() {} refreshDomState() {} },
     SecretComponent: Blank, FuzzySuggestModal: Blank, ItemView: Blank, MarkdownView: Blank, Modal: Blank, Notice: Blank, Setting: Blank, SuggestModal: Blank, TFile: Blank, TAbstractFile: Blank, WorkspaceLeaf: Blank,
-    debounce: <T>(f: T) => f, moment: fn, normalizePath: (p: string) => p, parseYaml: fn, requestUrl: fn, sanitizeHTMLToDom: fn, stringifyYaml: () => "",
+    editorInfoField: {}, editorLivePreviewField: {}, debounce: <T>(f: T) => f, moment: fn, normalizePath: (p: string) => p, parseYaml: fn, requestUrl: fn, sanitizeHTMLToDom: fn, stringifyYaml: () => "",
   };
 });
 

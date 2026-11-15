@@ -45,7 +45,10 @@ import { promptForItem, promptForQuote } from "./ui/QuotePicker";
 import { promptForStudioItem } from "./ui/StudioPicker";
 import { isEmptySettingsData, readMirror } from "./settings/mirror";
 import type { StudioListedItem } from "./studio/types";
-import { postFromPeek, postOfMention } from "./ui/readerMentions";
+import { replyPreviewExtension } from "./editor/replyPreviewExtension";
+import { resolvePreview, type PreviewResult } from "./studio/previewResolver";
+import { drawPreview, type PreviewDeps } from "./ui/replyPreview";
+import { limiter, postFromPeek, postOfMention } from "./ui/readerMentions";
 import { BLYG_READER_VIEW, BlygReaderView, excerptOf, type PreparedPage, type ReaderHost, type ReadResult } from "./ui/ReaderView";
 import { framePolicy } from "./ui/readerFeed";
 import { stylesheetsOf, trimmedDocument } from "./ui/trimmedPage";
@@ -109,6 +112,7 @@ export default class BlygPlugin extends Plugin {
     this.registerView(BLYG_PANEL_VIEW, (leaf) => new BlygPanelView(leaf, this.panelHost()));
     // The mobile menu (the bottom-right menu) lists the ribbon: two plainly named entries. The lint rule against the plugin's name covers command names only.
     this.addRibbonIcon("send", "Open blyg publisher", () => void this.openPanel());
+    this.registerReplyPreview();
     this.addRibbonIcon("book-open", "Open blyg reader", () => void this.openReader());
     this.registerView(BLYG_READER_VIEW, (leaf) => new BlygReaderView(leaf, this.readerHost()));
     this.addCommand({ id: "open-reader", name: "Open reader", callback: () => void this.openReader() });
@@ -866,6 +870,50 @@ export default class BlygPlugin extends Plugin {
 
   /** The owner's own items, kept for a few minutes for the replies chip of the reader. */
   private readerMine: { at: number; items: StudioListedItem[] } | null = null;
+
+  /** What a note's `![[id | label]]` points at, asked of the Studio once and kept for a few minutes in memory (never in the vault). */
+  private readonly previewCache = new Map<string, { at: number; value: PreviewResult }>();
+  private readonly previewSlot = limiter(3);
+
+  private previewDeps(): PreviewDeps {
+    return {
+      resolve: (id, hintOrigin) => {
+        const kept = this.previewCache.get(`${id}|${hintOrigin ?? ""}`);
+        if (kept && Date.now() - kept.at < (kept.value.kind === "ready" ? 10 * 60_000 : 30_000)) return Promise.resolve(kept.value);
+        return this.previewSlot(async (): Promise<PreviewResult> => {
+          const built = buildStudio(this.env());
+          const value: PreviewResult = built.ok ? await resolvePreview(built.studio.client, id, hintOrigin).catch((): PreviewResult => ({ kind: "unavailable", message: "The Studio could not be asked." })) : { kind: "unavailable", message: built.message };
+          this.previewCache.set(`${id}|${hintOrigin ?? ""}`, { at: Date.now(), value });
+          return value;
+        });
+      },
+      imageMode: () => this.settings.readerPane.images,
+      studioOrigin: () => {
+        const built = buildStudio(this.env());
+        return built.ok ? built.studio.address.origin : null;
+      },
+    };
+  }
+
+  /** The reply preview (view-only): in the editor's Live Preview and in Reading view, a quote directive shows the text of the item it points at. */
+  private registerReplyPreview(): void {
+    const deps = this.previewDeps();
+    const hintFor = (path: string | null, id: string): string | null => {
+      const file = path === null ? null : this.app.vault.getFileByPath(path);
+      const stub = file ? (this.app.metadataCache.getFileCache(file)?.frontmatter?.blyg_stub_of as unknown) : null;
+      return typeof stub === "object" && stub !== null && (stub as { id?: unknown }).id === id && typeof (stub as { origin?: unknown }).origin === "string" ? (stub as { origin: string }).origin : null;
+    };
+    this.registerEditorExtension(replyPreviewExtension(deps, hintFor));
+    this.registerMarkdownPostProcessor((el, ctx) => {
+      for (const embed of Array.from(el.querySelectorAll(".internal-embed"))) {
+        const m = /^([0-9a-hjkmnp-tv-z]{26})(?:\s*\|(.*))?$/.exec((embed.getAttribute("src") ?? "").trim());
+        if (!m) continue;
+        const card = createDiv({ cls: "blyg-reply-preview-widget" });
+        drawPreview(card, deps, m[1] ?? "", (m[2] ?? "").trim(), hintFor(ctx.sourcePath, m[1] ?? ""));
+        embed.replaceWith(card);
+      }
+    });
+  }
 
   /** When the reader last asked the Studio to fetch the blygs it reads (this session only). */
   private readerCheckedAt = 0;
