@@ -3,8 +3,8 @@
 export type ReaderFont = "default" | "serif" | "sans" | "mono";
 
 export const READER_FONTS: Record<Exclude<ReaderFont, "default">, string> = {
-  serif: '"Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif',
-  sans: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+  serif: 'ui-serif, "New York", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif',
+  sans: 'ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
   mono: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
 };
 

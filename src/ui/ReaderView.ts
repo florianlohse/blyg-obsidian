@@ -54,6 +54,8 @@ export interface ReaderHost {
   ownExcerpt(itemId: string): Promise<string | null>;
   /** Whether this id is one of the owner's own items (a quote of it is "you"); false when it is not or cannot be told. */
   isOwnItem(itemId: string): Promise<boolean>;
+  /** Look an item of another blyg up (through the owner's Studio) and open its page in the browser; false when it cannot be found. */
+  openQuotedItem(origin: string, itemId: string): Promise<boolean>;
   /** The owner's own items (for the replies they wrote to a post); empty when they cannot be had. Kept for a few minutes by the host. */
   myItems(): Promise<StudioListedItem[]>;
   /** Open the note of one of the owner's items in Obsidian; false when no note of this vault holds it. */
@@ -159,6 +161,7 @@ export class BlygReaderView extends ItemView {
   }
 
   override async onOpen(): Promise<void> {
+    this.loadMine();
     this.registerEvent(this.app.workspace.on("layout-change", () => this.clearBottom()));
     this.registerDomEvent(activeWindow, "resize", () => this.clearBottom());
     this.draw();
@@ -518,6 +521,7 @@ export class BlygReaderView extends ItemView {
     void this.host.myItems().then((items) => {
       this.mine = items;
       if (this.shown) this.drawHeader();
+      else if (this.tab === "stream") for (const q of this.data?.posts ?? []) this.refreshPost(q); // the green badges of the feed's cards
     }).catch(() => {
       this.mine = [];
     }).finally(() => {
@@ -785,6 +789,9 @@ export class BlygReaderView extends ItemView {
     if (p.withdrawn) badges.createSpan({ cls: "blyg-reader-badge", text: "withdrawn" });
     if (unread) badges.createSpan({ cls: "blyg-reader-badge is-new", text: p.readVersion !== null ? "updated" : "unread" });
     else if (!p.withdrawn) badges.createSpan({ cls: "blyg-reader-badge is-done", text: "✓ read" });
+    // The replies you can see (same rule as in an open post): green when one of them is yours.
+    const chip = this.mine !== null || (this.data?.posts.length ?? 0) > 0 ? responseChip(responsesTo(p, this.mine ?? [], this.data?.posts ?? [])) : null;
+    if (chip) badges.createSpan({ cls: `blyg-reader-badge blyg-reader-resp-badge${chip.mine ? " is-mine" : ""}`, text: chip.text, attr: { title: chip.title } });
     if (!p.withdrawn) {
       const c = cardOf(p);
       if (c.quote) card.createDiv({ cls: "blyg-reader-quote", text: c.quote });
@@ -849,27 +856,52 @@ export class BlygReaderView extends ItemView {
   }
 
   /**
-   * Under each quote of another blyg's item say where it comes from, as far as the Studio can tell: a post of a blyg you read (author and blyg; a tap
-   * opens it here, and Back returns to this post), or your own item ("you"). Otherwise the quote keeps only its label. Text only, set as text.
+   * Under each quote of another blyg's item say where it comes from, as far as the post and the Studio can tell. The quote carries the item's id, the
+   * origin of a REMOTE source (the post's own blyg is the source when there is none) and, when the author gave one, a label: the quoter's own name for
+   * the quoted item, which a reader may use as the anchor text of its attribution line and for nothing else (spec 0.4 §10.1).
+   *   - a post of a blyg you read: "↗ label · Author · Blog", a tap opens it here (Back returns to this post);
+   *   - another blyg's item: "↗ label · host", a tap looks the item up through your Studio and opens its page in the browser;
+   *   - your own item: "You, in your own item".
+   * Text only, set as text.
    */
   private nameQuoteSources(body: HTMLElement, p: ReadingPost): void {
     for (const quote of Array.from(body.querySelectorAll("blockquote.blyg-transclusion"))) {
       if (!quote.instanceOf(HTMLElement)) continue;
       const id = quote.getAttribute("data-blyg-id") ?? "";
+      const label = (quote.getAttribute("data-blyg-label") ?? "").trim();
+      const origin = quote.getAttribute("data-blyg-origin") ?? p.origin;
       const from = postOfQuote(this.data?.posts ?? [], id);
-      if (from && !(from.subscriptionId === p.subscriptionId && from.remoteId === p.remoteId)) {
-        const who = [from.authorName, from.subscriptionTitle].filter((x): x is string => !!x && x !== "").join(" · ");
-        const line = quote.createDiv({ cls: "blyg-quote-source is-link", text: `↗ ${who || "Open the post"}`, attr: { role: "link", tabindex: "0", title: "Open this post here" } });
-        const open = (): void => this.openPost(from, "quote");
+      const link = (text: string, title: string, open: () => void): void => {
+        const line = quote.createDiv({ cls: "blyg-quote-source is-link", text, attr: { role: "link", tabindex: "0", title } });
         line.addEventListener("click", open);
         line.addEventListener("keydown", (e) => {
           if (e.key === "Enter") open();
         });
-      } else if (id !== "") {
-        void this.host.isOwnItem(id).then((own) => {
-          if (own && quote.isConnected) quote.createDiv({ cls: "blyg-quote-source", text: "You, in your own item" });
-        }).catch(() => undefined);
+      };
+      if (from && !(from.subscriptionId === p.subscriptionId && from.remoteId === p.remoteId)) {
+        const who = [from.authorName, from.subscriptionTitle].filter((x): x is string => !!x && x !== "").join(" · ");
+        link(`↗ ${[label, who].filter((x) => x !== "").join(" · ") || "Open the post"}`, "Open this post here", () => this.openPost(from, "quote"));
+        continue;
       }
+      if (id === "") continue;
+      void this.host.isOwnItem(id).then((own) => {
+        if (!quote.isConnected) return;
+        if (own) {
+          quote.createDiv({ cls: "blyg-quote-source", text: label ? `You, in your own item · ${label}` : "You, in your own item" });
+        } else if (origin) {
+          let host = "";
+          try {
+            host = new URL(origin).host;
+          } catch {
+            return;
+          }
+          link(`↗ ${[label, host].filter((x) => x !== "").join(" · ")}`, "Look this item up and open its page in the browser", () => {
+            void this.host.openQuotedItem(origin, id).then((ok) => {
+              if (!ok) this.setStatus("That item could not be found.");
+            });
+          });
+        }
+      }).catch(() => undefined);
     }
   }
 

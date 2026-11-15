@@ -971,6 +971,14 @@ export default class BlygPlugin extends Plugin {
         await this.app.workspace.getLeaf("tab").openFile(file);
         return true;
       },
+      openQuotedItem: async (origin, itemId) => {
+        const built = buildStudio(this.env());
+        if (!built.ok) return false;
+        const got = await built.studio.client.peekItem(origin, itemId);
+        if (got.kind !== "ok" || !/^https?:\/\//i.test(got.value.url)) return false;
+        window.open(got.value.url, "_blank");
+        return true;
+      },
       isOwnItem: async (itemId) => {
         const built = buildStudio(this.env());
         if (!built.ok) return false;

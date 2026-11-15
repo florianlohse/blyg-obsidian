@@ -6,8 +6,10 @@
 //     "exact form" allow-list refused real posts that only differed in harmless details (review 2026-11-13; the maintainer's device test 2026-11-14).
 // So the text is REBUILT before the sanitiser sees it, and the repository's rule stays whole (foreign HTML reaches the DOM only through
 // `sanitizeHTMLToDom`; no DOMParser, no innerHTML):
-//   - every `<` must open or close a tag from a fixed list of harmless text and structure tags, parsed with HTML's rules (any case, any quoting,
-//     any whitespace); an unknown tag, a comment or a malformed tag makes the whole post "not drawn here", naming the cause: FAIL-CLOSED;
+//   - every `<` is read as a tag with HTML's rules (any case, any quoting, any whitespace). Parse loosely, emit strictly (decision of 2026-11-14,
+//     replacing the earlier fail-closed rule that refused a whole post over one unknown tag): a tag from the fixed list of harmless text and
+//     structure tags is written out again; any other tag is dropped and its text kept; the contents of script, style and the like are dropped with
+//     them; comments and declarations vanish; a malformed "<" is plain text. What was left out is reported, so the reader can say so;
 //   - each tag is then WRITTEN OUT AGAIN from what was parsed, with only the few attributes that tag may carry (each value checked and escaped);
 //     every other attribute is dropped, never passed on. Nothing the browser will read comes from the raw input, so a difference between this
 //     parser and the browser's cannot smuggle anything through, and no address-carrying attribute (src, srcset, background, poster, style with
@@ -101,8 +103,15 @@ const ATTRS: Record<string, Record<string, AttrRule>> = {
     class: (v) => (/^blyg-transclusion( blyg-partial)?$/.test(v.trim().replace(/\s+/g, " ")) ? v.trim().replace(/\s+/g, " ") : null),
     "data-blyg-id": (v) => (/^[a-z0-9]{1,64}$/.test(v.trim()) ? v.trim() : null),
     "data-blyg-version": digitsRule(9),
+    // A remote source's origin (§10.2) and the author's own label for the quoted item (§10.1): data only, never an address the reader loads.
+    "data-blyg-origin": (v) => (/^https?:\/\/[^\s"'<>]{1,300}$/i.test(v.trim()) ? v.trim() : null),
+    "data-blyg-label": textRule,
   },
+  // Generated text, disclosed by the publisher (§5.7): the class is a permanent wire token.
+  div: { class: (v) => (v.trim() === "blyg-tk-gen" ? "blyg-tk-gen" : null) },
+  span: { class: (v) => (v.trim() === "blyg-tk-gen" ? "blyg-tk-gen" : null) },
 };
+const TK_GEN_NOTE = "Marked by the publisher as generated text (their own disclosure, not verified)";
 
 interface ParsedTag {
   closing: boolean;
@@ -117,13 +126,13 @@ function readTag(html: string, lt: number): ParsedTag | { error: string } {
   let i = lt + 1;
   const closing = html[i] === "/";
   if (closing) i++;
-  const nm = /[A-Za-z][A-Za-z0-9]*/y;
+  const nm = /[A-Za-z][^\s/>]*/y; // a browser's tag name runs to whitespace, "/" or ">" (custom elements have hyphens; "p=x" is a tag called "p=x")
   nm.lastIndex = i;
   const found = nm.exec(html);
   if (!found) return bad;
   const name = found[0].toLowerCase();
   i += found[0].length;
-  if (i >= html.length || !/[\s/>]/.test(html[i] ?? "")) return { error: `the tag <${(html.slice(lt + 1, lt + 25).match(/^\/?[^\s>]+/) ?? [name])[0]}>` };
+  if (i >= html.length) return bad;
   const attrs = new Map<string, string>();
   const ws = /\s*/y;
   const an = /[^\s"'<>/=]+/y;
@@ -134,9 +143,9 @@ function readTag(html: string, lt: number): ParsedTag | { error: string } {
     i = ws.lastIndex;
     const c = html[i];
     if (c === undefined) return bad;
-    if (c === ">") return closing && attrs.size > 0 ? bad : { closing, name, attrs, end: i + 1 };
+    if (c === ">") return { closing, name, attrs, end: i + 1 };
     if (c === "/") {
-      if (html[i + 1] === ">") return closing ? bad : { closing, name, attrs, end: i + 2 };
+      if (html[i + 1] === ">") return { closing, name, attrs, end: i + 2 };
       i++;
       continue;
     }
@@ -169,7 +178,6 @@ function readTag(html: string, lt: number): ParsedTag | { error: string } {
       }
     }
     if (!attrs.has(key)) attrs.set(key, value);
-    if (closing) return bad;
   }
   return bad;
 }
@@ -184,29 +192,47 @@ function writeTag(name: string, attrs: Map<string, string>, base: string | null)
     const v = rule(decode(raw), base);
     if (v !== null) out += ` ${key}="${escapeHtml(v)}"`;
   }
+  if (out.endsWith(' class="blyg-tk-gen"')) out += ` title="${TK_GEN_NOTE}"`;
   return `${out}>`;
 }
 
 export interface Rewrite {
-  /** The text to hand to the sanitiser, or null when the post holds markup the reader does not draw. */
+  /** The text to hand to the sanitiser, or null when the post is too large (or too broken) to draw. */
   text: string | null;
   /** Why it was refused, in words (null when it was not). */
   reason: string | null;
+  /** The tags that were left out (their text kept), by name, without repeats: so the reader can say that formatting was left out. */
+  left: string[];
   /** Images left waiting for a tap, in the order of their markers. */
   waiting: Array<{ src: string; alt: string; host: string }>;
 }
 
 const MAX_POST = 2_000_000;
+/** More malformed "<" than this in one post, and it is not a post worth drawing (and each costs a scan). */
+const MAX_BROKEN = 2000;
+/** Tags whose CONTENT goes with them: it is code, style, a template or text a browser would not read as tags, and nothing of it is for a reader. */
+const DROP_CONTENT = new Set(["script", "style", "template", "noscript", "iframe", "object", "applet", "textarea", "title", "svg", "math", "xmp", "noembed", "noframes", "plaintext", "audio", "video", "canvas"]);
 
-/** The pure part: what the text becomes before the sanitiser sees it. Fail-closed (see the header). `baseUrl`: the post's own address, for relative links. */
+/** The pure part: what the text becomes before the sanitiser sees it (see the header). `baseUrl`: the post's own address, for relative links. */
 export function rewriteImages(html: string, opts: { trustedOrigin: string | null; mode: ImageMode; baseUrl?: string | null }): Rewrite {
-  const refuse = (reason: string): Rewrite => ({ text: null, reason, waiting: [] });
+  const refuse = (reason: string): Rewrite => ({ text: null, reason, waiting: [], left: [] });
   if (html.length > MAX_POST) return refuse("a post larger than the reader draws");
   const base = opts.baseUrl ?? null;
   const trusted = opts.trustedOrigin === null ? null : `${opts.trustedOrigin.replace(/\/$/, "")}/`;
   const waiting: Rewrite["waiting"] = [];
+  const left = new Set<string>();
+  let broken = 0;
   let out = "";
   let at = 0;
+  /** From `from` to just after the end of the next closing tag `</name…>` (any case), or to the end when there is none. `name` is one of DROP_CONTENT. */
+  const skipClose = (from: number, name: string): number => {
+    const re = new RegExp(`</${name}`, "gi");
+    re.lastIndex = from;
+    const m = re.exec(html);
+    if (!m) return html.length;
+    const end = html.indexOf(">", m.index);
+    return end < 0 ? html.length : end + 1;
+  };
   while (at < html.length) {
     const lt = html.indexOf("<", at);
     if (lt < 0) {
@@ -215,21 +241,38 @@ export function rewriteImages(html: string, opts: { trustedOrigin: string | null
     }
     out += html.slice(at, lt);
     const next = html[lt + 1] ?? "";
-    if (next === "!" || next === "?") return refuse("a comment or declaration");
-    if (next === "/" ? !/[A-Za-z]/.test(html[lt + 2] ?? "") : !/[A-Za-z]/.test(next)) {
-      // "<" followed by a space, a digit or the like is plain text to a browser; "</" followed by a non-letter is a hidden comment to one.
-      if (next === "/") return refuse("a malformed tag");
-      out += "&lt;";
+    if (next === "!" || next === "?" || (next === "/" && !/[A-Za-z]/.test(html[lt + 2] ?? ""))) {
+      // A comment, a declaration or what a browser takes for a hidden comment: gone, without a trace.
+      if (html.startsWith("<!--", lt)) {
+        const end = html.indexOf("-->", lt + 4);
+        at = end < 0 ? html.length : end + 3;
+      } else {
+        const end = html.indexOf(">", lt + 1);
+        at = end < 0 ? html.length : end + 1;
+      }
+      continue;
+    }
+    if (!/[A-Za-z]/.test(next) && next !== "/") {
+      out += "&lt;"; // "<" followed by a space, a digit or the like is plain text to a browser too
       at = lt + 1;
       continue;
     }
     const tag = readTag(html, lt);
-    if ("error" in tag) return refuse(tag.error);
-    if (!TEXT_TAGS.has(tag.name)) return refuse(`the tag <${tag.name}>`);
+    if ("error" in tag) {
+      if (++broken > MAX_BROKEN) return refuse("too many malformed tags");
+      out += "&lt;"; // a "<" that does not open a tag we can read is text
+      at = lt + 1;
+      continue;
+    }
     at = tag.end;
+    if (!TEXT_TAGS.has(tag.name)) {
+      // Not a tag the reader draws: the tag goes, its text stays; code-like contents go with it.
+      left.add(/^[a-z0-9-]{1,24}$/.test(tag.name) ? tag.name : "other"); // the name is shown to the reader: only a plain one, never the page's own text
+      if (!tag.closing && DROP_CONTENT.has(tag.name) && !html.slice(lt, tag.end).endsWith("/>")) at = skipClose(tag.end, tag.name);
+      continue;
+    }
     if (tag.closing) {
-      if (VOID.has(tag.name)) return refuse("a malformed tag");
-      out += `</${tag.name}>`;
+      if (!VOID.has(tag.name)) out += `</${tag.name}>`; // "</br>" and "</img>" are nothing
       continue;
     }
     if (tag.name !== "img") {
@@ -257,16 +300,17 @@ export function rewriteImages(html: string, opts: { trustedOrigin: string | null
       out += `<span ${MARK}="${waiting.length - 1}"></span>`;
     }
   }
-  return { text: out, reason: null, waiting };
+  return { text: out, reason: null, waiting, left: [...left].slice(0, 8) };
 }
 
 export function renderForeign(html: string, opts: { trustedOrigin: string | null; mode: ImageMode; baseUrl?: string | null }, sanitize: (html: string) => DocumentFragment): Rendered {
-  const { text, reason, waiting } = rewriteImages(html, opts);
+  const { text, reason, waiting, left } = rewriteImages(html, opts);
   if (text === null) {
-    const fragment = createFragment((f) => f.createEl("p", { cls: "blyg-reader-blocked", text: `This post has markup the reader does not draw (${reason ?? "unknown"}). Open it in the browser.` }));
+    const fragment = createFragment((f) => f.createEl("p", { cls: "blyg-reader-blocked", text: `This post is not drawn here (${reason ?? "unknown"}). Open it in the browser.` }));
     return { fragment, blocked: 0, refused: true, loadAll: () => undefined };
   }
   const fragment = sanitize(text);
+  if (left.length > 0) fragment.appendChild(createEl("p", { cls: "blyg-reader-formatnote", text: `Some formatting was left out (${left.map((n) => `<${n}>`).join(", ")}).` }));
   const loaders: Array<() => void> = [];
   for (const marker of Array.from(fragment.querySelectorAll(`[${MARK}]`))) {
     const w = waiting[Number(marker.getAttribute(MARK))];

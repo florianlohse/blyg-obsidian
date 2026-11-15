@@ -513,8 +513,8 @@
 .blyg-reader-header.is-busy .blyg-reader-refresh { opacity: 0.7; }
 @media (prefers-reduced-motion: reduce) { .blyg-reader-status.is-busy::before, .blyg-reader-header.is-busy .blyg-reader-refresh::before { animation: none; border-right-color: currentColor; } }
 /* the owner's font for a post's content in the text view (the interface keeps Obsidian's); the same stacks as ui/readerFonts.ts, which a test keeps in step */
-.blyg-reader.is-font-serif .blyg-reader-body { font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif; }
-.blyg-reader.is-font-sans .blyg-reader-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+.blyg-reader.is-font-serif .blyg-reader-body { font-family: ui-serif, "New York", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif; }
+.blyg-reader.is-font-sans .blyg-reader-body { font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
 .blyg-reader.is-font-mono .blyg-reader-body { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .blyg-reader-mention .blyg-reader-excerpt { margin-top: var(--size-2-2); }
 .blyg-reader-ownitem { margin-top: var(--size-2-2); font-style: italic; }
@@ -571,3 +571,9 @@
 .blyg-reader-responses-note { max-width: 42rem; margin: 0 auto var(--size-4-2); }
 .blyg-reader-card.blyg-reader-response.is-mine { border-left: 3px solid var(--color-green, var(--text-success)); padding-left: var(--size-4-3); background: color-mix(in srgb, var(--color-green, var(--text-success)) 7%, transparent); }
 .blyg-reader-badge.is-mine { background: var(--color-green, var(--text-success)); color: var(--background-primary); }
+
+/* Generated text, as the publisher disclosed it (a faint dotted mark, explained in its tooltip), and the line saying formatting was left out. */
+.blyg-reader-surface .blyg-reader-body span.blyg-tk-gen { border-bottom: 1px dotted var(--blyg-rule); }
+.blyg-reader-surface .blyg-reader-body div.blyg-tk-gen { border-left: 2px dotted var(--blyg-rule); padding-left: 0.8em; margin: 1em 0; }
+.blyg-reader-formatnote { margin-top: 1.4em; font-size: var(--font-ui-smaller); color: var(--text-faint); }
+.blyg-reader-resp-badge { font-variant-numeric: tabular-nums; }
