@@ -1,4 +1,4 @@
-import { debounce, MarkdownView, moment, normalizePath, Notice, Plugin, type Editor, type TAbstractFile, type TFile } from "obsidian";
+import { debounce, MarkdownView, moment, normalizePath, Notice, Plugin, type Editor, type TAbstractFile, type TFile, type WorkspaceLeaf } from "obsidian";
 import { activeBranch, activeChannel, describeTarget } from "./app/publishSettings";
 import { buildImportDeps, runStudioLookup, runStudioReplyTarget, runStudioHoppers, runTakeHoppers, runDeleteDraft, runFetchQuotable, runPublish, runPull, runRepost, runStudioFacts, runStudioQuotable, runStudioSearch, runStudioWarnings, runWithdraw, type AppEnv } from "./app/run";
 import { watchCommit } from "./app/deploy";
@@ -109,6 +109,7 @@ export default class BlygPlugin extends Plugin {
     this.addRibbonIcon("book-open", "Open blyg reader", () => void this.openReader());
     this.registerView(BLYG_READER_VIEW, (leaf) => new BlygReaderView(leaf, this.readerHost()));
     this.addCommand({ id: "open-reader", name: "Open reader", callback: () => void this.openReader() });
+    this.addCommand({ id: "open-reader-sidebar", name: "Open reader in the sidebar", callback: () => void this.openReader("sidebar") });
     this.registerPanelRefresh();
 
     this.addCommand({
@@ -821,11 +822,17 @@ export default class BlygPlugin extends Plugin {
   }
 
   /** PROOF OF CONCEPT (S15): the reader pane opens in the main area; what it asks of the plugin is answered here, through the same Studio plumbing as publishing. */
-  private async openReader(): Promise<void> {
+  /**
+   * The reader in a tab of its own (the default) or in the sidebar, beside the note you write. A reader already open where you ask for it is brought forward;
+   * one open in the other place stays, and a second one is made: each keeps its own place in the feed.
+   */
+  private async openReader(where: "tab" | "sidebar" = "tab"): Promise<void> {
     const { workspace } = this.app;
-    const existing = workspace.getLeavesOfType(BLYG_READER_VIEW)[0];
+    const inSidebar = (leaf: WorkspaceLeaf): boolean => (leaf.getRoot() as unknown) === (workspace.rightSplit as unknown);
+    const existing = workspace.getLeavesOfType(BLYG_READER_VIEW).find((leaf) => inSidebar(leaf) === (where === "sidebar"));
     if (existing) return void (await workspace.revealLeaf(existing));
-    const leaf = workspace.getLeaf("tab");
+    const leaf = where === "sidebar" ? workspace.getRightLeaf(false) : workspace.getLeaf("tab");
+    if (!leaf) return;
     await leaf.setViewState({ type: BLYG_READER_VIEW, active: true });
     await workspace.revealLeaf(leaf);
   }
@@ -840,6 +847,11 @@ export default class BlygPlugin extends Plugin {
       viewMode: () => this.settings.readerPane.view,
       setViewMode: async (mode) => {
         this.settings.readerPane.view = mode;
+        await this.saveSettings();
+      },
+      font: () => this.settings.readerPane.font,
+      setFont: async (font) => {
+        this.settings.readerPane.font = font;
         await this.saveSettings();
       },
       checkForNew: async (force) => {
@@ -922,7 +934,9 @@ export default class BlygPlugin extends Plugin {
   /** A post's page for the reader's frame (see trimmedPage.ts): plain requests (no token, no cookies), the stylesheets fetched side by side. */
   private async readerPage(url: string): Promise<PreparedPage> {
     const now = Date.now();
-    const cached = this.readerPages.get(url);
+    const font = this.settings.readerPane.font;
+    const cacheKey = `${url}|${font}`; // the font is part of the prepared document
+    const cached = this.readerPages.get(cacheKey);
     if (cached && now - cached.at < 120_000) return cached.page;
     const sheet = async (href: string): Promise<string | null> => {
       const kept = this.readerSheets.get(href);
@@ -941,12 +955,12 @@ export default class BlygPlugin extends Plugin {
       const res = await obsidianTransport({ url, method: "GET", headers: {} });
       if (res.status >= 400) return { kind: "unreachable" };
       const css = (await Promise.all(stylesheetsOf(res.text, url).map(sheet))).filter((c): c is string => c !== null);
-      const doc = trimmedDocument({ pageHtml: res.text, pageUrl: url, css });
+      const doc = trimmedDocument({ pageHtml: res.text, pageUrl: url, css, font });
       page = doc !== null ? { kind: "trimmed", doc } : framePolicy(res.headers) === "allowed" ? { kind: "full" } : { kind: "forbidden" };
     } catch {
       return { kind: "unreachable" };
     }
-    this.readerPages.set(url, { at: Date.now(), page });
+    this.readerPages.set(cacheKey, { at: Date.now(), page });
     return page;
   }
 

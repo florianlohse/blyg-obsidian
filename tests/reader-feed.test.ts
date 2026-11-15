@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { readReadingPost, type ReadingPost } from "../src/studio/reading";
-import { arrange, cardOf, DEFAULT_FILTER, framePolicy, frameable, relativeTime, sourcesOf } from "../src/ui/readerFeed";
+import { activeFilters, arrange, cardOf, DEFAULT_FILTER, framePolicy, frameable, readingMinutes, readingTimeLabel, relativeTime, sourcesOf } from "../src/ui/readerFeed";
 
 const fixture = (name: string): string => readFileSync(new URL(`./fixtures/studio/reader/${name}-0.51.0.html`, import.meta.url), "utf8");
 const post = (patch: Record<string, unknown>): ReadingPost =>
@@ -72,5 +72,49 @@ describe("frameable", () => {
   it("only absolute http(s) addresses", () => {
     expect(["https://a.example/f/x/", "http://localhost:8788/f/x/"].every(frameable)).toBe(true);
     expect([null, "", "f/x/", "javascript:alert(1)", "file:///x", "data:text/html,x", "app://obsidian.md/x"].some(frameable)).toBe(false);
+  });
+});
+
+describe("reading time", () => {
+  const words = (n: number): string => `<p>${"word ".repeat(n)}</p>`;
+  it.each([[1, 1], [100, 1], [230, 1], [345, 2], [460, 2], [1150, 5], [1400, 6], [4600, 20]])("%i words take %i min", (n, want) => expect(readingMinutes({ contentHtml: words(n) })).toBe(want));
+  it("is at least a minute, even for an empty post", () => {
+    expect(readingMinutes({ contentHtml: "" })).toBe(1);
+    expect(readingTimeLabel({ contentHtml: words(10) })).toBe("1 min read");
+  });
+  it("counts what is read, not the markup", () => {
+    expect(readingMinutes({ contentHtml: `<p class="${"x".repeat(5000)}">${"word ".repeat(10)}</p>` })).toBe(1);
+  });
+  it("follows an edited post (the same object with new text)", () => {
+    const p = { contentHtml: words(10) };
+    expect(readingMinutes(p)).toBe(1);
+    p.contentHtml = words(1200);
+    expect(readingMinutes(p)).toBe(5);
+  });
+});
+
+describe("sorting and filtering by reading time", () => {
+  const long = post({ remoteId: "L", created: "2026-11-01T00:00:00Z", contentHtml: `<p>${"word ".repeat(1400)}</p>` }); // 6 min
+  const mid = post({ remoteId: "M", created: "2026-11-02T00:00:00Z", contentHtml: `<p>${"word ".repeat(600)}</p>` }); // 3 min
+  const shortOld = post({ remoteId: "S1", created: "2026-11-03T00:00:00Z", contentHtml: "<p>tiny</p>" }); // 1 min
+  const shortNew = post({ remoteId: "S2", created: "2026-11-04T00:00:00Z", contentHtml: "<p>also tiny</p>" }); // 1 min
+  const all = [long, mid, shortOld, shortNew];
+  const ids = (f: Partial<typeof DEFAULT_FILTER>) => arrange(all, { ...DEFAULT_FILTER, ...f }).map((p) => p.remoteId);
+  it("shortest and longest first; equal length puts the newer first", () => {
+    expect(ids({ sort: "shortest" })).toEqual(["S2", "S1", "M", "L"]);
+    expect(ids({ sort: "longest" })).toEqual(["L", "M", "S2", "S1"]);
+  });
+  it("by length: under 2 minutes, 2 to 5, over 5", () => {
+    expect(ids({ length: "short" })).toEqual(["S2", "S1"]);
+    expect(ids({ length: "medium" })).toEqual(["M"]);
+    expect(ids({ length: "long" })).toEqual(["L"]);
+    expect(ids({ length: "any" })).toHaveLength(4);
+  });
+  it("combines with the other choices", () => {
+    expect(ids({ length: "short", sort: "oldest" })).toEqual(["S1", "S2"]);
+  });
+  it("counts the choices that differ from the start", () => {
+    expect(activeFilters(DEFAULT_FILTER)).toBe(0);
+    expect(activeFilters({ ...DEFAULT_FILTER, sort: "longest", length: "long", unreadOnly: true, source: "s1" })).toBe(4);
   });
 });

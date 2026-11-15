@@ -111,6 +111,8 @@ export interface BlygSettings {
     /** How a post opens: `web` shows the author's own page inside Obsidian (sandboxed, no scripts; it loads like a visit to that page), `text` draws the
      *  post's text in Obsidian (images follow `images`). A page that refuses to be shown inside another app falls back to `text`. */
     view: "web" | "text";
+    /** The font of a post's content (not the interface). See ui/readerFonts.ts. */
+    font: "default" | "serif" | "sans" | "mono";
   };
   /** Development build only (ignored by the release plugin). `allowLiveStudio`: lift the test-Studio lock (studio/devLock.ts) on the owner's say. */
   dev: { allowLiveStudio: boolean };
@@ -153,7 +155,7 @@ export function defaultSettings(flavour: "release" | "dev" = "release"): BlygSet
     respond: { draftsPrefix: "blyg/" },
     mentions: { repoPath: "data/mentions.json" },
     webQuote: { ...DEFAULT_WEB_QUOTE },
-    readerPane: { images: "click", view: "web" },
+    readerPane: { images: "click", view: "web", font: "default" },
     dev: { allowLiveStudio: false },
   };
 }

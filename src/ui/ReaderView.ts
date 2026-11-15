@@ -7,7 +7,8 @@
 import { ItemView, sanitizeHTMLToDom, type WorkspaceLeaf } from "obsidian";
 import { isUnread, relationWords, type InboundMention, type ReadingPost } from "../studio/reading";
 import { plainText, renderForeign, type ImageMode } from "./defang";
-import { arrange, cardOf, DEFAULT_FILTER, frameable, relativeTime, sourcesOf, type FeedFilter, type FeedSort } from "./readerFeed";
+import { activeFilters, arrange, cardOf, DEFAULT_FILTER, frameable, LENGTH_LABELS, readingTimeLabel, relativeTime, SORT_LABELS, sourcesOf, type FeedFilter, type FeedLength, type FeedSort } from "./readerFeed";
+import { FONT_LABELS, isReaderFont, type ReaderFont } from "./readerFonts";
 import { frameUrlFor, READER_FRAME_SANDBOX } from "./trimmedPage";
 
 export const BLYG_READER_VIEW = "blyg-reader";
@@ -47,6 +48,9 @@ export interface ReaderHost {
   imageMode(): ImageMode;
   viewMode(): "web" | "text";
   setViewMode(mode: "web" | "text"): Promise<void>;
+  /** The font of a post's content (the setting "Font for posts"); a web page picks it up the next time it is opened. */
+  font(): ReaderFont;
+  setFont(font: ReaderFont): Promise<void>;
   /**
    * Ask the Studio to fetch the blygs it reads now. `force`: the person tapped Refresh (a shorter pause applies than when the reader merely opens).
    * `asked: false` when it was asked too recently, or could not be asked (`reason` says why, in words).
@@ -86,6 +90,8 @@ export class BlygReaderView extends ItemView {
     return this.page;
   }
   private filter: FeedFilter = { ...DEFAULT_FILTER };
+  /** Whether the sort and filter choices are open (they start closed, so the header stays slim). */
+  private filtersOpen = false;
   private status = "";
   /** How many things are loading right now: the refresh button and the status line show a spinner while it is above zero. */
   private busyCount = 0;
@@ -140,6 +146,12 @@ export class BlygReaderView extends ItemView {
   private releasePage(): void {
     if (this.page.s === "trimmed") URL.revokeObjectURL(this.page.url);
     this.page = { s: "unknown" };
+  }
+
+  /** The font of the post's content, as a class on the pane (the text view's CSS reads it; a web page gets it in its own document). */
+  private applyFont(): void {
+    const font = this.host.font();
+    for (const f of ["default", "serif", "sans", "mono"] as const) this.contentEl.toggleClass(`is-font-${f}`, f === font);
   }
 
   private busy(delta: number): void {
@@ -292,6 +304,7 @@ export class BlygReaderView extends ItemView {
     const root = this.contentEl;
     root.empty();
     root.addClass("blyg-reader");
+    this.applyFont();
     this.headerEl = root.createDiv({ cls: "blyg-reader-header" });
     this.bodyEl = root.createDiv({ cls: "blyg-reader-bodywrap" });
     this.drawHeader();
@@ -339,32 +352,46 @@ export class BlygReaderView extends ItemView {
       }, { active: this.tab === id });
     }
     row.createDiv({ cls: "blyg-reader-spacer" });
+    const canFilter = this.tab === "stream" && this.data !== null && this.data.posts.length > 0;
+    if (canFilter) {
+      const n = activeFilters(this.filter);
+      this.button(row, n > 0 ? `Sort & filter (${n})` : "Sort & filter", () => {
+        this.filtersOpen = !this.filtersOpen;
+        this.drawHeader();
+      }, { active: this.filtersOpen, cls: "blyg-reader-filterbtn", title: "Order, blyg, length, unread, and how posts open" });
+    }
     const refresh = this.button(row, "Refresh", () => {
       void this.reload().then(() => this.checkForNew(true));
     }, { cls: "blyg-reader-refresh", title: "Look for new posts" });
     refresh.disabled = this.busyCount > 0;
     this.refreshEl = refresh;
-    if (this.tab !== "stream" || !this.data || this.data.posts.length === 0) return;
+    if (!canFilter || !this.filtersOpen || !this.data) return;
 
     const controls = h.createDiv({ cls: "blyg-reader-controls" });
-    const select = (label: string, options: Array<[string, string]>, value: string, set: (v: string) => void): void => {
-      const el = controls.createEl("select", { cls: "dropdown blyg-reader-select", attr: { "aria-label": label } });
+    const select = (label: string, options: Array<[string, string]>, value: string, set: (v: string) => void, after: () => void = () => this.drawBody()): void => {
+      const el = controls.createEl("select", { cls: "dropdown blyg-reader-select", attr: { "aria-label": label, title: label } });
       for (const [v, text] of options) el.createEl("option", { value: v, text });
       el.value = value;
       el.addEventListener("change", () => {
         set(el.value);
-        this.drawBody();
+        this.drawHeader();
+        after();
       });
     };
-    select("Order", [["newest", "Newest first"], ["oldest", "Oldest first"]], this.filter.sort, (v) => (this.filter.sort = v as FeedSort));
+    select("Order", (Object.keys(SORT_LABELS) as FeedSort[]).map((k): [string, string] => [k, SORT_LABELS[k]]), this.filter.sort, (v) => (this.filter.sort = v as FeedSort));
     const posts = this.data.posts;
     select("Blyg", [["", `All blygs (${posts.length})`], ...sourcesOf(posts).map((s): [string, string] => [s.id, `${s.title} (${s.count})`])], this.filter.source ?? "", (v) => (this.filter.source = v === "" ? null : v));
+    select("Length", (Object.keys(LENGTH_LABELS) as FeedLength[]).map((k): [string, string] => [k, LENGTH_LABELS[k]]), this.filter.length, (v) => (this.filter.length = v as FeedLength));
+    select("Font for posts", (Object.keys(FONT_LABELS) as ReaderFont[]).map((k): [string, string] => [k, k === "default" ? "Font: as it is" : `Font: ${FONT_LABELS[k]}`]), this.host.font(), (v) => {
+      if (isReaderFont(v)) void this.host.setFont(v).then(() => this.applyFont());
+    }, () => undefined);
     const unread = controls.createEl("label", { cls: "blyg-reader-toggle" });
     const box = unread.createEl("input", { attr: { type: "checkbox" } });
     box.checked = this.filter.unreadOnly;
     unread.appendText(" Unread only");
     box.addEventListener("change", () => {
       this.filter.unreadOnly = box.checked;
+      this.drawHeader();
       this.drawBody();
     });
     // How posts open by default: the same choice as the setting "Open posts as", kept when you change it here.
@@ -412,6 +439,7 @@ export class BlygReaderView extends ItemView {
     if (p.version > 1) parts.push(() => meta.createSpan({ text: `version ${p.version}` }));
     const when = relativeTime(p.created ?? p.observedAt, Date.now());
     if (when) parts.push(() => meta.createSpan({ text: when }));
+    if (!p.withdrawn) parts.push(() => meta.createSpan({ text: readingTimeLabel(p) }));
     parts.push(() => meta.createSpan({ cls: unread ? "blyg-reader-unreadmark" : "blyg-reader-readmark", text: p.withdrawn ? "withdrawn" : unread ? (p.readVersion !== null ? "updated since you read it" : "unread") : "✓ read" }));
     parts.forEach((draw, i) => {
       if (i > 0) meta.createSpan({ text: " · " });
@@ -475,7 +503,7 @@ export class BlygReaderView extends ItemView {
     const head = card.createDiv({ cls: "blyg-reader-cardhead" });
     const title = head.createDiv({ cls: "blyg-reader-cardtitle" });
     title.createSpan({ cls: "blyg-reader-source", text: p.subscriptionTitle || p.origin || "" });
-    const meta = [p.authorName, relativeTime(p.created ?? p.observedAt, Date.now())].filter(Boolean).join(" · ");
+    const meta = [p.authorName, relativeTime(p.created ?? p.observedAt, Date.now()), p.withdrawn ? "" : readingTimeLabel(p)].filter(Boolean).join(" · ");
     if (meta) title.createSpan({ cls: "blyg-reader-meta", text: ` · ${meta}` });
     if (!p.withdrawn) {
       const check = head.createEl("button", {
