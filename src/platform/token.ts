@@ -24,7 +24,8 @@ export function readToken(keychain: Keychain, secretName: string, what: "GitHub"
     };
   }
   const token = keychain.get(secretName);
-  if (token === null || token.trim() === "") {
+  // A keychain may answer with nothing at all (null, or undefined while an entry is being replaced): that is "empty", never a crash.
+  if (typeof token !== "string" || token.trim() === "") {
     return {
       ok: false,
       reason: "secret-missing",

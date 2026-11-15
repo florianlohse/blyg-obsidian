@@ -43,7 +43,7 @@ import { BlygSettingTab } from "./settings/tab";
 import { BLYG_PANEL_VIEW, BlygPanelView, type PanelHost } from "./ui/BlygPanelView";
 import { promptForItem, promptForQuote } from "./ui/QuotePicker";
 import { promptForStudioItem } from "./ui/StudioPicker";
-import { BLYG_READER_VIEW, BlygReaderView, excerptOf, type ReaderHost } from "./ui/ReaderView";
+import { BLYG_READER_VIEW, BlygReaderView, excerptOf, type PreparedPage, type ReaderHost, type ReadResult } from "./ui/ReaderView";
 import { framePolicy } from "./ui/readerFeed";
 import { stylesheetsOf, trimmedDocument } from "./ui/trimmedPage";
 import { buildStudio } from "./app/run";
@@ -104,9 +104,11 @@ export default class BlygPlugin extends Plugin {
     this.addSettingTab(this.settingTab);
 
     this.registerView(BLYG_PANEL_VIEW, (leaf) => new BlygPanelView(leaf, this.panelHost()));
-    this.addRibbonIcon("send", "Open panel", () => void this.openPanel());
+    // The mobile menu (the bottom-right menu) lists the ribbon: two plainly named entries. The lint rule against the plugin's name covers command names only.
+    this.addRibbonIcon("send", "Open blyg publisher", () => void this.openPanel());
+    this.addRibbonIcon("book-open", "Open blyg reader", () => void this.openReader());
     this.registerView(BLYG_READER_VIEW, (leaf) => new BlygReaderView(leaf, this.readerHost()));
-    this.addCommand({ id: "open-reader-poc", name: "Open reader (proof of concept)", callback: () => void this.openReader() });
+    this.addCommand({ id: "open-reader", name: "Open reader", callback: () => void this.openReader() });
     this.registerPanelRefresh();
 
     this.addCommand({
@@ -833,8 +835,13 @@ export default class BlygPlugin extends Plugin {
 
   private readerHost(): ReaderHost {
     return {
+      version: this.manifest.version,
       imageMode: () => this.settings.readerPane.images,
       viewMode: () => this.settings.readerPane.view,
+      setViewMode: async (mode) => {
+        this.settings.readerPane.view = mode;
+        await this.saveSettings();
+      },
       checkForNew: async (force) => {
         // A pause between checks: every check makes the Studio fetch every blyg it reads, so opening the reader again and again must not hammer them.
         const pause = force ? 60_000 : 10 * 60_000;
@@ -853,37 +860,18 @@ export default class BlygPlugin extends Plugin {
           return { asked: false, reason: "The Studio could not be reached to check for new posts." };
         }
       },
-      readingMark: async () => {
+      changeMarks: async () => {
         const built = buildStudio(this.env());
         if (!built.ok) return null;
         try {
           const got = await built.studio.client.changes();
-          return got.kind === "ok" ? `${got.value.epoch}:${got.value.domains.reading ?? ""}:${got.value.domains.subscriptions ?? ""}` : null;
+          if (got.kind !== "ok") return null;
+          return { epoch: got.value.epoch, reading: got.value.domains.reading ?? 0, subscriptions: got.value.domains.subscriptions ?? 0 };
         } catch {
           return null;
         }
       },
-      preparePage: async (url) => {
-        // Plain requests (no token, no cookies): the post's page, then its stylesheets. On any doubt the reader shows the post as text.
-        try {
-          const res = await obsidianTransport({ url, method: "GET", headers: {} });
-          if (res.status >= 400) return { kind: "unreachable" };
-          const css: string[] = [];
-          for (const sheet of stylesheetsOf(res.text, url)) {
-            try {
-              const got = await obsidianTransport({ url: sheet, method: "GET", headers: {} });
-              if (got.status < 400 && got.text.length < 600_000) css.push(got.text);
-            } catch {
-              // a stylesheet that does not load: the post shows in plain type
-            }
-          }
-          const doc = trimmedDocument({ pageHtml: res.text, pageUrl: url, css });
-          if (doc !== null) return { kind: "trimmed", doc };
-          return framePolicy(res.headers) === "allowed" ? { kind: "full" } : { kind: "forbidden" };
-        } catch {
-          return { kind: "unreachable" };
-        }
-      },
+      preparePage: (url) => this.readerPage(url),
       load: async () => {
         const built = buildStudio(this.env());
         if (!built.ok) return { ok: false, message: built.message };
@@ -907,15 +895,59 @@ export default class BlygPlugin extends Plugin {
         if (!target.ok) return void new Notice(target.message, 10000);
         await this.createNote("thread", `![[${writtenRef(pick, "")}]]\n\n`, target.target);
       },
-      markRead: async (post: ReadingPost) => {
-        const built = buildStudio(this.env());
-        if (!built.ok) return built.message;
-        const done = await built.studio.client.markRead(post.subscriptionId, post.remoteId, post.version);
-        if (done.kind === "ok") return "Marked read.";
-        if (done.kind === "forbidden") return "Your token cannot mark posts read. It needs the permission “reading:state”: make a new token with every permission.";
-        return "message" in done ? done.message : "Could not mark it read.";
-      },
+      markRead: (post) => this.readerMark(post, true),
+      markUnread: (post) => this.readerMark(post, false),
     };
+  }
+
+  /** Mark a post read or unread in the Studio; the answer is a result the reader can act on (it shows the change first and puts it back on a refusal). */
+  private async readerMark(post: ReadingPost, read: boolean): Promise<ReadResult> {
+    try {
+      const built = buildStudio(this.env());
+      if (!built.ok) return { ok: false, message: built.message };
+      const { client } = built.studio;
+      const done = read ? await client.markRead(post.subscriptionId, post.remoteId, post.version) : await client.markUnread(post.subscriptionId, post.remoteId);
+      if (done.kind === "ok") return { ok: true };
+      if (done.kind === "forbidden") return { ok: false, message: "Your token cannot mark posts read. It needs the permission “reading:state”: make a new token with every permission." };
+      return { ok: false, message: "message" in done ? done.message : "Could not change the read mark." };
+    } catch {
+      return { ok: false, message: "The Studio could not be reached, so the read mark was not changed." };
+    }
+  }
+
+  /** Stylesheets and prepared pages kept for the session, so the second post of a blyg does not wait for its stylesheet again. */
+  private readonly readerSheets = new Map<string, { at: number; text: string }>();
+  private readonly readerPages = new Map<string, { at: number; page: PreparedPage }>();
+
+  /** A post's page for the reader's frame (see trimmedPage.ts): plain requests (no token, no cookies), the stylesheets fetched side by side. */
+  private async readerPage(url: string): Promise<PreparedPage> {
+    const now = Date.now();
+    const cached = this.readerPages.get(url);
+    if (cached && now - cached.at < 120_000) return cached.page;
+    const sheet = async (href: string): Promise<string | null> => {
+      const kept = this.readerSheets.get(href);
+      if (kept && Date.now() - kept.at < 600_000) return kept.text;
+      try {
+        const got = await obsidianTransport({ url: href, method: "GET", headers: {} });
+        if (got.status >= 400 || got.text.length >= 600_000) return null;
+        this.readerSheets.set(href, { at: Date.now(), text: got.text });
+        return got.text;
+      } catch {
+        return null; // a stylesheet that does not load: the post shows in plain type
+      }
+    };
+    let page: PreparedPage;
+    try {
+      const res = await obsidianTransport({ url, method: "GET", headers: {} });
+      if (res.status >= 400) return { kind: "unreachable" };
+      const css = (await Promise.all(stylesheetsOf(res.text, url).map(sheet))).filter((c): c is string => c !== null);
+      const doc = trimmedDocument({ pageHtml: res.text, pageUrl: url, css });
+      page = doc !== null ? { kind: "trimmed", doc } : framePolicy(res.headers) === "allowed" ? { kind: "full" } : { kind: "forbidden" };
+    } catch {
+      return { kind: "unreachable" };
+    }
+    this.readerPages.set(url, { at: Date.now(), page });
+    return page;
   }
 
   private async openPanel(): Promise<void> {

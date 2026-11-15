@@ -54,6 +54,34 @@ run("reader PoC against a real Studio", () => {
     if (polled.kind === "ok") expect(polled.value.polling).toBeGreaterThanOrEqual(1);
   });
 
+  it("with a token that has reading:state: read, unread, and quick changes in a row end where the last one says", async () => {
+    // A token with every permission, as the owner makes one in the Studio's web app (a throwaway local Studio: the password is the script's own).
+    const base = URL_ ?? "";
+    const login = await fetch(`${base}/studio/login`, { method: "POST", redirect: "manual", headers: { Origin: base, "content-type": "application/x-www-form-urlencoded" }, body: "password=local-test-password-123" });
+    const cookie = (login.headers.getSetCookie?.() ?? []).map((c) => c.split(";")[0]).join("; ");
+    const minted = await fetch(`${base}/api/authorizations`, { method: "POST", headers: { Origin: base, cookie, "content-type": "application/json" }, body: JSON.stringify({ name: "reader e2e (all)", resource: "api", scope: ["owner:read", "owner:draft", "owner:publish", "owner:manage", "reading:state"] }) });
+    const full = createStudioClient({ http: createStudioHttp({ transport, timers: idleTimers, address: address as NonNullable<typeof address> }), token: ((await minted.json()) as { accessToken: string }).accessToken });
+    const list = await full.listReading(1);
+    if (list.kind !== "ok" || !list.value.posts[0]) throw new Error("e2e: no post to mark");
+    const p = list.value.posts[0];
+    const state = async (): Promise<number | null | undefined> => {
+      const got = await full.listReading(1);
+      return got.kind === "ok" ? got.value.posts.find((x) => x.remoteId === p.remoteId && x.subscriptionId === p.subscriptionId)?.readVersion : undefined;
+    };
+    expect((await full.markUnread(p.subscriptionId, p.remoteId)).kind).toBe("ok");
+    expect(await state()).toBeNull();
+    expect((await full.markRead(p.subscriptionId, p.remoteId, p.version)).kind).toBe("ok");
+    expect(await state()).toBe(p.version);
+    // quick changes, as fast as taps can come: the last one wins (a read always applies; no client clock is sent)
+    for (const step of ["unread", "read", "unread", "read"] as const) {
+      const done = step === "read" ? await full.markRead(p.subscriptionId, p.remoteId, p.version) : await full.markUnread(p.subscriptionId, p.remoteId);
+      expect(done.kind).toBe("ok");
+    }
+    expect(await state()).toBe(p.version);
+    expect((await full.markUnread(p.subscriptionId, p.remoteId)).kind).toBe("ok");
+    expect(await state()).toBeNull();
+  });
+
   it("marking read needs the extra scope: the plugin's four scopes are refused, plainly", async () => {
     const list = await client.listReading(1);
     if (list.kind !== "ok" || !list.value.posts[0]) throw new Error("e2e: no post to mark");
