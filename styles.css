@@ -577,3 +577,14 @@
 .blyg-reader-surface .blyg-reader-body div.blyg-tk-gen { border-left: 2px dotted var(--blyg-rule); padding-left: 0.8em; margin: 1em 0; }
 .blyg-reader-formatnote { margin-top: 1.4em; font-size: var(--font-ui-smaller); color: var(--text-faint); }
 .blyg-reader-resp-badge { font-variant-numeric: tabular-nums; }
+
+/* The reply preview: what a quote directive points at, drawn in the note (view-only). */
+.blyg-reply-preview { margin: var(--size-4-2) 0; padding: var(--size-4-2) var(--size-4-3); border-left: 3px solid var(--text-accent); border-radius: 0 var(--radius-m) var(--radius-m) 0; background: color-mix(in srgb, var(--text-accent) 6%, var(--background-secondary)); color: var(--text-muted); font-size: var(--font-text-size); }
+.blyg-reply-preview-head { display: flex; align-items: center; justify-content: space-between; gap: var(--size-4-2); margin-bottom: var(--size-2-2); font-size: var(--font-ui-smaller); color: var(--text-accent); font-weight: var(--font-semibold); text-transform: uppercase; letter-spacing: 0.04em; }
+.blyg-reply-preview-body { line-height: 1.6; overflow: hidden; }
+.blyg-reply-preview-body.is-clamped { max-height: 9em; -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
+.blyg-reply-preview-body p { margin: 0 0 0.6em; }
+.blyg-reply-preview-body blockquote { margin: 0.5em 0; padding-left: 0.8em; border-left: 2px solid var(--background-modifier-border); }
+.blyg-reply-preview button { font-size: var(--font-ui-smaller); border-radius: var(--radius-s); box-shadow: none; height: auto; padding: var(--size-2-1) var(--size-4-2); }
+.blyg-reply-preview-more { margin-top: var(--size-2-2); }
+.blyg-reply-preview-body > :last-child { margin-bottom: 0; }

@@ -30,6 +30,7 @@ will change before anything leaves your vault.
   shortened), and the form keeps your text if the app is closed while you copy the address. It is not a blyg item: nothing is
   checked, fetched or sent. Settings → Web quote holds a template for the whole block, so you decide where the quote, the
   link and any blank line go.
+- **See what you answer.** A reply note starts with the line that quotes the item it answers; in Live Preview and Reading view that line shows the item's text (a view only: the text is fetched when the note is shown and never written into your vault).
 - **Read (experimental).** “Open reader” shows the posts of the blygs your Studio follows as a feed (newest first, or by reading time;
   filter by blyg, length or unread; the choices are remembered) and the mentions of your items. A post opens as text on its own calm
   reading surface (quotes shown as quotes; contrast and font are settings) or as the author's web page; one tap or a pull-up at the end
@@ -182,8 +183,7 @@ stripped from the published text.
   a camera photo first), and no way yet to bring a Studio item's images back into a note (a pulled or imported item keeps the
   Studio's image addresses, which show as web images).
 - **The reader is experimental.** It shows what your Studio has fetched (your Studio looks at the blygs you follow every half hour;
-  the reader asks it to look when you open or refresh). Not there yet: search, reading offline, and a preview of what you are replying
-  to inside the reply note. Replies to a post are shown only where you can see them (your own, and posts of blygs you follow), never
+  the reader asks it to look when you open or refresh). Not there yet: search and reading offline. Replies to a post are shown only where you can see them (your own, and posts of blygs you follow), never
   asked of other blygs.
 - **Tokens by hand, every 30 days.**
 - **One Studio.** Setups with several Studios are not supported.
