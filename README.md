@@ -30,6 +30,10 @@ will change before anything leaves your vault.
   shortened), and the form keeps your text if the app is closed while you copy the address. It is not a blyg item: nothing is
   checked, fetched or sent. Settings → Web quote holds a template for the whole block, so you decide where the quote, the
   link and any blank line go.
+- **Read (experimental).** “Open reader” shows the posts of the blygs your Studio follows as a feed (newest first, or by reading time;
+  filter by blyg, length or unread; the choices are remembered) and the mentions of your items. A post opens as text on its own calm
+  reading surface (quotes shown as quotes; contrast and font are settings) or as the author's web page; one tap or a pull-up at the end
+  marks it read and goes to the next. Posts are shown in the reader only and are never written into your vault.
 - **Keep both sides in step.** Pull the Studio's copy into the note, import items that were written in the Studio,
   withdraw an item, delete a draft, put items into your Studio's hoppers.
 - **Mobile first.** Everything runs on iOS and Android as well as desktop; no desktop-only APIs are used.
@@ -149,6 +153,8 @@ The plugin makes requests only through Obsidian's `requestUrl`, to these hosts:
 |---|---|---|
 | **Your Studio** (the address you set) | Your note's text and metadata when you send it, the image files the note embeds (only when you publish), and reads of your items, hoppers and followed blygs' items for the panel and pickers. | The Studio token, in a header. Never in a URL. |
 | **The Studio's public pages** (same host) | The public manifest, read to find your blyg's address. | None. |
+| **The reader's requests to your Studio** (same host) | The list of posts you read and your mentions, the read marks you set, a request that your Studio look for new posts, and the look-up of an item when you tap a quote's source. | The Studio token, in a header. |
+| **A blyg's own server** (only for what you open in the reader) | A post's image, when you tap it (or always, if you chose “Always load”); a post's page and its stylesheets, when you open it as a web page. These are ordinary requests with no token and no cookies, so that blyg's server can see that someone read the post. | None. |
 | `api.github.com` | Only if you use the older GitHub mode. Not used in Studio-only setups. | A GitHub token, only to this host. |
 
 Nothing else: no analytics, no telemetry, no third-party servers. Text from other blygs is shown only after being
@@ -160,7 +166,8 @@ stripped from the published text.
 ## Token
 
 - The plugin needs the Studio permissions **`owner:read`**, **`owner:draft`**, **`owner:publish`**; **`owner:manage`**
-  is optional (hoppers).
+  is optional (hoppers, and asking your Studio to look for new posts in the reader). **`reading:state`** is optional too: without
+  it the reader works, but marking a post read or unread is refused (and says so). For the reader, make the token with every permission.
 - The token is stored only in **Obsidian's keychain**. The settings hold the *name* of the entry, never the value; the
   plugin never logs it, writes it to a file or sends it anywhere except your Studio's host.
 - **A Studio token expires after 30 days** and cannot be refreshed. The plugin warns five days before the end;
@@ -174,16 +181,17 @@ stripped from the published text.
   In a Studio route images are published as they are: no resizing (`|300` after a name is ignored), no HEIC conversion (convert
   a camera photo first), and no way yet to bring a Studio item's images back into a note (a pulled or imported item keeps the
   Studio's image addresses, which show as web images).
-- **No mentions list.** Who quoted or answered you is visible in the Studio, not yet in Obsidian.
-- **No reader stream.** Read the blygs you follow in the Studio; the plugin lets you quote and reply to their items but
-  does not show a feed.
+- **The reader is experimental.** It shows what your Studio has fetched (your Studio looks at the blygs you follow every half hour;
+  the reader asks it to look when you open or refresh). Not there yet: search, reading offline, and a preview of what you are replying
+  to inside the reply note. Replies to a post are shown only where you can see them (your own, and posts of blygs you follow), never
+  asked of other blygs.
 - **Tokens by hand, every 30 days.**
 - **One Studio.** Setups with several Studios are not supported.
 - **Beta, mobile-tested lightly.** Tested on iPad and iPhone by the author; Android is untested.
 
 ## Planned (not promised)
 
-Mentions list; resizing images; OAuth sign-in instead of the monthly token; automatic checks for new Studio items; a public
+Resizing images; OAuth sign-in instead of the monthly token; automatic checks for new Studio items; a public
 address setting for Studios behind a proxy; listing in Obsidian's community plugins after a beta period (1.0).
 
 ## Privacy and safety in short

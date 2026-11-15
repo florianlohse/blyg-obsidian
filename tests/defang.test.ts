@@ -17,7 +17,7 @@ describe("what a Studio 0.51.0 really writes passes through unchanged", () => {
     expect(fixtures.map(([f]) => f).sort()).toEqual(["imported-fragment-0.51.0.html", "imported-image-0.51.0.html", "imported-thread-partial-0.51.0.html", "imported-thread-whole-0.51.0.html", "preview-vocabulary-0.51.0.html"]);
   });
   it.each(fixtures.filter(([f]) => !f.includes("image") && !f.includes("preview")))("%s", (_f, html) => {
-    expect(rewriteImages(html, click)).toEqual({ text: html, reason: null, waiting: [] });
+    expect(rewriteImages(html, click)).toEqual({ text: html, reason: null, waiting: [], left: [] });
   });
   it("the full-feature preview: only its one image changes", () => {
     const html = fixtures.find(([f]) => f.includes("preview"))?.[1] ?? "";
@@ -99,7 +99,7 @@ describe("links", () => {
 describe("images", () => {
   const img = (src: string, alt = "a door") => `<p><img src="${src}" alt="${alt}"></p>`;
   it("an image from the owner's own Studio loads in either mode", () => {
-    for (const o of [click, always]) expect(rewriteImages(img("http://localhost:8787/media/a/b.png"), o)).toEqual({ text: img("http://localhost:8787/media/a/b.png"), reason: null, waiting: [] });
+    for (const o of [click, always]) expect(rewriteImages(img("http://localhost:8787/media/a/b.png"), o)).toEqual({ text: img("http://localhost:8787/media/a/b.png"), reason: null, waiting: [], left: [] });
   });
   it("a foreign image waits; entities in its address are read as the browser would", () => {
     expect(rewriteImages(img("https://tracker.example/p.png?x=1&amp;y=2"), click).waiting).toEqual([{ src: "https://tracker.example/p.png?x=1&y=2", alt: "a door", host: "tracker.example" }]);
@@ -136,38 +136,68 @@ describe("images", () => {
   });
 });
 
-describe("REFUSED as a whole (text null), with the cause named: anything that could load or run something is not a tag the reader knows", () => {
-  const bad: Record<string, [string, string]> = {
-    "<image> alias": ['<p>a</p><image src="https://t.example/p.png">', "<image>"],
-    "<input type=image>": ['<input type="image" src="https://t.example/p.png">', "<input>"],
-    iframe: ['<iframe src="https://t.example/f"></iframe>', "<iframe>"], object: ['<object data="https://t.example/o"></object>', "<object>"], embed: ["<embed src=x>", "<embed>"],
-    video: ['<video src="https://t.example/v.mp4"></video>', "<video>"], audio: ["<audio src=x></audio>", "<audio>"], picture: ["<picture><source srcset=x></picture>", "<picture>"],
-    svg: ['<svg><image href="https://t.example/p.png"/></svg>', "<svg>"], math: ["<math></math>", "<math>"], script: ["<script>alert(1)</script>", "<script>"],
-    "style element": ["<style>@import url(https://t.example/s.css)</style>", "<style>"], link: ['<link rel="stylesheet" href="https://t.example/s.css">', "<link>"],
-    "meta refresh": ['<meta http-equiv="refresh" content="0;url=https://t.example">', "<meta>"], base: ['<base href="https://t.example/">', "<base>"], form: ["<form action=x></form>", "<form>"],
-    textarea: ["<textarea></textarea>", "<textarea>"], template: ["<template></template>", "<template>"], noscript: ["<noscript></noscript>", "<noscript>"],
-    button: ["<button>x</button>", "<button>"], select: ["<select></select>", "<select>"], canvas: ["<canvas></canvas>", "<canvas>"], map: ['<map><area href="x"></map>', "<map>"],
-    body: ['<body background="https://t.example/p.png">', "<body>"], html: ["<html>", "<html>"], head: ["<head>", "<head>"], font: ['<font face="x">y</font>', "<font>"],
-    "custom element": ["<foo-bar>x</foo-bar>", "<foo-bar>"], "upper-case unknown": ["<SCRIPT>x</SCRIPT>", "<script>"],
-    comment: ["<!-- <img src=x> -->", "comment"], doctype: ["<!DOCTYPE html>", "comment or declaration"], "processing instruction": ["<?xml?>", "comment or declaration"],
-    "closing tag with a non-letter": ["<p>x</ p>", "malformed"], "closing tag with an attribute": ['<p>x</p class="x">', "malformed"], "closing void": ["<p>x</br></p>", "malformed"],
-    "closing img": ["<img src=x></img>", "malformed"], "unterminated tag": ['<p>x<a href="y"', "malformed"], "unterminated quote": ['<a href="y>x</a>', "malformed"],
-    "tag name running into text": ["<p=x>", "<p=x>"],
+describe("LEFT OUT, its text kept (parse loosely, emit strictly): anything that could load or run something is not a tag the reader writes", () => {
+  // input → [what comes out, the tag names reported as left out]
+  const out: Record<string, [string, string, string[]]> = {
+    "<image> alias": ['<p>a</p><image src="https://t.example/p.png">', "<p>a</p>", ["image"]],
+    "<input type=image>": ['<input type="image" src="https://t.example/p.png">', "", ["input"]],
+    iframe: ['<p>a</p><iframe src="https://t.example/f">fallback</iframe><p>b</p>', "<p>a</p><p>b</p>", ["iframe"]],
+    object: ['<object data="https://t.example/o">x</object>y', "y", ["object"]],
+    embed: ["<embed src=x>after", "after", ["embed"]],
+    video: ['<video src="https://t.example/v.mp4">no video</video>z', "z", ["video"]], audio: ["<audio src=x></audio>z", "z", ["audio"]],
+    picture: ['<picture><source srcset=x><img src="https://t.example/p.png" alt="p"></picture>', '<span data-blyg-wait="0"></span>', ["picture", "source"]],
+    svg: ['a<svg><image href="https://t.example/p.png"/><text>t</text></svg>b', "ab", ["svg"]], math: ["a<math><mi>x</mi></math>b", "ab", ["math"]],
+    script: ["a<script>alert(1)</script>b", "ab", ["script"]], "script, upper case": ["a<SCRIPT>x</SCRIPT >b", "ab", ["script"]],
+    "style element": ["a<style>@import url(https://t.example/s.css)</style>b", "ab", ["style"]], link: ['<link rel="stylesheet" href="https://t.example/s.css">x', "x", ["link"]],
+    "meta refresh": ['<meta http-equiv="refresh" content="0;url=https://t.example">x', "x", ["meta"]], base: ['<base href="https://t.example/">x', "x", ["base"]],
+    form: ["<form action=x>name <b>bold</b></form>", "name <b>bold</b>", ["form"]], textarea: ["a<textarea><img src=x></textarea>b", "ab", ["textarea"]],
+    template: ["a<template><p>t</p></template>b", "ab", ["template"]], noscript: ["a<noscript>n</noscript>b", "ab", ["noscript"]],
+    button: ["<button>x</button>", "x", ["button"]], select: ["<select><option>o</option></select>", "o", ["select", "option"]], canvas: ["a<canvas>c</canvas>b", "ab", ["canvas"]],
+    map: ['<map><area href="x"></map>', "", ["map", "area"]], body: ['<body background="https://t.example/p.png">x', "x", ["body"]], html: ["<html>x", "x", ["html"]],
+    head: ["<head>x", "x", ["head"]], font: ['<font face="x">y</font>', "y", ["font"]], "custom element": ["<foo-bar>x</foo-bar>", "x", ["foo-bar"]],
+    "a tag called p=x": ["<p=x>y", "y", ["other"]],
+    "unclosed script": ["a<script>b<p>c", "a", ["script"]],
+    comment: ["a<!-- <img src=x> -->b", "ab", []], "unterminated comment": ["a<!-- b", "a", []], doctype: ["<!DOCTYPE html>x", "x", []], "processing instruction": ["<?xml?>x", "x", []],
+    "closing tag with a non-letter (a hidden comment to a browser)": ["<p>x</ p>y", "<p>xy", []], "closing tag with an attribute": ['<p>x</p class="x">', "<p>x</p>", []],
+    "closing void": ["<p>x</br></p>", "<p>x</p>", []], "closing img": ["<img src=x></img>", "[image not shown]", []],
   };
-  it.each(Object.entries(bad))("%s", (_name, [html, cause]) => {
+  it.each(Object.entries(out))("%s", (_name, [html, want, names]) => {
     for (const o of [click, always]) {
       const r = rewriteImages(html, o);
-      expect(r.text).toBeNull();
-      expect(r.reason ?? "").toContain(cause);
+      if (html.includes("<img src=x>")) continue; // the image's own wording is tested with the images
+      if (want.includes("data-blyg-wait") && o === always) continue; // the same image loads in the other mode (tested with the images)
+      expect(r.text, html).toBe(want);
+      expect(r.left, html).toEqual(names);
+      expect(r.reason).toBeNull();
     }
   });
-  it("too many attributes, or an enormous post: refused, and quickly", () => {
+  it("a malformed \"<\" is plain text, shown as such, and never starts a tag", () => {
+    expect(text('<p>x<a href="y"')).toBe('<p>x&lt;a href="y"');
+    expect(text('<a href="y>x</a>')).toBe('&lt;a href="y>x</a>');
+    expect(text("1 < 2 and <3")).toBe("1 &lt; 2 and &lt;3");
+    expect(text(`<p ${"a=1 ".repeat(200)}>x</p>`)).toBe(`&lt;p ${"a=1 ".repeat(200)}>x</p>`);
+  });
+  it("what the spec's own markup needs passes: generated text, a quote's origin and label (and nothing else on those tags)", () => {
+    expect(text('<div class="blyg-tk-gen">block</div><p>a <span class="blyg-tk-gen">inline</span></p>')).toBe(
+      '<div class="blyg-tk-gen" title="Marked by the publisher as generated text (their own disclosure, not verified)">block</div><p>a <span class="blyg-tk-gen" title="Marked by the publisher as generated text (their own disclosure, not verified)">inline</span></p>',
+    );
+    expect(text('<div class="other" onclick="x()">d</div><span class="blyg-tk-gen other">s</span>')).toBe("<div>d</div><span>s</span>");
+    expect(text('<blockquote class="blyg-transclusion" data-blyg-id="abc123" data-blyg-version="2" data-blyg-origin="https://blyg.example/" data-blyg-label="my &quot;name&quot;"><p>q</p></blockquote>')).toBe(
+      '<blockquote class="blyg-transclusion" data-blyg-id="abc123" data-blyg-version="2" data-blyg-origin="https://blyg.example/" data-blyg-label="my &quot;name&quot;"><p>q</p></blockquote>',
+    );
+    expect(text('<blockquote data-blyg-origin="javascript:alert(1)" data-blyg-label="' + "x".repeat(500) + '">q</blockquote>')).toBe(`<blockquote data-blyg-label="${"x".repeat(300)}">q</blockquote>`);
+  });
+  it("renders the tags it keeps around the text of the ones it dropped, in order", () => {
+    expect(text("<p>one <foo>two <b>three</b></foo> four</p>")).toBe("<p>one two <b>three</b> four</p>");
+  });
+  it("an enormous post is refused, and quickly; so is one full of broken tags; a large one within the cap is drawn", () => {
     const t0 = Date.now();
-    expect(text(`<p ${"a=1 ".repeat(200)}>x</p>`)).toBeNull();
     expect(text("<a ".repeat(100_000))).toBeNull();
+    expect(rewriteImages("<a ".repeat(100_000), click).reason).toContain("malformed");
     expect(text("<p>".repeat(800_000))).toBeNull(); // over the 2 MB cap
-    expect(text("<p>".repeat(200_000))).not.toBeNull(); // large but within it: drawn, and fast
-    expect(Date.now() - t0).toBeLessThan(3000);
+    expect(text("<p>".repeat(200_000))).not.toBeNull();
+    expect(text("<script>".repeat(50_000) + "x")).not.toBeNull(); // each unclosed script drops to the end: one scan, not fifty thousand
+    expect(Date.now() - t0).toBeLessThan(4000);
   });
 });
 
@@ -187,7 +217,7 @@ describe("whatever goes in, nothing outside the allowed set comes out (randomise
   const PIECES = ["<", ">", "/", "=", '"', "'", " ", "\n", "\t", "img", "a", "p", "src", "href", "onerror", "onclick", "script", "image", "input", "javascript:", "https://t.example/p.png", "&amp;", "&#x3c;", "&lt;",
     "x", "style", "url(", "background", "srcset", "title", "alt", "class", "id", "svg", "iframe", "td", "table", "!--", "?", "`", "data-blyg-wait", "blockquote", "code", "language-js"];
   const OUT_TAGS = new Set(["h1", "h2", "h3", "h4", "h5", "h6", "p", "div", "span", "section", "address", "blockquote", "pre", "hr", "br", "wbr", "em", "strong", "b", "i", "u", "s", "del", "ins", "mark", "small", "sup", "sub", "abbr", "cite", "q", "dfn", "kbd", "samp", "var", "code", "time", "bdi", "bdo", "ul", "ol", "li", "dl", "dt", "dd", "table", "caption", "thead", "tbody", "tfoot", "tr", "th", "td", "figure", "figcaption", "details", "summary", "a", "img"]);
-  const OUT_ATTRS = new Set(["href", "title", "src", "alt", "start", "class", "colspan", "rowspan", "style", "datetime", "open", "data-blyg-id", "data-blyg-version", "referrerpolicy", "data-blyg-wait"]);
+  const OUT_ATTRS = new Set(["href", "title", "src", "alt", "start", "class", "colspan", "rowspan", "style", "datetime", "open", "data-blyg-id", "data-blyg-version", "data-blyg-origin", "data-blyg-label", "referrerpolicy", "data-blyg-wait"]);
   it("every output is made only of allowed tags with allowed attributes, all double-quoted and escaped, and no loadable address outside href and src", () => {
     const rnd = mulberry32(20261113);
     let kept = 0;

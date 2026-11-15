@@ -479,11 +479,16 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await showText('<p>x</p><IMG SRC="http://127.0.0.1:18999/pixel-m2.png" ALT="up"><img src=\'http://127.0.0.1:18999/pixel-m3.png\' alt=a>');
     const forms = await page.evaluate(() => ({ buttons: document.querySelectorAll(".blyg-reader-image").length, imgs: document.querySelectorAll(".blyg-reader-body img").length }));
     check(hits === 0 && forms.buttons === 2 && forms.imgs === 0, `an image written in upper case or with single quotes is still an image that waits for a tap (${hits} requests, ${forms.buttons} buttons)`);
-    for (const [html, cause] of [['<p>x</p><iframe src="http://127.0.0.1:18999/pixel-m4.png"></iframe>', "the tag <iframe>"], ["<p>x</p><script>window.__pwned=1</script>", "the tag <script>"], ["<p>x</p><svg onload=\"window.__pwned=2\"></svg>", "the tag <svg>"], ["<p>x</p><!-- c -->", "a comment or declaration"]]) {
+    // What a post may not carry is left out and its text stays: the post is drawn, a small line says formatting was left out, and nothing is requested or run.
+    for (const [html, name] of [['<p>x</p><iframe src="http://127.0.0.1:18999/pixel-m4.png">fb</iframe><p>y</p>', "iframe"], ["<p>x</p><script>window.__pwned=1</script><p>y</p>", "script"], ["<p>x</p><svg onload=\"window.__pwned=2\"></svg><p>y</p>", "svg"], ["<p>x</p><!-- c --><p>y</p>", null]]) {
       await showText(html);
-      const note = (await text(".blyg-reader-blocked")).join(" ");
-      check(note.includes(cause) && note.includes("Open it in the browser") && hits === 0, `a post with ${cause} is not drawn, and says why ("${note.slice(0, 80)}")`);
+      const got = await page.evaluate(() => ({ body: document.querySelector(".blyg-reader-body")?.textContent ?? "", note: document.querySelector(".blyg-reader-formatnote")?.textContent ?? "", blocked: !!document.querySelector(".blyg-reader-blocked"), pwned: window.__pwned ?? null }));
+      check(!got.blocked && got.body.includes("x") && got.body.includes("y") && got.pwned === null && hits === 0 && (name === null ? got.note === "" : got.note.includes(`<${name}>`)), `a post with ${name ? `<${name}>` : "a comment"} is drawn without it; ${name ? `a line says formatting was left out ("${got.note.slice(0, 60)}")` : "nothing is said"}; nothing is requested or run`);
     }
+    // The spec's own markup: generated text is marked, and a quote carries its origin and label.
+    await showText('<div class="blyg-tk-gen"><p>Generated block.</p></div><p>a <span class="blyg-tk-gen">generated</span> word</p><blockquote class="blyg-transclusion" data-blyg-id="zz9" data-blyg-version="1" data-blyg-origin="https://remote.example/" data-blyg-label="the original"><p>Quoted.</p></blockquote>');
+    const spec = await page.evaluate(() => ({ tk: document.querySelectorAll(".blyg-reader-body .blyg-tk-gen").length, title: document.querySelector(".blyg-reader-body .blyg-tk-gen")?.getAttribute("title") ?? "", bq: document.querySelector(".blyg-reader-body blockquote")?.getAttribute("data-blyg-origin"), note: !!document.querySelector(".blyg-reader-formatnote"), blocked: !!document.querySelector(".blyg-reader-blocked") }));
+    check(spec.tk === 2 && /generated text/.test(spec.title) && spec.bq === "https://remote.example/" && !spec.note && !spec.blocked, `the spec's own markup is drawn, not refused (generated text marked, quote origin kept; ${JSON.stringify(spec)})`);
     await closeReader();
   }
 
@@ -723,10 +728,11 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await openReader();
     await wait(1000);
     const ids = await page.evaluate(() => { const v = window.app.workspace.getLeavesOfType("blyg-reader")[0].view; return { a: v.data.posts[0].remoteId, b: v.data.posts[1].remoteId, title: v.data.posts[1].subscriptionTitle }; });
-    await showText(`<p>Words.</p><blockquote class="blyg-transclusion" data-blyg-id="${ids.b}" data-blyg-version="1"><p>Quoted.</p></blockquote><blockquote class="blyg-transclusion" data-blyg-id="nosuchitem1" data-blyg-version="1"><p>Unknown source.</p></blockquote>`);
+    await showText(`<p>Words.</p><blockquote class="blyg-transclusion" data-blyg-id="${ids.b}" data-blyg-version="1"><p>Quoted.</p></blockquote><blockquote class="blyg-transclusion" data-blyg-id="nosuchitem1" data-blyg-version="1" data-blyg-origin="https://remote.example/" data-blyg-label="my label"><p>Unknown source.</p></blockquote>`);
     await wait(500);
     const lines = await text(".blyg-quote-source");
-    check(lines.length === 1 && lines[0].startsWith("↗") && lines[0].includes(ids.title), `${layout}: quote source: a quote of a post you read names where it comes from (${JSON.stringify(lines)})`);
+    check(lines.length === 2 && lines[0].startsWith("↗") && lines[0].includes(ids.title), `${layout}: quote source: a quote of a post you read names where it comes from (${JSON.stringify(lines)})`);
+    check(lines[1] === "↗ my label · remote.example", `${layout}: quote source: a quote of another blyg's item shows the author's label and the blyg's host (${JSON.stringify(lines[1])})`);
     await page.evaluate(() => document.querySelector(".blyg-quote-source.is-link")?.click());
     await wait(600);
     check((await page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader")[0].view.shown?.remoteId)) === ids.b, `${layout}: quote source: a tap opens that post here`);
@@ -779,6 +785,13 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await click("Back");
     await wait(400);
     check((await page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader")[0].view.shown?.remoteId)) === (await page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader")[0].view.data.posts[0].remoteId)), `${layout}: replies: Back returns to the post you came from`);
+    // The feed's cards carry the same badge: green when one of the replies is yours.
+    await click("Back");
+    await wait(500);
+    const badges = await page.evaluate(() => [...document.querySelectorAll(".blyg-reader-resp-badge")].map((b) => [b.textContent, b.classList.contains("is-mine")]));
+    check(badges.length === 1 && badges[0][0] === "↩ You + 1" && badges[0][1] === true, `${layout}: replies: the post's card in the feed has the green badge too (${JSON.stringify(badges)})`);
+    await page.evaluate(() => { const v = window.app.workspace.getLeavesOfType("blyg-reader")[0].view; v.openPost(v.data.posts[0]); });
+    await wait(400);
     // Without your own reply: a plain count.
     await page.evaluate(() => { const v = window.app.workspace.getLeavesOfType("blyg-reader")[0].view; v.host.myItems = async () => []; v.mine = []; v.drawHeader(); });
     const plain = await page.evaluate(() => { const c = document.querySelector(".blyg-reader-resp"); return c ? { text: c.textContent, mine: c.classList.contains("is-mine") } : null; });
