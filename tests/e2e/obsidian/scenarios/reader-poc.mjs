@@ -93,22 +93,34 @@ await runScenario({ data: fixtureData() }, async (s) => {
     view.draw();
     await new Promise((r) => setTimeout(r, 1000));
   }, [html, one]);
-  /** Every imported post back to unread, through the Studio's API, so each pass starts the same. It checks itself and tries again: the Studio may ration it (429). */
+  /** Every imported post back to unread, through the Studio's API, so each test starts the same. It checks itself and tries again: the Studio may ration it (429). `resetNote` says what it saw. */
+  let resetNote = "";
+  let ADMIN = null; // the housekeeping token: made once and reused (the Studio throttles logins, so a login per attempt ends in 401), made again only if it is rejected
   async function resetReadMarks() {
-    for (let attempt = 0; attempt < 8; attempt++) {
-      const headers = { authorization: `Bearer ${await mintFullToken()}`, Origin: STUDIO }; // a fresh token each time: the Studio rations work per token per minute (429)
-      const list = await fetch(`${STUDIO}/api/reading/imported?limit=100`, { headers }).then((r) => r.json()).catch(() => ({}));
+    const seen = [];
+    for (let attempt = 0; attempt < 10; attempt++) {
+      ADMIN ??= await mintFullToken();
+      const headers = { authorization: `Bearer ${ADMIN}`, Origin: STUDIO };
+      const res = await fetch(`${STUDIO}/api/reading/imported?limit=100`, { headers }).catch(() => null);
+      const list = res ? await res.json().catch(() => ({})) : {};
+      seen.push(res?.status ?? "no answer");
+      if (res?.status === 401) { ADMIN = null; await wait(10_000); continue; }
       if (Array.isArray(list.items)) {
         const read = list.items.filter((r) => r.readVersion !== null);
-        if (read.length === 0) return true;
-        for (const r of read) await fetch(`${STUDIO}/api/reading/${encodeURIComponent(r.subscriptionId)}/${encodeURIComponent(r.remoteId)}/read`, { method: "DELETE", headers }).catch(() => {});
+        if (read.length === 0) { resetNote = ""; return true; }
+        for (const r of read) {
+          const del = await fetch(`${STUDIO}/api/reading/${encodeURIComponent(r.subscriptionId)}/${encodeURIComponent(r.remoteId)}/read`, { method: "DELETE", headers }).catch(() => null);
+          seen.push(`DELETE ${del?.status ?? "no answer"}`);
+        }
       }
-      await wait(attempt < 2 ? 500 : 8000);
+      await wait(attempt < 2 ? 500 : 6000);
     }
+    resetNote = ` (the Studio answered: ${seen.slice(-8).join(", ")})`;
     return false;
   }
 
   async function pass(layout) {
+    check(await resetReadMarks(), `${layout}: every post starts unread (housekeeping)${resetNote}`);
     await openReader();
     await wait(1500);
     const cards = await text(".blyg-reader-card");
@@ -172,6 +184,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
 
   /** The app's own token has no `reading:state`: the refusal is explained in words, and the mark that was shown at once is put back. Runs first, before the token is changed. */
   async function refusal() {
+    check(await resetReadMarks(), "refusal: every post starts unread (housekeeping)");
     await openReader();
     await wait(1500);
     await page.evaluate(() => document.querySelector(".blyg-reader-card")?.click());
@@ -205,6 +218,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
     check(await click("Refresh"), "read marks: Refresh can be tapped");
     await wait(2500);
     check(await page.evaluate(() => document.querySelector(".blyg-reader-card")?.classList.contains("is-read") ?? false), "read marks: the mark is in the Studio, so it is still there after a refresh");
+    await wait(2500); // a mark may still be on its way on a slow runner
     await resetReadMarks();
     await closeReader();
   }
@@ -225,13 +239,14 @@ await runScenario({ data: fixtureData() }, async (s) => {
       return { read: card?.classList.contains("is-read") ?? false, badge: !!card?.querySelector(".blyg-reader-badge.is-done") };
     });
     check(result.read && result.badge, "a stale list that arrives after a read mark does not undo it");
-    await wait(1500);
-    await resetReadMarks();
+    await wait(2500); // a mark may still be on its way on a slow runner
+    check(await resetReadMarks(), "a stale list: housekeeping afterwards");
     await closeReader();
   }
 
   /** How posts open by default, chosen in the feed: kept in the setting, and used by the next post you tap. */
   async function defaultView() {
+    await resetReadMarks();
     await openReader();
     check(await click("Text"), "the feed's \"Text\" choice can be tapped");
     await wait(300);
