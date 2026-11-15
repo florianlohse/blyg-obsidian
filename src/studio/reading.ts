@@ -1,6 +1,7 @@
 // PROOF OF CONCEPT (roadmap S15, reader side): rows of the Studio's reading list and of its mentions list, read defensively.
 // Nothing here is shipped or wired into a release; it exists to measure how hard a reader inside the plugin is.
 import { isRecord } from "../core/frontmatter";
+import { isBlygStub, readWireStub } from "./stub";
 
 const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
 
@@ -21,6 +22,8 @@ export interface ReadingPost {
   created: string | null;
   /** True when the post answers another item (`stubOf`). */
   isReply: boolean;
+  /** What the post answers, when that is an item of a blyg (its origin and id): so a post can show the replies to it that the reader can see. */
+  stubTarget?: { origin: string; id: string } | null;
   contentHtml: string;
   contentMd: string;
   authorName: string | null;
@@ -54,6 +57,7 @@ export function readReadingPost(row: unknown): ReadingPost | null {
     observedAt: str(row.observedAt) ?? "",
     created: str(row.created),
     isReply: isRecord(row.stubOf),
+    stubTarget: ((t) => (t && isBlygStub(t) ? { origin: t.origin, id: t.id } : null))(readWireStub(row.stubOf)),
     contentHtml,
     contentMd: str(row.contentMd) ?? "",
     authorName: author,
