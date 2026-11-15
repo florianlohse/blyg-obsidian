@@ -227,6 +227,12 @@ export class BlygSettingTab extends PluginSettingTab {
           aliases: ["reader", "typeface", "serif", "reading font"],
           control: { type: "dropdown", key: "readerPane.font", options: { default: "As Obsidian has it", serif: "Serif", sans: "Sans-serif", mono: "Monospace" } },
         },
+        {
+          name: "Contrast of the reading surface",
+          desc: "How strongly a post stands out from its background in the reader's text view: reduced (softer, for dim rooms), normal, or high. Only the text view has this reading surface; the web page view is never changed by a setting.",
+          aliases: ["reader", "contrast", "reading surface", "dark", "light"],
+          control: { type: "dropdown", key: "readerPane.contrast", options: { reduced: "Reduced", normal: "Normal", high: "High" } },
+        },
       ],
     });
 

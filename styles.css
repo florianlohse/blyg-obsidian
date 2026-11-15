@@ -519,3 +519,41 @@
 .blyg-reader-mention .blyg-reader-excerpt { margin-top: var(--size-2-2); }
 .blyg-reader-ownitem { margin-top: var(--size-2-2); font-style: italic; }
 .blyg-reader-ownitem.is-empty { display: none; }
+
+/* ---- The reading surface (the text view only; the web page view is never changed by a setting) ---------------------------------------------------
+   A calm, slightly different ground so it is clear this is somebody else's text; three contrasts. Colours are mixed from the theme's own, so it
+   suits any theme, light or dark. */
+.theme-light .blyg-reader { --blyg-pole: #000; }
+.theme-dark .blyg-reader { --blyg-pole: #fff; }
+.blyg-reader { --blyg-surface: color-mix(in srgb, var(--background-primary) 91%, var(--text-normal)); --blyg-ink: var(--text-normal); }
+.blyg-reader.is-contrast-reduced { --blyg-surface: color-mix(in srgb, var(--background-primary) 94%, var(--text-normal)); --blyg-ink: color-mix(in srgb, var(--text-normal) 74%, var(--blyg-surface)); }
+.blyg-reader.is-contrast-high { --blyg-surface: color-mix(in srgb, var(--background-primary) 96%, var(--text-normal)); --blyg-ink: color-mix(in srgb, var(--text-normal) 82%, var(--blyg-pole)); }
+.blyg-reader { --blyg-quote-ink: color-mix(in srgb, var(--blyg-ink) 72%, var(--blyg-surface)); --blyg-rule: color-mix(in srgb, var(--blyg-ink) 28%, var(--blyg-surface)); }
+.blyg-reader-surface { background: var(--blyg-surface); color: var(--blyg-ink); padding: var(--size-4-5) var(--size-4-4) var(--size-4-8); }
+.blyg-reader-surface .blyg-reader-column { transition: opacity 0.2s ease; opacity: calc(1 - var(--pull, 0) * 0.6); }
+.blyg-reader-surface .blyg-reader-body { font-size: calc(var(--font-text-size, 16px) * 1.06); line-height: 1.7; margin: 0; color: var(--blyg-ink); overflow-wrap: break-word; }
+.blyg-reader-surface .blyg-reader-body p { margin: 0 0 1em; }
+.blyg-reader-surface .blyg-reader-body :is(h1, h2, h3, h4, h5, h6) { color: var(--blyg-ink); line-height: 1.3; margin: 1.4em 0 0.5em; }
+.blyg-reader-surface .blyg-reader-body a { color: var(--text-accent); }
+.blyg-reader-surface .blyg-reader-note { color: var(--blyg-quote-ink); }
+/* A plain quote: a bar and lighter type. */
+.blyg-reader-surface .blyg-reader-body blockquote { margin: 1.3em 0; padding: 0.1em 0 0.1em 1em; border-left: 3px solid var(--blyg-rule); color: var(--blyg-quote-ink); }
+.blyg-reader-surface .blyg-reader-body blockquote p { margin: 0.5em 0; }
+/* A quote of another blyg's item (a transclusion): the editor's pencil colour for the bar, a faint tint, and a small label saying what it is; a passage says so. */
+.blyg-reader-surface .blyg-reader-body blockquote.blyg-transclusion { border-left: 3px solid var(--text-accent); background: color-mix(in srgb, var(--text-accent) 7%, transparent); padding: 0.6em 1em 0.4em; border-radius: 0 var(--radius-m) var(--radius-m) 0; color: var(--blyg-quote-ink); }
+.blyg-reader-surface .blyg-reader-body blockquote.blyg-transclusion::before { content: "Quote from a blyg"; display: block; margin-bottom: 0.3em; font-size: 0.72em; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-accent); }
+.blyg-reader-surface .blyg-reader-body blockquote.blyg-transclusion.blyg-partial::before { content: "Passage from a blyg"; }
+.blyg-reader-surface .blyg-reader-body hr { border: 0; border-top: 1px solid var(--blyg-rule); margin: 1.6em 0; }
+.blyg-reader-surface .blyg-reader-body :is(pre, code) { background: color-mix(in srgb, var(--blyg-ink) 7%, transparent); border-radius: var(--radius-s); }
+
+/* Header: the way back and on to the next post are large and first. */
+.blyg-reader-bar-main { margin-bottom: var(--size-4-1); }
+.blyg-reader-bar-main .blyg-reader-btn { min-height: 44px; padding: 0 var(--size-4-5); font-size: var(--font-ui-medium); }
+.blyg-reader-back::before { content: "‹\00a0"; font-size: 1.3em; line-height: 1; }
+.blyg-reader-header .blyg-reader-bar-main .blyg-reader-btn { height: auto; padding: var(--size-4-2) var(--size-4-5); }
+
+/* Between two posts: the text fades and "Marked read" shows for a moment. */
+.blyg-reader-bodywrap.is-leaving .blyg-reader-surface .blyg-reader-column, .blyg-reader-bodywrap.is-leaving .blyg-reader-frame { opacity: 0.12; transition: opacity 0.3s ease; }
+.blyg-reader-done { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%) scale(0.96); padding: var(--size-4-3) var(--size-4-6); border-radius: var(--radius-l); background: var(--background-secondary); color: var(--text-normal); border: 1px solid var(--background-modifier-border); box-shadow: var(--shadow-s); font-size: var(--font-ui-large); opacity: 0; transition: opacity 0.22s ease, transform 0.22s ease; pointer-events: none; }
+.blyg-reader-done.is-in { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+@media (prefers-reduced-motion: reduce) { .blyg-reader-done, .blyg-reader-surface .blyg-reader-column { transition: none; } }
