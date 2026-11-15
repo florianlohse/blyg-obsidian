@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { readReadingPost, type ReadingPost } from "../src/studio/reading";
-import { activeFilters, arrange, cardOf, DEFAULT_FILTER, framePolicy, frameable, nextAfter, readingMinutes, readingTimeLabel, relativeTime, sourcesOf } from "../src/ui/readerFeed";
+import { activeFilters, arrange, cardOf, DEFAULT_FILTER, framePolicy, frameable, nextAfter, PULL_THRESHOLD, pullProgress, readingMinutes, readingTimeLabel, relativeTime, sourcesOf } from "../src/ui/readerFeed";
 
 const fixture = (name: string): string => readFileSync(new URL(`./fixtures/studio/reader/${name}-0.51.0.html`, import.meta.url), "utf8");
 const post = (patch: Record<string, unknown>): ReadingPost =>
@@ -134,5 +134,15 @@ describe("nextAfter: the post to open after this one", () => {
   it("still finds it when the post just read is no longer unread and the feed shows only unread", () => {
     posts[3] = mk("d", true, "2026-11-04T00:00:00Z");
     expect(nextAfter(posts, { ...DEFAULT_FILTER, unreadOnly: true }, posts[3])?.remoteId).toBe("c");
+  });
+});
+
+describe("pullProgress: the pull-up at the end of a post", () => {
+  it("is 0 when not pulling up, grows to 1 at the threshold and stays there", () => {
+    expect(pullProgress(0)).toBe(0);
+    expect(pullProgress(-30)).toBe(0);
+    expect(pullProgress(PULL_THRESHOLD / 2)).toBeCloseTo(0.5);
+    expect(pullProgress(PULL_THRESHOLD)).toBe(1);
+    expect(pullProgress(PULL_THRESHOLD * 5)).toBe(1);
   });
 });

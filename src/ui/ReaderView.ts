@@ -7,7 +7,7 @@
 import { ItemView, sanitizeHTMLToDom, type WorkspaceLeaf } from "obsidian";
 import { isUnread, type InboundMention, type ReadingPost } from "../studio/reading";
 import { plainText, renderForeign, type ImageMode } from "./defang";
-import { activeFilters, arrange, cardOf, DEFAULT_FILTER, frameable, LENGTH_LABELS, nextAfter, readingTimeLabel, relativeTime, SORT_LABELS, sourcesOf, type FeedFilter, type FeedLength, type FeedSort } from "./readerFeed";
+import { activeFilters, arrange, cardOf, DEFAULT_FILTER, frameable, LENGTH_LABELS, nextAfter, pullProgress, readingTimeLabel, relativeTime, SORT_LABELS, sourcesOf, type FeedFilter, type FeedLength, type FeedSort } from "./readerFeed";
 import { FONT_LABELS, isReaderFont, type ReaderFont } from "./readerFonts";
 import { limiter, mentionLead, postOfMention, visibleMentions } from "./readerMentions";
 import { frameUrlFor, READER_FRAME_SANDBOX } from "./trimmedPage";
@@ -103,7 +103,6 @@ export class BlygReaderView extends ItemView {
   /** Bumped by every check for new posts, so an older check stops when a newer one starts. */
   private checking = 0;
   private headerEl: HTMLElement | null = null;
-  private footEl: HTMLElement | null = null;
   /** What mentions have shown so far (the mentioning post, the item it was about): asked for once, a few at a time. */
   private readonly mentionInfo = new Map<string, { post: ReadingPost | null; own: string | null; done: boolean }>();
   private readonly mentionSlot = limiter(3);
@@ -138,6 +137,8 @@ export class BlygReaderView extends ItemView {
   }
 
   override async onOpen(): Promise<void> {
+    this.registerEvent(this.app.workspace.on("layout-change", () => this.clearBottom()));
+    this.registerDomEvent(activeWindow, "resize", () => this.clearBottom());
     this.draw();
     await this.reload();
     void this.checkForNew(false);
@@ -316,9 +317,9 @@ export class BlygReaderView extends ItemView {
     this.applyFont();
     this.headerEl = root.createDiv({ cls: "blyg-reader-header" });
     this.bodyEl = root.createDiv({ cls: "blyg-reader-bodywrap" });
-    this.footEl = root.createDiv({ cls: "blyg-reader-postfoot" });
     this.drawHeader();
     this.drawBody();
+    this.clearBottom();
   }
 
   private button(parent: HTMLElement, text: string, run: () => void | Promise<void>, opts: { active?: boolean; disabled?: boolean; title?: string; cls?: string } = {}): HTMLButtonElement {
@@ -350,32 +351,88 @@ export class BlygReaderView extends ItemView {
     else this.drawFeedHeader(h);
     this.statusEl = h.createDiv({ cls: "blyg-reader-status", text: this.status });
     this.statusEl.toggleClass("is-busy", this.busyCount > 0);
-    this.drawPostFoot();
   }
 
-  /** Below an open post, always in reach: mark it read and go to the next unread one (or, with none left, back to the feed). Nothing in the feed. */
-  private drawPostFoot(): void {
-    const f = this.footEl;
-    if (!f) return;
-    f.empty();
-    const p = this.shown;
-    f.toggleClass("is-shown", p !== null);
-    if (!p) return;
-    // A post that is not in the feed (a mention's post from a blyg the Studio does not read) has no read mark and no "next": only the way back.
-    const inFeed = p.subscriptionId !== "" && (this.data?.posts.some((q) => keyOf(q) === keyOf(p)) ?? false);
-    const next = inFeed && this.data ? nextAfter(this.data.posts, this.filter, p) : null;
-    const unread = inFeed && isUnread(p);
-    const back = this.tab === "mentions" && !inFeed ? "Back to the mentions" : "Back to the feed";
-    const label = unread ? (next ? "Mark read and next" : `Mark read and ${back.toLowerCase()}`) : next ? "Next unread" : back;
-    this.button(f, label, async () => {
-      if (unread && !p.withdrawn) await this.setRead(p, true);
-      const after = inFeed && this.data ? nextAfter(this.data.posts, this.filter, p) : null;
-      if (after) this.openPost(after);
-      else {
-        this.closePost();
-        if (inFeed && this.data) this.setStatus("No more unread posts in this order.");
+  /** Whether the open post is one of the feed's (a mention's post from a blyg the Studio does not read has no read mark and no "next"). */
+  private inFeed(p: ReadingPost): boolean {
+    return p.subscriptionId !== "" && (this.data?.posts.some((q) => keyOf(q) === keyOf(p)) ?? false);
+  }
+
+  /** Mark the post read (if it is not) and open the next unread one in the feed's order; with none left, back to the feed. Used by the header button and the pull-up. */
+  private async goNext(p: ReadingPost): Promise<void> {
+    if (!this.inFeed(p)) return;
+    if (isUnread(p) && !p.withdrawn) await this.setRead(p, true);
+    const after = this.data ? nextAfter(this.data.posts, this.filter, p) : null;
+    if (after) this.openPost(after);
+    else {
+      this.closePost();
+      this.setStatus("No more unread posts in this order.");
+    }
+  }
+
+  /**
+   * Pull up at the end of a post in the text view, as at the end of a feed in other readers: a label shows what will happen and fills as you pull;
+   * let go early and nothing happens. (The web page view is a frame whose touches are not ours: it has the header button.) Touch only; a mouse has the button.
+   */
+  private attachPull(scroll: HTMLElement, p: ReadingPost): void {
+    if (!this.inFeed(p)) return;
+    const hint = this.bodyEl?.createDiv({ cls: "blyg-reader-pull" });
+    if (!hint) return;
+    const words = (ready: boolean): string => {
+      const next = this.data ? nextAfter(this.data.posts, this.filter, p) : null;
+      const unread = isUnread(this.live(p));
+      const what = unread ? (next ? "mark read and open next" : "mark read and go back") : next ? "open next" : "go back to the feed";
+      return ready ? `Let go to ${what}` : `Keep pulling to ${what}`;
+    };
+    let startY: number | null = null;
+    let ready = false;
+    const reset = (): void => {
+      startY = null;
+      ready = false;
+      hint.removeClass("is-shown", "is-ready");
+      hint.setCssProps({ "--pull": "0" });
+    };
+    const atEnd = (): boolean => scroll.scrollTop + scroll.clientHeight >= scroll.scrollHeight - 2;
+    scroll.addEventListener("touchstart", (e) => {
+      startY = atEnd() && e.touches.length === 1 ? (e.touches[0]?.clientY ?? null) : null;
+    }, { passive: true });
+    scroll.addEventListener("touchmove", (e) => {
+      if (startY === null) return;
+      const y = e.touches[0]?.clientY;
+      if (y === undefined) return;
+      const progress = pullProgress(startY - y);
+      if (progress <= 0 || !atEnd()) {
+        hint.removeClass("is-shown", "is-ready");
+        ready = false;
+        return;
       }
-    }, { cls: "blyg-reader-nextbtn", active: unread });
+      ready = progress >= 1;
+      hint.setText(words(ready));
+      hint.addClass("is-shown");
+      hint.toggleClass("is-ready", ready);
+      hint.setCssProps({ "--pull": String(progress) });
+    }, { passive: true });
+    scroll.addEventListener("touchend", () => {
+      const go = ready;
+      reset();
+      if (go) void this.goNext(p);
+    }, { passive: true });
+    scroll.addEventListener("touchcancel", reset, { passive: true });
+  }
+
+  /**
+   * Obsidian's bottom bar floats over the pane on a phone and its height is not something we can read from a CSS variable we know: measure where it
+   * is and keep the pane's last line above it. Nothing to do where there is no such bar (a desktop).
+   */
+  private clearBottom(): void {
+    const root = this.contentEl;
+    const bar = root.ownerDocument.querySelector(".mobile-navbar");
+    if (!(bar instanceof HTMLElement)) {
+      root.style.removeProperty("--blyg-bottom-clear");
+      return;
+    }
+    const overlap = Math.max(0, root.getBoundingClientRect().bottom - bar.getBoundingClientRect().top);
+    root.style.setProperty("--blyg-bottom-clear", `${Math.ceil(overlap)}px`);
   }
 
   private closePost(): void {
@@ -471,6 +528,10 @@ export class BlygReaderView extends ItemView {
       cls: "blyg-reader-readtoggle",
       title: unread ? "Mark this post read" : "Read. Tap to mark it unread again",
     });
+    if (this.inFeed(p)) {
+      const next = this.data ? nextAfter(this.data.posts, this.filter, p) : null;
+      this.button(row, unread ? "Read & next ›" : "Next ›", () => this.goNext(p), { cls: "blyg-reader-nextbtn", title: unread ? "Mark this post read and open the next unread one" : next ? "Open the next unread post" : "No unread post left: back to the feed" });
+    }
     this.button(row, "Browser", () => (web ? this.host.openWeb(web) : undefined), { disabled: web === null, title: "Open the whole page in the browser" });
     if (web) {
       this.button(row, this.shownAs === "web" ? "As text" : "As web page", () => {
@@ -652,12 +713,14 @@ export class BlygReaderView extends ItemView {
       // Until the page is ready the text is shown, so there is something to read at once; it is replaced by the page when that arrives.
       const scroll = body.createDiv({ cls: "blyg-reader-scroll" });
       const col = scroll.createDiv({ cls: "blyg-reader-column" });
+      this.attachPull(scroll, p);
       if (page.s === "forbidden") col.createDiv({ cls: "blyg-reader-note", text: "This blyg does not allow its pages inside other apps, so the post is shown as text." });
       else if (page.s === "unreachable") col.createDiv({ cls: "blyg-reader-note", text: "The page could not be reached, so the post is shown as text." });
       this.drawText(col, p);
       return;
     }
     const scroll = body.createDiv({ cls: "blyg-reader-scroll" });
+    this.attachPull(scroll, p);
     this.drawText(scroll.createDiv({ cls: "blyg-reader-column" }), p);
   }
 }

@@ -98,6 +98,11 @@ export function nextAfter(posts: ReadingPost[], f: FeedFilter, current: ReadingP
   return order.slice(at + 1).find((q) => isUnread(q) && !(q.subscriptionId === current.subscriptionId && q.remoteId === current.remoteId)) ?? null;
 }
 
+/** How far a finger has to pull up past the end of a post (CSS pixels) before letting go counts. */
+export const PULL_THRESHOLD = 90;
+/** How far into the pull it is: 0 (not pulling) to 1 (let go now). */
+export const pullProgress = (dy: number): number => (dy <= 0 ? 0 : Math.min(1, dy / PULL_THRESHOLD));
+
 /** The blygs in the list, for the source picker: id, title and how many posts, by title. */
 export function sourcesOf(posts: ReadingPost[]): Array<{ id: string; title: string; count: number }> {
   const by = new Map<string, { id: string; title: string; count: number }>();
