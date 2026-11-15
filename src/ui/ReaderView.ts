@@ -7,10 +7,11 @@
 import { ItemView, sanitizeHTMLToDom, setIcon, type WorkspaceLeaf } from "obsidian";
 import { isUnread, type InboundMention, type ReadingPost } from "../studio/reading";
 import { plainText, renderForeign, type ImageMode } from "./defang";
-import { activeFilters, arrange, cardOf, DEFAULT_FILTER, frameable, LENGTH_LABELS, nextAfter, postOfQuote, pullProgress, readingTimeLabel, relativeTime, SORT_LABELS, sourcesOf, type FeedFilter, type FeedLength, type FeedSort } from "./readerFeed";
+import { activeFilters, arrange, cardOf, DEFAULT_FILTER, frameable, LENGTH_LABELS, nextInOrder, postOfQuote, pullProgress, readingTimeLabel, relativeTime, SORT_LABELS, sourcesOf, type FeedFilter, type FeedLength, type FeedSort } from "./readerFeed";
 import { FONT_LABELS, isReaderFont, type ReaderFont } from "./readerFonts";
 import { CONTRAST_LABELS, CONTRASTS, isReaderContrast, type ReaderContrast } from "./readerLook";
-import { responseChip, responsesTo, type ResponseEntry } from "./readerResponses";
+import { responseChip, responseIndex, type ResponseEntry } from "./readerResponses";
+import { changedCount, chooseWalk, knownOf, mergeFresh, READER_KEEP, type SyncMemory } from "./readerSync";
 import type { StudioListedItem } from "../studio/types";
 import { limiter, mentionLead, postOfMention, visibleMentions } from "./readerMentions";
 import { frameUrlFor, READER_FRAME_SANDBOX } from "./trimmedPage";
@@ -26,6 +27,12 @@ export interface ReaderData {
   studioOrigin: string | null;
   /** True while the list is still arriving (the first pages, shown early). */
   partial?: boolean;
+  /** True when `posts` are only the newest rows, to be merged into the list held (the walk stopped where it reached what was held). */
+  incremental?: boolean;
+  /** False when this load did not ask for the mentions: keep the ones held. */
+  mentionsFetched?: boolean;
+  /** Shown from the list saved by the last session, while the Studio is asked. */
+  fromCache?: boolean;
 }
 
 export type ReadResult = { ok: true } | { ok: false; message: string };
@@ -43,7 +50,14 @@ export interface ReaderHost {
   /** The plugin's own version, shown at the foot of the feed so you can tell which build a device runs. */
   version: string;
   /** Load the stream and the mentions, or say in words why not. */
-  load(onProgress?: (postsSoFar: ReadingPost[]) => void): Promise<{ ok: true; data: ReaderData } | { ok: false; message: string }>;
+  load(
+    onProgress?: (postsSoFar: ReadingPost[]) => void,
+    opts?: { known?: Map<string, string> | null; mentions?: boolean; force?: boolean },
+  ): Promise<{ ok: true; data: ReaderData } | { ok: false; message: string }>;
+  /** The list kept by the last session (for the Studio now in use), or null. Posts of other people: in the plugin's own folder, never in a note. */
+  readCache(): Promise<{ posts: ReadingPost[]; mentions: InboundMention[]; savedAt: number; studioOrigin: string } | null>;
+  /** Keep this list for the next session (the host waits a moment and writes once). */
+  writeCache(data: { posts: ReadingPost[]; mentions: InboundMention[] }): void;
   openWeb(url: string): void;
   /** Start a reply thread to this post (the same path as "Reply to an item"). */
   replyTo(post: ReadingPost): Promise<void>;
@@ -118,6 +132,12 @@ export class BlygReaderView extends ItemView {
   private saveFilter(): void {
     void this.host.setFilter({ ...this.filter });
   }
+  /** What the reader remembers about reading the list, to read as little as it can (ui/readerSync.ts). */
+  private sync: SyncMemory = { lastFullAt: 0, readingMoved: false, movedWithoutNew: false };
+  /** The Studio's change counters as last seen, and when the list was last read, for the watcher below. */
+  private lastMarks: ChangeMarks | null = null;
+  private lastWalkAt = 0;
+  private lastMentionsAt = 0;
   /** Whether the sort and filter choices are open (they start closed, so the header stays slim). */
   private filtersOpen = false;
   private status = "";
@@ -165,11 +185,28 @@ export class BlygReaderView extends ItemView {
     this.registerInterval(window.setInterval(() => {
       if (this.checkedAt !== null && this.status.includes(" · checked ")) this.setStatus(this.checkedText());
     }, 20_000));
+    // While the reader is on screen, look at the Studio's change counters now and then (a request that costs almost nothing) and read the list only when they moved.
+    this.registerInterval(window.setInterval(() => void this.lookForMoves(), 30_000));
     this.registerEvent(this.app.workspace.on("layout-change", () => this.clearBottom()));
     this.registerDomEvent(activeWindow, "resize", () => this.clearBottom());
     this.draw();
+    // The list saved by the last session shows at once; the Studio is asked behind it.
+    const saved = await this.host.readCache().catch(() => null);
+    if (saved && this.data === null) {
+      this.data = { posts: saved.posts, mentions: saved.mentions, note: "", studioOrigin: saved.studioOrigin, fromCache: true };
+      this.setStatus("Showing the list saved last time · updating…");
+      this.draw();
+      this.busy(+1);
+      try {
+        // The saved list may be hours old and read marks may have changed elsewhere: this one walk reads the whole window, behind the list already on screen.
+        await this.reload(true, { walk: "full", mentions: true });
+      } finally {
+        this.busy(-1);
+      }
+      if (this.status.startsWith("Showing the list saved")) this.setStatus(this.data?.note ?? "");
+      return;
+    }
     await this.reload();
-    void this.checkForNew(false);
   }
 
   override async onClose(): Promise<void> {
@@ -214,34 +251,57 @@ export class BlygReaderView extends ItemView {
     this.statusEl?.setText(text);
   }
 
-  /** Read the list from the Studio. `quiet`: keep the status line and leave an open post alone (its page would reload). */
-  private async reload(quiet = false): Promise<void> {
+  /**
+   * Read the list from the Studio. `quiet`: keep the status line and leave an open post alone (its page would reload). `walk`: the whole window, or only the newest
+   * rows until the walk reaches what is held (the default is chosen from what has moved, ui/readerSync.ts). `mentions`: ask for the mentions too (the whole window does).
+   */
+  private async reload(quiet = false, o: { walk?: "full" | "incremental"; force?: boolean; mentions?: boolean } = {}): Promise<void> {
+    const walk = o.walk ?? chooseWalk(this.sync, Date.now(), this.data !== null && this.data.partial !== true, o.force === true);
+    const held = this.data !== null && this.data.partial !== true ? this.data : null;
+    const known = walk === "incremental" && held ? knownOf(held.posts) : null;
+    const withMentions = o.mentions === true || walk === "full" || held === null;
     if (!quiet) {
       this.setStatus("Loading…");
       this.busy(+1);
     }
     try {
       // The list arrives a page at a time: the first posts are shown as soon as they are there, and the status line counts what has come.
-      const got = await this.host.load(quiet ? undefined : (soFar) => {
+      const got = await this.host.load(quiet || known !== null ? undefined : (soFar) => {
         if (this.data === null || this.data.partial === true) {
           this.data = { posts: soFar, mentions: [], note: "", studioOrigin: this.data?.studioOrigin ?? null, partial: true };
           if (!this.shown) this.drawBody();
         }
         this.setStatus(`Loading… ${soFar.length} ${soFar.length === 1 ? "post" : "posts"} so far`);
         this.drawHeader();
-      });
+      }, { known, mentions: withMentions, force: o.force === true });
       if (got.ok) {
-        this.keepLocalReadState(got.data.posts);
-        this.data = got.data;
+        let posts = got.data.posts;
+        if (got.data.incremental && held) {
+          const changed = changedCount(posts, known ?? new Map<string, string>());
+          this.sync.movedWithoutNew = this.sync.readingMoved && changed === 0;
+          posts = mergeFresh(held.posts, posts, READER_KEEP);
+        } else {
+          this.sync.lastFullAt = Date.now();
+          this.sync.readingMoved = false;
+          this.sync.movedWithoutNew = false;
+        }
+        this.lastWalkAt = Date.now();
+        this.keepLocalReadState(posts);
+        const mentions = got.data.mentionsFetched === false && held ? held.mentions : got.data.mentions;
+        if (got.data.mentionsFetched !== false) this.lastMentionsAt = Date.now();
+        this.data = { ...got.data, posts, mentions, incremental: false, fromCache: false };
+        this.host.writeCache({ posts, mentions });
         // A blyg the Studio no longer reads cannot stay chosen: the feed would be empty with no way to tell why.
-        if (this.filter.source !== null && !got.data.posts.some((q) => q.subscriptionId === this.filter.source)) {
+        if (this.filter.source !== null && !posts.some((q) => q.subscriptionId === this.filter.source)) {
           this.filter.source = null;
           this.saveFilter();
         }
         // (A post opened from the first pages keeps its own status line, e.g. "Opening the page…".)
         if (!quiet && (this.status === "" || this.status.startsWith("Loading"))) this.setStatus(got.data.note);
       } else if (!quiet) {
-        this.data = null;
+        this.data = held;
+        this.setStatus(got.message);
+      } else if (this.data?.fromCache) {
         this.setStatus(got.message);
       }
     } finally {
@@ -251,19 +311,40 @@ export class BlygReaderView extends ItemView {
     if (!this.shown) this.drawBody(); // an open post is left alone: its page would load again
   }
 
+  /** Note what the Studio's change counters say now: did the reading list move since the last look? */
+  private noteMarks(now: ChangeMarks): boolean {
+    const last = this.lastMarks;
+    this.lastMarks = now;
+    if (last === null) return false;
+    const moved = now.epoch !== last.epoch || now.reading !== last.reading || now.subscriptions !== last.subscriptions;
+    if (now.reading !== last.reading || now.epoch !== last.epoch) this.sync.readingMoved = true;
+    return moved;
+  }
+
+  /** The watcher: a quiet look at the counters, and a read of the list at most once a minute, only when they moved. Nothing while a check runs or the reader is hidden. */
+  private async lookForMoves(): Promise<void> {
+    if (!this.contentEl.isShown() || this.busyCount > 0 || this.moving) return;
+    const now = await this.host.changeMarks();
+    if (now === null) return;
+    if (this.noteMarks(now) && Date.now() - this.lastWalkAt >= 60_000) await this.reload(true);
+  }
+
   /**
-   * Ask the Studio to fetch the blygs it reads, then watch its change counters and reload the list whenever the reading counter moves. It stops as soon as
-   * every blyg has reported (the subscriptions counter rises once per blyg fetched), after six quiet seconds once one has, or after half a minute.
+   * "Refresh": ask the Studio to fetch the blygs it reads, then watch its change counters (every three seconds) and read the list ONCE when it is done: when
+   * every blyg has reported (the subscriptions counter rises once per blyg fetched), after four quiet seconds once one has, or after half a minute. (The reader
+   * used to read the whole list again whenever the reading counter moved, which with many blygs was dozens of reads of everything; measured in the notes.)
    */
   private async checkForNew(force: boolean): Promise<void> {
     const run = ++this.checking;
     this.busy(+1);
     try {
       const before = await this.host.changeMarks();
+      if (before !== null) this.noteMarks(before);
       const asked = await this.host.checkForNew(force);
       if (run !== this.checking) return;
       if (!asked.asked) {
         if (asked.reason) this.setStatus(asked.reason);
+        await this.reload(true, { force });
         return;
       }
       const known = new Set((this.data?.posts ?? []).map((p) => `${keyOf(p)}/${p.version}`));
@@ -272,24 +353,23 @@ export class BlygReaderView extends ItemView {
       const startedAt = Date.now();
       let lastMove = startedAt;
       for (;;) {
-        await new Promise((r) => window.setTimeout(r, 1500));
+        await new Promise((r) => window.setTimeout(r, 3000));
         if (run !== this.checking || !this.contentEl.isConnected) return;
         const now = await this.host.changeMarks();
         if (now !== null) {
           const reset = mark !== null && now.epoch !== mark.epoch;
-          const moved = mark === null || reset || now.reading !== mark.reading || now.subscriptions !== mark.subscriptions;
-          if (reset || mark === null || now.reading !== mark.reading) await this.reload(true);
+          const moved = this.noteMarks(now) || mark === null || reset;
           if (moved) lastMove = Date.now();
           mark = now;
           if (reset) break;
         }
         const reported = mark !== null && before !== null ? mark.subscriptions - before.subscriptions : 0;
         if (reported >= asked.polling) break;
-        if (reported > 0 && Date.now() - lastMove >= 6000) break;
+        if (reported > 0 && Date.now() - lastMove >= 4000) break;
         if (Date.now() - startedAt >= 30_000) break;
       }
       if (run !== this.checking) return;
-      await this.reload(true);
+      await this.reload(true, { force });
       const fresh = (this.data?.posts ?? []).filter((p) => !known.has(`${keyOf(p)}/${p.version}`)).length;
       this.checkedAt = Date.now();
       this.checkedFresh = fresh;
@@ -431,7 +511,7 @@ export class BlygReaderView extends ItemView {
     try {
       const wasUnread = isUnread(p) && !p.withdrawn;
       if (wasUnread) void this.setRead(p, true);
-      const after = this.data ? nextAfter(this.data.posts, this.filter, p) : null;
+      const after = this.nextFor(p);
       await this.markedMoment(wasUnread);
       if (after) this.openPost(after);
       else {
@@ -470,7 +550,7 @@ export class BlygReaderView extends ItemView {
     const hint = this.bodyEl?.createDiv({ cls: "blyg-reader-pull" });
     if (!hint) return;
     const words = (ready: boolean): string => {
-      const next = this.data ? nextAfter(this.data.posts, this.filter, p) : null;
+      const next = this.nextFor(p);
       const unread = isUnread(this.live(p));
       const what = unread ? (next ? "mark read and open next" : "mark read and go back") : next ? "open next" : "go back to the feed";
       return ready ? `Let go to ${what}` : `Keep pulling to ${what}`;
@@ -590,6 +670,25 @@ export class BlygReaderView extends ItemView {
     if (entries.length === 0) list.createDiv({ cls: "blyg-reader-note", text: `Nothing visible answers “${excerptOf(p.contentHtml, 40)}” yet.` });
   }
 
+  /** The order the feed has now (without "unread only"), kept while the list and the order choices stay as they are: the open post and its buttons ask for the next unread post often. */
+  private orderMemo: { posts: ReadingPost[]; key: string; order: ReadingPost[] } | null = null;
+  private nextFor(p: ReadingPost): ReadingPost | null {
+    const posts = this.data?.posts;
+    if (!posts) return null;
+    const key = `${this.filter.sort}|${this.filter.source ?? ""}|${this.filter.length}`;
+    if (!this.orderMemo || this.orderMemo.posts !== posts || this.orderMemo.key !== key) this.orderMemo = { posts, key, order: arrange(posts, { ...this.filter, unreadOnly: false }) };
+    return nextInOrder(this.orderMemo.order, p);
+  }
+
+  /** The replies you can see, looked up per post from an index built once per list and set of own items. */
+  private respMemo: { posts: ReadingPost[]; mine: StudioListedItem[]; index: (p: ReadingPost) => ResponseEntry[] } | null = null;
+  private respFor(p: ReadingPost): ResponseEntry[] {
+    const posts = this.data?.posts ?? [];
+    const mine = this.mine ?? [];
+    if (!this.respMemo || this.respMemo.posts !== posts || this.respMemo.mine !== mine) this.respMemo = { posts, mine, index: responseIndex(mine, posts) };
+    return this.respMemo.index(p);
+  }
+
   /** The posts you came from by following a quote to its source: Back goes to the last of them, and to the list when there is none. */
   private trail: ReadingPost[] = [];
 
@@ -629,6 +728,8 @@ export class BlygReaderView extends ItemView {
         this.tab = id;
         this.drawHeader();
         this.drawBody();
+        // The mentions are read with the whole window, not with every quick look: when they are old, read them as the tab opens.
+        if (id === "mentions" && Date.now() - this.lastMentionsAt > 60_000) void this.reload(true, { walk: "incremental", mentions: true });
       }, { active: this.tab === id });
     }
     row.createDiv({ cls: "blyg-reader-spacer" });
@@ -641,7 +742,7 @@ export class BlygReaderView extends ItemView {
       }, { active: this.filtersOpen, cls: "blyg-reader-filterbtn", title: "Order, blyg, length, unread, and how posts open" });
     }
     const refresh = this.button(row, "Refresh", () => {
-      void this.reload().then(() => this.checkForNew(true));
+      void this.checkForNew(true);
     }, { cls: "blyg-reader-refresh", title: "Look for new posts" });
     refresh.disabled = this.busyCount > 0;
     this.refreshEl = refresh;
@@ -698,7 +799,7 @@ export class BlygReaderView extends ItemView {
     this.button(main, "Back", () => this.closePost(), { cls: "blyg-reader-back", title: this.trail.length > 0 ? "Back to the post you came from" : "Back to the list" });
     main.createDiv({ cls: "blyg-reader-spacer" });
     if (this.inFeed(p)) {
-      const next = this.data ? nextAfter(this.data.posts, this.filter, p) : null;
+      const next = this.nextFor(p);
       this.button(main, unread ? "Read & next ›" : "Next ›", () => this.goNext(p), { cls: "blyg-reader-nextbtn", active: unread, title: unread ? "Mark this post read and open the next unread one" : next ? "Open the next unread post" : "No unread post left: back to the feed" });
     }
     const row = h.createDiv({ cls: "blyg-reader-bar" });
@@ -709,9 +810,9 @@ export class BlygReaderView extends ItemView {
       cls: "blyg-reader-readtoggle",
       title: unread ? "Mark this post read" : "Read. Tap to mark it unread again",
     });
-    const chip = responseChip(responsesTo(p, this.mine ?? [], this.data?.posts ?? []));
+    const chip = responseChip(this.respFor(p));
     if (chip) {
-      const b = this.button(row, chip.text, () => (this.responsesEl ? this.closeResponses() : this.showResponses(p, responsesTo(p, this.mine ?? [], this.data?.posts ?? []))), { cls: `blyg-reader-resp${chip.mine ? " is-mine" : ""}`, title: chip.title });
+      const b = this.button(row, chip.text, () => (this.responsesEl ? this.closeResponses() : this.showResponses(p, this.respFor(p))), { cls: `blyg-reader-resp${chip.mine ? " is-mine" : ""}`, title: chip.title });
       this.addIcon(b, "reply");
     }
     this.button(row, "Browser", () => (web ? this.host.openWeb(web) : undefined), { disabled: web === null, title: "Open the whole page in the browser" });
@@ -810,7 +911,7 @@ export class BlygReaderView extends ItemView {
     if (unread) badges.createSpan({ cls: "blyg-reader-badge is-new", text: p.readVersion !== null ? "updated" : "unread" });
     else if (!p.withdrawn) badges.createSpan({ cls: "blyg-reader-badge is-done", text: "✓ read" });
     // The replies you can see (same rule as in an open post): green when one of them is yours.
-    const chip = this.mine !== null || (this.data?.posts.length ?? 0) > 0 ? responseChip(responsesTo(p, this.mine ?? [], this.data?.posts ?? [])) : null;
+    const chip = this.mine !== null || (this.data?.posts.length ?? 0) > 0 ? responseChip(this.respFor(p)) : null;
     if (chip) this.addIcon(badges.createSpan({ cls: `blyg-reader-badge blyg-reader-resp-badge${chip.mine ? " is-mine" : ""}`, text: chip.text, attr: { title: chip.title } }), "reply");
     if (!p.withdrawn) {
       const c = cardOf(p);

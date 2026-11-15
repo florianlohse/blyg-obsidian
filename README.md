@@ -34,7 +34,7 @@ will change before anything leaves your vault.
 - **Read (experimental).** “Open reader” shows the posts of the blygs your Studio follows as a feed (newest first, or by reading time;
   filter by blyg, length or unread; the choices are remembered) and the mentions of your items. A post opens as text on its own calm
   reading surface (quotes shown as quotes; contrast and font are settings) or as the author's web page; one tap or a pull-up at the end
-  marks it read and goes to the next. Posts are shown in the reader only and are never written into your vault.
+  marks it read and goes to the next. Posts are shown in the reader only and are never written into your notes; to open fast, the reader keeps the newest 200 posts (without their Markdown) in one file in the plugin's own folder, for the Studio they came from, for two weeks ("Clear the reader's saved list" in the command palette removes it).
 - **Keep both sides in step.** Pull the Studio's copy into the note, import items that were written in the Studio,
   withdraw an item, delete a draft, put items into your Studio's hoppers.
 - **Mobile first.** Everything runs on iOS and Android as well as desktop; no desktop-only APIs are used.
@@ -154,7 +154,7 @@ The plugin makes requests only through Obsidian's `requestUrl`, to these hosts:
 |---|---|---|
 | **Your Studio** (the address you set) | Your note's text and metadata when you send it, the image files the note embeds (only when you publish), and reads of your items, hoppers and followed blygs' items for the panel and pickers. | The Studio token, in a header. Never in a URL. |
 | **The Studio's public pages** (same host) | The public manifest, read to find your blyg's address. | None. |
-| **The reader's requests to your Studio** (same host) | The list of posts you read and your mentions, the read marks you set, a request that your Studio look for new posts, and the look-up of an item when you tap a quote's source. | The Studio token, in a header. |
+| **The reader's requests to your Studio** (same host) | The list of posts you read and your mentions, a look at the Studio's change counters every 30 seconds while the reader is open (and every three seconds during a Refresh), the read marks you set, a request that your Studio look for new posts (only when you press Refresh), and the look-up of an item when you tap a quote's source. | The Studio token, in a header. |
 | **A blyg's own server** (only for what you open in the reader) | A post's image, when you tap it (or always, if you chose “Always load”); a post's page and its stylesheets, when you open it as a web page. These are ordinary requests with no token and no cookies, so that blyg's server can see that someone read the post. | None. |
 | `api.github.com` | Only if you use the older GitHub mode. Not used in Studio-only setups. | A GitHub token, only to this host. |
 
@@ -183,7 +183,8 @@ stripped from the published text.
   a camera photo first), and no way yet to bring a Studio item's images back into a note (a pulled or imported item keeps the
   Studio's image addresses, which show as web images).
 - **The reader is experimental.** It shows what your Studio has fetched (your Studio looks at the blygs you follow every half hour;
-  the reader asks it to look when you open or refresh). Not there yet: search and reading offline. Replies to a post are shown only where you can see them (your own, and posts of blygs you follow), never
+  the reader asks it to look when you press Refresh). Not there yet: search, and posts older than the newest 200 (the reader loads the newest 200 of everything
+  you follow; with many blygs the older unread ones are out of reach until "load older" exists, which is planned). Replies to a post are shown only where you can see them (your own, and posts of blygs you follow), never
   asked of other blygs.
 - **Tokens by hand, every 30 days.**
 - **One Studio.** Setups with several Studios are not supported.
@@ -211,3 +212,9 @@ Pull requests are not accepted for now: this repository is a published copy of t
 MIT — see `LICENSE`. Credits: protocol by Venkatesh Rao and contributors (`blygger/blygger-spec`, MIT); ideas and
 patterns from `brndnpink/blyg-publisher` (MIT), `blygger/blygger-studio` (MIT), `aneeshsathe/blygger-desktop` ("Burrow")
 and QuickAdd's keychain handling (`chhoumann/quickadd`, MIT).
+
+**Thanks to Burrow.** Burrow, the macOS studio and reader by Aneesh Sathe (`aneeshsathe/blygger-desktop`), paved the way for this plugin's reader and
+for how it keeps up with your Studio. Its release 0.21 ("Sync reads less from the blyg") showed how to read little: look at the Studio's change counters
+first and read the reading list only when something moved, never in a tight loop; a safety-net full read that backs off while it finds nothing; stepping
+back when the Studio answers with an error; pages of the largest size; and asking the blygs to be checked only on request. Its bracket-grammar test vectors
+(MIT) are replayed in this plugin's tests, and its notes on how a reader should read (a stream, an unread dot rather than a count) were a reference for the reader's design.

@@ -166,6 +166,25 @@ GitHub writes are one file per commit (contents API). A two-file operation (R7 p
 - Views: a stream (newest first; fragments in full, threads collapsed with "Read more"; an "edited" marker when a read
   item's version rose) and per-item actions (R5).
 
+### 5.1 The reader through the Studio's API (S15): keeping up with the Studio
+
+The reader in the plugin (`src/ui/Reader*.ts`) reads the posts the owner's Studio holds (`GET /api/reading/imported`), not the blygs themselves. How it keeps up is
+**modelled on Burrow** (`aneeshsathe/blygger-desktop`, release 0.21, "Sync reads less from the blyg"; credit and thanks in the README) and was checked against
+measurements (the maintainer's notes, "refresh scaling investigation", 2026-11-15):
+
+- The Studio has no "changed since" read of the list and moves its `reading` change counter once per imported post and once per read mark. So: **counters first**
+  (`GET /api/changes`, every 30 s while the reader is open, every 3 s during a Refresh), the list is read **only when they moved**, at most once a minute, and
+  a check reads it **once at the end**, not on every counter move (`ReaderView.checkForNew`, `lookForMoves`).
+- Pages of 100 (the API's maximum). A walk stops where it reaches what is held (the list is newest first; `readerSync.reachedKnown`) and the new rows are merged in
+  (`mergeFresh`); a full read of the window comes at the start, at least once a minute when only read marks seem to have moved, and as a ten-minute safety net while
+  anything moved (`chooseWalk`). The mentions are read with the full walks and when their tab opens.
+- Asking the Studio to fetch the blygs (`POST /api/subscriptions/poll`) happens only when the person presses Refresh (the Studio fetches them itself every half hour).
+- 5xx and 429 answers back the reader off: 30 s doubling to 30 min (`backoffDelay`), a status line says when it will try again, Refresh asks now.
+- **The window is the newest 200 posts** (2 pages of 100): older unread posts are not reachable. **Planned, not built: "load older" and drawing long lists in parts**
+  (a whole-feed redraw costs about 0.3 s at 1000 posts on a desktop).
+- A saved copy of the window (`reader-cache.json` in the plugin's folder, `readerCache.ts`): strangers' text stays out of the vault's notes; the file is per Studio,
+  two weeks old at most, without Markdown, and every field is checked when read back.
+
 ## 6. Respond (R5)
 
 Actions create a **draft note** in `respond.draftsPrefix` and open it; nothing is published until the maintainer taps
