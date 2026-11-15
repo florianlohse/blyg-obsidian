@@ -111,6 +111,11 @@ export function nextAfter(posts: ReadingPost[], f: FeedFilter, current: ReadingP
   return order.slice(at + 1).find((q) => isUnread(q) && !(q.subscriptionId === current.subscriptionId && q.remoteId === current.remoteId)) ?? null;
 }
 
+/** The post a quote (`blockquote.blyg-transclusion`, `data-blyg-id`) was taken from, when the Studio reads that blyg and holds it. Null otherwise. */
+export function postOfQuote(posts: ReadingPost[], itemId: string): ReadingPost | null {
+  return itemId === "" ? null : (posts.find((q) => q.remoteId === itemId && !q.withdrawn) ?? posts.find((q) => q.remoteId === itemId) ?? null);
+}
+
 /** How far a finger has to pull up past the end of a post (CSS pixels) before letting go counts. */
 export const PULL_THRESHOLD = 90;
 /** How far into the pull it is: 0 (not pulling) to 1 (let go now). */

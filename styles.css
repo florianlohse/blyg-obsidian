@@ -557,3 +557,8 @@
 .blyg-reader-done { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%) scale(0.96); padding: var(--size-4-3) var(--size-4-6); border-radius: var(--radius-l); background: var(--background-secondary); color: var(--text-normal); border: 1px solid var(--background-modifier-border); box-shadow: var(--shadow-s); font-size: var(--font-ui-large); opacity: 0; transition: opacity 0.22s ease, transform 0.22s ease; pointer-events: none; }
 .blyg-reader-done.is-in { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 @media (prefers-reduced-motion: reduce) { .blyg-reader-done, .blyg-reader-surface .blyg-reader-column { transition: none; } }
+
+/* Where a quote of another blyg's item comes from: a line under it; a post you read is a link that opens it here. */
+.blyg-reader-surface .blyg-reader-body .blyg-quote-source { margin-top: 0.5em; font-size: 0.8em; color: var(--blyg-quote-ink); }
+.blyg-reader-surface .blyg-reader-body .blyg-quote-source.is-link { color: var(--text-accent); cursor: pointer; text-decoration: none; padding: var(--size-2-2) 0; }
+.blyg-reader-surface .blyg-reader-body .blyg-quote-source.is-link:hover { text-decoration: underline; }
