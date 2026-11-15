@@ -67,6 +67,19 @@ export interface FeedFilter {
 }
 export const DEFAULT_FILTER: FeedFilter = { sort: "newest", source: null, unreadOnly: false, length: "any" };
 
+/** The feed's choices as kept in the settings: anything that is not one of the known values is the start value (an old or hand-edited file never breaks the feed). */
+export function readFilter(raw: unknown): FeedFilter {
+  const o = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
+  const sorts = Object.keys(SORT_LABELS) as FeedSort[];
+  const lengths = Object.keys(LENGTH_LABELS) as FeedLength[];
+  return {
+    sort: sorts.find((x) => x === o.sort) ?? DEFAULT_FILTER.sort,
+    source: typeof o.source === "string" && o.source !== "" ? o.source : null,
+    unreadOnly: o.unreadOnly === true,
+    length: lengths.find((x) => x === o.length) ?? DEFAULT_FILTER.length,
+  };
+}
+
 /** How many of the feed's choices differ from the start (shown on the button that opens them). */
 export const activeFilters = (f: FeedFilter): number => (f.sort !== "newest" ? 1 : 0) + (f.source !== null ? 1 : 0) + (f.unreadOnly ? 1 : 0) + (f.length !== "any" ? 1 : 0);
 

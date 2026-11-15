@@ -43,6 +43,7 @@ import { BlygSettingTab } from "./settings/tab";
 import { BLYG_PANEL_VIEW, BlygPanelView, type PanelHost } from "./ui/BlygPanelView";
 import { promptForItem, promptForQuote } from "./ui/QuotePicker";
 import { promptForStudioItem } from "./ui/StudioPicker";
+import { isEmptySettingsData, readMirror } from "./settings/mirror";
 import { postFromPeek, postOfMention } from "./ui/readerMentions";
 import { BLYG_READER_VIEW, BlygReaderView, excerptOf, type PreparedPage, type ReaderHost, type ReadResult } from "./ui/ReaderView";
 import { framePolicy } from "./ui/readerFeed";
@@ -263,9 +264,23 @@ export default class BlygPlugin extends Plugin {
     return false;
   }
 
+  /** The key of this plugin's device-local copy of the settings (see settings/mirror.ts). */
+  private get mirrorKey(): string {
+    return `${this.manifest.id}-settings-copy`;
+  }
+
   async loadSettings(): Promise<void> {
-    const loaded = migrateSettings((await this.loadData()) as unknown, isDevStudioLock() ? "dev" : "release");
+    const flavour = isDevStudioLock() ? "dev" : "release";
+    const raw = (await this.loadData()) as unknown;
+    const copy = isEmptySettingsData(raw) ? readMirror(this.app.loadLocalStorage(this.mirrorKey)) : null;
+    const loaded = migrateSettings(copy ?? raw, flavour);
     this.settings = loaded.settings;
+    if (copy !== null && !loaded.fromNewerVersion) {
+      new Notice("Blyg: the settings file was missing or empty, so the settings were restored from this device's copy.", 15000);
+      await this.saveSettings();
+    } else if (!loaded.fromNewerVersion) {
+      this.keepSettingsCopy();
+    }
     setLiveStudioAllowed(this.settings.dev.allowLiveStudio);
     this.settingsLocked = loaded.fromNewerVersion;
     if (this.settingsLocked) {
@@ -276,9 +291,19 @@ export default class BlygPlugin extends Plugin {
     }
   }
 
+  /** Write this device's copy of the settings (settings/mirror.ts); a failure is of no matter, the settings file is what counts. */
+  private keepSettingsCopy(): void {
+    try {
+      this.app.saveLocalStorage(this.mirrorKey, JSON.stringify(this.settings));
+    } catch {
+      /* the app's local storage may be unavailable */
+    }
+  }
+
   async saveSettings(): Promise<void> {
     setLiveStudioAllowed(this.settings.dev.allowLiveStudio);
     if (this.settingsLocked) return;
+    this.keepSettingsCopy();
     // Merged into what is on disk, so the other keys of data.json (the published records, which Obsidian Sync may have updated since
     // this device loaded) are kept.
     await this.updateData((data) => void Object.assign(data, this.settings));
@@ -855,6 +880,16 @@ export default class BlygPlugin extends Plugin {
         this.settings.readerPane.font = font;
         await this.saveSettings();
       },
+      contrast: () => this.settings.readerPane.contrast,
+      setContrast: async (contrast) => {
+        this.settings.readerPane.contrast = contrast;
+        await this.saveSettings();
+      },
+      filter: () => ({ ...this.settings.readerPane.filter }),
+      setFilter: async (filter) => {
+        this.settings.readerPane.filter = { ...filter };
+        await this.saveSettings();
+      },
       checkForNew: async (force) => {
         // A pause between checks: every check makes the Studio fetch every blyg it reads, so opening the reader again and again must not hammer them.
         const pause = force ? 60_000 : 10 * 60_000;
@@ -885,12 +920,12 @@ export default class BlygPlugin extends Plugin {
         }
       },
       preparePage: (url) => this.readerPage(url),
-      load: async () => {
+      load: async (onProgress) => {
         const built = buildStudio(this.env());
         if (!built.ok) return { ok: false, message: built.message };
         try {
           const { client } = built.studio;
-          const [reading, mentions] = await Promise.all([client.listReading(), client.listInboundMentions()]);
+          const [reading, mentions] = await Promise.all([client.listReading(4, onProgress), client.listInboundMentions()]);
           if (reading.kind !== "ok") return { ok: false, message: "message" in reading ? reading.message : "The Studio could not list what you read." };
           const cut = !reading.value.complete || (mentions.kind === "ok" && !mentions.value.complete);
           const bad = reading.value.unreadable + (mentions.kind === "ok" ? mentions.value.unreadable : 0);

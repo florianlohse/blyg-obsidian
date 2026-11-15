@@ -79,7 +79,9 @@ await runScenario({ data: fixtureData() }, async (s) => {
       await wait(100);
     }
   };
-  const openReader = async () => {
+  const openReader = async (keepChoices = false) => {
+    // The feed's choices are kept in the settings now: each test starts from the start values unless it is about keeping them.
+    if (!keepChoices) await page.evaluate(() => { window.app.plugins.plugins.blyg.settings.readerPane.filter = { sort: "newest", source: null, unreadOnly: false, length: "any" }; });
     await page.evaluate(() => window.app.commands.executeCommandById("blyg:open-reader"));
     await page.waitForSelector(".blyg-reader-card", { timeout: 20000 });
   };
@@ -130,7 +132,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
     check(await click("Sort & filter"), `${layout}: "Sort & filter" opens them`);
     await wait(300);
     const options = await page.evaluate(() => [...document.querySelectorAll(".blyg-reader-controls select")].map((x) => [...x.options].map((o) => o.textContent)));
-    check(options.length === 4 && options[0].includes("Newest first") && options[0].includes("Longest read first") && options[1].some((o) => /^Blog B \(\d+\)$/.test(o ?? "")) && options[2].includes("Under 2 min") && options[3].some((o) => /Serif/.test(o ?? "")), `${layout}: order, blyg, length and font choices are there (${JSON.stringify(options.map((o) => o.length))} entries)`);
+    check(options.length === 5 && options[4].includes("Reduced contrast") && options[0].includes("Newest first") && options[0].includes("Longest read first") && options[1].some((o) => /^Blog B \(\d+\)$/.test(o ?? "")) && options[2].includes("Under 2 min") && options[3].some((o) => /Serif/.test(o ?? "")), `${layout}: order, blyg, length and font choices are there (${JSON.stringify(options.map((o) => o.length))} entries)`);
     check((await text(".blyg-reader-toggle")).some((t) => t.includes("Unread only")), `${layout}: the "Unread only" switch is there`);
     check(JSON.stringify(await text(".blyg-reader-segment button")) === '["Web page","Text"]' && (await text(".blyg-reader-segment .is-active"))[0] === "Web page", `${layout}: how posts open by default can be chosen (Web page is the start)`);
     check(/\d+ min read/.test((await text(".blyg-reader-card"))[0] ?? ""), `${layout}: each card says how long it takes to read (${((await text(".blyg-reader-card"))[0] ?? "").match(/\d+ min read/)?.[0]})`);
@@ -584,9 +586,18 @@ await runScenario({ data: fixtureData() }, async (s) => {
     check(slight?.shown && !slight.ready && /Keep pulling to mark read and open next/.test(slight.text ?? ""), `${layout}: pull-up: a short pull shows what it will do (${JSON.stringify(slight)})`);
     await touch("touchend", 580); await wait(300);
     check((await page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader")[0].view.shown?.remoteId)) === first, `${layout}: pull-up: letting go early does nothing`);
-    await touch("touchstart", 600); await touch("touchmove", 500);
+    await touch("touchstart", 600); await touch("touchmove", 540);
+    await wait(300);
+    const fading = await page.evaluate(() => parseFloat(getComputedStyle(document.querySelector(".blyg-reader-surface .blyg-reader-column")).opacity));
+    check(fading < 0.9 && fading > 0.3, `${layout}: pull-up: the text fades as you pull (opacity ${fading})`);
+    await touch("touchmove", 500);
     check((await hint())?.ready === true, `${layout}: pull-up: past the threshold it says "let go"`);
-    await touch("touchend", 500); await wait(900);
+    await touch("touchend", 500);
+    await wait(400);
+    const moment = await page.evaluate(() => { const d = document.querySelector(".blyg-reader-done"); return d ? { text: d.textContent, shown: d.classList.contains("is-in"), op: parseFloat(getComputedStyle(d).opacity) } : null; });
+    check(moment?.text === "✓ Marked read" && moment.shown && moment.op > 0.5, `${layout}: pull-up: a centred "Marked read" appears before the next post (${JSON.stringify(moment)})`);
+    await wait(1500);
+    check((await page.$(".blyg-reader-done")) === null, `${layout}: pull-up: ...and is gone again`);
     const moved = await page.evaluate((id) => { const v = window.app.workspace.getLeavesOfType("blyg-reader")[0].view; return { now: v.shown?.remoteId, was: v.data.posts.find((p) => p.remoteId === id)?.readVersion }; }, first);
     check(moved.now !== first && moved.now !== undefined && moved.was !== null, `${layout}: pull-up: letting go past it marks the post read and opens another`);
     // Obsidian's bottom bar: a fake one over the bottom of the pane; the pane must clear it (measured, not a guessed variable).
@@ -604,11 +615,106 @@ await runScenario({ data: fixtureData() }, async (s) => {
     let hops = 0;
     while (hops < 30 && (await page.$(".blyg-reader-header .blyg-reader-nextbtn"))) {
       await page.evaluate(() => document.querySelector(".blyg-reader-header .blyg-reader-nextbtn")?.click());
-      await wait(700);
+      await wait(1700);
       hops++;
     }
     check(hops >= 1 && (await page.$(".blyg-reader-card")) !== null && (await text(".blyg-reader-status")).some((t) => t.includes("No more unread")), `${layout}: next: the last post goes back to the feed and says so (${hops} taps)`);
     check(await resetReadMarks(), `${layout}: next: housekeeping afterwards`);
+    await closeReader();
+  }
+
+  /** The reading surface (contrast, quotes), the large Back, the feed's choices that survive a restart, and the list that shows itself while it arrives. */
+  async function surface(layout) {
+    await openReader();
+    await wait(1000);
+    // Quotes in the text view: a plain quote and a blyg's quote look different from the body, and from each other.
+    await showText('<p>Body words.</p><blockquote><p>A plain quote.</p></blockquote><blockquote class="blyg-transclusion" data-blyg-id="abc" data-blyg-version="1"><p>A blyg quote.</p></blockquote><blockquote class="blyg-transclusion blyg-partial" data-blyg-id="abc" data-blyg-version="1"><p>A passage.</p></blockquote>');
+    const look = await page.evaluate(() => {
+      const cs = (e, pseudo) => getComputedStyle(e, pseudo);
+      const body = document.querySelector(".blyg-reader-body p");
+      const [plain, whole, part] = [...document.querySelectorAll(".blyg-reader-body blockquote")];
+      return {
+        surface: cs(document.querySelector(".blyg-reader-surface")).backgroundColor, page: cs(document.querySelector(".blyg-reader-header")).backgroundColor,
+        bodyColor: cs(body).color, plainColor: cs(plain.querySelector("p")).color, plainBar: cs(plain).borderLeftColor, wholeBar: cs(whole).borderLeftColor,
+        wholeLabel: cs(whole, "::before").content, partLabel: cs(part, "::before").content, plainLabel: cs(plain, "::before").content,
+      };
+    });
+    await shot(`${layout}-surface-quotes`);
+    check(look.surface !== look.page, `${layout}: surface: the reading surface has its own ground (${look.surface} against ${look.page})`);
+    check(look.plainColor !== look.bodyColor && look.plainBar !== "rgba(0, 0, 0, 0)", `${layout}: quotes: a plain quote has a bar and lighter type (${look.plainColor} against ${look.bodyColor})`);
+    check(look.wholeBar !== look.plainBar && /Quote from a blyg/.test(look.wholeLabel) && /Passage from a blyg/.test(look.partLabel) && !/blyg/i.test(look.plainLabel), `${layout}: quotes: a blyg's quote has its own bar and label, a passage says so (${look.wholeLabel} / ${look.partLabel})`);
+    // Three contrasts: the text colour differs, and the choice is in the settings.
+    const inks = {};
+    for (const c of ["reduced", "normal", "high"]) {
+      await page.evaluate((v) => { const b = window.app.plugins.plugins.blyg; b.settings.readerPane.contrast = v; window.app.workspace.getLeavesOfType("blyg-reader")[0].view.applyFont(); }, c);
+      inks[c] = await page.evaluate(() => getComputedStyle(document.querySelector(".blyg-reader-body p")).color);
+    }
+    check(new Set(Object.values(inks)).size === 3, `${layout}: contrast: reduced, normal and high give three different text colours (${JSON.stringify(inks)})`);
+    await page.evaluate(() => { window.app.plugins.plugins.blyg.settings.readerPane.contrast = "normal"; window.app.workspace.getLeavesOfType("blyg-reader")[0].view.applyFont(); });
+    // The way back is large and first.
+    await page.evaluate(() => { const v = window.app.workspace.getLeavesOfType("blyg-reader")[0].view; v.drawHeader(); });
+    const back = await page.evaluate(() => { const b = document.querySelector(".blyg-reader-header .blyg-reader-back"); const r = b.getBoundingClientRect(); const first = document.querySelector(".blyg-reader-header .blyg-reader-btn"); return { h: r.height, w: r.width, firstIsBack: first === b, text: b.textContent }; });
+    check(back.h >= 40 && back.firstIsBack && back.text === "Back", `${layout}: back: large (${Math.round(back.w)} x ${Math.round(back.h)}) and the first button`);
+    await closeReader();
+
+    // The feed's choices are kept across a restart: set them, drop the view, build a new one from the settings.
+    await openReader();
+    await wait(1000);
+    await page.evaluate(async () => {
+      const v = window.app.workspace.getLeavesOfType("blyg-reader")[0].view;
+      v.filter.sort = "oldest"; v.filter.unreadOnly = true; v.filter.length = "short";
+      v.saveFilter();
+    });
+    await wait(500);
+    const kept = await page.evaluate(async () => {
+      const b = window.app.plugins.plugins.blyg;
+      const onDisk = JSON.parse(await window.app.vault.adapter.read(`${window.app.vault.configDir}/plugins/${b.manifest.id}/data.json`)).readerPane.filter;
+      return onDisk;
+    });
+    check(kept.sort === "oldest" && kept.unreadOnly === true && kept.length === "short", `${layout}: kept: the choices are in the settings file (${JSON.stringify(kept)})`);
+    await closeReader();
+    await openReader(true);
+    await wait(1000);
+    const again = await page.evaluate(() => { const f = window.app.workspace.getLeavesOfType("blyg-reader")[0].view.filter; return { ...f }; });
+    check(again.sort === "oldest" && again.unreadOnly === true && again.length === "short", `${layout}: kept: a reader opened afterwards starts with them (${JSON.stringify(again)})`);
+    await page.evaluate(async () => {
+      const v = window.app.workspace.getLeavesOfType("blyg-reader")[0].view;
+      v.filter.sort = "newest"; v.filter.unreadOnly = false; v.filter.length = "any";
+      v.saveFilter();
+    });
+    await wait(500);
+    // A blyg that is no longer read cannot stay chosen.
+    await page.evaluate(async () => { const b = window.app.plugins.plugins.blyg; b.settings.readerPane.filter.source = "gone-sub"; });
+    await closeReader();
+    await openReader(true);
+    await wait(1200);
+    const src = await page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader")[0].view.filter.source);
+    check(src === null && (await page.$(".blyg-reader-card")) !== null, `${layout}: kept: a blyg that is no longer read is dropped from the choices, and the feed is not empty`);
+    await closeReader();
+
+    // Progress: the list shows itself as pages arrive, and the status counts them.
+    await page.evaluate(() => window.app.commands.executeCommandById("blyg:open-reader"));
+    await page.waitForSelector(".blyg-reader-header", { timeout: 20000 });
+    await page.waitForSelector(".blyg-reader-card", { timeout: 20000 });
+    const seen = await page.evaluate(async () => {
+      const view = window.app.workspace.getLeavesOfType("blyg-reader")[0].view;
+      const real = await view.host.load();
+      const log = [];
+      view.host.load = async (onProgress) => {
+        onProgress(real.data.posts.slice(0, 1));
+        await new Promise((r) => setTimeout(r, 400));
+        log.push({ status: document.querySelector(".blyg-reader-status")?.textContent, cards: document.querySelectorAll(".blyg-reader-card").length });
+        onProgress(real.data.posts);
+        await new Promise((r) => setTimeout(r, 400));
+        log.push({ status: document.querySelector(".blyg-reader-status")?.textContent, cards: document.querySelectorAll(".blyg-reader-card").length });
+        return real;
+      };
+      view.data = null;
+      await view.reload();
+      log.push({ status: document.querySelector(".blyg-reader-status")?.textContent, cards: document.querySelectorAll(".blyg-reader-card").length });
+      return { log, total: real.data.posts.length };
+    });
+    check(seen.log[0].status === "Loading… 1 post so far" && seen.log[0].cards === 1 && seen.log[1].cards === seen.total && !/Loading/.test(seen.log[2].status), `${layout}: progress: the first posts show at once and the status counts them (${JSON.stringify(seen.log)})`);
     await closeReader();
   }
 
@@ -655,10 +761,12 @@ await runScenario({ data: fixtureData() }, async (s) => {
   await font();
   await sidebar();
   await defaultView();
+  await surface("desktop");
   await nextPost("desktop");
   await mentions("desktop");
   await pass("desktop");
   await s.phone();
+  await surface("phone");
   await nextPost("phone");
   await mentions("phone");
   await pass("phone");

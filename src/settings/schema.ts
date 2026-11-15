@@ -113,6 +113,10 @@ export interface BlygSettings {
     view: "web" | "text";
     /** The font of a post's content (not the interface). See ui/readerFonts.ts. */
     font: "default" | "serif" | "sans" | "mono";
+    /** The contrast of the reading surface in the text view: reduced, normal or high. */
+    contrast: "reduced" | "normal" | "high";
+    /** The feed's order and choices, kept across restarts (ui/readerFeed.ts). `source` is a subscription id of the Studio, null for all blygs. */
+    filter: { sort: "newest" | "oldest" | "shortest" | "longest"; source: string | null; unreadOnly: boolean; length: "any" | "short" | "medium" | "long" };
   };
   /** Development build only (ignored by the release plugin). `allowLiveStudio`: lift the test-Studio lock (studio/devLock.ts) on the owner's say. */
   dev: { allowLiveStudio: boolean };
@@ -155,7 +159,7 @@ export function defaultSettings(flavour: "release" | "dev" = "release"): BlygSet
     respond: { draftsPrefix: "blyg/" },
     mentions: { repoPath: "data/mentions.json" },
     webQuote: { ...DEFAULT_WEB_QUOTE },
-    readerPane: { images: "click", view: "web", font: "default" },
+    readerPane: { images: "click", view: "web", font: "default", contrast: "normal", filter: { sort: "newest", source: null, unreadOnly: false, length: "any" } },
     dev: { allowLiveStudio: false },
   };
 }

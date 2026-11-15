@@ -80,7 +80,7 @@ export interface StudioClient {
   /** An imported item (its HTML is what a reader of this Studio sees, and what a passage is chosen from). */
   getImported(subscriptionId: string, id: string): Promise<StudioResult<StudioImported>>;
   /** POC (S15): the posts the owner reads, newest first as the Studio orders them (`GET /reading/imported`, `owner:read`), at most `maxPages` pages of 50. */
-  listReading(maxPages?: number): Promise<StudioResult<{ posts: ReadingPost[]; complete: boolean; unreadable: number }>>;
+  listReading(maxPages?: number, onPage?: (postsSoFar: ReadingPost[]) => void): Promise<StudioResult<{ posts: ReadingPost[]; complete: boolean; unreadable: number }>>;
   /** POC (S15): inbound mentions of the owner's items (`GET /mentions?direction=inbound`, `owner:read`), verified and not hidden only. */
   listInboundMentions(maxPages?: number): Promise<StudioResult<{ mentions: InboundMention[]; complete: boolean; unreadable: number }>>;
   /** POC (S15): mark one version of a post read. Needs the token scope `reading:state`, which the plugin's token does not carry today: a 403 comes back as `forbidden`. */
@@ -210,7 +210,7 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
    * answers 409 `cursor-expired`: the walk is thrown away and started again from page 1, once (never appended to the old prefix); a second
    * expiry is reported. `complete` is false when the page cap was hit with more to read.
    */
-  async function walk<T>(path: string, query: Record<string, string>, pageSize: number, maxPages: number, readRow: (row: unknown) => T | null): Promise<StudioResult<{ rows: T[]; complete: boolean; unreadable: number }>> {
+  async function walk<T>(path: string, query: Record<string, string>, pageSize: number, maxPages: number, readRow: (row: unknown) => T | null, onPage?: (rowsSoFar: T[]) => void): Promise<StudioResult<{ rows: T[]; complete: boolean; unreadable: number }>> {
     for (let restart = 0; restart < 2; restart++) {
       const rows: T[] = [];
       let skipped = 0;
@@ -231,6 +231,11 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
         }
         const next = nextCursorOf(res.json);
         if (next === undefined) return unreadable(res);
+        try {
+          onPage?.([...rows]); // what has arrived so far, for a progress line and a first look; a listener that throws must not break the walk
+        } catch {
+          /* ignored */
+        }
         if (next === null) return { kind: "ok", value: { rows, complete: true, unreadable: skipped } };
         cursor = next;
       }
@@ -346,8 +351,8 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
       return { kind: "ok", value: { count, complete: walked.value.complete } };
     },
 
-    listReading: async (maxPages = 4) => {
-      const walked = await walk("/reading/imported", {}, 50, maxPages, readReadingPost);
+    listReading: async (maxPages = 4, onPage?: (postsSoFar: ReadingPost[]) => void) => {
+      const walked = await walk("/reading/imported", {}, 50, maxPages, readReadingPost, onPage);
       if (walked.kind !== "ok") return walked;
       return { kind: "ok", value: { posts: walked.value.rows, complete: walked.value.complete, unreadable: walked.value.unreadable } } as const;
     },
