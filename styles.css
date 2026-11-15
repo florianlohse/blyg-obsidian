@@ -449,12 +449,15 @@
 }
 
 /* S15: the reader. A header that stays put, a body that scrolls by itself, theme variables only; one column, so it holds on a phone. */
-.blyg-reader { display: flex; flex-direction: column; height: 100%; padding: 0; }
+.view-content.blyg-reader { display: flex; flex-direction: column; height: 100%; padding: 0; box-sizing: border-box; }
 /* On a phone Obsidian's bar floats over the pane: keep the pane's last line, and the bar below a post, clear of it. */
-.is-mobile .blyg-reader { padding-bottom: calc(var(--mobile-navbar-height, 0px) + env(safe-area-inset-bottom, 0px)); }
-.blyg-reader-postfoot { flex: none; display: none; padding: var(--size-4-2) var(--size-4-3); border-top: 1px solid var(--background-modifier-border); background: var(--background-primary); }
-.blyg-reader-postfoot.is-shown { display: flex; justify-content: center; }
-.blyg-reader-postfoot .blyg-reader-btn { flex: 1 1 auto; max-width: 42rem; height: auto; padding: var(--size-4-2) var(--size-4-3); }
+.view-content.blyg-reader { padding-bottom: var(--blyg-bottom-clear, 0px); }
+.is-mobile .view-content.blyg-reader { padding-bottom: var(--blyg-bottom-clear, calc(var(--mobile-navbar-height, 0px) + env(safe-area-inset-bottom, 0px))); }
+/* Pull up at the end of a post (text view): a label that fills as you pull; let go early and nothing happens. */
+.blyg-reader-bodywrap { position: relative; }
+.blyg-reader-pull { position: absolute; left: 50%; bottom: var(--size-4-3); transform: translateX(-50%); display: none; max-width: 90%; padding: var(--size-4-2) var(--size-4-4); border-radius: var(--radius-m); background: var(--background-secondary); color: var(--text-muted); border: 1px solid var(--background-modifier-border); box-shadow: var(--shadow-s); font-size: var(--font-ui-small); text-align: center; pointer-events: none; opacity: calc(0.35 + var(--pull, 0) * 0.65); }
+.blyg-reader-pull.is-shown { display: block; }
+.blyg-reader-pull.is-ready { background: var(--interactive-accent); color: var(--text-on-accent); border-color: var(--interactive-accent); }
 .blyg-reader-header { flex: none; padding: var(--size-4-2) var(--size-4-3) var(--size-2-2); border-bottom: 1px solid var(--background-modifier-border); background: var(--background-primary); }
 .blyg-reader-bodywrap { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .blyg-reader-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--size-4-3); -webkit-user-select: text; user-select: text; }
