@@ -40,21 +40,51 @@ export function relativeTime(iso: string | null, now: number): string {
 /** The date a post is sorted by: the author's own date when known, else when this Studio first saw it. */
 export const dateOf = (p: Pick<ReadingPost, "created" | "observedAt">): string => p.created ?? p.observedAt;
 
-export type FeedSort = "newest" | "oldest";
+/** How long a post takes to read, in whole minutes (at least one): its words at an ordinary reading speed. A thread counts its quotes too. */
+const WORDS_PER_MINUTE = 230;
+const minutesCache = new WeakMap<object, { html: string; minutes: number }>();
+export function readingMinutes(post: Pick<ReadingPost, "contentHtml">): number {
+  const kept = minutesCache.get(post);
+  if (kept && kept.html === post.contentHtml) return kept.minutes;
+  const words = plainText(post.contentHtml).split(/\s+/).filter((w) => w !== "").length;
+  const minutes = Math.max(1, Math.round(words / WORDS_PER_MINUTE));
+  minutesCache.set(post, { html: post.contentHtml, minutes });
+  return minutes;
+}
+export const readingTimeLabel = (post: Pick<ReadingPost, "contentHtml">): string => `${readingMinutes(post)} min read`;
+
+export type FeedSort = "newest" | "oldest" | "shortest" | "longest";
+/** Which posts by length: short (under 2 minutes), medium (2 to 5), long (over 5). */
+export type FeedLength = "any" | "short" | "medium" | "long";
+export const LENGTH_LABELS: Record<FeedLength, string> = { any: "Any length", short: "Under 2 min", medium: "2 to 5 min", long: "Over 5 min" };
+export const SORT_LABELS: Record<FeedSort, string> = { newest: "Newest first", oldest: "Oldest first", shortest: "Shortest read first", longest: "Longest read first" };
 export interface FeedFilter {
   sort: FeedSort;
   /** A subscription id, or null for all blygs. */
   source: string | null;
   unreadOnly: boolean;
+  length: FeedLength;
 }
-export const DEFAULT_FILTER: FeedFilter = { sort: "newest", source: null, unreadOnly: false };
+export const DEFAULT_FILTER: FeedFilter = { sort: "newest", source: null, unreadOnly: false, length: "any" };
+
+/** How many of the feed's choices differ from the start (shown on the button that opens them). */
+export const activeFilters = (f: FeedFilter): number => (f.sort !== "newest" ? 1 : 0) + (f.source !== null ? 1 : 0) + (f.unreadOnly ? 1 : 0) + (f.length !== "any" ? 1 : 0);
+
+const inLength = (minutes: number, length: FeedLength): boolean => length === "any" || (length === "short" ? minutes < 2 : length === "medium" ? minutes >= 2 && minutes <= 5 : minutes > 5);
 
 export function arrange(posts: ReadingPost[], f: FeedFilter): ReadingPost[] {
-  const kept = posts.filter((p) => (f.source === null || p.subscriptionId === f.source) && (!f.unreadOnly || isUnread(p)));
-  const sign = f.sort === "newest" ? -1 : 1;
+  const kept = posts.filter((p) => (f.source === null || p.subscriptionId === f.source) && (!f.unreadOnly || isUnread(p)) && inLength(readingMinutes(p), f.length));
+  const byTime = f.sort === "newest" ? -1 : 1;
   return kept
-    .map((p, i) => ({ p, i, t: Date.parse(dateOf(p)) }))
-    .sort((a, b) => (Number.isFinite(a.t) && Number.isFinite(b.t) && a.t !== b.t ? sign * (a.t - b.t) : a.i - b.i))
+    .map((p, i) => ({ p, i, t: Date.parse(dateOf(p)), m: readingMinutes(p) }))
+    .sort((a, b) => {
+      if (f.sort === "shortest" || f.sort === "longest") {
+        const lengthSign = f.sort === "shortest" ? 1 : -1;
+        if (a.m !== b.m) return lengthSign * (a.m - b.m);
+        return Number.isFinite(a.t) && Number.isFinite(b.t) && a.t !== b.t ? b.t - a.t : a.i - b.i; // equal length: the newer first
+      }
+      return Number.isFinite(a.t) && Number.isFinite(b.t) && a.t !== b.t ? byTime * (a.t - b.t) : a.i - b.i;
+    })
     .map((x) => x.p);
 }
 

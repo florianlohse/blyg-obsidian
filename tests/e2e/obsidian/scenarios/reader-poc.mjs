@@ -126,10 +126,16 @@ await runScenario({ data: fixtureData() }, async (s) => {
     const cards = await text(".blyg-reader-card");
     check(cards.length > 0 && cards.some((c) => c.includes("Blog B")), `${layout}: the feed shows cards naming the blyg (${cards.length} cards)`);
     check((await text(".blyg-reader-card.is-unread .blyg-reader-badge.is-new")).length > 0, `${layout}: an unread post carries an "unread" badge`);
+    check((await page.$(".blyg-reader-controls")) === null && (await text(".blyg-reader-filterbtn"))[0] === "Sort & filter", `${layout}: the sort and filter choices start closed, so the header stays slim`);
+    check(await click("Sort & filter"), `${layout}: "Sort & filter" opens them`);
+    await wait(300);
     const options = await page.evaluate(() => [...document.querySelectorAll(".blyg-reader-controls select")].map((x) => [...x.options].map((o) => o.textContent)));
-    check(options.length === 2 && options[0].includes("Newest first") && options[1].some((o) => /^Blog B \(\d+\)$/.test(o ?? "")), `${layout}: order and blyg pickers are there (${JSON.stringify(options)})`);
+    check(options.length === 4 && options[0].includes("Newest first") && options[0].includes("Longest read first") && options[1].some((o) => /^Blog B \(\d+\)$/.test(o ?? "")) && options[2].includes("Under 2 min") && options[3].some((o) => /Serif/.test(o ?? "")), `${layout}: order, blyg, length and font choices are there (${JSON.stringify(options.map((o) => o.length))} entries)`);
     check((await text(".blyg-reader-toggle")).some((t) => t.includes("Unread only")), `${layout}: the "Unread only" switch is there`);
-    check(JSON.stringify(await text(".blyg-reader-segment button")) === '["Web page","Text"]' && (await text(".blyg-reader-segment .is-active"))[0] === "Web page", `${layout}: how posts open by default can be chosen in the feed (Web page is the start)`);
+    check(JSON.stringify(await text(".blyg-reader-segment button")) === '["Web page","Text"]' && (await text(".blyg-reader-segment .is-active"))[0] === "Web page", `${layout}: how posts open by default can be chosen (Web page is the start)`);
+    check(/\d+ min read/.test((await text(".blyg-reader-card"))[0] ?? ""), `${layout}: each card says how long it takes to read (${((await text(".blyg-reader-card"))[0] ?? "").match(/\d+ min read/)?.[0]})`);
+    check(await click("Sort & filter"), `${layout}: ...and closes them again`);
+    await wait(300);
     check(/^Blyg reader · plugin \d+\.\d+\.\d+/.test((await text(".blyg-reader-foot"))[0] ?? ""), `${layout}: the feed ends with the plugin's version (${(await text(".blyg-reader-foot"))[0]})`);
     const layoutOk = await page.evaluate(() => {
       const header = document.querySelector(".blyg-reader-header"); const scroll = document.querySelector(".blyg-reader-scroll");
@@ -157,7 +163,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
     check(["Back", "Reply", "○ Mark read", "Browser", "As text"].every((b) => buttons.includes(b)), `${layout}: the post's buttons are in the header: ${buttons.join(", ")}`);
     const links = await page.evaluate(() => [...document.querySelectorAll(".blyg-reader-postmeta a.blyg-reader-link")].map((a) => a.getAttribute("href")));
     check(links.length >= 1 && links[0].startsWith("http://localhost:8788"), `${layout}: the post's blyg is a link to its page (${links.join(", ")})`);
-    check((await text(".blyg-reader-postmeta")).some((t) => /unread/.test(t)), `${layout}: the post's header says it is unread`);
+    check((await text(".blyg-reader-postmeta")).some((t) => /unread/.test(t) && /\d+ min read/.test(t)), `${layout}: the post's header says it is unread and how long it takes to read`);
     await shot(`${layout}-2-web`);
 
     check(await click("As text"), `${layout}: "As text" can be tapped`);
@@ -244,10 +250,112 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await closeReader();
   }
 
+  /** Reading time: sort and filter by it, in the panel that opens from the header. */
+  async function readingTime() {
+    await openReader();
+    await wait(1000);
+    // Make the first post a long one (about 6 minutes) and the second a short one, then choose.
+    await page.evaluate(() => {
+      const view = window.app.workspace.getLeavesOfType("blyg-reader")[0].view;
+      view.data.posts[0].contentHtml = `<p>${"word ".repeat(1380)}</p>`; // 1380 words at 230 a minute: 6 minutes
+      view.data.posts[1].contentHtml = "<p>tiny</p>";
+      view.draw();
+    });
+    await wait(300);
+    check(await click("Sort & filter"), "reading time: the choices open");
+    await wait(300);
+    const choose = (label, value) => page.evaluate(([l, v]) => {
+      const el = [...document.querySelectorAll(".blyg-reader-controls select")].find((x) => x.getAttribute("aria-label") === l);
+      if (!el) return false;
+      el.value = v;
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+      return true;
+    }, [label, value]);
+    const cards = () => page.evaluate(() => [...document.querySelectorAll(".blyg-reader-card")].map((c) => (c.textContent ?? "").match(/(\d+) min read/)?.[1] ?? "?"));
+    check(await choose("Length", "long"), "reading time: the length can be chosen");
+    await wait(300);
+    check(JSON.stringify(await cards()) === '["6"]', `reading time: "Over 5 min" shows only the long post (${JSON.stringify(await cards())})`);
+    check((await text(".blyg-reader-filterbtn"))[0] === "Sort & filter (1)", `reading time: the button says how many choices are made (${(await text(".blyg-reader-filterbtn"))[0]})`);
+    await choose("Length", "short");
+    await wait(300);
+    check((await cards()).every((m) => m === "1") && (await cards()).length >= 1, `reading time: "Under 2 min" shows only short posts (${JSON.stringify(await cards())})`);
+    await choose("Length", "any");
+    await choose("Order", "longest");
+    await wait(300);
+    const longest = await cards();
+    check(longest[0] === "6" && longest.at(-1) === "1", `reading time: longest first puts the 6 minute post first (${JSON.stringify(longest)})`);
+    await choose("Order", "shortest");
+    await wait(300);
+    const shortest = await cards();
+    check(shortest[0] === "1" && shortest.at(-1) === "6", `reading time: shortest first puts it last (${JSON.stringify(shortest)})`);
+    await closeReader();
+  }
+
+  /** The font of a post's content: in the text view, and in the web page's own document; the interface keeps Obsidian's. */
+  async function font() {
+    await openReader();
+    await wait(1000);
+    check(await click("Sort & filter"), "font: the choices open");
+    await wait(300);
+    await page.evaluate(() => {
+      const el = [...document.querySelectorAll(".blyg-reader-controls select")].find((x) => x.getAttribute("aria-label") === "Font for posts");
+      el.value = "serif";
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await wait(500);
+    check(await page.evaluate(() => window.app.plugins.plugins.blyg.settings.readerPane.font === "serif" && document.querySelector(".blyg-reader")?.classList.contains("is-font-serif")), "font: the choice is kept in the setting and on the pane");
+    await click("Sort & filter");
+    await wait(300);
+    // text view
+    await page.evaluate(() => {
+      const view = window.app.workspace.getLeavesOfType("blyg-reader")[0].view;
+      view.shown = view.data.posts[0];
+      view.shownAs = "text";
+      view.draw();
+    });
+    await wait(500);
+    const textFont = await page.evaluate(() => ({ body: getComputedStyle(document.querySelector(".blyg-reader-body")).fontFamily, ui: getComputedStyle(document.querySelector(".blyg-reader-btn")).fontFamily }));
+    check(/Iowan|Palatino|Georgia/.test(textFont.body) && !/Iowan/.test(textFont.ui), `font: the text view's content is serif and the buttons keep Obsidian's font (${textFont.body.slice(0, 30)} / ${textFont.ui.slice(0, 20)})`);
+    // web page view: a fresh document with the font laid over the blyg's own
+    await page.evaluate(() => {
+      const view = window.app.workspace.getLeavesOfType("blyg-reader")[0].view;
+      view.releasePage();
+      view.shownAs = "web";
+      view.drawHeader();
+      view.drawBody();
+    });
+    await page.waitForSelector(".blyg-reader-frame", { timeout: 15000 }).catch(() => {});
+    await wait(1500);
+    const src = await page.evaluate(() => document.querySelector(".blyg-reader-frame")?.getAttribute("src") ?? "");
+    const framed = page.frames().find((f) => f.url() === src);
+    const webFont = framed ? await framed.evaluate(() => getComputedStyle(document.querySelector(".item-content p") ?? document.body).fontFamily).catch(() => "") : "";
+    check(/Iowan|Palatino|Georgia/.test(webFont), `font: the web page's content is serif too (${webFont.slice(0, 40)})`);
+    await page.evaluate(() => { window.app.plugins.plugins.blyg.settings.readerPane.font = "default"; });
+    await closeReader();
+  }
+
+  /** The reader beside the note you write: in the sidebar as well as in a tab. */
+  async function sidebar() {
+    await page.evaluate(() => window.app.commands.executeCommandById("blyg:open-reader-sidebar"));
+    await page.waitForSelector(".workspace-split.mod-right-split .blyg-reader-card", { timeout: 20000 }).catch(() => {});
+    const inRight = await page.evaluate(() => ({ cards: document.querySelectorAll(".workspace-split.mod-right-split .blyg-reader-card").length, header: !!document.querySelector(".workspace-split.mod-right-split .blyg-reader-header") }));
+    check(inRight.cards > 0 && inRight.header, `the reader opens in the sidebar (${inRight.cards} cards)`);
+    await page.evaluate(() => window.app.commands.executeCommandById("blyg:open-reader"));
+    await page.waitForSelector(".workspace-split.mod-root .blyg-reader-card", { timeout: 20000 }).catch(() => {});
+    const both = await page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader").length);
+    check(both === 2, `...and a reader in a tab is a second one beside it, each with its own place (${both} readers)`);
+    await page.evaluate(() => window.app.commands.executeCommandById("blyg:open-reader-sidebar"));
+    await wait(500);
+    check((await page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader").length)) === 2, "...and asking again brings the open one forward instead of opening a third");
+    await closeReader();
+  }
+
   /** How posts open by default, chosen in the feed: kept in the setting, and used by the next post you tap. */
   async function defaultView() {
     await resetReadMarks();
     await openReader();
+    check(await click("Sort & filter"), "the feed's choices can be opened");
+    await wait(300);
     check(await click("Text"), "the feed's \"Text\" choice can be tapped");
     await wait(300);
     check(await page.evaluate(() => window.app.plugins.plugins.blyg.settings.readerPane.view === "text"), "the choice is kept in the setting \"Open posts as\"");
@@ -259,7 +367,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
     check((await page.$(".blyg-reader-frame")) !== null, "...and then it is the web page");
     check(await click("Back"), "Back");
     await wait(300);
-    check(await click("Web page"), "the feed's \"Web page\" choice puts it back");
+    check(await click("Web page") || await click("Sort & filter") && (await wait(300), await click("Web page")), "the feed's \"Web page\" choice puts it back");
     await wait(300);
     await closeReader();
   }
@@ -450,6 +558,9 @@ await runScenario({ data: fixtureData() }, async (s) => {
   await images();
   await readMarks();
   await staleReload();
+  await readingTime();
+  await font();
+  await sidebar();
   await defaultView();
   await pass("desktop");
   await s.phone();

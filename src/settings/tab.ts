@@ -221,6 +221,12 @@ export class BlygSettingTab extends PluginSettingTab {
           aliases: ["reader", "web view", "page"],
           control: { type: "dropdown", key: "readerPane.view", options: { web: "Web page", text: "Text" } },
         },
+        {
+          name: "Font for posts",
+          desc: "The font of a post's content in the reader (not of the buttons and lists). “As the blyg or Obsidian has it” leaves a web page in its blyg's own type and the text view in Obsidian's. The others are fonts your device already has; none is downloaded. A page that is shown whole (a blyg whose pages the reader cannot trim) keeps its own font.",
+          aliases: ["reader", "typeface", "serif", "reading font"],
+          control: { type: "dropdown", key: "readerPane.font", options: { default: "As the blyg or Obsidian has it", serif: "Serif", sans: "Sans-serif", mono: "Monospace" } },
+        },
       ],
     });
 
