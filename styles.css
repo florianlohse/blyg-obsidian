@@ -562,3 +562,12 @@
 .blyg-reader-surface .blyg-reader-body .blyg-quote-source { margin-top: 0.5em; font-size: 0.8em; color: var(--blyg-quote-ink); }
 .blyg-reader-surface .blyg-reader-body .blyg-quote-source.is-link { color: var(--text-accent); cursor: pointer; text-decoration: none; padding: var(--size-2-2) 0; }
 .blyg-reader-surface .blyg-reader-body .blyg-quote-source.is-link:hover { text-decoration: underline; }
+
+/* The replies chip of an open post and the list it opens (cards like the feed's); the owner's own replies are green. */
+.blyg-reader-btn.blyg-reader-resp.is-mine { color: var(--color-green, var(--text-success)); border-color: var(--color-green, var(--text-success)); }
+.blyg-reader-responses { position: absolute; inset: 0; z-index: 5; overflow-y: auto; background: var(--background-primary); padding: var(--size-4-3); }
+.blyg-reader-responses-top { display: flex; align-items: center; justify-content: space-between; gap: var(--size-4-2); max-width: 42rem; margin: 0 auto var(--size-4-2); }
+.blyg-reader-responses-title { font-weight: var(--font-semibold); }
+.blyg-reader-responses-note { max-width: 42rem; margin: 0 auto var(--size-4-2); }
+.blyg-reader-card.blyg-reader-response.is-mine { border-left: 3px solid var(--color-green, var(--text-success)); padding-left: var(--size-4-3); background: color-mix(in srgb, var(--color-green, var(--text-success)) 7%, transparent); }
+.blyg-reader-badge.is-mine { background: var(--color-green, var(--text-success)); color: var(--background-primary); }

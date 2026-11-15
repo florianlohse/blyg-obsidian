@@ -44,6 +44,7 @@ import { BLYG_PANEL_VIEW, BlygPanelView, type PanelHost } from "./ui/BlygPanelVi
 import { promptForItem, promptForQuote } from "./ui/QuotePicker";
 import { promptForStudioItem } from "./ui/StudioPicker";
 import { isEmptySettingsData, readMirror } from "./settings/mirror";
+import type { StudioListedItem } from "./studio/types";
 import { postFromPeek, postOfMention } from "./ui/readerMentions";
 import { BLYG_READER_VIEW, BlygReaderView, excerptOf, type PreparedPage, type ReaderHost, type ReadResult } from "./ui/ReaderView";
 import { framePolicy } from "./ui/readerFeed";
@@ -863,6 +864,9 @@ export default class BlygPlugin extends Plugin {
     await workspace.revealLeaf(leaf);
   }
 
+  /** The owner's own items, kept for a few minutes for the replies chip of the reader. */
+  private readerMine: { at: number; items: StudioListedItem[] } | null = null;
+
   /** When the reader last asked the Studio to fetch the blygs it reads (this session only). */
   private readerCheckedAt = 0;
 
@@ -951,6 +955,21 @@ export default class BlygPlugin extends Plugin {
         if (!built.ok) return null;
         const got = await built.studio.client.peekItem(m.sourceOrigin, m.sourceId);
         return got.kind === "ok" ? postFromPeek(m, got.value) : null;
+      },
+      myItems: async () => {
+        if (this.readerMine && Date.now() - this.readerMine.at < 5 * 60_000) return this.readerMine.items;
+        const built = buildStudio(this.env());
+        if (!built.ok) return [];
+        const got = await built.studio.client.listItems();
+        const items = got.kind === "ok" ? got.value.items : [];
+        if (got.kind === "ok") this.readerMine = { at: Date.now(), items };
+        return items;
+      },
+      openOwnItem: async (itemId) => {
+        const file = this.app.vault.getMarkdownFiles().find((f) => this.app.metadataCache.getFileCache(f)?.frontmatter?.blyg_id === itemId);
+        if (!file) return false;
+        await this.app.workspace.getLeaf("tab").openFile(file);
+        return true;
       },
       isOwnItem: async (itemId) => {
         const built = buildStudio(this.env());

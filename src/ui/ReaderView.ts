@@ -10,6 +10,8 @@ import { plainText, renderForeign, type ImageMode } from "./defang";
 import { activeFilters, arrange, cardOf, DEFAULT_FILTER, frameable, LENGTH_LABELS, nextAfter, postOfQuote, pullProgress, readingTimeLabel, relativeTime, SORT_LABELS, sourcesOf, type FeedFilter, type FeedLength, type FeedSort } from "./readerFeed";
 import { FONT_LABELS, isReaderFont, type ReaderFont } from "./readerFonts";
 import { CONTRAST_LABELS, CONTRASTS, isReaderContrast, type ReaderContrast } from "./readerLook";
+import { responseChip, responsesTo, type ResponseEntry } from "./readerResponses";
+import type { StudioListedItem } from "../studio/types";
 import { limiter, mentionLead, postOfMention, visibleMentions } from "./readerMentions";
 import { frameUrlFor, READER_FRAME_SANDBOX } from "./trimmedPage";
 
@@ -52,6 +54,10 @@ export interface ReaderHost {
   ownExcerpt(itemId: string): Promise<string | null>;
   /** Whether this id is one of the owner's own items (a quote of it is "you"); false when it is not or cannot be told. */
   isOwnItem(itemId: string): Promise<boolean>;
+  /** The owner's own items (for the replies they wrote to a post); empty when they cannot be had. Kept for a few minutes by the host. */
+  myItems(): Promise<StudioListedItem[]>;
+  /** Open the note of one of the owner's items in Obsidian; false when no note of this vault holds it. */
+  openOwnItem(itemId: string): Promise<boolean>;
   markRead(post: ReadingPost): Promise<ReadResult>;
   markUnread(post: ReadingPost): Promise<ReadResult>;
   /** The owner's choices (settings): how a post opens, and what happens to images in the text view. */
@@ -501,6 +507,66 @@ export class BlygReaderView extends ItemView {
     root.style.setProperty("--blyg-bottom-clear", `${Math.ceil(overlap)}px`);
   }
 
+  /** The owner's own items, loaded when a post is opened: their replies to it make the green "You" chip. Null until loaded. */
+  private mine: StudioListedItem[] | null = null;
+  private mineAsked = false;
+  private responsesEl: HTMLElement | null = null;
+
+  private loadMine(): void {
+    if (this.mineAsked) return;
+    this.mineAsked = true;
+    void this.host.myItems().then((items) => {
+      this.mine = items;
+      if (this.shown) this.drawHeader();
+    }).catch(() => {
+      this.mine = [];
+    }).finally(() => {
+      // asked again after a few minutes, not for every post
+      window.setTimeout(() => (this.mineAsked = false), 5 * 60_000);
+    });
+  }
+
+  private closeResponses(): void {
+    this.responsesEl?.remove();
+    this.responsesEl = null;
+  }
+
+  /** The replies to this post that the reader can see, as cards like the feed's (your own highlighted); a tap opens one. */
+  private showResponses(p: ReadingPost, entries: ResponseEntry[]): void {
+    this.closeResponses();
+    const body = this.bodyEl;
+    if (!body) return;
+    const sheet = body.createDiv({ cls: "blyg-reader-responses" });
+    this.responsesEl = sheet;
+    const top = sheet.createDiv({ cls: "blyg-reader-responses-top" });
+    top.createDiv({ cls: "blyg-reader-responses-title", text: "Replies you can see" });
+    this.button(top, "Close", () => this.closeResponses(), { title: "Close the list" });
+    sheet.createDiv({ cls: "blyg-reader-meta blyg-reader-responses-note", text: "Your own replies, and posts of blygs you read that answer this one. Other replies are not visible from here." });
+    const list = sheet.createDiv({ cls: "blyg-reader-column" });
+    for (const e of entries) {
+      const card = list.createDiv({ cls: `blyg-reader-row blyg-reader-card blyg-reader-response${e.kind === "mine" ? " is-mine" : ""}` });
+      const meta = card.createDiv({ cls: "blyg-reader-meta" });
+      if (e.kind === "mine") {
+        meta.createSpan({ cls: "blyg-reader-badge is-mine", text: "You" });
+        meta.appendText(` ${e.draft ? "draft" : "your reply"} · ${relativeTime(e.when, Date.now())}`);
+        card.createDiv({ cls: "blyg-reader-excerpt", text: excerptOf(`<p>${e.text.replace(/[<>&]/g, " ")}</p>`, 200) });
+        card.addEventListener("click", () => {
+          void this.host.openOwnItem(e.itemId).then((ok) => {
+            if (!ok) this.setStatus("That note is not in this vault.");
+          });
+        });
+      } else {
+        meta.appendText([e.post.authorName, e.post.subscriptionTitle].filter((x): x is string => !!x).join(" · ") + ` · ${relativeTime(e.when, Date.now())}`);
+        card.createDiv({ cls: "blyg-reader-excerpt", text: excerptOf(e.post.contentHtml, 200) });
+        card.addEventListener("click", () => {
+          this.closeResponses();
+          this.openPost(e.post, "quote");
+        });
+      }
+    }
+    if (entries.length === 0) list.createDiv({ cls: "blyg-reader-note", text: `Nothing visible answers “${excerptOf(p.contentHtml, 40)}” yet.` });
+  }
+
   /** The posts you came from by following a quote to its source: Back goes to the last of them, and to the list when there is none. */
   private trail: ReadingPost[] = [];
 
@@ -525,10 +591,12 @@ export class BlygReaderView extends ItemView {
     if (via === "quote" && this.shown) this.trail.push(this.shown);
     else if (via === "feed") this.trail = [];
     this.releasePage();
+    this.closeResponses();
     this.shown = p;
     this.shownAs = this.host.viewMode();
     this.drawHeader();
     this.drawBody();
+    this.loadMine();
   }
 
   private drawFeedHeader(h: HTMLElement): void {
@@ -618,6 +686,10 @@ export class BlygReaderView extends ItemView {
       cls: "blyg-reader-readtoggle",
       title: unread ? "Mark this post read" : "Read. Tap to mark it unread again",
     });
+    const chip = responseChip(responsesTo(p, this.mine ?? [], this.data?.posts ?? []));
+    if (chip) {
+      this.button(row, chip.text, () => (this.responsesEl ? this.closeResponses() : this.showResponses(p, responsesTo(p, this.mine ?? [], this.data?.posts ?? []))), { cls: `blyg-reader-resp${chip.mine ? " is-mine" : ""}`, title: chip.title });
+    }
     this.button(row, "Browser", () => (web ? this.host.openWeb(web) : undefined), { disabled: web === null, title: "Open the whole page in the browser" });
     if (web) {
       this.button(row, this.shownAs === "web" ? "As text" : "As web page", () => {

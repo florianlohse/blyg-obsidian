@@ -740,6 +740,54 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await closeReader();
   }
 
+  /** The replies chip of an open post: your own reply (green), replies in blygs you read, the list they open, and what a tap does. */
+  async function responses(layout) {
+    await openReader();
+    // The list arrives in pages: wait for the whole of it, or the objects put in below would be replaced when it lands.
+    await page.waitForFunction(() => !/^Loading/.test(document.querySelector(".blyg-reader-status")?.textContent ?? ""), null, { timeout: 20000 }).catch(() => {});
+    await wait(1000);
+    await page.evaluate(async () => {
+      const v = window.app.workspace.getLeavesOfType("blyg-reader")[0].view;
+      // Put the stub into whatever list the reader holds, and into every list that arrives later (a check for new posts reloads quietly).
+      const realLoad = v.host.load;
+      const inject = (posts) => { const [a, b] = posts; a.origin = a.origin ?? "https://blog-b.example"; b.stubTarget = { origin: a.origin, id: a.remoteId }; };
+      v.host.load = async (cb) => { const r = await realLoad(cb); if (r.ok) inject(r.data.posts); return r; };
+      await v.reload(true);
+      const [a] = v.data.posts;
+      window.__opened = [];
+      v.host.myItems = async () => [{ id: "myreply1", revision: 1, kind: "thread", status: "public", version: 1, contentMd: "My own reply words.", dirty: false, stubOf: { origin: a.origin, id: a.remoteId, version: 1 }, published: null, created: new Date().toISOString() }];
+      v.host.openOwnItem = async (id) => { window.__opened.push(id); return true; };
+      v.mine = null; v.mineAsked = false;
+      v.openPost(a);
+    });
+    await wait(800);
+    const chip = await page.evaluate(() => { const c = document.querySelector(".blyg-reader-resp"); return c ? { text: c.textContent, mine: c.classList.contains("is-mine"), color: getComputedStyle(c).color } : null; });
+    check(chip?.text === "↩ You + 1" && chip.mine, `${layout}: replies: the chip says you replied, and one more reply in a blyg you read (${JSON.stringify(chip)})`);
+    await page.evaluate(() => document.querySelector(".blyg-reader-resp")?.click());
+    await wait(300);
+    const cards = await page.evaluate(() => [...document.querySelectorAll(".blyg-reader-response")].map((c) => ({ mine: c.classList.contains("is-mine"), badge: c.querySelector(".blyg-reader-badge")?.textContent ?? "", text: c.textContent })));
+    check(cards.length === 2 && cards.some((c) => c.mine && c.badge === "You" && c.text.includes("My own reply words")) && cards.some((c) => !c.mine), `${layout}: replies: the list shows both as cards, yours marked (${JSON.stringify(cards.map((c) => [c.mine, c.badge]))})`);
+    const green = await page.evaluate(() => getComputedStyle(document.querySelector(".blyg-reader-response.is-mine")).borderLeftColor);
+    check(green !== "rgba(0, 0, 0, 0)" && green !== "rgb(0, 0, 0)", `${layout}: replies: your own are highlighted (${green})`);
+    await page.evaluate(() => document.querySelector(".blyg-reader-response.is-mine")?.click());
+    await wait(300);
+    check((await page.evaluate(() => window.__opened)).join() === "myreply1", `${layout}: replies: a tap on yours opens its note`);
+    await page.evaluate(() => [...document.querySelectorAll(".blyg-reader-response")].find((c) => !c.classList.contains("is-mine"))?.click());
+    await wait(600);
+    const now = await page.evaluate(() => { const v = window.app.workspace.getLeavesOfType("blyg-reader")[0].view; return { shown: v.shown?.remoteId, sheet: !!document.querySelector(".blyg-reader-responses"), second: v.data.posts[1].remoteId }; });
+    check(now.shown === now.second && !now.sheet, `${layout}: replies: a tap on a post of a blyg you read opens it here, and the list closes`);
+    await click("Back");
+    await wait(400);
+    check((await page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader")[0].view.shown?.remoteId)) === (await page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader")[0].view.data.posts[0].remoteId)), `${layout}: replies: Back returns to the post you came from`);
+    // Without your own reply: a plain count.
+    await page.evaluate(() => { const v = window.app.workspace.getLeavesOfType("blyg-reader")[0].view; v.host.myItems = async () => []; v.mine = []; v.drawHeader(); });
+    const plain = await page.evaluate(() => { const c = document.querySelector(".blyg-reader-resp"); return c ? { text: c.textContent, mine: c.classList.contains("is-mine") } : null; });
+    check(plain?.text === "↩ 1" && !plain.mine, `${layout}: replies: with none of yours it is a plain count (${JSON.stringify(plain)})`);
+    await page.evaluate(() => { const v = window.app.workspace.getLeavesOfType("blyg-reader")[0].view; const [a, b] = v.data.posts; v.host.load = async () => ({ ok: true, data: { ...v.data, posts: v.data.posts.map((p) => (p === b ? { ...p, stubTarget: null } : p)) } }); b.stubTarget = null; v.drawHeader(); });
+    check((await page.$(".blyg-reader-resp")) === null, `${layout}: replies: and with nothing to see there is no chip`);
+    await closeReader();
+  }
+
   /** Mentions: what they are about is drawn, a mention opens like a post, and a post the Studio does not read has no read mark or reply. */
   async function mentions(layout) {
     await openReader();
@@ -783,12 +831,14 @@ await runScenario({ data: fixtureData() }, async (s) => {
   await font();
   await sidebar();
   await defaultView();
+  await responses("desktop");
   await quoteSource("desktop");
   await surface("desktop");
   await nextPost("desktop");
   await mentions("desktop");
   await pass("desktop");
   await s.phone();
+  await responses("phone");
   await quoteSource("phone");
   await surface("phone");
   await nextPost("phone");
