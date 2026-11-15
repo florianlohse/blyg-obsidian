@@ -448,35 +448,57 @@
   margin: var(--size-4-1) 0 var(--size-4-2);
 }
 
-/* PROOF OF CONCEPT (S15): the reader pane. Theme variables only; one column, so it holds on a phone. */
-.blyg-reader { padding: var(--size-4-3); max-width: 42rem; margin: 0 auto; }
-.blyg-reader-bar { display: flex; gap: var(--size-4-2); flex-wrap: wrap; margin-bottom: var(--size-4-3); }
+/* S15: the reader. A header that stays put, a body that scrolls by itself, theme variables only; one column, so it holds on a phone. */
+.blyg-reader { display: flex; flex-direction: column; height: 100%; padding: 0; }
+.blyg-reader-header { flex: none; padding: var(--size-4-2) var(--size-4-3) var(--size-2-2); border-bottom: 1px solid var(--background-modifier-border); background: var(--background-primary); }
+.blyg-reader-bodywrap { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.blyg-reader-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--size-4-3); -webkit-user-select: text; user-select: text; }
+.blyg-reader-column { max-width: 42rem; margin: 0 auto; }
+.blyg-reader-bar, .blyg-reader-controls { display: flex; gap: var(--size-4-1); flex-wrap: wrap; align-items: center; }
+.blyg-reader-controls { margin-top: var(--size-4-1); }
+.blyg-reader-spacer { flex: 1 1 auto; }
+.blyg-reader-header .blyg-reader-btn { height: auto; padding: var(--size-2-1) var(--size-4-3); font-size: var(--font-ui-small); }
 .blyg-reader-btn.is-active { background: var(--interactive-accent); color: var(--text-on-accent); }
-.blyg-reader-status { color: var(--text-muted); margin-bottom: var(--size-4-3); }
-.blyg-reader-row { padding: var(--size-4-3) 0; border-bottom: 1px solid var(--background-modifier-border); cursor: pointer; }
-.blyg-reader-row.is-unread .blyg-reader-excerpt { font-weight: var(--font-semibold); }
+.blyg-reader-select { max-width: 100%; font-size: var(--font-ui-small); }
+.blyg-reader-toggle { display: inline-flex; gap: var(--size-4-1); align-items: center; color: var(--text-muted); font-size: var(--font-ui-small); }
+.blyg-reader-segment { display: inline-flex; gap: 1px; margin-left: auto; }
+.blyg-reader-status { color: var(--text-muted); font-size: var(--font-ui-smaller); min-height: 1.4em; padding-top: var(--size-2-1); -webkit-user-select: text; user-select: text; }
+.blyg-reader-status:empty { display: none; }
+.blyg-reader-note { color: var(--text-muted); margin-bottom: var(--size-4-3); }
+.blyg-reader-foot { color: var(--text-faint); font-size: var(--font-ui-smaller); text-align: center; padding: var(--size-4-4) 0 var(--size-4-2); }
+.blyg-reader-row { padding: var(--size-4-3) 0; border-bottom: 1px solid var(--background-modifier-border); cursor: pointer; -webkit-user-select: text; user-select: text; }
 .blyg-reader-meta { color: var(--text-muted); font-size: var(--font-ui-smaller); }
-.blyg-reader-body { margin: var(--size-4-3) 0; }
+.blyg-reader-postmeta { margin-top: var(--size-2-2); -webkit-user-select: text; user-select: text; }
+.blyg-reader-link { color: var(--text-accent); text-decoration: none; }
+.blyg-reader-link:hover { text-decoration: underline; }
+.blyg-reader-readmark { color: var(--text-success, var(--text-muted)); }
+.blyg-reader-unreadmark { color: var(--text-accent); }
+.blyg-reader-body { margin: var(--size-4-3) 0; -webkit-user-select: text; user-select: text; }
 .blyg-reader-body img { max-width: 100%; }
-.blyg-reader-actions { display: flex; gap: var(--size-4-2); flex-wrap: wrap; }
 .blyg-reader-blocked { color: var(--text-faint); font-style: italic; }
 .blyg-reader-image { display: inline-block; margin: var(--size-4-1) 0; max-width: 100%; white-space: normal; text-align: left; height: auto; }
-/* S15 second round: cards, controls, and a post shown as its web page filling the pane. */
-.blyg-reader.is-post { display: flex; flex-direction: column; height: 100%; max-width: none; }
-.blyg-reader-controls { display: flex; gap: var(--size-4-2); flex-wrap: wrap; align-items: center; margin-bottom: var(--size-4-2); }
-.blyg-reader-select { max-width: 100%; }
-.blyg-reader-toggle { display: inline-flex; gap: var(--size-4-1); align-items: center; color: var(--text-muted); }
+.blyg-reader-loadall { margin-top: var(--size-4-2); }
+/* cards */
 .blyg-reader-card { padding: var(--size-4-3) var(--size-4-2); border-left: 3px solid transparent; }
 .blyg-reader-card.is-unread { border-left-color: var(--interactive-accent); }
 .blyg-reader-card.is-unread .blyg-reader-source { font-weight: var(--font-semibold); }
-.blyg-reader-cardhead { margin-bottom: var(--size-2-1); }
+.blyg-reader-card.is-read { opacity: 0.72; }
+.blyg-reader-cardhead { display: flex; align-items: flex-start; gap: var(--size-4-2); margin-bottom: var(--size-2-1); }
+.blyg-reader-cardtitle { flex: 1 1 auto; min-width: 0; }
 .blyg-reader-source { color: var(--text-normal); }
+.blyg-reader-check { flex: none; width: 2.2em; height: 2.2em; padding: 0; border-radius: 50%; line-height: 1; font-size: var(--font-ui-medium); color: var(--text-muted); background: transparent; box-shadow: none; }
+.blyg-reader-card.is-read .blyg-reader-check { color: var(--text-success, var(--text-accent)); }
 .blyg-reader-badges { display: flex; gap: var(--size-4-1); flex-wrap: wrap; margin-bottom: var(--size-2-2); }
 .blyg-reader-badges:empty { display: none; }
 .blyg-reader-badge { font-size: var(--font-ui-smaller); color: var(--text-muted); border: 1px solid var(--background-modifier-border); border-radius: var(--radius-s); padding: 0 var(--size-4-1); }
 .blyg-reader-badge.is-new { color: var(--text-accent); border-color: var(--interactive-accent); }
+.blyg-reader-badge.is-done { color: var(--text-faint); }
 .blyg-reader-quote { color: var(--text-muted); font-style: italic; border-left: 2px solid var(--background-modifier-border); padding-left: var(--size-4-2); margin-bottom: var(--size-2-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.blyg-reader-card .blyg-reader-excerpt { font-weight: var(--font-normal); display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
-.blyg-reader-card.is-unread .blyg-reader-excerpt { font-weight: var(--font-normal); }
-.blyg-reader.is-post .blyg-reader-actions { margin-bottom: var(--size-4-2); }
-.blyg-reader-frame { flex: 1 1 auto; width: 100%; min-height: 60vh; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); background: var(--background-primary); }
+.blyg-reader-card .blyg-reader-excerpt { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
+/* the post as its web page: it fills what the header leaves */
+.blyg-reader-frame { flex: 1 1 auto; width: 100%; min-height: 0; border: 0; background: var(--background-primary); }
+/* something is loading: the refresh button and the status line turn a small ring, so a wait never looks stuck */
+@keyframes blyg-spin { to { transform: rotate(360deg); } }
+.blyg-reader-status.is-busy::before, .blyg-reader-header.is-busy .blyg-reader-refresh::before { content: ""; display: inline-block; width: 0.85em; height: 0.85em; margin-right: 0.5em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; vertical-align: -0.12em; animation: blyg-spin 0.8s linear infinite; }
+.blyg-reader-header.is-busy .blyg-reader-refresh { opacity: 0.7; }
+@media (prefers-reduced-motion: reduce) { .blyg-reader-status.is-busy::before, .blyg-reader-header.is-busy .blyg-reader-refresh::before { animation: none; border-right-color: currentColor; } }

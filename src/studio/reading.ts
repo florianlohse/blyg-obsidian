@@ -24,6 +24,8 @@ export interface ReadingPost {
   contentHtml: string;
   contentMd: string;
   authorName: string | null;
+  /** The author's own page, when the post declares one. */
+  authorUrl: string | null;
   /** The origin's public page for the item, when it declares one (a hand-off target: "open on the web"). */
   sourceUrl: string | null;
 }
@@ -39,6 +41,7 @@ export function readReadingPost(row: unknown): ReadingPost | null {
   if (row.kind !== "fragment" && row.kind !== "thread") return null;
   if (typeof row.version !== "number") return null;
   const author = isRecord(row.author) ? str(row.author.name) : null;
+  const authorUrl = isRecord(row.author) ? str(row.author.url) : null;
   return {
     subscriptionId,
     subscriptionTitle: str(row.subscriptionTitle) ?? "",
@@ -54,6 +57,7 @@ export function readReadingPost(row: unknown): ReadingPost | null {
     contentHtml,
     contentMd: str(row.contentMd) ?? "",
     authorName: author,
+    authorUrl,
     sourceUrl: str(row.sourceUrl) ?? str(row.page),
   };
 }

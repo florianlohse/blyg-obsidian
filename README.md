@@ -130,7 +130,7 @@ BRAT keeps the plugin updated. Your settings live in the plugin's own data file 
    only** on a route for a first try: its notes become private drafts and are never published.
 5. Tap **Check connection** (in the Studio group). It names your Studio's version and API contract (for example
    “Studio 0.51.0, contract 5.2.0”), the permissions of the token and how long it still lasts.
-6. Open a note in the route folder, open the panel (the ribbon icon “Open panel”, or the command **Blyg: Open panel**)
+6. Open a note in the route folder, open the panel (the ribbon icon “Open blyg publisher”, or the command **Blyg: Open panel**)
    and tap **Publish** (**Send draft** on a Drafts-only route).
 
 GitHub settings, “Blyg address”, the folder “Kind” and the preview channel belong to an older way of running a blyg from a

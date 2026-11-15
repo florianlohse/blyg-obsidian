@@ -85,6 +85,8 @@ export interface StudioClient {
   listInboundMentions(maxPages?: number): Promise<StudioResult<{ mentions: InboundMention[]; complete: boolean; unreadable: number }>>;
   /** POC (S15): mark one version of a post read. Needs the token scope `reading:state`, which the plugin's token does not carry today: a 403 comes back as `forbidden`. */
   markRead(subscriptionId: string, remoteId: string, version: number): Promise<StudioResult<{ readVersion: number | null }>>;
+  /** S15: mark a post unread again (`DELETE /reading/{sub}/{id}/read`, `reading:state`). */
+  markUnread(subscriptionId: string, remoteId: string): Promise<StudioResult<{ readVersion: number | null }>>;
   /** S15: ask the Studio to fetch every blyg it reads now (`POST /subscriptions/poll`, `owner:manage`). The fetch runs in the background; `polling` is how many. */
   pollSubscriptions(): Promise<StudioResult<{ polling: number }>>;
   /** S15: the Studio's change counters (`GET /changes`, `owner:read`): cheap, to see whether the reading list moved without walking it. */
@@ -358,10 +360,17 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
     },
 
     markRead: async (subscriptionId: string, remoteId: string, version: number) => {
-      const res = await http.send(token, { method: "PUT", area: "api", path: `/reading/${encodeURIComponent(subscriptionId)}/${encodeURIComponent(remoteId)}/read`, body: { version, readAt: new Date().toISOString() } });
+      const res = await http.send(token, { method: "PUT", area: "api", path: `/reading/${encodeURIComponent(subscriptionId)}/${encodeURIComponent(remoteId)}/read`, body: { version } });
+      // No `readAt`: the Studio then applies the read always. A client time would let a read that looks older than the Studio's last "unread" clear be ignored.
       if (res.status !== 200) return failure(res);
       const readVersion = isRecord(res.json) && typeof res.json.readVersion === "number" ? res.json.readVersion : null;
       return { kind: "ok", value: { readVersion } } as const;
+    },
+
+    markUnread: async (subscriptionId: string, remoteId: string) => {
+      const res = await http.send(token, { method: "DELETE", area: "api", path: `/reading/${encodeURIComponent(subscriptionId)}/${encodeURIComponent(remoteId)}/read` });
+      if (res.status !== 200) return failure(res);
+      return { kind: "ok", value: { readVersion: null } } as const;
     },
 
     pollSubscriptions: async () => {
@@ -469,6 +478,7 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
     listReading: guard(inner.listReading),
     listInboundMentions: guard(inner.listInboundMentions),
     markRead: guard(inner.markRead),
+    markUnread: guard(inner.markUnread),
     pollSubscriptions: guard(inner.pollSubscriptions),
     changes: guard(inner.changes),
     classifyLinks: guard(inner.classifyLinks),

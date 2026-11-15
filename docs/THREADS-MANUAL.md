@@ -25,7 +25,7 @@ it and publish again; that is a new version of the same thread (the protocol's o
 
 ## The side panel's Write buttons
 
-Open the panel (paper-plane icon, or command "Blyg: Open panel"). Under the status line:
+Open the panel (paper-plane icon "Open blyg publisher", or command "Blyg: Open panel"). Under the status line:
 
 | Button | Does | Live when |
 |---|---|---|
