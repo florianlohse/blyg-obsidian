@@ -994,7 +994,7 @@ export default class BlygPlugin extends Plugin {
     this.registerEditorExtension(replyPreviewExtension(deps, hintFor));
     // Ask for the item a reply note answers as soon as the note is opened, so its text is there by the time the line is drawn.
     this.registerEvent(this.app.workspace.on("file-open", (file) => {
-      if (!file) return;
+      if (!file || !this.app.workspace.layoutReady) return; // not while Obsidian is still restoring its layout: the line asks for itself when it is drawn
       const stub = this.app.metadataCache.getFileCache(file)?.frontmatter?.blyg_stub_of as unknown;
       const id = typeof stub === "object" && stub !== null ? (stub as { id?: unknown }).id : null;
       if (typeof id === "string" && id !== "") void deps.resolve(id, hintFor(file.path, id)).catch(() => undefined);

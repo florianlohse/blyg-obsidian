@@ -103,6 +103,19 @@ export function excerptOf(html: string, max = 140): string {
 
 
 const keyOf = (p: ReadingPost): string => `${p.subscriptionId}/${p.remoteId}`;
+/** Cards built at first, and added each time the end of the feed comes near. */
+const FEED_FIRST = 30;
+const FEED_STEP = 40;
+
+/**
+ * Run `fn` when the app has nothing else to do (at the latest after a few seconds): the reader's first work must not compete with Obsidian's own start.
+ * Not every device has `requestIdleCallback` (Safari, so iOS, does not): there it is a plain wait.
+ */
+function whenIdle(fn: () => void): void {
+  const win = activeWindow as Window & { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number };
+  if (typeof win.requestIdleCallback === "function") win.requestIdleCallback(fn, { timeout: 3000 });
+  else win.setTimeout(fn, 1500);
+}
 
 export class BlygReaderView extends ItemView {
   private data: ReaderData | null = null;
@@ -136,6 +149,9 @@ export class BlygReaderView extends ItemView {
   private scrollEl: HTMLElement | null = null;
   private feedScroll = 0;
   private readonly cardEls = new Map<string, HTMLElement>();
+  /** How many cards of the feed are built (a first screenful, more as you scroll), and for which order and filters. */
+  private renderLimit = 0;
+  private limitSig = "";
   /**
    * Read changes made here that a reload must not undo: a list fetched just before a mark reached the Studio is stale by the time it arrives. Held
    * while the change is on its way and for ten seconds after it was accepted; dropped at once if the Studio refuses it.
@@ -172,11 +188,12 @@ export class BlygReaderView extends ItemView {
     this.draw();
     // Obsidian waits for a view to finish opening before it finishes restoring the layout, so a reader tab left open would hold up the start of the whole app
     // for as long as the Studio takes to answer. Opening ends here, with the empty shell; the disk and the network are used after the layout is ready.
-    this.app.workspace.onLayoutReady(() => void this.start());
+    this.app.workspace.onLayoutReady(() => whenIdle(() => void this.start()));
   }
 
   /** What follows the opening: the owner's own items, the list saved by the last session, then the Studio behind it. Never throws: a failure is a status line. */
   private async start(): Promise<void> {
+    if (!this.contentEl.isConnected) return; // closed while Obsidian was still starting
     try {
       this.loadMine();
       const saved = await this.host.readCache().catch(() => null);
@@ -838,8 +855,16 @@ export class BlygReaderView extends ItemView {
     }
     const shown = arrange(posts, this.filter);
     if (shown.length === 0) col.createDiv({ cls: "blyg-reader-note", text: "No post matches." });
-    for (const p of shown) {
-      const card = col.createDiv({ cls: "blyg-reader-row blyg-reader-card" });
+    // Only a first screenful is built at once, and more as you scroll: building all 200 cards costs tens of milliseconds on a desktop and several times that
+    // on a phone, and Obsidian's start must not pay for it. A change of order or filter starts from the first screenful again.
+    const sig = JSON.stringify(this.filter);
+    if (sig !== this.limitSig) {
+      this.limitSig = sig;
+      this.renderLimit = FEED_FIRST;
+    }
+    const addCard = (p: ReadingPost, into: HTMLElement, before: HTMLElement | null): void => {
+      const card = createDiv({ cls: "blyg-reader-row blyg-reader-card" });
+      into.insertBefore(card, before);
       this.cardEls.set(keyOf(p), card);
       this.fillCard(card, p);
       card.addEventListener("click", () => {
@@ -847,6 +872,27 @@ export class BlygReaderView extends ItemView {
         if ((activeWindow.getSelection()?.toString() ?? "") !== "") return;
         this.openPost(p);
       });
+    };
+    for (const p of shown.slice(0, this.renderLimit)) addCard(p, col, null);
+    if (shown.length > this.renderLimit) {
+      const more = col.createDiv({ cls: "blyg-reader-more" });
+      const moreBtn = this.button(more, `Show more posts (${shown.length - this.renderLimit} more)`, () => grow(), { cls: "blyg-reader-quiet" });
+      const grow = (): void => {
+        const from = this.renderLimit;
+        this.renderLimit = Math.min(shown.length, from + FEED_STEP);
+        for (const p of shown.slice(from, this.renderLimit)) addCard(p, col, more);
+        if (this.renderLimit >= shown.length) {
+          more.remove();
+          return;
+        }
+        moreBtn.setText(`Show more posts (${shown.length - this.renderLimit} more)`);
+      };
+      // Scrolling near the end asks for more by itself; the button is there for a device where that does not happen.
+      const watcher = new IntersectionObserver((entries) => {
+        if (entries.some((e) => e.isIntersecting) && more.isConnected) grow();
+        if (!more.isConnected) watcher.disconnect();
+      }, { root: this.scrollEl, rootMargin: "600px 0px" });
+      watcher.observe(more);
     }
   }
 
