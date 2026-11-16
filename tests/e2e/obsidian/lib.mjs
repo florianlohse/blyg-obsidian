@@ -141,6 +141,20 @@ export async function launch({ data = fixtureData(), withDev = false } = {}) {
   }
   if (!page) { await s.close(); throw new Error("Obsidian did not start"); }
   s.page = page;
+  // A tap the way a finger makes it. Obsidian 1.15's phone mode ignores a bare `click()` on a window button (the handler waits for the pointer events that come
+  // before the click); on a desktop layout a plain click is what a mouse does. Installed for every start of the page (the phone layout reloads it).
+  const tapSource = () => {
+    window.__tap = (el) => {
+      if (!window.app?.isMobile) { el.click(); return; }
+      const r = el.getBoundingClientRect();
+      const o = { bubbles: true, cancelable: true, clientX: r.x + r.width / 2, clientY: r.y + r.height / 2, pointerType: "touch", isPrimary: true };
+      for (const t of ["pointerdown", "touchstart", "mousedown", "pointerup", "touchend", "mouseup", "click"]) {
+        el.dispatchEvent(t.startsWith("pointer") ? new PointerEvent(t, o) : t.startsWith("touch") ? new Event(t, o) : new MouseEvent(t, o));
+      }
+    };
+  };
+  await page.addInitScript(tapSource);
+  await page.evaluate(tapSource);
   page.on("pageerror", (e) => s.pageErrors.push(String(e)));
   page.on("console", (m) => {
     if (m.type() === "error") s.consoleErrors.push(m.text());
@@ -287,7 +301,7 @@ export async function launch({ data = fixtureData(), withDev = false } = {}) {
     const ok = await s.becomes(() => page.evaluate((t) => {
       const b = [...([...activeDocument.querySelectorAll(".modal-container .modal")].at(-1)?.querySelectorAll("button") ?? [])].find((x) => x.textContent?.trim() === t);
       if (!b || b.disabled) return false;
-      b.click();
+      window.__tap(b);
       return true;
     }, text), ms, `the window button “${text}”`);
     return Boolean(ok);
