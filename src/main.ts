@@ -1124,9 +1124,24 @@ export default class BlygPlugin extends Plugin {
         const text = got.value.published?.contentHtml ? excerptOf(got.value.published.contentHtml, 90) : excerptOf(`<p>${got.value.contentMd.replace(/[<>&]/g, " ")}</p>`, 90);
         return text || null;
       },
+      hideMention: (m) => this.readerHideMention(m),
       markRead: (post) => this.readerMark(post, true),
       markUnread: (post) => this.readerMark(post, false),
     };
+  }
+
+  /** Hide an inbound mention in the Studio. The answer is a result the reader can act on (the mention comes back on a refusal). */
+  private async readerHideMention(m: InboundMention): Promise<ReadResult> {
+    try {
+      const built = buildStudio(this.env());
+      if (!built.ok) return { ok: false, message: built.message };
+      const done = await built.studio.client.hideMention(m.id, true);
+      if (done.kind === "ok") return { ok: true };
+      if (done.kind === "forbidden") return { ok: false, message: "Your token cannot dismiss mentions. It needs the permission “owner:manage”: make a new token with every permission." };
+      return { ok: false, message: "message" in done ? done.message : "Could not dismiss the mention." };
+    } catch {
+      return { ok: false, message: "The Studio could not be reached, so the mention was not dismissed." };
+    }
   }
 
   /** Mark a post read or unread in the Studio; the answer is a result the reader can act on (it shows the change first and puts it back on a refusal). */

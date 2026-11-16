@@ -122,7 +122,7 @@ copy and the community copy together.
 ## Set up
 
 1. **Token.** In your Studio open **More → Client access → REST API** and create a token with the permissions
-   `owner:read`, `owner:draft` and `owner:publish`. Add `owner:manage` if you want to change hoppers from Obsidian.
+   `owner:read`, `owner:draft` and `owner:publish`. Add `owner:manage` if you want to change hoppers or dismiss mentions from Obsidian.
    Copy it (it is shown once).
 2. **Keychain.** In Obsidian open **Settings → Keychain** and add a secret (lowercase letters, digits and dashes in the
    name, for example `blyg-studio`); paste the token as its value. Keychain entries stay on one device: repeat on each
@@ -167,7 +167,7 @@ stripped from the published text.
 ## Token
 
 - The plugin needs the Studio permissions **`owner:read`**, **`owner:draft`**, **`owner:publish`**; **`owner:manage`**
-  is optional (hoppers, and asking your Studio to look for new posts in the reader). **`reading:state`** is optional too: without
+  is optional (hoppers, dismissing a mention in the reader, and asking your Studio to look for new posts in the reader). **`reading:state`** is optional too: without
   it the reader works, but marking a post read or unread is refused (and says so). For the reader, make the token with every permission.
 - The token is stored only in **Obsidian's keychain**. The settings hold the *name* of the entry, never the value; the
   plugin never logs it, writes it to a file or sends it anywhere except your Studio's host.

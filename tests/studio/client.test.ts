@@ -217,6 +217,22 @@ describe("cursor walks", () => {
     expect(arrivals).toBe(2);
   });
 
+  it("hides a mention with PATCH /mentions/{id}, and shows it again; a token without owner:manage is forbidden", async () => {
+    const { client, studio } = setup();
+    studio.mentions.push({ id: "m 1", target_item_id: "A", status: "verified", relation: null, hidden: false });
+    expect(await client.hideMention("m 1", true)).toEqual({ kind: "ok", value: { hidden: true } });
+    expect(studio.mentions[0]?.hidden).toBe(true);
+    const listed = await client.listInboundMentions();
+    expect(listed.kind === "ok" && listed.value.mentions.length).toBe(0); // the list the reader reads no longer holds it
+    expect(await client.hideMention("m 1", false)).toEqual({ kind: "ok", value: { hidden: false } });
+    expect(studio.mentions[0]?.hidden).toBe(false);
+    studio.manage = false;
+    expect((await client.hideMention("m 1", true)).kind).toBe("forbidden");
+    expect(studio.mentions[0]?.hidden).toBe(false);
+    studio.manage = true;
+    expect((await client.hideMention("nope", true)).kind).toBe("not-found");
+  });
+
   it("counts a mention only when it is verified, visible, and for this item; asks for this item's rows", async () => {
     const { client, studio } = setup();
     studio.mentions.push(

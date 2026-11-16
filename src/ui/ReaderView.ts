@@ -58,6 +58,8 @@ export interface ReaderHost {
   openWeb(url: string): void;
   /** Start a reply thread to this post (the same path as "Reply to an item"). */
   replyTo(post: ReadingPost): Promise<void>;
+  /** Hide a mention in the Studio (it is hidden there too, for every client). Needs the token permission `owner:manage`; the message says so when it is missing. */
+  hideMention(m: InboundMention): Promise<ReadResult>;
   /** Mark this version read, or unread again. Needs the token permission `reading:state`; the message says so when it is missing. */
   /** The text of what a mention is about, as a post to open: from the list when the Studio reads that blyg, else a peek at it. Null when it cannot be had. */
   mentionPost(m: InboundMention, posts: ReadingPost[]): Promise<ReadingPost | null>;
@@ -587,14 +589,18 @@ export class BlygReaderView extends ItemView {
   private mine: StudioListedItem[] | null = null;
   private mineAsked = false;
   private responsesEl: HTMLElement | null = null;
+  /** The reading column of the open post (the replies are drawn at its end). */
+  private postColumn: HTMLElement | null = null;
 
   private loadMine(): void {
     if (this.mineAsked) return;
     this.mineAsked = true;
     void this.host.myItems().then((items) => {
       this.mine = items;
-      if (this.shown) this.drawHeader();
-      else if (this.tab === "stream") for (const q of this.data?.posts ?? []) this.refreshPost(q); // the green badges of the feed's cards
+      if (this.shown) {
+        this.drawHeader();
+        this.drawReplies(this.shown);
+      } else if (this.tab === "stream") for (const q of this.data?.posts ?? []) this.refreshPost(q); // the green badges of the feed's cards
     }).catch(() => {
       this.mine = [];
     }).finally(() => {
@@ -603,25 +609,23 @@ export class BlygReaderView extends ItemView {
     });
   }
 
-  private closeResponses(): void {
+  /**
+   * The replies you can see, at the end of the post (where replies are read): your own highlighted, then posts of blygs you read that answer it; a tap
+   * opens one. Drawn with the post, and again when your own items arrive a moment later. Nothing is drawn when nothing visible answers the post.
+   */
+  private drawReplies(p: ReadingPost): void {
     this.responsesEl?.remove();
     this.responsesEl = null;
-  }
-
-  /** The replies to this post that the reader can see, as cards like the feed's (your own highlighted); a tap opens one. */
-  private showResponses(p: ReadingPost, entries: ResponseEntry[]): void {
-    this.closeResponses();
-    const body = this.bodyEl;
-    if (!body) return;
-    const sheet = body.createDiv({ cls: "blyg-reader-responses" });
+    const col = this.postColumn;
+    if (!col?.isConnected) return;
+    const entries = this.respFor(p);
+    if (entries.length === 0) return;
+    const sheet = col.createDiv({ cls: "blyg-reader-responses" });
     this.responsesEl = sheet;
-    const top = sheet.createDiv({ cls: "blyg-reader-responses-top" });
-    top.createDiv({ cls: "blyg-reader-responses-title", text: "Replies you can see" });
-    this.button(top, "Close", () => this.closeResponses(), { title: "Close the list" });
+    sheet.createDiv({ cls: "blyg-reader-responses-title", text: `Replies you can see (${entries.length})` });
     sheet.createDiv({ cls: "blyg-reader-meta blyg-reader-responses-note", text: "Your own replies, and posts of blygs you read that answer this one. Other replies are not visible from here." });
-    const list = sheet.createDiv({ cls: "blyg-reader-column" });
     for (const e of entries) {
-      const card = list.createDiv({ cls: `blyg-reader-row blyg-reader-card blyg-reader-response${e.kind === "mine" ? " is-mine" : ""}` });
+      const card = sheet.createDiv({ cls: `blyg-reader-row blyg-reader-card blyg-reader-response${e.kind === "mine" ? " is-mine" : ""}` });
       const meta = card.createDiv({ cls: "blyg-reader-meta" });
       if (e.kind === "mine") {
         meta.createSpan({ cls: "blyg-reader-badge is-mine", text: "You" });
@@ -635,13 +639,9 @@ export class BlygReaderView extends ItemView {
       } else {
         meta.appendText([e.post.authorName, e.post.subscriptionTitle].filter((x): x is string => !!x).join(" · ") + ` · ${relativeTime(e.when, Date.now())}`);
         card.createDiv({ cls: "blyg-reader-excerpt", text: excerptOf(e.post.contentHtml, 200) });
-        card.addEventListener("click", () => {
-          this.closeResponses();
-          this.openPost(e.post, "quote");
-        });
+        card.addEventListener("click", () => this.openPost(e.post, "quote"));
       }
     }
-    if (entries.length === 0) list.createDiv({ cls: "blyg-reader-note", text: `Nothing visible answers “${excerptOf(p.contentHtml, 40)}” yet.` });
   }
 
   /** The order the feed has now (without "unread only"), kept while the list and the order choices stay as they are: the open post and its buttons ask for the next unread post often. */
@@ -685,7 +685,7 @@ export class BlygReaderView extends ItemView {
     if (this.shown === null) this.feedScroll = this.scrollEl?.scrollTop ?? 0;
     if (via === "quote" && this.shown) this.trail.push(this.shown);
     else if (via === "feed") this.trail = [];
-    this.closeResponses();
+    this.responsesEl = null;
     this.shown = p;
     this.drawHeader();
     this.drawBody();
@@ -775,7 +775,7 @@ export class BlygReaderView extends ItemView {
     });
     const chip = responseChip(this.respFor(p));
     if (chip) {
-      const b = this.button(tray, chip.text, () => (this.responsesEl ? this.closeResponses() : this.showResponses(p, this.respFor(p))), { cls: `blyg-reader-resp${chip.mine ? " is-mine" : ""}`, title: chip.title });
+      const b = this.button(tray, chip.text, () => this.responsesEl?.scrollIntoView({ block: "start", behavior: "smooth" }), { cls: `blyg-reader-resp${chip.mine ? " is-mine" : ""}`, title: chip.title });
       this.addIcon(b, "reply");
     }
     row.createDiv({ cls: "blyg-reader-spacer" });
@@ -887,6 +887,8 @@ export class BlygReaderView extends ItemView {
       row.createDiv({ cls: "blyg-reader-meta", text: `${mentionLead(m)} · ${relativeTime(m.firstSeen, Date.now())}` });
       const text = row.createDiv({ cls: "blyg-reader-excerpt" });
       const own = row.createDiv({ cls: "blyg-reader-meta blyg-reader-ownitem" });
+      const actions = row.createDiv({ cls: "blyg-reader-bar blyg-reader-mention-actions" });
+      this.button(actions, "Dismiss", () => this.dismissMention(m), { cls: "blyg-reader-quiet blyg-reader-dismiss", title: "Hide this mention. It is hidden in your Studio too." });
       const fill = (): void => {
         const info = this.mentionInfo.get(m.id);
         text.setText(info?.post ? excerptOf(info.post.contentHtml, 220) || "(no text)" : info?.done ? "Its text could not be shown here." : "…");
@@ -895,11 +897,36 @@ export class BlygReaderView extends ItemView {
       };
       fill();
       void this.loadMention(m).then(fill);
-      row.addEventListener("click", () => {
+      row.addEventListener("click", (ev) => {
+        if ((ev.target as HTMLElement).closest(".blyg-reader-mention-actions")) return;
         if ((activeWindow.getSelection()?.toString() ?? "") !== "") return;
         void this.openMention(m);
       });
     }
+  }
+
+  /**
+   * Hide a mention: gone from the list at once, sent to the Studio meanwhile; on a refusal it comes back and the status says why. A tap on the button is not
+   * a tap on the card (it must not open the post).
+   */
+  private async dismissMention(m: InboundMention): Promise<void> {
+    const data = this.data;
+    if (!data) return;
+    const at = data.mentions.findIndex((x) => x.id === m.id);
+    if (at < 0) return;
+    data.mentions.splice(at, 1);
+    this.setStatus("Mention dismissed. It is hidden in your Studio too.");
+    this.drawHeader();
+    this.drawBody();
+    const done = await this.host.hideMention(m).catch((): ReadResult => ({ ok: false, message: "The Studio could not be reached, so the mention was not dismissed." }));
+    if (done.ok) {
+      this.host.writeCache({ posts: data.posts, mentions: data.mentions });
+      return;
+    }
+    if (this.data === data && !data.mentions.some((x) => x.id === m.id)) data.mentions.splice(Math.min(at, data.mentions.length), 0, m);
+    this.setStatus(done.message);
+    this.drawHeader();
+    this.drawBody();
   }
 
   /** What a mention shows, fetched once and a few at a time; a card redraws itself when its answer is there. */
@@ -988,6 +1015,9 @@ export class BlygReaderView extends ItemView {
   private drawPostBody(body: HTMLElement, p: ReadingPost): void {
     const scroll = body.createDiv({ cls: "blyg-reader-scroll blyg-reader-surface" });
     this.attachPull(scroll, p);
-    this.drawText(scroll.createDiv({ cls: "blyg-reader-column" }), p);
+    const col = scroll.createDiv({ cls: "blyg-reader-column" });
+    this.postColumn = col;
+    this.drawText(col, p);
+    this.drawReplies(p);
   }
 }

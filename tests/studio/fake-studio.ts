@@ -419,6 +419,15 @@ export class FakeStudio {
       const resp = this.page(url, rows);
       return resp.status === 200 ? this.json(200, { ...(JSON.parse(resp.text) as Record<string, unknown>), direction }) : resp;
     }
+    const mh = /^\/api\/mentions\/([^/]+)$/.exec(path);
+    if (mh && req.method === "PATCH") {
+      if (!this.manage) return this.fail(403, "forbidden", "insufficient_scope");
+      const row = this.mentions.find((r) => r.id === decodeURIComponent(mh[1] ?? ""));
+      if (!row) return this.fail(404, "not-found", "mention not found");
+      const hidden = (JSON.parse(req.bodyBytes ? new TextDecoder().decode(req.bodyBytes) : req.body ?? "{}") as { hidden?: boolean }).hidden === true;
+      row.hidden = hidden;
+      return this.json(200, { ok: true, hidden });
+    }
     const imp = /^\/api\/imports\/([^/]+)\/([^/]+)$/.exec(path);
     if (imp && req.method === "GET") {
       const hit = this.imports.find((i) => i.subscription_id === imp[1] && i.remote_id === imp[2]);

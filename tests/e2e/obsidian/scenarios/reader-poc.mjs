@@ -708,6 +708,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await wait(300);
     const cards = await page.evaluate(() => [...document.querySelectorAll(".blyg-reader-response")].map((c) => ({ mine: c.classList.contains("is-mine"), badge: c.querySelector(".blyg-reader-badge")?.textContent ?? "", text: c.textContent })));
     check(cards.length === 2 && cards.some((c) => c.mine && c.badge === "You" && c.text.includes("My own reply words")) && cards.some((c) => !c.mine), `${layout}: replies: the list shows both as cards, yours marked (${JSON.stringify(cards.map((c) => [c.mine, c.badge]))})`);
+    check(await page.evaluate(() => { const r = document.querySelector(".blyg-reader-responses"); return !!r && r.previousElementSibling?.classList.contains("blyg-reader-body") === true && r.parentElement?.classList.contains("blyg-reader-column") === true; }), `${layout}: replies: the list sits at the end of the post, under its text`);
     const green = await page.evaluate(() => getComputedStyle(document.querySelector(".blyg-reader-response.is-mine")).borderLeftColor);
     check(green !== "rgba(0, 0, 0, 0)" && green !== "rgb(0, 0, 0)", `${layout}: replies: your own are highlighted (${green})`);
     await page.evaluate(() => document.querySelector(".blyg-reader-response.is-mine")?.click());
@@ -716,7 +717,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await page.evaluate(() => [...document.querySelectorAll(".blyg-reader-response")].find((c) => !c.classList.contains("is-mine"))?.click());
     await wait(600);
     const now = await page.evaluate(() => { const v = window.app.workspace.getLeavesOfType("blyg-reader")[0].view; return { shown: v.shown?.remoteId, sheet: !!document.querySelector(".blyg-reader-responses"), second: v.data.posts[1].remoteId }; });
-    check(now.shown === now.second && !now.sheet, `${layout}: replies: a tap on a post of a blyg you read opens it here, and the list closes`);
+    check(now.shown === now.second && !now.sheet, `${layout}: replies: a tap on a post of a blyg you read opens it here (and that post has no replies of its own to list)`);
     await click("Back");
     await wait(400);
     check((await page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader")[0].view.shown?.remoteId)) === (await page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader")[0].view.data.posts[0].remoteId)), `${layout}: replies: Back returns to the post you came from`);
@@ -760,6 +761,26 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await click("Back");
     await wait(400);
     check((await page.$(".blyg-reader-mention")) !== null, `${layout}: mentions: back to the list of mentions`);
+    // Dismiss: the card goes at once and the Studio is asked (stubbed here, so the shared test data stays as it is); a refusal brings it back and says why.
+    check(!!(await page.$(".blyg-reader-mention .blyg-reader-dismiss")), `${layout}: mentions: a card has a Dismiss button`);
+    await page.evaluate(() => {
+      const v = window.app.workspace.getLeavesOfType("blyg-reader")[0].view;
+      window.__hid = [];
+      v.host.hideMention = async (m) => { window.__hid.push(m.id); return { ok: false, message: "Your token cannot dismiss mentions. It needs the permission “owner:manage”." }; };
+      document.querySelector(".blyg-reader-dismiss")?.click();
+    });
+    await wait(500);
+    check((await page.evaluate(() => window.__hid.length)) === 1 && (await page.$(".blyg-reader-mention")) !== null && (await text(".blyg-reader-status")).some((t) => /owner:manage/.test(t)), `${layout}: mentions: a refused dismiss brings the card back and says why`);
+    check((await page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader")[0].view.shown)) === null, `${layout}: mentions: a tap on Dismiss does not open the post`);
+    await page.evaluate(() => {
+      const v = window.app.workspace.getLeavesOfType("blyg-reader")[0].view;
+      v.host.hideMention = async (m) => { window.__hid.push(m.id); return { ok: true }; };
+      document.querySelector(".blyg-reader-dismiss")?.click();
+    });
+    await wait(500);
+    check((await page.$(".blyg-reader-mention")) === null && (await text(".blyg-reader-header button")).some((t) => t === "Mentions (0)"), `${layout}: mentions: a dismissed mention is gone from the list and the count`);
+    await page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader")[0].view.reload(true)); // the Studio never hid it: it is back
+    await wait(1500);
     await closeReader();
   }
 
