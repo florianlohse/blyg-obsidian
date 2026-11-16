@@ -13,6 +13,7 @@ import { CONTRASTS, type ReaderContrast } from "./readerLook";
 import { responseChip, responseIndex, type ResponseEntry } from "./readerResponses";
 import { changedCount, chooseWalk, knownOf, mergeFresh, READER_KEEP, type SyncMemory } from "./readerSync";
 import type { StudioListedItem } from "../studio/types";
+import { bottomClearance } from "./readerBottom";
 import { limiter, mentionLead, postOfMention, visibleMentions } from "./readerMentions";
 
 export const BLYG_READER_VIEW = "blyg-reader";
@@ -608,8 +609,12 @@ export class BlygReaderView extends ItemView {
       root.style.removeProperty("--blyg-bottom-clear");
       return;
     }
-    const overlap = Math.max(0, root.getBoundingClientRect().bottom - bar.getBoundingClientRect().top);
-    root.style.setProperty("--blyg-bottom-clear", `${Math.ceil(overlap)}px`);
+    // Not `offsetParent`: it is null for a fixed bar too, which is how the bar is drawn on a phone. A tablet's bar is `display: none`.
+    const style = bar.ownerDocument.defaultView?.getComputedStyle(bar);
+    const hidden = !style || style.display === "none" || style.visibility === "hidden";
+    const clear = bottomClearance(root.getBoundingClientRect(), { rect: bar.getBoundingClientRect(), hidden });
+    if (clear === null) root.style.removeProperty("--blyg-bottom-clear");
+    else root.style.setProperty("--blyg-bottom-clear", `${clear}px`);
   }
 
   /** The owner's own items, loaded when a post is opened: their replies to it make the green "You" chip. Null until loaded. */
