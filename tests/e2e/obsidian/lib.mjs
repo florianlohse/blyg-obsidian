@@ -141,20 +141,6 @@ export async function launch({ data = fixtureData(), withDev = false } = {}) {
   }
   if (!page) { await s.close(); throw new Error("Obsidian did not start"); }
   s.page = page;
-  // A tap the way a finger makes it. Obsidian 1.15's phone mode ignores a bare `click()` on a window button (the handler waits for the pointer events that come
-  // before the click); on a desktop layout a plain click is what a mouse does. Installed for every start of the page (the phone layout reloads it).
-  const tapSource = () => {
-    window.__tap = (el) => {
-      if (!window.app?.isMobile) { el.click(); return; }
-      const r = el.getBoundingClientRect();
-      const o = { bubbles: true, cancelable: true, clientX: r.x + r.width / 2, clientY: r.y + r.height / 2, pointerType: "touch", isPrimary: true };
-      for (const t of ["pointerdown", "touchstart", "mousedown", "pointerup", "touchend", "mouseup", "click"]) {
-        el.dispatchEvent(t.startsWith("pointer") ? new PointerEvent(t, o) : t.startsWith("touch") ? new Event(t, o) : new MouseEvent(t, o));
-      }
-    };
-  };
-  await page.addInitScript(tapSource);
-  await page.evaluate(tapSource);
   page.on("pageerror", (e) => s.pageErrors.push(String(e)));
   page.on("console", (m) => {
     if (m.type() === "error") s.consoleErrors.push(m.text());
@@ -298,18 +284,20 @@ export async function launch({ data = fixtureData(), withDev = false } = {}) {
     return Boolean(ok);
   };
   s.clickModal = async (text, ms = 10000) => {
-    const ok = await s.becomes(() => page.evaluate((t) => {
+    // In the phone layout the click is a real one: Obsidian 1.15.1 ignores a bare `click()` on a window button there (measured), and fake touch events without a
+    // touch list make Obsidian's own touch handlers throw. A mouse click at the button's centre goes through the browser's input like a person's tap.
+    // Elsewhere the plain click is what a mouse does.
+    const found = await s.becomes(() => page.evaluate((t) => {
       const b = [...([...activeDocument.querySelectorAll(".modal-container .modal")].at(-1)?.querySelectorAll("button") ?? [])].find((x) => x.textContent?.trim() === t);
       if (!b || b.disabled) return false;
-      window.__tap(b);
-      // Measured on 1.15.1 in the phone layout: the first tap on a destructive button does nothing visible and the second one goes through. A button that is
-      // still there after the first tap gets one more (on 1.14.5 and on desktop the first tap works, the button is gone, and nothing more happens).
-      if (window.app.isMobile && b.classList.contains("mod-destructive")) {
-        return new Promise((resolve) => window.setTimeout(() => { if (b.isConnected && !b.disabled) window.__tap(b); resolve(true); }, 600));
-      }
-      return true;
+      if (!window.app.isMobile) { b.click(); return { plain: true }; }
+      b.scrollIntoView({ block: "center" });
+      const r = b.getBoundingClientRect();
+      return { plain: false, x: r.x + r.width / 2, y: r.y + r.height / 2 };
     }, text), ms, `the window button “${text}”`);
-    return Boolean(ok);
+    if (!found) return false;
+    if (!found.plain) await page.mouse.click(found.x, found.y);
+    return true;
   };
   /** Flip the switch of the row named `name` in the open window; returns whether the row was found. */
   s.toggleInModal = (name) => page.evaluate((n) => {
