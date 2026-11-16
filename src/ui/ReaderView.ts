@@ -694,7 +694,7 @@ export class BlygReaderView extends ItemView {
 
   private drawFeedHeader(h: HTMLElement): void {
     const row = h.createDiv({ cls: "blyg-reader-bar" });
-    for (const [id, label] of [["stream", "Reading"], ["mentions", `Mentions${this.data ? ` (${this.data.mentions.length})` : ""}`]] as const) {
+    for (const [id, label] of [["stream", "Reading"], ["mentions", `Mentions${this.data ? ` (${visibleMentions(this.data.mentions).length})` : ""}`]] as const) {
       this.button(row, label, () => {
         this.tab = id;
         this.drawHeader();
