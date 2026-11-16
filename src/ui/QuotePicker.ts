@@ -41,7 +41,7 @@ export function promptForItem(app: App, items: PickerCandidate[], placeholder = 
  * Show the item's text as a reader sees it. Selecting a passage in the text box and tapping “Quote the selection” returns that
  * passage; “Quote the whole item” returns the whole. Closing the window returns null.
  */
-export function promptForQuote(app: App, item: Extract<Quotable, { ok: true }>): Promise<QuoteChoice | null> {
+export function promptForQuote(app: App, item: Extract<Quotable, { ok: true }>): Promise<QuoteChoice | "link" | null> {
   return new Promise((resolve) => new QuoteModal(app, item, resolve).open());
 }
 
@@ -55,7 +55,7 @@ class QuoteModal extends Modal {
   constructor(
     app: App,
     private readonly item: Extract<Quotable, { ok: true }>,
-    private readonly resolve: (choice: QuoteChoice | null) => void,
+    private readonly resolve: (choice: QuoteChoice | "link" | null) => void,
   ) {
     super(app);
   }
@@ -92,6 +92,8 @@ class QuoteModal extends Modal {
       this.finish({ kind: "passage", selected });
     }, "mod-cta");
     button("Quote the whole item", () => this.finish({ kind: "whole" }));
+    // Only a pointer to the item, no text of it: the same as "Insert link", reachable from the same window.
+    button("Link only", () => this.finish("link"));
     button("Cancel", () => this.finish(null));
   }
 
@@ -105,7 +107,7 @@ class QuoteModal extends Modal {
     return shown;
   }
 
-  private finish(choice: QuoteChoice | null): void {
+  private finish(choice: QuoteChoice | "link" | null): void {
     if (this.decided) return;
     this.decided = true;
     this.resolve(choice);

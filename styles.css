@@ -526,11 +526,14 @@
 .blyg-reader-controls { margin-top: var(--size-4-1); }
 .blyg-reader-spacer { flex: 1 1 auto; }
 /* the feed's status line and the Refresh button are one bar; the plugin's version sits at its end */
-.blyg-reader-statusrow { display: flex; align-items: center; gap: var(--size-4-2); margin-top: var(--size-4-1); padding: var(--size-2-1) var(--size-2-2) var(--size-2-1) var(--size-4-3); border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); background: var(--background-secondary); }
-.blyg-reader-statusrow .blyg-reader-status { flex: 1 1 auto; padding-top: 0; min-height: 0; }
+/* The feed's status row (increment 5b): no outlined box. A plain, centered Refresh button with the status as a small muted line under it. The text and the classes are unchanged. */
+.blyg-reader-statusrow { display: flex; flex-direction: column; align-items: center; gap: var(--size-2-1); margin-top: var(--size-4-1); padding: var(--size-2-1) 0; }
+.blyg-reader-statusrow .blyg-reader-refresh { order: -1; margin: 0; background: transparent; border: 0; box-shadow: none; color: var(--text-accent); font-weight: var(--font-medium); }
+.blyg-reader-statusrow .blyg-reader-refresh:hover { background: var(--background-modifier-hover); }
+.blyg-reader-statusrow .blyg-reader-version { order: 3; }
+.blyg-reader-statusrow .blyg-reader-status { flex: none; padding-top: 0; min-height: 0; text-align: center; }
 .blyg-reader-statusrow .blyg-reader-status:empty { display: block; }
 .blyg-reader-statusrow .blyg-reader-status:empty:not(.is-busy)::before { content: "Not checked yet"; color: var(--text-faint); }
-.blyg-reader-statusrow .blyg-reader-refresh { flex: none; margin-left: auto; }
 .blyg-reader-version { flex: none; color: var(--text-faint); font-size: var(--font-ui-smaller); white-space: nowrap; margin-left: var(--size-4-2); }
 /* this post's actions share a tray; "Browser" is quieter and sits apart */
 .blyg-reader-btngroup { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--size-4-1); padding: var(--size-2-1); border-radius: var(--radius-m); background: var(--background-secondary); }

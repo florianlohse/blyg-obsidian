@@ -744,16 +744,10 @@ export default class BlygPlugin extends Plugin {
       replyToItem: () => this.replyToItem(),
       makeReply: () => this.makeActiveThreadAReply(),
       takeHoppers: () => this.write(runTakeHoppers),
-      quoteInNewThread: () => this.quoteInNewThread(),
-      continueThread: () => Promise.resolve(this.continueThread()),
       makeThread: () => this.makeThread(),
-      insertQuote: () => {
+      insertItem: () => {
         const editor = this.activeEditor();
-        return editor ? this.insertQuote(editor) : Promise.resolve(void new Notice(TM.openAThread, 6000));
-      },
-      insertLink: () => {
-        const editor = this.activeEditor();
-        return editor ? this.insertItemLink(editor) : Promise.resolve(void new Notice(TM.openANote, 6000));
+        return editor ? this.insertItem(editor) : Promise.resolve(void new Notice(TM.openANote, 6000));
       },
       openReader: () => this.openReader(),
     };
@@ -1371,37 +1365,6 @@ export default class BlygPlugin extends Plugin {
     return f ? this.app.metadataCache.fileToLinktext(f, from, true) : file.path.replace(/\.md$/, "");
   }
 
-  /** "Quote in thread": a new thread that starts with a quote of the open Blyg note, ready to write. */
-  private async quoteInNewThread(): Promise<void> {
-    const file = this.app.workspace.getActiveFile();
-    const mode = file ? routeFor(this.settings.routes, file.path)?.mode : undefined;
-    if (!file || file.extension !== "md" || (mode !== "blyg" && mode !== "studio")) {
-      new Notice(TM.quotesNeedBlygFolder, 6000);
-      return;
-    }
-    await this.createNote("thread", `![[${this.linkTextOf(file, file.path)}]]\n\n`);
-  }
-
-  /**
-   * "Continue thread": the open thread, cursor at its end after a blank line, to keep writing. Publishing it again makes a new version
-   * of the same thread: that is how the protocol continues a thread (one item that grows, spec §5.2).
-   */
-  private continueThread(): void {
-    const editor = this.activeEditor();
-    const file = this.app.workspace.getActiveFile();
-    const kind = file ? obsidianVault(this.app).frontmatterValue(noteRefOf(file), "blyg_kind") : undefined;
-    if (!editor || kind !== "thread") {
-      new Notice(TM.openAThread, 6000);
-      return;
-    }
-    const last = editor.lastLine();
-    if (editor.getLine(last).trim() !== "") editor.replaceRange("\n\n", { line: last, ch: editor.getLine(last).length });
-    else if (last > 0 && editor.getLine(last - 1).trim() !== "") editor.replaceRange("\n", { line: last, ch: 0 });
-    const end = editor.lastLine();
-    editor.setCursor({ line: end, ch: editor.getLine(end).length });
-    editor.focus();
-  }
-
   /** The editor view the user was in: from the side panel the sidebar is the active view, so fall back to the most recent editor. */
   private activeMarkdownView(): MarkdownView | null {
     const recent = this.app.workspace.getMostRecentLeaf()?.view;
@@ -1457,6 +1420,17 @@ export default class BlygPlugin extends Plugin {
       )
     ).filter((e): e is PickerEntry => e !== null);
     return pickerCandidates(entries, { activePath, channel: activeChannel(this.settings) });
+  }
+
+  /**
+   * "Insert item…" (the panel): in a thread, pick an item and then quote it (the whole item or a passage) or only link to it; in a fragment,
+   * which cannot quote, pick an item and link to it. The palette keeps "Insert quote" and "Insert link to item" as they were.
+   */
+  private async insertItem(editor: Editor): Promise<void> {
+    const file = this.app.workspace.getActiveFile();
+    const kind = file ? obsidianVault(this.app).frontmatterValue(noteRefOf(file), "blyg_kind") : undefined;
+    if (kind === "thread") await this.insertQuote(editor);
+    else await this.insertItemLink(editor);
   }
 
   /** A plain link `[[id]]` to one of your published notes, at the cursor. The publish checks it and freezes its label. */
@@ -1521,6 +1495,11 @@ export default class BlygPlugin extends Plugin {
     }
     const choice = await promptForQuote(this.app, quotable);
     if (!choice) return;
+    if (choice === "link") {
+      editor.replaceSelection(`[[${this.linkTextOf(picked, file.path)}]]`);
+      new Notice(TM.linkInserted, 5000);
+      return;
+    }
     const block = quoteBlock(this.linkTextOf(picked, file.path), choice);
     if (!block.ok) {
       new Notice(block.reason === "cannot" ? TM.cannotQuote : TM.selectFirst, 8000);
@@ -1637,6 +1616,11 @@ export default class BlygPlugin extends Plugin {
     }
     const choice = await promptForQuote(this.app, quotable);
     if (!choice) return;
+    if (choice === "link") {
+      editor.replaceSelection(`[[${writtenRef(picked, picked.path ? this.linkTextOf({ path: picked.path }, file.path) : "")}]]`);
+      new Notice(TM.studioLinkInserted, 5000);
+      return;
+    }
     const block = quoteBlockOf(writtenRef(picked, picked.path ? this.linkTextOf({ path: picked.path }, file.path) : ""), choice);
     if (!block.ok) {
       new Notice(block.reason === "cannot" ? TM.cannotQuote : TM.selectFirst, 8000);

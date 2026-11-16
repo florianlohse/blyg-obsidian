@@ -25,7 +25,11 @@ it and publish again; that is a new version of the same thread (the protocol's o
 
 ## The side panel's writing buttons
 
-Open the panel (paper-plane icon "Open blyg publisher", or command "Blyg: Open panel"). The panel is organised by what you want to do. Under the status line (and the note's next step, e.g. **Review update**) stands **Start writing**, always in sight; three folded sections follow. Tap a section's title to open it; it stays open while you work.
+Open the panel (paper-plane icon "Open blyg publisher", or command "Blyg: Open panel"). The panel is organised by what you want to do.
+
+**Top** (with a Studio): **Open reader** and **Import from Studio…**, the two things that belong to the whole Studio, not to the open note.
+
+**The status card** says where the open note stands. The one button you may need is inside it, and only when there is something to do: **Publish…** (not sent yet), **Publish update…** (you changed the note, or it was changed in the Studio), **Publish again…** (withdrawn), **Send draft…** (a "Drafts only" folder). Each opens a preview window first; only that window's own button sends. A published, unchanged note has no button: the green line is all there is. **Open on web** and, when the note's hoppers differ from the Studio's, **Use the Studio's hoppers** sit here too.
 
 **Start writing**
 
@@ -33,24 +37,20 @@ Open the panel (paper-plane icon "Open blyg publisher", or command "Blyg: Open p
 |---|---|---|
 | **New fragment** | a new fragment in your Blyg folder, cursor ready | always |
 | **New thread** | a new thread note in your Blyg folder, cursor ready | always |
-| **New reply thread…** | a new thread that answers an item you pick or paste (a Studio is set up) | a Studio is set up |
-| **Open reader** | opens the reader | a Studio is set up |
+| **Reply to item…** | a new thread that answers an item you pick or paste (yours, or one of a blyg you read): it starts with a quote of it and declares the answer (the "stub", `blyg_stub_of`) | a Studio is set up |
 
 **Work on this note** (folded; only for a note in a Blyg folder)
 
 | Button | Does | Live when |
 |---|---|---|
-| **Quote in new thread** | a new thread that starts with a quote of the open note, cursor ready | a Blyg note is open |
-| **Continue thread** | puts the cursor at the end of the open thread, after a blank line | a thread is open |
+| **Insert item…** | pick an item. In a thread you then choose to quote it (the whole item, or a passage you select) or to link to it only; in a fragment (which cannot quote) it inserts a link | a Blyg note is open |
 | **Make thread** | turns the open fragment into a thread (property `blyg_kind: thread`); an automatic name "Fragment …" becomes "Thread …" (a name you chose stays) | a fragment that has **never been sent to the Studio** |
-| **Set reply target…** | marks an unpublished thread as a reply to an item you pick or paste | an unpublished Studio thread |
-| **Insert quote** | choose one of your published notes and quote it (whole or a passage) at the cursor | a thread is open |
-| **Insert link** | a link to one of your published notes at the cursor | a Blyg note is open |
+| **Mark as reply to…** | declares an unpublished thread to be a reply to an item you pick or paste | an unpublished Studio thread |
 
-**Manage** / **Manage Studio** (folded): Withdraw, Delete draft, Hoppers…, Use the Studio's hoppers, Open on web, and Import from Studio. **Details** (folded): the facts about the note (id, version, quotes, hoppers, mentions, dates, link).
+**Withdraw** / **Delete draft** are in a folded section of their own, away from the status. **Details** (folded) holds the facts about the note (id, version, quotes, hoppers with **Hoppers…** to change them, mentions, dates, link).
 
 Outside your Blyg folders the panel shows only the status information, Start writing and Details; the buttons that act on a Blyg note appear
-only when one is open, and are grayed out (clearly faint) where they do not apply, e.g. Continue thread on a fragment. (The same actions are in the command palette: "Blyg: New
+only when one is open. (The same actions are in the command palette: "Blyg: New
 thread", "New fragment", "Insert quote", "Insert link to item", "Make this note a thread".)
 
 ### Templates for new items
@@ -119,11 +119,11 @@ to a **Blyg note** is an item link.
 
 ## Publishing
 
-Before you tap Review publication, the **panel already tells you** what the plugin would refuse, in one line: an empty note, a fragment over its limit ("Too long for
+Before you tap Publish…, the **panel already tells you** what the plugin would refuse, in one line: an empty note, a fragment over its limit ("Too long for
 a fragment: 1,254 characters, the limit is 1,000. Shorten it, or make it a thread."), links the site cannot honour, an embed the site cannot show, a
 quoted item that is not published yet, a fragment that quotes. The panel's main button is then switched off until it is fixed.
 
-Panel → **Review publication** (or **Review update**). The window lists *Quotes in this thread* (whole or passage, which note, which version, new / moved /
+Panel → **Publish…** (or **Publish update…**). The window lists *Quotes in this thread* (whole or passage, which note, which version, new / moved /
 unchanged) and *Links to other items*, then the text changes. **Commit** writes it. The panel then watches the deploy.
 
 **When a quoted note changes:** the thread keeps the old copy until you tap **Update**. Then the window says "moves from v1 to v2",

@@ -23,7 +23,7 @@ await runScenario({ data }, async (s) => {
     check(await s.openNote(path), `${layout}: the panel follows the new note`);
 
     // publish for real (to the local Studio)
-    check(await s.clickPanel("Review publication"), `${layout}: the panel offers “Review publication”`);
+    check(await s.clickPanel("Publish…"), `${layout}: the panel offers “Publish…”`);
     check(await s.waitModal(/^Publish (fragment|thread)\?$/), `${layout}: the window is titled “Publish fragment?”`);
     check(/goes live at once/.test(await s.modalText()), `${layout}: the window says it goes live at once`);
     await s.clearNotices();
@@ -40,7 +40,7 @@ await runScenario({ data }, async (s) => {
     await append(path, "Added in the note.");
     await s.becomes(async () => (await s.panelHeadline()) !== "", 5000, "the panel");
     await wait(1000);
-    check(await s.clickPanel("Review update"), `${layout}: the panel offers “Review update”`);
+    check(await s.clickPanel("Publish update…"), `${layout}: the panel offers “Publish update…”`);
     check(await s.waitModal("Compare copies"), `${layout}: the comparison window opens`);
     const conflict = await s.modalText();
     check(conflict.includes("Typed") && conflict.includes("Added"), `${layout}: the window shows both texts`);
@@ -52,7 +52,7 @@ await runScenario({ data }, async (s) => {
     check(kept.json?.contentMd === "Typed in the Studio.", `${layout}: the Studio still holds what was typed there`);
     check((await body(path)).includes("Added in the note."), `${layout}: the note still holds its own text`);
 
-    check(await s.clickPanel("Review update"), `${layout}: Review update again`);
+    check(await s.clickPanel("Publish update…"), `${layout}: Publish update… again`);
     check(await s.waitModal("Compare copies"), `${layout}: the window opens again`);
     await s.clearNotices();
     await s.clickModal("Replace Studio copy from note");
@@ -95,7 +95,7 @@ await runScenario({ data }, async (s) => {
     check(gone.json?.status === "withdrawn", `${layout}: the Studio shows the item as withdrawn (${gone.json?.status})`);
     check(Boolean(await s.stamped(path, "blyg_withdrawn")), `${layout}: the note carries blyg_withdrawn`);
     check(Boolean(await s.becomes(async () => /withdrawn/i.test(await s.panelText()), 15000, "the panel")), `${layout}: the panel says it is withdrawn`);
-    check(await s.clickPanel("Review republication"), `${layout}: the panel offers “Review republication”`);
+    check(await s.clickPanel("Publish again…"), `${layout}: the panel offers “Publish again…”`);
     check(await s.waitModal("Publish update?"), `${layout}: the window offers a new version`);
     await s.clearNotices();
     await s.clickModal("Publish update");
@@ -109,11 +109,11 @@ await runScenario({ data }, async (s) => {
     check(await s.openNote(thread), `${layout}: the panel follows the thread`);
     const refused = await s.becomes(async () => /directly under a quote/.test(await s.panelText()), 15000, "the refusal in the panel");
     check(Boolean(refused), `${layout}: the panel says a line directly under a partial quote is refused`);
-    check((await s.panelButtons()).find((b) => b.text === "Review publication")?.disabled === true, `${layout}: ... and Review publication is held back`);
+    check((await s.panelButtons()).find((b) => b.text === "Publish…")?.disabled === true, `${layout}: ... and Publish… is held back`);
     check(!(await s.modalOpen()) && !(await s.frontmatter(thread))?.blyg_id, `${layout}: ... nothing was sent (no window, no blyg_id)`);
     await s.writeNote(thread, `---\nblyg_kind: thread\n---\nOpening.\n\n![[${id}]]\n> Rewritten in the Studio\n\nand a line of my own, after a blank line\n`);
     await s.refreshPanel(thread);
-    check(await s.clickPanel("Review publication"), `${layout}: with the blank line Publish is enabled`);
+    check(await s.clickPanel("Publish…"), `${layout}: with the blank line Publish is enabled`);
     check(await s.waitModal(/^Publish (fragment|thread)\?$/), `${layout}: ... and the window opens`);
     check(/Quotes in this thread/.test(await s.modalText()), `${layout}: ... and lists the quote`);
     await s.clickModal("Cancel");
