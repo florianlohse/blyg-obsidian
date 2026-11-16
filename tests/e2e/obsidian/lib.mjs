@@ -232,10 +232,10 @@ export async function launch({ data = fixtureData(), withDev = false } = {}) {
 
   /**
    * Make the panel ask the Studio again. The panel caches what the Studio says for 30 s (asked again every 15 s); coming back to the app forgets
-   * the cache at once (`visibilitychange` on `activeDocument`, src/main.ts; in the driven page that is not `document`): that is what a person does, and what this does.
+   * the cache at once (`visibilitychange` on `document`, src/main.ts): that is what a person does, and what this does.
    */
   s.refreshPanel = async (path) => {
-    await page.evaluate(() => activeDocument.dispatchEvent(new Event("visibilitychange")));
+    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
     await wait(800);
     return s.openNote(path);
   };

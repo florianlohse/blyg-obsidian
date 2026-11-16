@@ -828,8 +828,10 @@ export default class BlygPlugin extends Plugin {
           if (this.panelVisible()) for (const id of this.studioFacts.expired()) this.studioFacts.request(id, () => this.refreshPanels());
         }, DATA_LOOK_MS),
       );
-      this.registerDomEvent(activeDocument, "visibilitychange", () => {
-        if (activeDocument.visibilityState !== "visible") return;
+      // The main window's own document (the workspace's), not "whichever window is active": coming back to the app fires the event there.
+      const mainDoc = this.app.workspace.containerEl.ownerDocument;
+      this.registerDomEvent(mainDoc, "visibilitychange", () => {
+        if (mainDoc.visibilityState !== "visible") return;
         // Back from another app (the Studio's own editor, say): whatever it said before may be out of date.
         this.studioFacts.invalidate();
         watch.returned();
