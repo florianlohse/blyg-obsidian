@@ -162,7 +162,6 @@ export class BlygReaderView extends ItemView {
   }
 
   override async onOpen(): Promise<void> {
-    this.loadMine();
     this.registerInterval(window.setInterval(() => {
       if (this.checkedAt !== null && this.status.includes(" · checked ")) this.setStatus(this.checkedText());
     }, 20_000));
@@ -171,23 +170,34 @@ export class BlygReaderView extends ItemView {
     this.registerEvent(this.app.workspace.on("layout-change", () => this.clearBottom()));
     this.registerDomEvent(activeWindow, "resize", () => this.clearBottom());
     this.draw();
-    // The list saved by the last session shows at once; the Studio is asked behind it.
-    const saved = await this.host.readCache().catch(() => null);
-    if (saved && this.data === null) {
-      this.data = { posts: saved.posts, mentions: saved.mentions, note: "", studioOrigin: saved.studioOrigin, fromCache: true };
-      this.setStatus("Showing the list saved last time · updating…");
-      this.draw();
-      this.busy(+1);
-      try {
-        // The saved list may be hours old and read marks may have changed elsewhere: this one walk reads the whole window, behind the list already on screen.
-        await this.reload(true, { walk: "full", mentions: true });
-      } finally {
-        this.busy(-1);
+    // Obsidian waits for a view to finish opening before it finishes restoring the layout, so a reader tab left open would hold up the start of the whole app
+    // for as long as the Studio takes to answer. Opening ends here, with the empty shell; the disk and the network are used after the layout is ready.
+    this.app.workspace.onLayoutReady(() => void this.start());
+  }
+
+  /** What follows the opening: the owner's own items, the list saved by the last session, then the Studio behind it. Never throws: a failure is a status line. */
+  private async start(): Promise<void> {
+    try {
+      this.loadMine();
+      const saved = await this.host.readCache().catch(() => null);
+      if (saved && this.data === null) {
+        this.data = { posts: saved.posts, mentions: saved.mentions, note: "", studioOrigin: saved.studioOrigin, fromCache: true };
+        this.setStatus("Showing the list saved last time · updating…");
+        this.draw();
+        this.busy(+1);
+        try {
+          // The saved list may be hours old and read marks may have changed elsewhere: this one walk reads the whole window, behind the list already on screen.
+          await this.reload(true, { walk: "full", mentions: true });
+        } finally {
+          this.busy(-1);
+        }
+        if (this.status.startsWith("Showing the list saved")) this.setStatus(this.data?.note ?? "");
+        return;
       }
-      if (this.status.startsWith("Showing the list saved")) this.setStatus(this.data?.note ?? "");
-      return;
+      await this.reload();
+    } catch {
+      this.setStatus("The reader could not start. Press Refresh to try again.");
     }
-    await this.reload();
   }
 
   override async onClose(): Promise<void> {

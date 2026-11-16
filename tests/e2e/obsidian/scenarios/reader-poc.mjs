@@ -630,6 +630,35 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await closeReader();
   }
 
+  /**
+   * Starting Obsidian with a reader tab open: Obsidian waits for a view to finish opening before it finishes restoring the layout, so opening must not wait
+   * for the Studio. With a Studio that answers after 6 seconds, the view is open at once, shows its saved list or "Loading", and the answer arrives behind it.
+   */
+  async function opensQuickly() {
+    await page.evaluate(() => {
+      const b = window.app.plugins.plugins.blyg;
+      if (!b.__origHost) b.__origHost = b.readerHost.bind(b);
+      b.readerHost = () => {
+        const h = b.__origHost();
+        const load = h.load.bind(h);
+        h.load = async (...a) => { await new Promise((r) => setTimeout(r, 6000)); return load(...a); };
+        return h;
+      };
+    });
+    const ms = await page.evaluate(async () => {
+      const t0 = performance.now();
+      const leaf = window.app.workspace.getLeaf("tab");
+      await leaf.setViewState({ type: "blyg-reader", active: true });
+      return Math.round(performance.now() - t0);
+    });
+    check(ms < 2500, `opening: the reader view is open in ${ms} ms although the Studio answers only after 6 s (Obsidian waits for this when it restores the layout)`);
+    check(await page.evaluate(() => !!document.querySelector(".blyg-reader-header")), "opening: the header is there at once");
+    await page.waitForSelector(".blyg-reader-card", { timeout: 20000 });
+    check(true, "opening: and the list arrives behind it");
+    await page.evaluate(() => { const b = window.app.plugins.plugins.blyg; if (b.__origHost) { b.readerHost = b.__origHost; delete b.__origHost; } });
+    await closeReader();
+  }
+
   /** Reading less: opening asks nothing of the blygs, Refresh reads the list once, the list is saved for the next session and shows at once, and a failing Studio is left alone. */
   async function economy(layout) {
     await page.evaluate(() => {
@@ -790,6 +819,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
   await ribbon();
   await freshness();
   await economy("desktop");
+  await opensQuickly();
   await markup();
   await bypasses();
   await images();
