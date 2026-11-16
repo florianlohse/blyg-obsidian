@@ -556,7 +556,8 @@
 .blyg-reader-back::before { content: "‹\00a0"; font-size: 1.3em; line-height: 1; }
 
 /* Between two posts: the text fades and "Marked read" shows for a moment. */
-.blyg-reader-bodywrap.is-leaving .blyg-reader-surface .blyg-reader-column, .blyg-reader-bodywrap.is-leaving .blyg-reader-done { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%) scale(0.96); padding: var(--size-4-3) var(--size-4-6); border-radius: var(--radius-l); background: var(--background-secondary); color: var(--text-normal); border: 1px solid var(--background-modifier-border); box-shadow: var(--shadow-s); font-size: var(--font-ui-large); opacity: 0; transition: opacity 0.22s ease, transform 0.22s ease; pointer-events: none; }
+.blyg-reader-bodywrap.is-leaving .blyg-reader-surface .blyg-reader-column { opacity: 0.12; transition: opacity 0.3s ease; }
+.blyg-reader-done { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%) scale(0.96); padding: var(--size-4-3) var(--size-4-6); border-radius: var(--radius-l); background: var(--background-secondary); color: var(--text-normal); border: 1px solid var(--background-modifier-border); box-shadow: var(--shadow-s); font-size: var(--font-ui-large); opacity: 0; transition: opacity 0.22s ease, transform 0.22s ease; pointer-events: none; }
 .blyg-reader-done.is-in { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 @media (prefers-reduced-motion: reduce) { .blyg-reader-done, .blyg-reader-surface .blyg-reader-column { transition: none; } }
 
