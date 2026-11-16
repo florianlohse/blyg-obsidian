@@ -1,4 +1,4 @@
-// P6 slice D (docs/plans/P6-ui-regression.md): "Insert item…" (quote) in real Obsidian, desktop and phone layout: the picker, the quote window (the whole item,
+// P6 slice D (docs/plans/P6-ui-regression.md): "Insert quote or link…" (quote) in real Obsidian, desktop and phone layout: the picker, the quote window (the whole item,
 // a passage), a pasted address, an item of a blyg the Studio reads, and the hint on a fragment. Replaces by a machine what T1 R3/R4 and the quote
 // part of S4 do by hand. The item of the other blyg needs `WITH_REMOTE=1 scripts/local-studio.sh start` (without it that part says so and is left out).
 //
@@ -30,7 +30,7 @@ await runScenario({ data }, async (s) => {
     await s.cursorToEnd(path);
 
     // the whole item
-    check(await s.clickPanel("Insert item…"), `${layout}: the panel offers “Insert item…”`);
+    check(await s.clickPanel("Insert quote or link…"), `${layout}: the panel offers “Insert quote or link…”`);
     check(Boolean(await s.becomes(() => s.pickerOpen(), 10000, "the picker")), `${layout}: the picker opens`);
     await s.typeInPicker(`Quotable source ${stamp}`);
     check(await s.pickerHas(`Quotable source ${stamp}`), `${layout}: typing the item's words lists it (${(await s.pickerItems())[0]?.slice(0, 60) ?? "nothing"})`);
@@ -48,7 +48,7 @@ await runScenario({ data }, async (s) => {
 
     // a passage
     await s.cursorToEnd(path);
-    check(await s.clickPanel("Insert item…"), `${layout}: Insert quote again`);
+    check(await s.clickPanel("Insert quote or link…"), `${layout}: Insert quote again`);
     await s.becomes(() => s.pickerOpen(), 10000, "the picker");
     await s.typeInPicker(`Quotable source ${stamp}`);
     await s.pickerHas(`Quotable source ${stamp}`);
@@ -64,7 +64,7 @@ await runScenario({ data }, async (s) => {
     // a pasted address (R4): the item's public address finds it; an address that is not an item says so
     await s.cursorToEnd(path);
     const before = await s.editorText(path);
-    check(await s.clickPanel("Insert item…"), `${layout}: Insert quote for an address`);
+    check(await s.clickPanel("Insert quote or link…"), `${layout}: Insert quote for an address`);
     await s.becomes(() => s.pickerOpen(), 10000, "the picker");
     await s.typeInPicker(`${STUDIO}/f/${ownId}/`);
     check(await s.pickerHas(`Quotable source ${stamp}`), `${layout}: the item's own address finds the item`);
@@ -80,7 +80,7 @@ await runScenario({ data }, async (s) => {
     if (imported) {
       const words = "remote fragment";
       const sentence = "It has a quotable sentence.";
-      check(await s.clickPanel("Insert item…"), `${layout}: Insert quote for another blyg's item`);
+      check(await s.clickPanel("Insert quote or link…"), `${layout}: Insert quote for another blyg's item`);
       await s.becomes(() => s.pickerOpen(), 10000, "the picker");
       await s.typeInPicker(words);
       check(await s.pickerHas("Blog B"), `${layout}: the words find the item of the blyg you read (marked with its name)`);
@@ -99,11 +99,11 @@ await runScenario({ data }, async (s) => {
       await s.modalClosed();
     }
 
-    // a fragment cannot quote: "Insert item…" stays live (it links) and the panel has no "works in threads only" hint any more
+    // a fragment cannot quote: "Insert quote or link…" stays live (it links) and the panel has no "works in threads only" hint any more
     const frag = `Publish/Quote fragment ${tag}.md`;
     await s.createNote(frag, "Just a fragment.");
     check(await s.openNote(frag), `${layout}: the panel follows a fragment`);
-    check((await s.panelButtons()).find((b) => b.text === "Insert item…")?.disabled === false, `${layout}: “Insert item…” is live on a fragment`);
+    check((await s.panelButtons()).find((b) => b.text === "Insert quote or link…")?.disabled === false, `${layout}: “Insert quote or link…” is live on a fragment`);
     check(!(await s.panelText()).includes("works in threads only"), `${layout}: ... and the panel has no grey-button hint`);
   }
 

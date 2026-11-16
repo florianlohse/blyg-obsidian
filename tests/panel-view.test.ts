@@ -392,10 +392,10 @@ describe("BlygPanelView", () => {
     expect(down.texts).not.toContain("Mentions");
   });
 
-  it("Insert item… is live in a thread and in a fragment (a fragment can only link), and the old grey-button hint is gone", async () => {
+  it("Insert quote or link… is live in a thread and in a fragment (a fragment can only link), and the old grey-button hint is gone", async () => {
     for (const fm of [{}, { kind: "thread" }, { blyg_id: ID, id: ID, version: 1, hash: "sha256:a" }]) {
       const m = await mount(stateOf(fm));
-      expect(m.button("Insert item…")?.disabled).toBe(false);
+      expect(m.button("Insert quote or link…")?.disabled).toBe(false);
       expect(m.texts.some((t) => /works in threads only/.test(t))).toBe(false);
       expect(m.button("Insert quote")).toBeUndefined();
       expect(m.button("Insert link")).toBeUndefined();
@@ -436,7 +436,7 @@ describe("BlygPanelView", () => {
     expect(texts.some((t) => /30 days.*each device/.test(t))).toBe(true);
     expect(button("New fragment")?.disabled).toBe(false); // writing locally still works
     expect(button("New thread")?.disabled).toBe(false);
-    for (const gone of ["Publish…", "Send draft…", "Withdraw", "Hoppers…", "Hoppers...", "Open on web", "Insert item…", "Import from Studio…", "Reply to item…", "Open reader"]) expect(button(gone), gone).toBeUndefined();
+    for (const gone of ["Publish…", "Send draft…", "Withdraw", "Hoppers…", "Hoppers...", "Open on web", "Insert quote or link…", "Import from Studio…", "Reply to item…", "Open reader"]) expect(button(gone), gone).toBeUndefined();
     expect(els.some((e) => e.cls.has("blyg-pane-decision"))).toBe(false);
   });
 
@@ -509,14 +509,14 @@ describe("BlygPanelView", () => {
 });
 
 describe("the writing buttons", () => {
-  const WRITE = ["New thread", "New fragment", "Insert item…", "Make thread"];
+  const WRITE = ["New thread", "New fragment", "Insert quote or link…", "Make thread"];
   const noteState = (path: string, fm: Record<string, unknown>, ext = "md") =>
     computePanelState({ settings: settings(), note: { path, name: path.split("/").pop() ?? path, extension: ext }, frontmatter: fm, localHash: "sha256:a" });
 
   it("with no note open: only New thread and New fragment are drawn, and no Publish row", async () => {
     const { button, els } = await mount(computePanelState({ settings: settings(), note: null, frontmatter: {}, localHash: null }));
     expect(WRITE.map((t) => [t, button(t)?.disabled])).toEqual([
-      ["New thread", false], ["New fragment", false], ["Insert item…", undefined], ["Make thread", undefined],
+      ["New thread", false], ["New fragment", false], ["Insert quote or link…", undefined], ["Make thread", undefined],
     ]);
     expect(["Publish…", "Publish update…", "Withdraw", "Open on web"].map((t) => button(t))).toEqual([undefined, undefined, undefined, undefined]);
     expect(els.some((e) => e.cls.has("blyg-pane-buttons") && e.text === "Publish…")).toBe(false);
@@ -565,7 +565,7 @@ describe("the writing buttons", () => {
 
   it("each button runs its own action", async () => {
     const actions: Record<string, string> = {
-      "New thread": "newThread", "New fragment": "newNote", "Insert item…": "insertItem",
+      "New thread": "newThread", "New fragment": "newNote", "Insert quote or link…": "insertItem",
     };
     for (const [label, call] of Object.entries(actions)) {
       const { button, calls } = await mount(noteState("website/blyg/N.md", { kind: "thread" }));
