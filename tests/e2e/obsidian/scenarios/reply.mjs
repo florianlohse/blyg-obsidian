@@ -46,11 +46,11 @@ await runScenario({ data }, async (s) => {
       check(Boolean(fm) && fm.id === ownId && fm.version === 1 && typeof fm.origin === "string", `${layout}: blyg_stub_of holds origin, id and version of the item (${JSON.stringify(fm)})`);
       check((await s.frontmatter(reply))?.blyg_kind === "thread", `${layout}: the note is a thread`);
       check((await s.editorText(reply)).includes(`![[${ownId}`), `${layout}: it holds a quote of the item`);
-      // Your words come first: the cursor is on the first blank line over the quote, and there are no blank lines above that line.
-      const place = await s.page.evaluate((p) => { const ed = window.app.workspace.getLeavesOfType("markdown").find((l) => l.view.file?.path === p)?.view.editor; const lines = ed.getValue().split("\n"); return { cursor: ed.getCursor().line, quote: lines.findIndex((l) => l.startsWith("![[")), lines }; }, reply);
-      check(place.quote - place.cursor === 2 && place.lines[place.cursor] === "" && place.lines[place.cursor + 1] === "", `${layout}: the cursor starts above the quote, with a blank line between (cursor line ${place.cursor}, quote line ${place.quote})`);
+      // The quote comes first, right under the properties (no blank line between them), and the cursor is below it, after one blank line.
+      const place = await s.page.evaluate((p) => { const ed = window.app.workspace.getLeavesOfType("markdown").find((l) => l.view.file?.path === p)?.view.editor; const lines = ed.getValue().split("\n"); return { cursor: ed.getCursor().line, last: ed.lastLine(), quote: lines.findIndex((l) => l.startsWith("![[")), lines }; }, reply);
       const fenceEnd = place.lines.findIndex((l, i) => i > 0 && l === "---");
-      check(place.cursor === fenceEnd + 1, `${layout}: the cursor is on the first line under the properties, no blank line before it (cursor line ${place.cursor}, properties end at ${fenceEnd})`);
+      check(place.quote === fenceEnd + 1, `${layout}: the quote starts right under the properties, no blank line between (quote line ${place.quote}, properties end at ${fenceEnd})`);
+      check(place.cursor === place.last && place.cursor - place.quote === 2 && place.lines[place.quote + 1] === "", `${layout}: the cursor starts below the quote, after one blank line (cursor line ${place.cursor}, quote line ${place.quote})`);
       await s.openNote(reply);
       check(Boolean(await s.becomes(async () => /^a reply to /.test((await s.panelFacts()).Stub ?? ""), 15000, "the Stub row")), `${layout}: the panel's Stub row says “a reply to …” (${(await s.panelFacts()).Stub ?? "no row"})`);
     }

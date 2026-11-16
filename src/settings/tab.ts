@@ -184,12 +184,6 @@ export class BlygSettingTab extends PluginSettingTab {
           "templates.thread",
           "Templates/Thread.md",
         ),
-        {
-          name: "Write a reply above the quote",
-          desc: "A reply starts with your cursor above the quote of the item you answer, so your words come first and the newest thing reads on top (as in a feed, and in a preview of the note). Turn it off to start under the quote. The protocol leaves the order to you.",
-          aliases: ["reply", "quote", "cursor", "order"],
-          control: { type: "toggle", key: "respond.writeAbove", defaultValue: true },
-        },
       ],
     });
 
@@ -217,25 +211,19 @@ export class BlygSettingTab extends PluginSettingTab {
       items: [
         {
           name: "Images in posts you read",
-          desc: "For posts shown as text (see “Open posts as”). A post can carry images from its author's server, or from any server the author chose. Loading one tells that server that you read the post, and when. “Load on click” shows each image as a button and loads it only when you tap it; “Always load” draws images with the post. The list of posts never loads images, and frames and scripts in a post are never loaded.",
+          desc: "A post can carry images from its author's server, or from any server the author chose. Loading one tells that server that you read the post, and when. “Load on click” shows each image as a button and loads it only when you tap it; “Always load” draws images with the post. The list of posts never loads images, and frames and scripts in a post are never loaded.",
           aliases: ["reader", "images", "privacy", "tracking"],
           control: { type: "dropdown", key: "readerPane.images", options: { click: "Load on click", always: "Always load" } },
         },
         {
-          name: "Open posts as",
-          desc: "“Web page” shows the post as its author's blyg shows it on the web, inside Obsidian, without the blyg's menus and header (scripts are not run; the post, its stylesheet and its images load as a visit would; “Open in browser” shows the whole page). “Text” draws only the post's text here, and images follow the setting above. A blyg that does not allow its pages inside other apps is always shown as text.",
-          aliases: ["reader", "web view", "page"],
-          control: { type: "dropdown", key: "readerPane.view", options: { web: "Web page", text: "Text" } },
-        },
-        {
           name: "Font for posts",
-          desc: "The font of a post in the reader's text view (not of the buttons and lists). The web page view always keeps the blyg's own type. “As Obsidian has it” leaves the text view in Obsidian's. The others are fonts your device already has; none is downloaded.",
+          desc: "The font of a post in the reader's text view (not of the buttons and lists). “As Obsidian has it” leaves the text view in Obsidian's. The others are fonts your device already has; none is downloaded.",
           aliases: ["reader", "typeface", "serif", "reading font"],
           control: { type: "dropdown", key: "readerPane.font", options: { default: "As Obsidian has it", serif: "Serif", sans: "Sans-serif", mono: "Monospace" } },
         },
         {
           name: "Contrast of the reading surface",
-          desc: "How strongly a post stands out from its background in the reader's text view: reduced (softer, for dim rooms), normal, or high. Only the text view has this reading surface; the web page view is never changed by a setting.",
+          desc: "How strongly a post stands out from its background in the reader: reduced (softer, for dim rooms), normal, or high.",
           aliases: ["reader", "contrast", "reading surface", "dark", "light"],
           control: { type: "dropdown", key: "readerPane.contrast", options: { reduced: "Reduced", normal: "Normal", high: "High" } },
         },

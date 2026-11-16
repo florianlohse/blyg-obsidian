@@ -10,19 +10,12 @@ import { normalizeSelection } from "../core/textContent";
 export const NEW_THREAD_TEXT = "---\nblyg_kind: thread\n---\n";
 
 /**
- * What a reply starts with, after the properties: the quote of the item it answers. The protocol leaves the order to the author (spec 0.4 §10.6: "the body
- * is the author's"; the reference client starts with the quote, and the page shows an "In response to" citation above the body either way). With
- * `above` the author's words come first, the newest on top, like a feed reads: two blank lines, then the quote, so the cursor can start on the first.
+ * What a reply starts with, after the properties: the quote of the item it answers, then a blank line, and the cursor under it. The protocol leaves the
+ * order to the author (spec 0.4 §10.6: "the body is the author's"); the quote first is the reference client's order, and the page shows an "In response to"
+ * citation above the body either way.
  */
-export function replyBody(ref: string, above: boolean): string {
-  return above ? `\n\n![[${ref}]]\n` : `![[${ref}]]\n\n`;
-}
-
-/** The line to put the cursor on in a reply written above its quote: the first blank line over the quote (0-based), or null when there is no quote line. */
-export function cursorLineAboveQuote(lines: string[]): number | null {
-  const at = lines.findIndex((l) => /^\s*!\[\[/.test(l));
-  if (at < 0) return null;
-  return Math.max(0, (lines[at - 2] ?? "x").trim() === "" ? at - 2 : at - 1);
+export function replyBody(ref: string): string {
+  return `![[${ref}]]\n\n`;
 }
 
 const two = (n: number): string => String(n).padStart(2, "0");

@@ -1,6 +1,6 @@
 // S15, the reader pane: a feed of the posts of the blygs the owner reads, a mentions list, one post at a time, and the hand-offs a reader needs (reply in
 // Obsidian, open in the browser, mark read). Drawing only; what it asks of the plugin is `ReaderHost`. Foreign markup goes through defang.ts and
-// `sanitizeHTMLToDom` only; a post's web page is shown by trimmedPage.ts in a frame without scripts and without an origin.
+// `sanitizeHTMLToDom` only. A post is always shown as text; "Browser" opens its page outside Obsidian.
 //
 // Layout: a header that never scrolls away (tabs and controls, or the post's buttons and its blyg, author and read state, then one status line) above a
 // body that scrolls by itself. Read state changes at once, in place, and is put back if the Studio refuses.
@@ -8,13 +8,12 @@ import { ItemView, sanitizeHTMLToDom, setIcon, type WorkspaceLeaf } from "obsidi
 import { isUnread, type InboundMention, type ReadingPost } from "../studio/reading";
 import { plainText, renderForeign, type ImageMode } from "./defang";
 import { activeFilters, arrange, cardOf, DEFAULT_FILTER, frameable, LENGTH_LABELS, nextInOrder, postOfQuote, pullProgress, readingTimeLabel, relativeTime, SORT_LABELS, sourcesOf, type FeedFilter, type FeedLength, type FeedSort } from "./readerFeed";
-import { FONT_LABELS, isReaderFont, type ReaderFont } from "./readerFonts";
-import { CONTRAST_LABELS, CONTRASTS, isReaderContrast, type ReaderContrast } from "./readerLook";
+import { type ReaderFont } from "./readerFonts";
+import { CONTRASTS, type ReaderContrast } from "./readerLook";
 import { responseChip, responseIndex, type ResponseEntry } from "./readerResponses";
 import { changedCount, chooseWalk, knownOf, mergeFresh, READER_KEEP, type SyncMemory } from "./readerSync";
 import type { StudioListedItem } from "../studio/types";
 import { limiter, mentionLead, postOfMention, visibleMentions } from "./readerMentions";
-import { frameUrlFor, READER_FRAME_SANDBOX } from "./trimmedPage";
 
 export const BLYG_READER_VIEW = "blyg-reader";
 
@@ -44,8 +43,6 @@ export interface ChangeMarks {
   subscriptions: number;
 }
 
-export type PreparedPage = { kind: "trimmed"; doc: string } | { kind: "full" } | { kind: "forbidden" } | { kind: "unreachable" };
-
 export interface ReaderHost {
   /** The plugin's own version, shown at the foot of the feed so you can tell which build a device runs. */
   version: string;
@@ -61,6 +58,8 @@ export interface ReaderHost {
   openWeb(url: string): void;
   /** Start a reply thread to this post (the same path as "Reply to an item"). */
   replyTo(post: ReadingPost): Promise<void>;
+  /** Hide a mention in the Studio (it is hidden there too, for every client). Needs the token permission `owner:manage`; the message says so when it is missing. */
+  hideMention(m: InboundMention): Promise<ReadResult>;
   /** Mark this version read, or unread again. Needs the token permission `reading:state`; the message says so when it is missing. */
   /** The text of what a mention is about, as a post to open: from the list when the Studio reads that blyg, else a peek at it. Null when it cannot be had. */
   mentionPost(m: InboundMention, posts: ReadingPost[]): Promise<ReadingPost | null>;
@@ -78,9 +77,7 @@ export interface ReaderHost {
   markUnread(post: ReadingPost): Promise<ReadResult>;
   /** The owner's choices (settings): how a post opens, and what happens to images in the text view. */
   imageMode(): ImageMode;
-  viewMode(): "web" | "text";
-  setViewMode(mode: "web" | "text"): Promise<void>;
-  /** The font of the text view's content (the setting "Font for posts"). A web page is never changed by it. */
+  /** The font of the text view's content (the setting "Font for posts"). */
   font(): ReaderFont;
   setFont(font: ReaderFont): Promise<void>;
   /** The contrast of the text view's reading surface (the setting "Contrast of the reading surface"). */
@@ -96,12 +93,6 @@ export interface ReaderHost {
   checkForNew(force: boolean): Promise<{ asked: true; polling: number } | { asked: false; reason?: string }>;
   /** The Studio's change counters, or null when they cannot be read. The reading counter moves when the list does; the subscriptions counter when a blyg has been fetched. */
   changeMarks(): Promise<ChangeMarks | null>;
-  /**
-   * Prepare a post's page for the frame: `trimmed` (the post alone, with the blyg's stylesheets, see trimmedPage.ts), `full` (the page has no article the
-   * reader recognises, and allows framing: the whole page is shown), `forbidden` (no article, and its headers refuse framing), `unreachable`.
-   * Desktop Obsidian removes `X-Frame-Options` and CSP `frame-ancestors` from every response (its own session hook), so there `forbidden` is never seen.
-   */
-  preparePage(url: string): Promise<PreparedPage>;
 }
 
 /** The first words of a post, as plain text. Read from the string, never from an element: a list of posts must not request a single image. */
@@ -110,23 +101,13 @@ export function excerptOf(html: string, max = 140): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
-type PageState = { s: "unknown" } | { s: "asking" } | { s: "trimmed"; url: string } | { s: "full" } | { s: "forbidden" } | { s: "unreachable" };
 
 const keyOf = (p: ReadingPost): string => `${p.subscriptionId}/${p.remoteId}`;
-const OPENING = "Opening the page…";
 
 export class BlygReaderView extends ItemView {
   private data: ReaderData | null = null;
   private tab: "stream" | "mentions" = "stream";
   private shown: ReadingPost | null = null;
-  /** How the open post is shown (the start value is the setting; "As text" / "As web page" switch it for this post only). */
-  private shownAs: "web" | "text" = "web";
-  /** The open post's page, once prepared. `trimmed` holds an object URL that must be revoked when the post closes. */
-  private page: PageState = { s: "unknown" };
-  /** Read through a call, so a check after an assignment in the same function is not narrowed away by the type checker. */
-  private pageState(): PageState {
-    return this.page;
-  }
   private filter: FeedFilter = { ...DEFAULT_FILTER };
   /** Keep the feed's choices (order, blyg, length, unread) in the settings: every change goes through here. */
   private saveFilter(): void {
@@ -211,19 +192,12 @@ export class BlygReaderView extends ItemView {
 
   override async onClose(): Promise<void> {
     this.checking++;
-    this.releasePage();
     await Promise.resolve();
   }
 
   // ---- state -------------------------------------------------------------------------------------------------------------------------------
 
-  /** Forget the open post's page (and free its object URL). */
-  private releasePage(): void {
-    if (this.page.s === "trimmed") URL.revokeObjectURL(this.page.url);
-    this.page = { s: "unknown" };
-  }
-
-  /** The font of the post's content, as a class on the pane (the text view's CSS reads it; the web page view is never changed). */
+  /** The font of the post's content, as a class on the pane (the text view's CSS reads it). */
   private applyFont(): void {
     const font = this.host.font();
     for (const f of ["default", "serif", "sans", "mono"] as const) this.contentEl.toggleClass(`is-font-${f}`, f === font);
@@ -487,9 +461,11 @@ export class BlygReaderView extends ItemView {
     if (!h) return;
     h.empty();
     h.toggleClass("is-busy", this.busyCount > 0);
+    this.statusEl = null;
     if (this.shown) this.drawPostHeader(h, this.shown);
     else this.drawFeedHeader(h);
-    this.statusEl = h.createDiv({ cls: "blyg-reader-status", text: this.status });
+    // The feed's header draws its own status line, joined with the Refresh button; an open post has the plain line below its buttons.
+    if (!this.statusEl) this.statusEl = h.createDiv({ cls: "blyg-reader-status", text: this.status });
     this.statusEl.toggleClass("is-busy", this.busyCount > 0);
   }
 
@@ -543,7 +519,7 @@ export class BlygReaderView extends ItemView {
 
   /**
    * Pull up at the end of a post in the text view, as at the end of a feed in other readers: a label shows what will happen and fills as you pull;
-   * let go early and nothing happens. (The web page view is a frame whose touches are not ours: it has the header button.) Touch only; a mouse has the button.
+   * let go early and nothing happens. Touch only; a mouse has the button.
    */
   private attachPull(scroll: HTMLElement, p: ReadingPost): void {
     if (!this.inFeed(p)) return;
@@ -601,7 +577,7 @@ export class BlygReaderView extends ItemView {
   private clearBottom(): void {
     const root = this.contentEl;
     const bar = root.ownerDocument.querySelector(".mobile-navbar");
-    if (!(bar instanceof HTMLElement)) {
+    if (!bar?.instanceOf(HTMLElement)) {
       root.style.removeProperty("--blyg-bottom-clear");
       return;
     }
@@ -613,14 +589,18 @@ export class BlygReaderView extends ItemView {
   private mine: StudioListedItem[] | null = null;
   private mineAsked = false;
   private responsesEl: HTMLElement | null = null;
+  /** The reading column of the open post (the replies are drawn at its end). */
+  private postColumn: HTMLElement | null = null;
 
   private loadMine(): void {
     if (this.mineAsked) return;
     this.mineAsked = true;
     void this.host.myItems().then((items) => {
       this.mine = items;
-      if (this.shown) this.drawHeader();
-      else if (this.tab === "stream") for (const q of this.data?.posts ?? []) this.refreshPost(q); // the green badges of the feed's cards
+      if (this.shown) {
+        this.drawHeader();
+        this.drawReplies(this.shown);
+      } else if (this.tab === "stream") for (const q of this.data?.posts ?? []) this.refreshPost(q); // the green badges of the feed's cards
     }).catch(() => {
       this.mine = [];
     }).finally(() => {
@@ -629,25 +609,23 @@ export class BlygReaderView extends ItemView {
     });
   }
 
-  private closeResponses(): void {
+  /**
+   * The replies you can see, at the end of the post (where replies are read): your own highlighted, then posts of blygs you read that answer it; a tap
+   * opens one. Drawn with the post, and again when your own items arrive a moment later. Nothing is drawn when nothing visible answers the post.
+   */
+  private drawReplies(p: ReadingPost): void {
     this.responsesEl?.remove();
     this.responsesEl = null;
-  }
-
-  /** The replies to this post that the reader can see, as cards like the feed's (your own highlighted); a tap opens one. */
-  private showResponses(p: ReadingPost, entries: ResponseEntry[]): void {
-    this.closeResponses();
-    const body = this.bodyEl;
-    if (!body) return;
-    const sheet = body.createDiv({ cls: "blyg-reader-responses" });
+    const col = this.postColumn;
+    if (!col?.isConnected) return;
+    const entries = this.respFor(p);
+    if (entries.length === 0) return;
+    const sheet = col.createDiv({ cls: "blyg-reader-responses" });
     this.responsesEl = sheet;
-    const top = sheet.createDiv({ cls: "blyg-reader-responses-top" });
-    top.createDiv({ cls: "blyg-reader-responses-title", text: "Replies you can see" });
-    this.button(top, "Close", () => this.closeResponses(), { title: "Close the list" });
+    sheet.createDiv({ cls: "blyg-reader-responses-title", text: `Replies you can see (${entries.length})` });
     sheet.createDiv({ cls: "blyg-reader-meta blyg-reader-responses-note", text: "Your own replies, and posts of blygs you read that answer this one. Other replies are not visible from here." });
-    const list = sheet.createDiv({ cls: "blyg-reader-column" });
     for (const e of entries) {
-      const card = list.createDiv({ cls: `blyg-reader-row blyg-reader-card blyg-reader-response${e.kind === "mine" ? " is-mine" : ""}` });
+      const card = sheet.createDiv({ cls: `blyg-reader-row blyg-reader-card blyg-reader-response${e.kind === "mine" ? " is-mine" : ""}` });
       const meta = card.createDiv({ cls: "blyg-reader-meta" });
       if (e.kind === "mine") {
         meta.createSpan({ cls: "blyg-reader-badge is-mine", text: "You" });
@@ -661,13 +639,9 @@ export class BlygReaderView extends ItemView {
       } else {
         meta.appendText([e.post.authorName, e.post.subscriptionTitle].filter((x): x is string => !!x).join(" · ") + ` · ${relativeTime(e.when, Date.now())}`);
         card.createDiv({ cls: "blyg-reader-excerpt", text: excerptOf(e.post.contentHtml, 200) });
-        card.addEventListener("click", () => {
-          this.closeResponses();
-          this.openPost(e.post, "quote");
-        });
+        card.addEventListener("click", () => this.openPost(e.post, "quote"));
       }
     }
-    if (entries.length === 0) list.createDiv({ cls: "blyg-reader-note", text: `Nothing visible answers “${excerptOf(p.contentHtml, 40)}” yet.` });
   }
 
   /** The order the feed has now (without "unread only"), kept while the list and the order choices stay as they are: the open post and its buttons ask for the next unread post often. */
@@ -699,7 +673,6 @@ export class BlygReaderView extends ItemView {
       return;
     }
     this.shown = null;
-    this.releasePage();
     this.drawHeader();
     this.drawBody();
   }
@@ -712,10 +685,8 @@ export class BlygReaderView extends ItemView {
     if (this.shown === null) this.feedScroll = this.scrollEl?.scrollTop ?? 0;
     if (via === "quote" && this.shown) this.trail.push(this.shown);
     else if (via === "feed") this.trail = [];
-    this.releasePage();
-    this.closeResponses();
+    this.responsesEl = null;
     this.shown = p;
-    this.shownAs = this.host.viewMode();
     this.drawHeader();
     this.drawBody();
     this.loadMine();
@@ -723,7 +694,7 @@ export class BlygReaderView extends ItemView {
 
   private drawFeedHeader(h: HTMLElement): void {
     const row = h.createDiv({ cls: "blyg-reader-bar" });
-    for (const [id, label] of [["stream", "Reading"], ["mentions", `Mentions${this.data ? ` (${this.data.mentions.length})` : ""}`]] as const) {
+    for (const [id, label] of [["stream", "Reading"], ["mentions", `Mentions${this.data ? ` (${visibleMentions(this.data.mentions).length})` : ""}`]] as const) {
       this.button(row, label, () => {
         this.tab = id;
         this.drawHeader();
@@ -739,13 +710,18 @@ export class BlygReaderView extends ItemView {
       this.button(row, n > 0 ? `Sort & filter (${n})` : "Sort & filter", () => {
         this.filtersOpen = !this.filtersOpen;
         this.drawHeader();
-      }, { active: this.filtersOpen, cls: "blyg-reader-filterbtn", title: "Order, blyg, length, unread, and how posts open" });
+      }, { active: this.filtersOpen, cls: "blyg-reader-filterbtn", title: "Order, blyg, length and unread" });
     }
-    const refresh = this.button(row, "Refresh", () => {
+    // One item: what the last check found (or what is going on) and the button that checks again, in a single bar under the tabs.
+    const bar = h.createDiv({ cls: "blyg-reader-statusrow" });
+    this.statusEl = bar.createDiv({ cls: "blyg-reader-status", text: this.status });
+    const refresh = this.button(bar, "Refresh", () => {
       void this.checkForNew(true);
     }, { cls: "blyg-reader-refresh", title: "Look for new posts" });
+    this.addIcon(refresh, "refresh-cw");
     refresh.disabled = this.busyCount > 0;
     this.refreshEl = refresh;
+    bar.createSpan({ cls: "blyg-reader-version", text: `v${this.host.version}`, attr: { title: "Version of the Blyg plugin on this device" } });
     if (!canFilter || !this.filtersOpen || !this.data) return;
 
     const controls = h.createDiv({ cls: "blyg-reader-controls" });
@@ -763,12 +739,6 @@ export class BlygReaderView extends ItemView {
     const posts = this.data.posts;
     select("Blyg", [["", `All blygs (${posts.length})`], ...sourcesOf(posts).map((s): [string, string] => [s.id, `${s.title} (${s.count})`])], this.filter.source ?? "", (v) => { this.filter.source = v === "" ? null : v; this.saveFilter(); });
     select("Length", (Object.keys(LENGTH_LABELS) as FeedLength[]).map((k): [string, string] => [k, LENGTH_LABELS[k]]), this.filter.length, (v) => { this.filter.length = v as FeedLength; this.saveFilter(); });
-    select("Font for posts", (Object.keys(FONT_LABELS) as ReaderFont[]).map((k): [string, string] => [k, k === "default" ? "Font: as it is" : `Font: ${FONT_LABELS[k]}`]), this.host.font(), (v) => {
-      if (isReaderFont(v)) void this.host.setFont(v).then(() => this.applyFont());
-    }, () => undefined);
-    select("Contrast of the reading surface", CONTRASTS.map((k): [string, string] => [k, CONTRAST_LABELS[k]]), this.host.contrast(), (v) => {
-      if (isReaderContrast(v)) void this.host.setContrast(v).then(() => this.applyFont());
-    }, () => undefined);
     const unread = controls.createEl("label", { cls: "blyg-reader-toggle" });
     const box = unread.createEl("input", { attr: { type: "checkbox" } });
     box.checked = this.filter.unreadOnly;
@@ -779,15 +749,6 @@ export class BlygReaderView extends ItemView {
       this.drawHeader();
       this.drawBody();
     });
-    // How posts open by default: the same choice as the setting "Open posts as", kept when you change it here.
-    const open = controls.createDiv({ cls: "blyg-reader-segment", attr: { role: "group", "aria-label": "Open posts as" } });
-    const mode = this.host.viewMode();
-    for (const [id, label] of [["web", "Web page"], ["text", "Text"]] as const) {
-      this.button(open, label, async () => {
-        await this.host.setViewMode(id);
-        this.drawHeader();
-      }, { active: mode === id, title: id === "web" ? "Open posts as the author's web page" : "Open posts as text" });
-    }
   }
 
   private drawPostHeader(h: HTMLElement, p: ReadingPost): void {
@@ -802,9 +763,11 @@ export class BlygReaderView extends ItemView {
       const next = this.nextFor(p);
       this.button(main, unread ? "Read & next ›" : "Next ›", () => this.goNext(p), { cls: "blyg-reader-nextbtn", active: unread, title: unread ? "Mark this post read and open the next unread one" : next ? "Open the next unread post" : "No unread post left: back to the feed" });
     }
-    const row = h.createDiv({ cls: "blyg-reader-bar" });
-    this.button(row, "Reply", () => this.host.replyTo(p), { disabled: p.withdrawn || !held, title: held ? "Reply in Obsidian: a new thread that answers this post" : "Subscribe to this blyg in your Studio to reply to its posts from here" });
-    this.button(row, unread ? "○ Mark read" : "✓ Read", () => this.setRead(p, unread), {
+    // This post's actions sit together in one tray; "Browser" leaves the app and sits apart, quieter.
+    const row = h.createDiv({ cls: "blyg-reader-bar blyg-reader-bar-actions" });
+    const tray = row.createDiv({ cls: "blyg-reader-btngroup" });
+    this.button(tray, "Reply", () => this.host.replyTo(p), { disabled: p.withdrawn || !held, title: held ? "Reply in Obsidian: a new thread that answers this post" : "Subscribe to this blyg in your Studio to reply to its posts from here" });
+    this.button(tray, unread ? "○ Mark read" : "✓ Read", () => this.setRead(p, unread), {
       disabled: p.withdrawn || !held,
       active: !unread,
       cls: "blyg-reader-readtoggle",
@@ -812,17 +775,11 @@ export class BlygReaderView extends ItemView {
     });
     const chip = responseChip(this.respFor(p));
     if (chip) {
-      const b = this.button(row, chip.text, () => (this.responsesEl ? this.closeResponses() : this.showResponses(p, this.respFor(p))), { cls: `blyg-reader-resp${chip.mine ? " is-mine" : ""}`, title: chip.title });
+      const b = this.button(tray, chip.text, () => this.responsesEl?.scrollIntoView({ block: "start", behavior: "smooth" }), { cls: `blyg-reader-resp${chip.mine ? " is-mine" : ""}`, title: chip.title });
       this.addIcon(b, "reply");
     }
-    this.button(row, "Browser", () => (web ? this.host.openWeb(web) : undefined), { disabled: web === null, title: "Open the whole page in the browser" });
-    if (web) {
-      this.button(row, this.shownAs === "web" ? "As text" : "As web page", () => {
-        this.shownAs = this.shownAs === "web" ? "text" : "web";
-        this.drawHeader();
-        this.drawBody();
-      });
-    }
+    row.createDiv({ cls: "blyg-reader-spacer" });
+    this.button(row, "Browser", () => (web ? this.host.openWeb(web) : undefined), { disabled: web === null, cls: "blyg-reader-quiet", title: "Open the whole page in the browser" });
     // Where it is from, and who wrote it, as links; its version when it has been edited; when; whether it is read.
     const meta = h.createDiv({ cls: "blyg-reader-meta blyg-reader-postmeta" });
     const blygUrl = p.origin ?? (web ? new URL(web).origin : null);
@@ -838,6 +795,7 @@ export class BlygReaderView extends ItemView {
       if (i > 0) meta.createSpan({ text: " · " });
       draw();
     });
+    meta.createSpan({ cls: "blyg-reader-version", text: `v${this.host.version}`, attr: { title: "Version of the Blyg plugin on this device" } });
   }
 
   private drawBody(): void {
@@ -929,6 +887,8 @@ export class BlygReaderView extends ItemView {
       row.createDiv({ cls: "blyg-reader-meta", text: `${mentionLead(m)} · ${relativeTime(m.firstSeen, Date.now())}` });
       const text = row.createDiv({ cls: "blyg-reader-excerpt" });
       const own = row.createDiv({ cls: "blyg-reader-meta blyg-reader-ownitem" });
+      const actions = row.createDiv({ cls: "blyg-reader-bar blyg-reader-mention-actions" });
+      this.button(actions, "Dismiss", () => this.dismissMention(m), { cls: "blyg-reader-quiet blyg-reader-dismiss", title: "Hide this mention. It is hidden in your Studio too." });
       const fill = (): void => {
         const info = this.mentionInfo.get(m.id);
         text.setText(info?.post ? excerptOf(info.post.contentHtml, 220) || "(no text)" : info?.done ? "Its text could not be shown here." : "…");
@@ -937,11 +897,36 @@ export class BlygReaderView extends ItemView {
       };
       fill();
       void this.loadMention(m).then(fill);
-      row.addEventListener("click", () => {
+      row.addEventListener("click", (ev) => {
+        if ((ev.target as HTMLElement).closest(".blyg-reader-mention-actions")) return;
         if ((activeWindow.getSelection()?.toString() ?? "") !== "") return;
         void this.openMention(m);
       });
     }
+  }
+
+  /**
+   * Hide a mention: gone from the list at once, sent to the Studio meanwhile; on a refusal it comes back and the status says why. A tap on the button is not
+   * a tap on the card (it must not open the post).
+   */
+  private async dismissMention(m: InboundMention): Promise<void> {
+    const data = this.data;
+    if (!data) return;
+    const at = data.mentions.findIndex((x) => x.id === m.id);
+    if (at < 0) return;
+    data.mentions.splice(at, 1);
+    this.setStatus("Mention dismissed. It is hidden in your Studio too.");
+    this.drawHeader();
+    this.drawBody();
+    const done = await this.host.hideMention(m).catch((): ReadResult => ({ ok: false, message: "The Studio could not be reached, so the mention was not dismissed." }));
+    if (done.ok) {
+      this.host.writeCache({ posts: data.posts, mentions: data.mentions });
+      return;
+    }
+    if (this.data === data && !data.mentions.some((x) => x.id === m.id)) data.mentions.splice(Math.min(at, data.mentions.length), 0, m);
+    this.setStatus(done.message);
+    this.drawHeader();
+    this.drawBody();
   }
 
   /** What a mention shows, fetched once and a few at a time; a card redraws itself when its answer is there. */
@@ -958,7 +943,7 @@ export class BlygReaderView extends ItemView {
     });
   }
 
-  /** Open the mentioning post like any post: the web page or the text, the same header, the same bar below. */
+  /** Open the mentioning post like any post: the same header, the same bar below. */
   private async openMention(m: InboundMention): Promise<void> {
     await this.loadMention(m);
     const post = this.mentionInfo.get(m.id)?.post;
@@ -1028,38 +1013,11 @@ export class BlygReaderView extends ItemView {
   }
 
   private drawPostBody(body: HTMLElement, p: ReadingPost): void {
-    const web = frameable(p.sourceUrl) ? p.sourceUrl : null;
-    if (this.shownAs === "web" && web && !p.withdrawn) {
-      if (this.page.s === "unknown") {
-        this.page = { s: "asking" };
-        this.setStatus(OPENING);
-        this.busy(+1);
-        void this.host.preparePage(web).then((prepared) => {
-          this.busy(-1);
-          if (this.status === OPENING) this.setStatus("");
-          if (!this.shown || keyOf(this.shown) !== keyOf(p)) return;
-          this.page = prepared.kind === "trimmed" ? { s: "trimmed", url: frameUrlFor(prepared.doc) } : { s: prepared.kind };
-          this.drawBody();
-        });
-      }
-      const page = this.pageState();
-      if (page.s === "trimmed" || page.s === "full") {
-        // The post's own page (trimmed to the post, or whole), as a visit would show it. Sandboxed without scripts and without an origin, so it cannot
-        // reach Obsidian; links open outside. It loads its images like any visit: that is what "as on the web" means (the setting says so).
-        body.createEl("iframe", { cls: "blyg-reader-frame", attr: { src: page.s === "trimmed" ? page.url : web, sandbox: READER_FRAME_SANDBOX, referrerpolicy: "no-referrer", title: `${p.subscriptionTitle} on the web` } });
-        return;
-      }
-      // Until the page is ready the text is shown, so there is something to read at once; it is replaced by the page when that arrives.
-      const scroll = body.createDiv({ cls: "blyg-reader-scroll blyg-reader-surface" });
-      const col = scroll.createDiv({ cls: "blyg-reader-column" });
-      this.attachPull(scroll, p);
-      if (page.s === "forbidden") col.createDiv({ cls: "blyg-reader-note", text: "This blyg does not allow its pages inside other apps, so the post is shown as text." });
-      else if (page.s === "unreachable") col.createDiv({ cls: "blyg-reader-note", text: "The page could not be reached, so the post is shown as text." });
-      this.drawText(col, p);
-      return;
-    }
     const scroll = body.createDiv({ cls: "blyg-reader-scroll blyg-reader-surface" });
     this.attachPull(scroll, p);
-    this.drawText(scroll.createDiv({ cls: "blyg-reader-column" }), p);
+    const col = scroll.createDiv({ cls: "blyg-reader-column" });
+    this.postColumn = col;
+    this.drawText(col, p);
+    this.drawReplies(p);
   }
 }

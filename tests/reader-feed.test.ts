@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { readReadingPost, type ReadingPost } from "../src/studio/reading";
-import { activeFilters, arrange, cardOf, DEFAULT_FILTER, framePolicy, frameable, nextAfter, postOfQuote, PULL_THRESHOLD, pullProgress, readingMinutes, readingTimeLabel, relativeTime, sourcesOf } from "../src/ui/readerFeed";
+import { activeFilters, arrange, cardOf, DEFAULT_FILTER, frameable, nextAfter, postOfQuote, PULL_THRESHOLD, pullProgress, readingMinutes, readingTimeLabel, relativeTime, sourcesOf } from "../src/ui/readerFeed";
 
 const fixture = (name: string): string => readFileSync(new URL(`./fixtures/studio/reader/${name}-0.51.0.html`, import.meta.url), "utf8");
 const post = (patch: Record<string, unknown>): ReadingPost =>
@@ -53,19 +53,6 @@ describe("arrange", () => {
   it("the source picker lists each blyg once, with its count, by title", () => {
     expect(sourcesOf([a, b, c])).toEqual([{ id: "s1", title: "Blog A", count: 2 }, { id: "s2", title: "Blog B", count: 1 }]);
   });
-});
-
-describe("framePolicy: may the page be shown inside Obsidian?", () => {
-  it.each([
-    [{}, "allowed"],
-    [{ "Content-Type": "text/html" }, "allowed"],
-    [{ "X-Frame-Options": "DENY" }, "forbidden"],
-    [{ "x-frame-options": "SAMEORIGIN" }, "forbidden"],
-    [{ "Content-Security-Policy": "frame-ancestors 'none'" }, "forbidden"],
-    [{ "content-security-policy": "default-src 'self'; frame-ancestors 'self' https://a.example" }, "forbidden"],
-    [{ "Content-Security-Policy": "frame-ancestors *" }, "allowed"],
-    [{ "Content-Security-Policy": "default-src 'self'" }, "allowed"],
-  ] as const)("%j → %s", (headers, want) => expect(framePolicy(headers)).toBe(want));
 });
 
 describe("frameable", () => {

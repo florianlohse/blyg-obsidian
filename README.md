@@ -4,8 +4,9 @@ Write in your vault, publish to your **[Blygger](https://blygger.org)** blyg fro
 *fragments* and long *threads* that quote other people's items go to your own **Blygger Studio**; the plugin checks what
 will change before anything leaves your vault.
 
-> **Beta (0.9.x).** Installed through BRAT, not yet in Obsidian's community-plugin list. Expect rough edges and read
-> *Known gaps* below before relying on it.
+> **You need your own Blygger Studio.** This plugin is a client: it sends your notes to a Studio that you own and have
+> signed in to (see *What you need*). It does not work without one, and it cannot create one for you. The reader is
+> experimental, see *Known gaps*.
 
 <p><img src="images/readme/hero.png" width="640" alt="Obsidian on the desktop: a vault with a Blyg folder of notes, an open thread note, and the Blyg panel on the right saying Published (v1) and up to date, with buttons to write, quote, reply and update"></p>
 
@@ -33,7 +34,7 @@ will change before anything leaves your vault.
 - **See what you answer.** A reply note starts with the line that quotes the item it answers; in Live Preview and Reading view that line shows the item's text (a view only: the text is fetched when the note is shown and never written into your vault).
 - **Read (experimental).** “Open reader” shows the posts of the blygs your Studio follows as a feed (newest first, or by reading time;
   filter by blyg, length or unread; the choices are remembered) and the mentions of your items. A post opens as text on its own calm
-  reading surface (quotes shown as quotes; contrast and font are settings) or as the author's web page; one tap or a pull-up at the end
+  reading surface (quotes shown as quotes; contrast and font are settings); one tap or a pull-up at the end
   marks it read and goes to the next. Posts are shown in the reader only and are never written into your notes; to open fast, the reader keeps the newest 200 posts (without their Markdown) in one file in the plugin's own folder, for the Studio they came from, for two weeks ("Clear the reader's saved list" in the command palette removes it).
 - **Keep both sides in step.** Pull the Studio's copy into the note, import items that were written in the Studio,
   withdraw an item, delete a draft, put items into your Studio's hoppers.
@@ -107,22 +108,21 @@ blygs you follow live in the plugin's own storage, not in your notes.
 You do **not** need a GitHub account or a static site. (An older mode that commits to a GitHub-hosted site still exists
 in the code for early users and is hidden when you only use a Studio.)
 
-## Install (BRAT, about 3 minutes)
+## Install
 
-The plugin is not in the community list yet; the install helper **BRAT** installs it from this repository.
+1. Obsidian → **Settings → Community plugins** → turn on community plugins if asked → **Browse** → search **Blyg** →
+   **Install** → **Enable**. Its plugin id is `blyg`.
+2. Keep it updated from the same screen. Your settings live in the plugin's own data file and survive updates.
 
-1. Obsidian → **Settings → Community plugins** → turn on community plugins if asked → **Browse** → search
-   **BRAT** (“Obsidian42 - BRAT”) → **Install** → **Enable**.
-2. Open BRAT's settings (or the command palette: **BRAT: Plugins: Add a beta plugin for testing**) and add the repository
-   **`florianlohse/blyg-obsidian`**, version *Latest*.
-3. **Settings → Community plugins** → make sure **Blyg** is switched on. Its plugin id is `blyg`.
-
-BRAT keeps the plugin updated. Your settings live in the plugin's own data file and survive updates.
+**If it does not show up in the list yet** (a new release can take up to a day to appear), or if you want a test build, use the
+install helper **BRAT**: install “Obsidian42 - BRAT” from the community list, open the command palette → **BRAT: Plugins: Add a
+beta plugin for testing**, and add the repository **`florianlohse/blyg-obsidian`**, version *Latest*. Do not enable the BRAT
+copy and the community copy together.
 
 ## Set up
 
 1. **Token.** In your Studio open **More → Client access → REST API** and create a token with the permissions
-   `owner:read`, `owner:draft` and `owner:publish`. Add `owner:manage` if you want to change hoppers from Obsidian.
+   `owner:read`, `owner:draft` and `owner:publish`. Add `owner:manage` if you want to change hoppers or dismiss mentions from Obsidian.
    Copy it (it is shown once).
 2. **Keychain.** In Obsidian open **Settings → Keychain** and add a secret (lowercase letters, digits and dashes in the
    name, for example `blyg-studio`); paste the token as its value. Keychain entries stay on one device: repeat on each
@@ -155,7 +155,7 @@ The plugin makes requests only through Obsidian's `requestUrl`, to these hosts:
 | **Your Studio** (the address you set) | Your note's text and metadata when you send it, the image files the note embeds (only when you publish), and reads of your items, hoppers and followed blygs' items for the panel and pickers. | The Studio token, in a header. Never in a URL. |
 | **The Studio's public pages** (same host) | The public manifest, read to find your blyg's address. | None. |
 | **The reader's requests to your Studio** (same host) | The list of posts you read and your mentions, a look at the Studio's change counters every 30 seconds while the reader is open (and every three seconds during a Refresh), the read marks you set, a request that your Studio look for new posts (only when you press Refresh), and the look-up of an item when you tap a quote's source. | The Studio token, in a header. |
-| **A blyg's own server** (only for what you open in the reader) | A post's image, when you tap it (or always, if you chose “Always load”); a post's page and its stylesheets, when you open it as a web page. These are ordinary requests with no token and no cookies, so that blyg's server can see that someone read the post. | None. |
+| **A blyg's own server** (only for what you open in the reader) | A post's image, when you tap it (or always, if you chose “Always load”), and the page itself if you tap “Browser” (that opens your browser, not the plugin). Image requests carry no token and no cookies, so that blyg's server can see that someone read the post. | None. |
 | `api.github.com` | Only if you use the older GitHub mode. Not used in Studio-only setups. | A GitHub token, only to this host. |
 
 Nothing else: no analytics, no telemetry, no third-party servers. Text from other blygs is shown only after being
@@ -167,7 +167,7 @@ stripped from the published text.
 ## Token
 
 - The plugin needs the Studio permissions **`owner:read`**, **`owner:draft`**, **`owner:publish`**; **`owner:manage`**
-  is optional (hoppers, and asking your Studio to look for new posts in the reader). **`reading:state`** is optional too: without
+  is optional (hoppers, dismissing a mention in the reader, and asking your Studio to look for new posts in the reader). **`reading:state`** is optional too: without
   it the reader works, but marking a post read or unread is refused (and says so). For the reader, make the token with every permission.
 - The token is stored only in **Obsidian's keychain**. The settings hold the *name* of the entry, never the value; the
   plugin never logs it, writes it to a file or sends it anywhere except your Studio's host.
@@ -188,12 +188,12 @@ stripped from the published text.
   asked of other blygs.
 - **Tokens by hand, every 30 days.**
 - **One Studio.** Setups with several Studios are not supported.
-- **Beta, mobile-tested lightly.** Tested on iPad and iPhone by the author; Android is untested.
+- **Mobile-tested lightly.** Tested on iPad and iPhone by the author; Android is untested.
 
 ## Planned (not promised)
 
 Resizing images; OAuth sign-in instead of the monthly token; automatic checks for new Studio items; a public
-address setting for Studios behind a proxy; listing in Obsidian's community plugins after a beta period (1.0).
+address setting for Studios behind a proxy.
 
 ## Privacy and safety in short
 

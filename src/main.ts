@@ -9,7 +9,7 @@ import { createDataWatch } from "./app/dataWatch";
 import { createDeployMemory } from "./app/deployMemory";
 import { TM } from "./app/threadMessages";
 import { expandTemplate, newItemText, templatePath, type ItemKind, type TemplateProblem } from "./app/itemTemplate";
-import { blockToInsert, cursorLineAboveQuote, embedReplacement, extractedItemBody, extractionVerdict, newItemName, pickerCandidates, quoteBlock, quoteBlockOf, renamedForThread, replyBody, threadConversion, type PickerEntry, type QuoteChoice } from "./app/threadCommands";
+import { blockToInsert, embedReplacement, extractedItemBody, extractionVerdict, newItemName, pickerCandidates, quoteBlock, quoteBlockOf, renamedForThread, replyBody, threadConversion, type PickerEntry, type QuoteChoice } from "./app/threadCommands";
 import { localKind } from "./core/blyg";
 import { isBlygId } from "./core/ids";
 import { newItemRoute, routeFor } from "./core/routes";
@@ -51,9 +51,7 @@ import { drawPreview, type PreviewDeps } from "./ui/replyPreview";
 import { limiter, postFromPeek, postOfMention } from "./ui/readerMentions";
 import { parseReaderCache, readerCacheOf } from "./ui/readerCache";
 import { backoffDelay, READER_PAGE, READER_PAGES, reachedKnown } from "./ui/readerSync";
-import { BLYG_READER_VIEW, BlygReaderView, excerptOf, type PreparedPage, type ReaderHost, type ReadResult } from "./ui/ReaderView";
-import { framePolicy } from "./ui/readerFeed";
-import { stylesheetsOf, trimmedDocument } from "./ui/trimmedPage";
+import { BLYG_READER_VIEW, BlygReaderView, excerptOf, type ReaderHost, type ReadResult } from "./ui/ReaderView";
 import { buildStudio } from "./app/run";
 import type { InboundMention, ReadingPost } from "./studio/reading";
 import { confirmWithModal } from "./ui/WritePreviewModal";
@@ -571,8 +569,8 @@ export default class BlygPlugin extends Plugin {
       new Notice(target.message, 10000);
       return;
     }
-    const quote = picked.quotable === false ? "" : replyBody(writtenRef(picked, picked.path ? this.linkTextOf({ path: picked.path }, "") : ""), this.settings.respond.writeAbove);
-    await this.createNote("thread", quote, target.target, { cursorAboveQuote: this.settings.respond.writeAbove });
+    const quote = picked.quotable === false ? "" : replyBody(writtenRef(picked, picked.path ? this.linkTextOf({ path: picked.path }, "") : ""));
+    await this.createNote("thread", quote, target.target);
   }
 
   /** "Make this thread a reply": the open, unpublished thread names the item it answers. The text is not touched. */
@@ -830,8 +828,10 @@ export default class BlygPlugin extends Plugin {
           if (this.panelVisible()) for (const id of this.studioFacts.expired()) this.studioFacts.request(id, () => this.refreshPanels());
         }, DATA_LOOK_MS),
       );
-      this.registerDomEvent(document, "visibilitychange", () => {
-        if (document.visibilityState !== "visible") return;
+      // The main window's own document (the workspace's), not "whichever window is active": coming back to the app fires the event there.
+      const mainDoc = this.app.workspace.containerEl.ownerDocument;
+      this.registerDomEvent(mainDoc, "visibilitychange", () => {
+        if (mainDoc.visibilityState !== "visible") return;
         // Back from another app (the Studio's own editor, say): whatever it said before may be out of date.
         this.studioFacts.invalidate();
         watch.returned();
@@ -982,11 +982,6 @@ export default class BlygPlugin extends Plugin {
     return {
       version: this.manifest.version,
       imageMode: () => this.settings.readerPane.images,
-      viewMode: () => this.settings.readerPane.view,
-      setViewMode: async (mode) => {
-        this.settings.readerPane.view = mode;
-        await this.saveSettings();
-      },
       font: () => this.settings.readerPane.font,
       setFont: async (font) => {
         this.settings.readerPane.font = font;
@@ -1043,7 +1038,6 @@ export default class BlygPlugin extends Plugin {
           return null;
         }
       },
-      preparePage: (url) => this.readerPage(url),
       load: async (onProgress, opts) => {
         const waiting = opts?.force ? null : this.readerBackedOff();
         if (waiting) return { ok: false, message: waiting };
@@ -1083,7 +1077,7 @@ export default class BlygPlugin extends Plugin {
         const pick: StudioPick = { source: "studio", id: post.remoteId, kind: post.kind, title: excerptOf(post.contentHtml, 60), detail: post.subscriptionTitle, subscriptionId: post.subscriptionId, label: post.subscriptionTitle, origin: post.origin, version: post.version, quotable: true };
         const target = await runStudioReplyTarget(this.env(), pick);
         if (!target.ok) return void new Notice(target.message, 10000);
-        await this.createNote("thread", replyBody(writtenRef(pick, ""), this.settings.respond.writeAbove), target.target, { cursorAboveQuote: this.settings.respond.writeAbove });
+        await this.createNote("thread", replyBody(writtenRef(pick, "")), target.target);
       },
       mentionPost: async (m, posts) => {
         const known = postOfMention(posts, m);
@@ -1130,9 +1124,24 @@ export default class BlygPlugin extends Plugin {
         const text = got.value.published?.contentHtml ? excerptOf(got.value.published.contentHtml, 90) : excerptOf(`<p>${got.value.contentMd.replace(/[<>&]/g, " ")}</p>`, 90);
         return text || null;
       },
+      hideMention: (m) => this.readerHideMention(m),
       markRead: (post) => this.readerMark(post, true),
       markUnread: (post) => this.readerMark(post, false),
     };
+  }
+
+  /** Hide an inbound mention in the Studio. The answer is a result the reader can act on (the mention comes back on a refusal). */
+  private async readerHideMention(m: InboundMention): Promise<ReadResult> {
+    try {
+      const built = buildStudio(this.env());
+      if (!built.ok) return { ok: false, message: built.message };
+      const done = await built.studio.client.hideMention(m.id, true);
+      if (done.kind === "ok") return { ok: true };
+      if (done.kind === "forbidden") return { ok: false, message: "Your token cannot dismiss mentions. It needs the permission “owner:manage”: make a new token with every permission." };
+      return { ok: false, message: "message" in done ? done.message : "Could not dismiss the mention." };
+    } catch {
+      return { ok: false, message: "The Studio could not be reached, so the mention was not dismissed." };
+    }
   }
 
   /** Mark a post read or unread in the Studio; the answer is a result the reader can act on (it shows the change first and puts it back on a refusal). */
@@ -1148,41 +1157,6 @@ export default class BlygPlugin extends Plugin {
     } catch {
       return { ok: false, message: "The Studio could not be reached, so the read mark was not changed." };
     }
-  }
-
-  /** Stylesheets and prepared pages kept for the session, so the second post of a blyg does not wait for its stylesheet again. */
-  private readonly readerSheets = new Map<string, { at: number; text: string }>();
-  private readonly readerPages = new Map<string, { at: number; page: PreparedPage }>();
-
-  /** A post's page for the reader's frame (see trimmedPage.ts): plain requests (no token, no cookies), the stylesheets fetched side by side. */
-  private async readerPage(url: string): Promise<PreparedPage> {
-    const now = Date.now();
-    const cached = this.readerPages.get(url); // the web page is never changed by a setting, so the address is the whole key
-    if (cached && now - cached.at < 120_000) return cached.page;
-    const sheet = async (href: string): Promise<string | null> => {
-      const kept = this.readerSheets.get(href);
-      if (kept && Date.now() - kept.at < 600_000) return kept.text;
-      try {
-        const got = await obsidianTransport({ url: href, method: "GET", headers: {} });
-        if (got.status >= 400 || got.text.length >= 600_000) return null;
-        this.readerSheets.set(href, { at: Date.now(), text: got.text });
-        return got.text;
-      } catch {
-        return null; // a stylesheet that does not load: the post shows in plain type
-      }
-    };
-    let page: PreparedPage;
-    try {
-      const res = await obsidianTransport({ url, method: "GET", headers: {} });
-      if (res.status >= 400) return { kind: "unreachable" };
-      const css = (await Promise.all(stylesheetsOf(res.text, url).map(sheet))).filter((c): c is string => c !== null);
-      const doc = trimmedDocument({ pageHtml: res.text, pageUrl: url, css });
-      page = doc !== null ? { kind: "trimmed", doc } : framePolicy(res.headers) === "allowed" ? { kind: "full" } : { kind: "forbidden" };
-    } catch {
-      return { kind: "unreachable" };
-    }
-    this.readerPages.set(url, { at: Date.now(), page });
-    return page;
   }
 
   private async openPanel(): Promise<void> {
@@ -1286,7 +1260,7 @@ export default class BlygPlugin extends Plugin {
    * A new note in that folder, opened with the cursor at its end: a fragment, or a thread (its property makes it one).
    * `body` is put after the properties (a thread that starts with a quote of the note it answers).
    */
-  private async createNote(kind: "fragment" | "thread", body = "", reply?: StubTarget, opts: { cursorAboveQuote?: boolean } = {}): Promise<void> {
+  private async createNote(kind: "fragment" | "thread", body = "", reply?: StubTarget): Promise<void> {
     const file = await this.makeFile(kind, body);
     if (!file) return;
     if (reply) {
@@ -1303,9 +1277,7 @@ export default class BlygPlugin extends Plugin {
     await leaf.openFile(file);
     if (leaf.view instanceof MarkdownView) {
       const editor = leaf.view.editor;
-      const above = opts.cursorAboveQuote === true ? cursorLineAboveQuote(editor.getValue().split("\n")) : null;
-      if (above !== null) editor.setCursor({ line: above, ch: 0 });
-      else editor.setCursor({ line: editor.lastLine(), ch: editor.getLine(editor.lastLine()).length });
+      editor.setCursor({ line: editor.lastLine(), ch: editor.getLine(editor.lastLine()).length });
       editor.focus();
     }
     new Notice(reply ? (body === "" ? TM.replyStartedNoQuote(stubLabel(reply)) : TM.replyStarted(stubLabel(reply))) : kind === "thread" ? TM.created : TM.createdNote, reply ? 10000 : 6000);

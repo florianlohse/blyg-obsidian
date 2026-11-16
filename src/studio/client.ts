@@ -91,6 +91,8 @@ export interface StudioClient {
   markRead(subscriptionId: string, remoteId: string, version: number): Promise<StudioResult<{ readVersion: number | null }>>;
   /** S15: mark a post unread again (`DELETE /reading/{sub}/{id}/read`, `reading:state`). */
   markUnread(subscriptionId: string, remoteId: string): Promise<StudioResult<{ readVersion: number | null }>>;
+  /** S15: hide one inbound mention (`PATCH /mentions/{id}` with `hidden`, `owner:manage`), or show it again. The Studio keeps it hidden for every client, its own pages included. */
+  hideMention(id: string, hidden: boolean): Promise<StudioResult<{ hidden: boolean }>>;
   /** S15: ask the Studio to fetch every blyg it reads now (`POST /subscriptions/poll`, `owner:manage`). The fetch runs in the background; `polling` is how many. */
   pollSubscriptions(): Promise<StudioResult<{ polling: number }>>;
   /** S15: the Studio's change counters (`GET /changes`, `owner:read`): cheap, to see whether the reading list moved without walking it. */
@@ -385,6 +387,12 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
       return { kind: "ok", value: { readVersion: null } } as const;
     },
 
+    hideMention: async (id: string, hidden: boolean) => {
+      const res = await http.send(token, { method: "PATCH", area: "api", path: `/mentions/${encodeURIComponent(id)}`, body: { hidden } });
+      if (res.status !== 200) return failure(res);
+      return { kind: "ok", value: { hidden: isRecord(res.json) && typeof res.json.hidden === "boolean" ? res.json.hidden : hidden } } as const;
+    },
+
     pollSubscriptions: async () => {
       const res = await http.send(token, { method: "POST", area: "api", path: "/subscriptions/poll", body: {} });
       if (res.status !== 200) return failure(res);
@@ -491,6 +499,7 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
     listInboundMentions: guard(inner.listInboundMentions),
     markRead: guard(inner.markRead),
     markUnread: guard(inner.markUnread),
+    hideMention: guard(inner.hideMention),
     pollSubscriptions: guard(inner.pollSubscriptions),
     changes: guard(inner.changes),
     classifyLinks: guard(inner.classifyLinks),

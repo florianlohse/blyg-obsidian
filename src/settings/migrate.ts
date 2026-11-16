@@ -100,7 +100,7 @@ export function migrateSettings(raw: unknown, flavour: "release" | "dev" = "rele
       userAgent: str(rd.userAgent, d.reader.userAgent),
     },
     templates: { fragment: str(tp.fragment, d.templates.fragment), thread: str(tp.thread, d.templates.thread) },
-    respond: { draftsPrefix: str(rs.draftsPrefix, d.respond.draftsPrefix), writeAbove: typeof rs.writeAbove === "boolean" ? rs.writeAbove : d.respond.writeAbove },
+    respond: { draftsPrefix: str(rs.draftsPrefix, d.respond.draftsPrefix) },
     mentions: { repoPath: str(mn.repoPath, d.mentions.repoPath) },
     webQuote: {
       // A format with nothing in it is the same as none: the default applies (an unusable but non-empty one is kept as typed, and the tab says what is wrong).
@@ -109,7 +109,7 @@ export function migrateSettings(raw: unknown, flavour: "release" | "dev" = "rele
       stripTracking: typeof wq.stripTracking === "boolean" ? wq.stripTracking : d.webQuote.stripTracking,
     },
     // Anything but "always" is the safe default: a typo or a value from a later version never turns images on by accident.
-    readerPane: { images: rp.images === "always" ? "always" : "click", view: rp.view === "text" ? "text" : "web", font: isReaderFont(rp.font) ? rp.font : "default", contrast: isReaderContrast(rp.contrast) ? rp.contrast : "normal", filter: readFilter(rp.filter) },
+    readerPane: { images: rp.images === "always" ? "always" : "click", font: isReaderFont(rp.font) ? rp.font : "default", contrast: isReaderContrast(rp.contrast) ? rp.contrast : "normal", filter: readFilter(rp.filter) },
     // Only a literal true lifts the lock: anything else, or a missing key, keeps the dev build on test Studios.
     dev: { allowLiveStudio: dv.allowLiveStudio === true },
   };

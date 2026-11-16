@@ -465,6 +465,16 @@
 .blyg-reader-bar, .blyg-reader-controls { display: flex; gap: var(--size-4-1); flex-wrap: wrap; align-items: center; }
 .blyg-reader-controls { margin-top: var(--size-4-1); }
 .blyg-reader-spacer { flex: 1 1 auto; }
+/* the feed's status line and the Refresh button are one bar; the plugin's version sits at its end */
+.blyg-reader-statusrow { display: flex; align-items: center; gap: var(--size-4-2); margin-top: var(--size-4-1); padding: var(--size-2-1) var(--size-2-2) var(--size-2-1) var(--size-4-3); border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); background: var(--background-secondary); }
+.blyg-reader-statusrow .blyg-reader-status { flex: 1 1 auto; padding-top: 0; min-height: 0; }
+.blyg-reader-statusrow .blyg-reader-status:empty { display: block; }
+.blyg-reader-statusrow .blyg-reader-status:empty:not(.is-busy)::before { content: "Not checked yet"; color: var(--text-faint); }
+.blyg-reader-statusrow .blyg-reader-refresh { flex: none; margin-left: auto; }
+.blyg-reader-version { flex: none; color: var(--text-faint); font-size: var(--font-ui-smaller); white-space: nowrap; margin-left: var(--size-4-2); }
+/* this post's actions share a tray; "Browser" is quieter and sits apart */
+.blyg-reader-btngroup { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--size-4-1); padding: var(--size-2-1); border-radius: var(--radius-m); background: var(--background-secondary); }
+.blyg-reader-quiet { background: transparent; box-shadow: none; color: var(--text-muted); }
 /* Buttons take the theme's own shape (a pill in some themes, a rounded box in others): only their SIZE is ours, scaled from one height, so any shape has room for its text. */
 .blyg-reader { --blyg-btn-h: var(--input-height, 30px); }
 .blyg-reader .blyg-reader-btn, .blyg-reader .blyg-reader-select { box-sizing: border-box; height: auto; min-height: var(--blyg-btn-h); padding-block: 0; font-size: var(--font-ui-small); line-height: 1.2; }
@@ -477,7 +487,6 @@
 .blyg-reader-btn.is-active { background: var(--interactive-accent); color: var(--text-on-accent); }
 .blyg-reader-select { max-width: 100%; }
 .blyg-reader-toggle { display: inline-flex; gap: var(--size-4-1); align-items: center; color: var(--text-muted); font-size: var(--font-ui-small); }
-.blyg-reader-segment { display: inline-flex; gap: 1px; margin-left: auto; }
 .blyg-reader-status { color: var(--text-muted); font-size: var(--font-ui-smaller); min-height: 1.4em; padding-top: var(--size-2-1); -webkit-user-select: text; user-select: text; }
 .blyg-reader-status:empty { display: none; }
 .blyg-reader-note { color: var(--text-muted); margin-bottom: var(--size-4-3); }
@@ -511,13 +520,11 @@
 .blyg-reader-badge.is-done { color: var(--text-faint); }
 .blyg-reader-quote { color: var(--text-muted); font-style: italic; border-left: 2px solid var(--background-modifier-border); padding-left: var(--size-4-2); margin-bottom: var(--size-2-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .blyg-reader-card .blyg-reader-excerpt { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
-/* the post as its web page: it fills what the header leaves */
-.blyg-reader-frame { flex: 1 1 auto; width: 100%; min-height: 0; border: 0; background: var(--background-primary); }
 /* something is loading: the refresh button and the status line turn a small ring, so a wait never looks stuck */
 @keyframes blyg-spin { to { transform: rotate(360deg); } }
-.blyg-reader-status.is-busy::before, .blyg-reader-header.is-busy .blyg-reader-refresh::before { content: ""; display: inline-block; width: 0.85em; height: 0.85em; margin-right: 0.5em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; vertical-align: -0.12em; animation: blyg-spin 0.8s linear infinite; }
+.blyg-reader-status.is-busy::before { content: ""; display: inline-block; width: 0.85em; height: 0.85em; margin-right: 0.5em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; vertical-align: -0.12em; animation: blyg-spin 0.8s linear infinite; }
 .blyg-reader-header.is-busy .blyg-reader-refresh { opacity: 0.7; }
-@media (prefers-reduced-motion: reduce) { .blyg-reader-status.is-busy::before, .blyg-reader-header.is-busy .blyg-reader-refresh::before { animation: none; border-right-color: currentColor; } }
+@media (prefers-reduced-motion: reduce) { .blyg-reader-status.is-busy::before { animation: none; border-right-color: currentColor; } }
 /* the owner's font for a post's content in the text view (the interface keeps Obsidian's); the same stacks as ui/readerFonts.ts, which a test keeps in step */
 .blyg-reader.is-font-serif .blyg-reader-body { font-family: ui-serif, "New York", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif; }
 .blyg-reader.is-font-sans .blyg-reader-body { font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
@@ -553,13 +560,15 @@
 .blyg-reader-surface .blyg-reader-body :is(pre, code) { background: color-mix(in srgb, var(--blyg-ink) 7%, transparent); border-radius: var(--radius-s); }
 
 /* Header: the way back and on to the next post are large and first. */
+/* a mention's own button row */
+.blyg-reader-mention-actions { margin-top: var(--size-2-2); justify-content: flex-end; }
 .blyg-reader-bar-main { margin-bottom: var(--size-4-1); }
 .blyg-reader-bar-main { --blyg-btn-h: 44px; }
 .blyg-reader-bar-main .blyg-reader-btn { font-size: var(--font-ui-medium); }
 .blyg-reader-back::before { content: "‹\00a0"; font-size: 1.3em; line-height: 1; }
 
 /* Between two posts: the text fades and "Marked read" shows for a moment. */
-.blyg-reader-bodywrap.is-leaving .blyg-reader-surface .blyg-reader-column, .blyg-reader-bodywrap.is-leaving .blyg-reader-frame { opacity: 0.12; transition: opacity 0.3s ease; }
+.blyg-reader-bodywrap.is-leaving .blyg-reader-surface .blyg-reader-column { opacity: 0.12; transition: opacity 0.3s ease; }
 .blyg-reader-done { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%) scale(0.96); padding: var(--size-4-3) var(--size-4-6); border-radius: var(--radius-l); background: var(--background-secondary); color: var(--text-normal); border: 1px solid var(--background-modifier-border); box-shadow: var(--shadow-s); font-size: var(--font-ui-large); opacity: 0; transition: opacity 0.22s ease, transform 0.22s ease; pointer-events: none; }
 .blyg-reader-done.is-in { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 @media (prefers-reduced-motion: reduce) { .blyg-reader-done, .blyg-reader-surface .blyg-reader-column { transition: none; } }
@@ -571,10 +580,10 @@
 
 /* The replies chip of an open post and the list it opens (cards like the feed's); the owner's own replies are green. */
 .blyg-reader-btn.blyg-reader-resp.is-mine { color: var(--color-green, var(--text-success)); border-color: var(--color-green, var(--text-success)); }
-.blyg-reader-responses { position: absolute; inset: 0; z-index: 5; overflow-y: auto; background: var(--background-primary); padding: var(--size-4-3); }
-.blyg-reader-responses-top { display: flex; align-items: center; justify-content: space-between; gap: var(--size-4-2); max-width: 42rem; margin: 0 auto var(--size-4-2); }
-.blyg-reader-responses-title { font-weight: var(--font-semibold); }
-.blyg-reader-responses-note { max-width: 42rem; margin: 0 auto var(--size-4-2); }
+/* the replies you can see: at the end of the post, in the reading column */
+.blyg-reader-responses { margin-top: var(--size-4-8); padding-top: var(--size-4-4); border-top: 1px solid var(--background-modifier-border); }
+.blyg-reader-responses-title { font-weight: var(--font-semibold); margin-bottom: var(--size-2-1); }
+.blyg-reader-responses-note { margin-bottom: var(--size-4-2); }
 .blyg-reader-card.blyg-reader-response.is-mine { border-left: 3px solid var(--color-green, var(--text-success)); padding-left: var(--size-4-3); background: color-mix(in srgb, var(--color-green, var(--text-success)) 7%, transparent); }
 .blyg-reader-badge.is-mine { background: var(--color-green, var(--text-success)); color: var(--background-primary); }
 
