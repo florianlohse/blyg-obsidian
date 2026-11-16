@@ -426,6 +426,23 @@ describe("BlygPanelView", () => {
     expect(els.some((e) => e.cls.has("blyg-pane-decision"))).toBe(false);
   });
 
+  it("with no Studio set up: the four steps, the local writing buttons, and nothing that needs a Studio", async () => {
+    const st = defaultSettings();
+    st.routes = [...STUDIO_ROUTES];
+    st.studio = { baseUrl: "", mount: "", tokenSecretName: "", importFolder: "" };
+    const state = computePanelState({ settings: st, note: { path: "studio/Note.md", name: "Note.md", extension: "md" }, frontmatter: {}, localHash: "sha256:a" });
+    expect(state.status).toBe("studio-missing");
+    const { els, texts, button } = await mount(state);
+    expect(texts).toContain("Connect your Studio.");
+    expect(texts.some((t) => /^2\. In your Studio open More → Client access/.test(t))).toBe(true);
+    expect(texts.some((t) => /30 days.*each device/.test(t))).toBe(true);
+    expect(button("New fragment")?.disabled).toBe(false); // writing locally still works
+    expect(button("New thread")?.disabled).toBe(false);
+    for (const gone of ["Review publication", "Review draft", "Withdraw", "Hoppers…", "Hoppers...", "Open on web", "Insert quote", "Insert link", "Import from Studio", "Reply to item"]) expect(button(gone), gone).toBeUndefined();
+    expect(texts.some((t) => /Insert quote works in threads only/.test(t))).toBe(false);
+    expect(els.some((e) => e.cls.has("blyg-pane-decision"))).toBe(false);
+  });
+
   it("a draft in the Studio is not called a published fragment", async () => {
     const st = defaultSettings();
     st.studio = { baseUrl: STUDIO_HOST, mount: "", tokenSecretName: "studio-token", importFolder: "" };

@@ -80,11 +80,11 @@ describe("runPublish for a Studio route", () => {
     expect(studio.seen.length).toBeGreaterThan(0);
   });
 
-  it("a Studio route with unfinished Studio settings blocks publishing, and the message names the Studio fields", async () => {
+  it("a Studio route with unfinished Studio settings blocks publishing, and the message says to connect the Studio (address and token)", async () => {
     const { studio, env } = setup({ "studio/N.md": "Hello.\n" }, "studio/N.md", {}, userSettings({ baseUrl: "", tokenSecretName: "" }));
     const out = await runPublish(env);
     expect(out.status).toBe("refused");
-    expect(out.notices[0]).toMatch(/Studio address: Required: a route publishes to a Studio\. · Studio token: Required/);
+    expect(out.notices).toEqual([M.studioNotConfigured]);
     expect(studio.seen).toEqual([]);
   });
 

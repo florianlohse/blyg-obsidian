@@ -137,7 +137,7 @@ export const M = {
   // ---- Studio (S2) ----
   studioCancelled: "Cancelled — nothing was published and the Studio was not changed.",
   githubNotSetUp: "Not published — this folder publishes to a GitHub site, and GitHub is not set up. Open Settings → Blyg → GitHub, or move the note to a Studio folder.",
-  studioNotConfigured: "Not published — no usable Studio is set up. Open Settings → Blyg → Studio: address and token.",
+  studioNotConfigured: "Connect your Studio first: Settings → Blyg → Studio (address and token).",
   studioLinks: (names: string[]) =>
     `Not published — the note has links the Studio would show as plain text: ${names.join(", ")}. Only notes published in the Studio can be linked: publish the note first, or take the link out.`,
   studioNotInStudio: (name: string, origin: string | null) =>

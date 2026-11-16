@@ -69,6 +69,9 @@ import { M } from "./publish/messages";
 /** How often the panel looks at data.json's modified time while it is on screen: a stat call, no reading, no network. */
 const DATA_LOOK_MS = 15_000;
 
+/** A connection report is several lines: it stays up long enough to read them all (a failure longer than a success). */
+const reportDuration = (report: { ok: boolean; lines: unknown[] }): number => Math.max(report.ok ? 8000 : 12000, report.lines.length * (report.ok ? 2500 : 3500));
+
 export default class BlygPlugin extends Plugin {
   override settings: BlygSettings = defaultSettings();
   /** Set when data.json was written by a newer plugin version: we must not save over it. */
@@ -233,7 +236,7 @@ export default class BlygPlugin extends Plugin {
       name: "Studio: check connection",
       callback: () => {
         void this.runStudioConnectionCheck().then((report) => {
-          obsidianNotifier.notice(formatReport(report), report.ok ? 6000 : 12000);
+          obsidianNotifier.notice(formatReport(report), reportDuration(report));
         });
       },
     });
@@ -243,7 +246,7 @@ export default class BlygPlugin extends Plugin {
       checkCallback: (checking) =>
         this.githubCommand(checking, () => {
           void this.runConnectionCheck().then((report) => {
-            obsidianNotifier.notice(formatReport(report), report.ok ? 6000 : 12000);
+            obsidianNotifier.notice(formatReport(report), reportDuration(report));
           });
         }),
     });
@@ -1040,7 +1043,7 @@ export default class BlygPlugin extends Plugin {
         const waiting = force ? null : this.readerBackedOff();
         if (waiting) return { asked: false, reason: waiting };
         const built = buildStudio(this.env());
-        if (!built.ok) return { asked: false, reason: built.message };
+        if (!built.ok) return { asked: false, reason: built.message === M.studioNotConfigured ? "Connect your Studio to read followed blygs: Settings → Blyg." : built.message };
         try {
           const got = await built.studio.client.pollSubscriptions();
           if (got.kind === "ok") {
@@ -1077,7 +1080,7 @@ export default class BlygPlugin extends Plugin {
         const waiting = opts?.force ? null : this.readerBackedOff();
         if (waiting) return { ok: false, message: waiting };
         const built = buildStudio(this.env());
-        if (!built.ok) return { ok: false, message: built.message };
+        if (!built.ok) return { ok: false, message: built.message === M.studioNotConfigured ? "Connect your Studio to read followed blygs: Settings → Blyg." : built.message };
         try {
           const { client } = built.studio;
           const known = opts?.known ?? null;
