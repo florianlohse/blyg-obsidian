@@ -54,6 +54,8 @@ import { computePanelState, type PanelDeploy, type PanelState } from "../src/app
 import { BlygPanelView, type PanelHost } from "../src/ui/BlygPanelView";
 import { defaultSettings } from "../src/settings/schema";
 import { MACRO_ROUTES } from "./world";
+import { STUDIO_HOST, STUDIO_ORIGIN } from "./studio/fake-studio";
+import { STUDIO_ROUTES } from "./studio/world";
 
 const settle = async (): Promise<void> => {
   for (let i = 0; i < 20; i++) await Promise.resolve();
@@ -160,13 +162,13 @@ describe("BlygPanelView", () => {
   it("the main button says Publish before and Update after; Publish again after a withdrawal; the call to action only when there is something to send", async () => {
     const label = async (fm: Record<string, unknown>, hash = "sha256:a") => {
       const m = await mount(stateOf(fm, hash));
-      const b = m.els.find((e) => e.tag === "button" && ["Publish", "Update", "Publish again"].includes(e.text));
+      const b = m.els.find((e) => e.tag === "button" && ["Review publication", "Review update", "Review republication"].includes(e.text));
       return [b?.text, b?.cls.has("mod-cta")];
     };
-    expect(await label({})).toEqual(["Publish", true]);
-    expect(await label({ blyg_id: ID, id: ID, version: 3, hash: "sha256:a" })).toEqual(["Update", false]);
-    expect(await label({ blyg_id: ID, id: ID, version: 3, hash: "sha256:old" })).toEqual(["Update", true]);
-    expect(await label({ blyg_id: ID, id: ID, version: 3, hash: "sha256:a", withdrawn: true })).toEqual(["Publish again", true]);
+    expect(await label({})).toEqual(["Review publication", true]);
+    expect(await label({ blyg_id: ID, id: ID, version: 3, hash: "sha256:a" })).toEqual(["Review update", false]);
+    expect(await label({ blyg_id: ID, id: ID, version: 3, hash: "sha256:old" })).toEqual(["Review update", true]);
+    expect(await label({ blyg_id: ID, id: ID, version: 3, hash: "sha256:a", withdrawn: true })).toEqual(["Review republication", true]);
   });
 
   it("when everything is fine the status gets a green check and the green edge; otherwise neither", async () => {
@@ -245,18 +247,18 @@ describe("BlygPanelView", () => {
     const { texts, button } = await mount(stateOf({ id: ID, blyg_id: ID, version: 3, hash: "sha256:a" }));
     expect(texts).toContain(ID);
     expect(texts).toContain("3");
-    expect([button("Update")?.disabled, button("Withdraw")?.disabled, button("Open on web")?.disabled]).toEqual([false, false, false]);
+    expect([button("Review update")?.disabled, button("Withdraw")?.disabled, button("Open on web")?.disabled]).toEqual([false, false, false]);
   });
 
   it("an unpublished note: only Publish is live", async () => {
     const { button } = await mount(stateOf({}));
-    expect([button("Publish")?.disabled, button("Withdraw")?.disabled, button("Open on web")?.disabled]).toEqual([false, true, true]);
+    expect([button("Review publication")?.disabled, button("Withdraw")?.disabled, button("Open on web")?.disabled]).toEqual([false, true, true]);
   });
 
   it("essays and pages have no Withdraw button, and no Open on web button unless their route has an address", async () => {
     const s = computePanelState({ settings: settings(), note: { path: "website/essays/E.md", name: "E.md", extension: "md" }, frontmatter: {}, localHash: "sha256:a" });
     const { button } = await mount(s);
-    expect(button("Publish")?.disabled).toBe(false);
+    expect(button("Review publication")?.disabled).toBe(false);
     expect(button("Withdraw")).toBeUndefined();
     expect(button("Open on web")).toBeUndefined();
   });
@@ -283,15 +285,15 @@ describe("BlygPanelView", () => {
   it("a note outside the routes: just the information, no publishing buttons at all", async () => {
     const s = computePanelState({ settings: settings(), note: { path: "Daily/D.md", name: "D.md", extension: "md" }, frontmatter: {}, localHash: null });
     const { button } = await mount(s);
-    expect([button("Publish"), button("Update"), button("Withdraw"), button("Open on web")]).toEqual([undefined, undefined, undefined, undefined]);
+    expect([button("Review publication"), button("Review update"), button("Withdraw"), button("Open on web")]).toEqual([undefined, undefined, undefined, undefined]);
   });
 
   it("Publish runs the plugin's publish; a second tap while it runs is ignored", async () => {
     let release: () => void = () => {};
     const gate = new Promise<void>((r) => (release = r));
     const { button, calls } = await mount(stateOf({}), null, { publish: () => (calls.push("publish"), gate) });
-    button("Publish")?.click();
-    button("Publish")?.click();
+    button("Review publication")?.click();
+    button("Review publication")?.click();
     await settle();
     expect(calls).toEqual(["publish"]);
     release();
@@ -403,6 +405,38 @@ describe("BlygPanelView", () => {
     expect(thread.texts.some((t) => /Insert quote works in threads only/.test(t))).toBe(false);
   });
 
+  it("the note's next step stands under its status, before the writing buttons and the facts list", async () => {
+    const { els } = await mount(stateOf({ id: ID, blyg_id: ID, version: 3, hash: "sha256:old" }));
+    const at = (pred: (e: El) => boolean): number => els.findIndex(pred);
+    const status = at((e) => e.cls.has("blyg-pane-status"));
+    const decision = at((e) => e.tag === "button" && e.text === "Review update");
+    const write = at((e) => e.text === "Write");
+    const facts = at((e) => e.tag === "dl");
+    const withdraw = at((e) => e.tag === "button" && e.text === "Withdraw");
+    expect(status).toBeGreaterThanOrEqual(0);
+    expect(decision).toBeGreaterThan(status);
+    expect(write).toBeGreaterThan(decision);
+    expect(facts).toBeGreaterThan(write);
+    expect(withdraw).toBeGreaterThan(facts); // the rarer actions stay below
+  });
+
+  it("a note outside the publish folders draws no next-step button", async () => {
+    const s = computePanelState({ settings: settings(), note: { path: "Daily/2026-10-26.md", name: "2026-10-26.md", extension: "md" }, frontmatter: {}, localHash: "sha256:a" });
+    const { els } = await mount(s);
+    expect(els.some((e) => e.cls.has("blyg-pane-decision"))).toBe(false);
+  });
+
+  it("a draft in the Studio is not called a published fragment", async () => {
+    const st = defaultSettings();
+    st.studio = { baseUrl: STUDIO_HOST, mount: "", tokenSecretName: "studio-token", importFolder: "" };
+    st.routes = [...STUDIO_ROUTES];
+    const state = computePanelState({ settings: st, note: { path: "studio/Note.md", name: "Note.md", extension: "md" }, frontmatter: { id: ID, origin: STUDIO_ORIGIN, version: 0, sent: "sha256:now" }, localHash: "sha256:now", thread: { quotes: 0, passages: 0, links: 0, problems: [] } });
+    expect(state.status).toBe("draft");
+    const { texts } = await mount(state);
+    expect(texts.some((t) => /already sent to the Studio as a draft.*Quote in thread/.test(t))).toBe(true);
+    expect(texts.some((t) => /published fragment/.test(t))).toBe(false);
+  });
+
   it("deploy: nothing before a commit; a quiet line on success; the full explanation on failure", async () => {
     expect((await mount(stateOf({}))).texts).not.toContain("Last deploy");
 
@@ -473,21 +507,21 @@ describe("the writing buttons", () => {
     expect(WRITE.map((t) => [t, button(t)?.disabled])).toEqual([
       ["New thread", false], ["New fragment", false], ["Quote in thread", undefined], ["Continue thread", undefined], ["Make thread", undefined], ["Insert quote", undefined], ["Insert link", undefined],
     ]);
-    expect(["Publish", "Update", "Withdraw", "Open on web"].map((t) => button(t))).toEqual([undefined, undefined, undefined, undefined]);
-    expect(els.some((e) => e.cls.has("blyg-pane-buttons") && e.text === "Publish")).toBe(false);
+    expect(["Review publication", "Review update", "Withdraw", "Open on web"].map((t) => button(t))).toEqual([undefined, undefined, undefined, undefined]);
+    expect(els.some((e) => e.cls.has("blyg-pane-buttons") && e.text === "Review publication")).toBe(false);
   });
 
   it("outside the publish folders: the info and the two New buttons, nothing that cannot work", async () => {
     const { button, texts } = await mount(noteState("Daily/2026-10-10.md", {}));
     expect(texts).toContain("Not in a publish folder.");
     expect(WRITE.map((t) => button(t)?.disabled)).toEqual([false, false, undefined, undefined, undefined, undefined, undefined]);
-    expect(["Publish", "Update", "Withdraw", "Open on web"].map((t) => button(t))).toEqual([undefined, undefined, undefined, undefined]);
+    expect(["Review publication", "Review update", "Withdraw", "Open on web"].map((t) => button(t))).toEqual([undefined, undefined, undefined, undefined]);
   });
 
   it("an essay open: Publish stays (it applies), the Blyg-note buttons are not drawn", async () => {
     const { button } = await mount(noteState("website/essays/E.md", {}));
     expect(WRITE.map((t) => button(t)?.disabled)).toEqual([false, false, undefined, undefined, undefined, undefined, undefined]);
-    expect(button("Publish")).toBeDefined();
+    expect(button("Review publication")).toBeDefined();
   });
 
   it("an unpublished fragment open: it can be quoted, linked into and made a thread; Continue and Insert quote stay, grayed out", async () => {

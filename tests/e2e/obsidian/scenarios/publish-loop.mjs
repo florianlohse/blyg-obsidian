@@ -22,7 +22,7 @@ await runScenario({}, async (s) => {
     await s.createNote(path, first);
     check(await s.openNote(path), `${layout}: the panel follows the new note`);
     check((await s.panelFacts()).Route?.startsWith("Blyg item"), `${layout}: the panel names the route (${(await s.panelFacts()).Route ?? "nothing"})`);
-    check(await s.clickPanel("Send draft"), `${layout}: the panel's button says “Send draft”`);
+    check(await s.clickPanel("Review draft"), `${layout}: the panel's button says “Review draft”`);
     check(await s.waitModal("Send a draft to your Studio"), `${layout}: the window is titled “Send a draft to your Studio”`);
     const sheet = await s.modalText();
     check(/draft only, nothing goes live/.test(sheet), `${layout}: the window says nothing goes live`);
@@ -43,7 +43,7 @@ await runScenario({}, async (s) => {
     check((await s.readNote(path)).includes("A third sentence"), `${layout}: the note was edited`);
     await s.becomes(async () => (await s.panelFacts()).Note !== undefined, 5000, "the panel");
     await wait(1000);
-    check(await s.clickPanel("Send draft"), `${layout}: the panel offers “Send draft” again after an edit`);
+    check(await s.clickPanel("Review draft"), `${layout}: the panel offers “Review draft” again after an edit`);
     check(await s.waitModal("Send a draft to your Studio"), `${layout}: the window opens again`);
     check(/Changes: \+\d+ word/.test(await s.modalText()), `${layout}: the window shows the changes as words added`);
     await s.clearNotices();
@@ -55,7 +55,7 @@ await runScenario({}, async (s) => {
     check(String(after.json?.contentMd).includes("A third sentence"), `${layout}: the Studio holds the edited text`);
 
     // nothing changed → nothing to send (no new draft)
-    check(await s.clickPanel("Send draft"), `${layout}: the button is still there`);
+    check(await s.clickPanel("Review draft"), `${layout}: the button is still there`);
     await s.clearNotices();
     check(Boolean(await s.waitNotice("already has this text")), `${layout}: sending an unchanged note says there is nothing to send`);
     check(!(await s.modalOpen()), `${layout}: ... and opens no window`);

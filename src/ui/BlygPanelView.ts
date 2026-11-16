@@ -109,6 +109,9 @@ export class BlygPanelView extends ItemView {
     for (const line of state.notes) status.createDiv({ cls: "blyg-pane-note", text: line });
 
     this.drawStudioWarnings(root, state);
+    // What the note needs next (review and send it, or compare the two copies) stands right under its status, before the writing buttons: on a phone the
+    // drawer is taller than the screen, and the button a person came back for used to be below the facts list.
+    if (state.route && state.status !== "not-markdown") this.drawDecision(root, state);
     this.drawWriteButtons(root, state);
 
     const facts = root.createEl("dl", { cls: "blyg-pane-facts" });
@@ -158,7 +161,7 @@ export class BlygPanelView extends ItemView {
     }
 
     this.drawDeploy(root, state);
-    // Publish, Withdraw and Open on web mean something only for a note in a publish folder; elsewhere the status above is all there is.
+    // Withdraw, Delete draft, Hoppers and Open on web mean something only for a note in a publish folder; elsewhere the status above is all there is.
     if (state.route && state.status !== "not-markdown") this.drawButtons(root, state);
     root.createDiv({ cls: "blyg-pane-version", text: `Blyg ${this.host.version}` });
   }
@@ -216,8 +219,10 @@ export class BlygPanelView extends ItemView {
       box.createDiv({
         cls: "blyg-pane-hint",
         text: state.item
-          ? "Insert quote works in threads only. This note is a published fragment, and the kind of a published item never changes: start a new thread with Quote in thread."
-          : "Insert quote works in threads only. This note is a fragment: tap Make thread to turn it into a thread (possible until it is published).",
+          ? state.status === "draft"
+            ? "Insert quote works in threads only. This note is a fragment that was already sent to the Studio as a draft, so it can no longer be made a thread: start a new thread with Quote in thread."
+            : "Insert quote works in threads only. This note is a published fragment, and the kind of a published item never changes: start a new thread with Quote in thread."
+          : "Insert quote works in threads only. This note is a fragment: tap Make thread to turn it into a thread (possible until it is sent to the Studio).",
       });
     }
   }
@@ -241,8 +246,9 @@ export class BlygPanelView extends ItemView {
     }
   }
 
-  private drawButtons(root: HTMLElement, state: PanelState): void {
-    const row = root.createDiv({ cls: "blyg-pane-buttons" });
+  /** The note's next step: the main button (it opens the preview window; only the window's own button sends), and the ways out of a mismatch with the Studio. */
+  private drawDecision(root: HTMLElement, state: PanelState): void {
+    const row = root.createDiv({ cls: "blyg-pane-buttons blyg-pane-decision" });
     const button = (text: string, enabled: boolean, cls: string | undefined, onClick: () => void): void => {
       const el = row.createEl("button", { text, ...(cls ? { cls } : {}) });
       el.disabled = !enabled || this.busy;
@@ -251,6 +257,15 @@ export class BlygPanelView extends ItemView {
     if (state.showRepost) button("Repost to Studio", state.canRepost, "mod-cta", () => void this.run(() => this.host.repost()));
     button(state.publishLabel, state.canPublish, state.emphasizePublish ? "mod-cta" : undefined, () => void this.run(() => this.host.publish()));
     if (state.showPull) button("Replace this note with the online text", state.canPull, undefined, () => void this.run(() => this.host.pull()));
+  }
+
+  private drawButtons(root: HTMLElement, state: PanelState): void {
+    const row = root.createDiv({ cls: "blyg-pane-buttons" });
+    const button = (text: string, enabled: boolean, cls: string | undefined, onClick: () => void): void => {
+      const el = row.createEl("button", { text, ...(cls ? { cls } : {}) });
+      el.disabled = !enabled || this.busy;
+      el.addEventListener("click", onClick);
+    };
     if (state.showWithdraw) button("Withdraw", state.canWithdraw, "mod-warning", () => void this.run(() => this.host.withdraw()));
     if (state.showDelete) button("Delete draft", state.canDelete, "mod-warning", () => void this.run(() => this.host.deleteDraft()));
     if (state.hoppers) {

@@ -34,7 +34,7 @@ export const TM = {
     "That passage has a web address next to characters that Markdown would change, so it cannot be quoted exactly. Select a different part.",
   selectFirst: "Select some text first.",
   quoteInserted: "Quote inserted.",
-  passageInserted: "Passage inserted. Tap Publish to freeze it with the thread.",
+  passageInserted: "Passage inserted. It is frozen with the thread when the thread is published.",
   extractPlain:
     "Essays and pages are copied to the site as they are, so an embed left there would show as plain text. Extract from a thread, or from a note outside your publish folders.",
   extractFragment:

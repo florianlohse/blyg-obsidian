@@ -136,7 +136,7 @@ copy and the community copy together.
 5. Tap **Check connection** (in the Studio group). It names your Studio's version and API contract (for example
    “Studio 0.51.0, contract 5.2.0”), the permissions of the token and how long it still lasts.
 6. Open a note in the route folder, open the panel (the ribbon icon “Open blyg publisher”, or the command **Blyg: Open panel**)
-   and tap **Publish** (**Send draft** on a Drafts-only route).
+   and tap **Review publication** (**Review draft** on a Drafts-only route); the window that opens shows what will be sent, and its **Publish** (**Send draft**) button sends it.
 
 GitHub settings, “Blyg address”, the folder “Kind” and the preview channel belong to an older way of running a blyg from a
 GitHub repository. They stay hidden unless you switch on **Advanced → Also publish to a GitHub-hosted site** at the bottom

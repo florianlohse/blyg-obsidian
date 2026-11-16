@@ -107,11 +107,11 @@ to a **Blyg note** is an item link.
 
 ## Publishing
 
-Before you tap Publish, the **panel already tells you** what the plugin would refuse, in one line: an empty note, a fragment over its limit ("Too long for
+Before you tap Review publication, the **panel already tells you** what the plugin would refuse, in one line: an empty note, a fragment over its limit ("Too long for
 a fragment: 1,254 characters, the limit is 1,000. Shorten it, or make it a thread."), links the site cannot honour, an embed the site cannot show, a
-quoted item that is not published yet, a fragment that quotes. Publish is then switched off until it is fixed.
+quoted item that is not published yet, a fragment that quotes. The panel's main button is then switched off until it is fixed.
 
-Panel → **Publish** (or **Update**). The window lists *Quotes in this thread* (whole or passage, which note, which version, new / moved /
+Panel → **Review publication** (or **Review update**). The window lists *Quotes in this thread* (whole or passage, which note, which version, new / moved /
 unchanged) and *Links to other items*, then the text changes. **Commit** writes it. The panel then watches the deploy.
 
 **When a quoted note changes:** the thread keeps the old copy until you tap **Update**. Then the window says "moves from v1 to v2",

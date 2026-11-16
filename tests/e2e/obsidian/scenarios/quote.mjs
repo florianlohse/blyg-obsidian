@@ -91,7 +91,7 @@ await runScenario({ data }, async (s) => {
       check(Boolean(await s.becomes(async () => (await s.editorText(path)).includes(`> ${sentence}`), 10000, "the passage")), `${layout}: the note holds the passage of the other blyg's item`);
       await s.writeNote(path, await s.editorText(path));
       await s.refreshPanel(path);
-      check(await s.clickPanel("Publish"), `${layout}: Publish on the thread`);
+      check(await s.clickPanel("Review publication"), `${layout}: Review publication on the thread`);
       check(await s.waitModal(/^Publish a new /), `${layout}: the publish window opens`);
       const sheet = await s.modalText();
       check(sheet.includes("Quotes in this thread") && sheet.includes("another blyg"), `${layout}: it lists the quote as from another blyg`);
