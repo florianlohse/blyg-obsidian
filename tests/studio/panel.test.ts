@@ -108,7 +108,8 @@ describe("panel for a Studio note (from the note's own record, no network)", () 
     expect(state({ kind: "thread" })).toMatchObject({ status: "not-published", canPublish: true, kind: "thread" });
     expect(state(record({ id: "../x" })).status).toBe("invalid-id");
     expect(state({ kind: "essay" }).status).toBe("invalid-kind");
-    expect(state({}, { s: settings({ baseUrl: "", mount: "", tokenSecretName: "", importFolder: "" }) })).toMatchObject({ status: "studio-missing", canPublish: false });
+    expect(state({}, { s: settings({ baseUrl: "", mount: "", tokenSecretName: "", importFolder: "" }) })).toMatchObject({ status: "studio-missing", canPublish: false, headline: "Connect your Studio." });
+    expect(state({}, { s: settings({ baseUrl: "", mount: "", tokenSecretName: "", importFolder: "" }) }).hoppers).toBeUndefined(); // hoppers are the Studio's
   });
 
   it("a thread shows what it quotes, and which quotes come from other blygs", () => {

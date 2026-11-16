@@ -306,6 +306,15 @@ export async function localPlainHash(rawNote: string): Promise<string | null> {
 
 const capitalise = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);
 
+/** What a person does to connect a Studio, in order (the panel and the settings' Setup check say the same four steps). */
+export const CONNECT_STEPS: readonly string[] = [
+  "1. Enter your Studio's address: Settings → Blyg → Studio.",
+  "2. In your Studio open More → Client access and create a token.",
+  "3. Save the token as an entry in Settings → Keychain on this device, then pick that entry under Studio token.",
+  "4. Tap Check connection.",
+  "A token lasts 30 days: then repeat steps 2 and 3, and do the same on each device.",
+];
+
 /** The state of the panel for one note: what is true, what to say, which buttons to draw. */
 export function computePanelState(input: PanelInput): PanelState {
   const core = computeCore(input);
@@ -326,7 +335,7 @@ export function computePanelState(input: PanelInput): PanelState {
     ok: core.status === "in-sync" || core.status === "plain-in-sync",
     showWithdraw: (blygRoute || core.route?.mode === "studio") && !draftsOnly,
     ...(core.route?.mode === "studio" && input.studio ? { studio: studioInfo(input.studio) } : {}),
-    ...(core.route?.mode === "studio" && input.note?.extension === "md" ? { hoppers: hopperInfo(input) } : {}),
+    ...(core.route?.mode === "studio" && input.note?.extension === "md" && core.status !== "studio-missing" ? { hoppers: hopperInfo(input) } : {}),
     ...(core.route?.mode === "studio" && input.note?.extension === "md" ? stubInfo(input.frontmatter.stubOf, core.kind) : {}),
     // Repost is a corner case of the older GitHub way: offered only to a setup that uses GitHub (settings/studioOnly.ts). Hidden, not removed.
     showRepost: core.status === "other-blyg" && githubInUse(input.settings),
@@ -673,7 +682,7 @@ function studioCore(
     return { ...base, ...common, status: "invalid-kind", headline: "The blyg_kind in this note is not valid.", notes: ["Use “thread”, or remove the property for a fragment; publishing is refused until then."] };
   }
   if (!address) {
-    return { ...base, ...common, status: "studio-missing", headline: "No Studio is set up.", notes: ["Enter the Studio's address and token in Settings → Blyg → Studio."] };
+    return { ...base, ...common, status: "studio-missing", headline: "Connect your Studio.", notes: [...CONNECT_STEPS] };
   }
   const rawId = fm.id;
   const hasId = rawId !== undefined && rawId !== null && rawId !== "" && rawId !== false;

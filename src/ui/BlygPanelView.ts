@@ -111,7 +111,7 @@ export class BlygPanelView extends ItemView {
     this.drawStudioWarnings(root, state);
     // What the note needs next (review and send it, or compare the two copies) stands right under its status, before the writing buttons: on a phone the
     // drawer is taller than the screen, and the button a person came back for used to be below the facts list.
-    if (state.route && state.status !== "not-markdown") this.drawDecision(root, state);
+    if (state.route && state.status !== "not-markdown" && state.status !== "studio-missing") this.drawDecision(root, state);
     this.drawWriteButtons(root, state);
 
     const facts = root.createEl("dl", { cls: "blyg-pane-facts" });
@@ -162,7 +162,7 @@ export class BlygPanelView extends ItemView {
 
     this.drawDeploy(root, state);
     // Withdraw, Delete draft, Hoppers and Open on web mean something only for a note in a publish folder; elsewhere the status above is all there is.
-    if (state.route && state.status !== "not-markdown") this.drawButtons(root, state);
+    if (state.route && state.status !== "not-markdown" && state.status !== "studio-missing") this.drawButtons(root, state);
     root.createDiv({ cls: "blyg-pane-version", text: `Blyg ${this.host.version}` });
   }
 
@@ -212,6 +212,8 @@ export class BlygPanelView extends ItemView {
     button("Quote in thread", w.canQuoteInThread, () => this.host.quoteInNewThread());
     button("Continue thread", w.canContinue, () => this.host.continueThread());
     button("Make thread", w.canMakeThread, () => this.host.makeThread());
+    // Quotes and links come from the Studio's items: with no Studio set up there is nothing to pick from, so the two buttons are not drawn.
+    if (state.status === "studio-missing") return;
     button("Insert quote", w.canInsertQuote, () => this.host.insertQuote());
     button("Insert link", w.canInsertLink, () => this.host.insertLink());
     // A grey "Insert quote" on a fragment is correct (only a thread can quote), but it looked like a fault in the device test: say why.

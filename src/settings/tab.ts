@@ -2,6 +2,7 @@ import { importFolderChoices } from "../studio/import";
 import { DEV_STUDIO_RULE, isDevStudioLock } from "../studio/devLock";
 import {
   debounce,
+  Notice,
   PluginSettingTab,
   SecretComponent,
   type App,
@@ -14,6 +15,8 @@ import { CONTRACT_MAX_FRAGMENT_CAP } from "../contract";
 import { getPath, setPath } from "./path";
 import type { Route } from "./schema";
 import { isStudioOnly } from "./studioOnly";
+import { CONNECT_STEPS } from "../app/panelState";
+import { connectionCheckKey, setupProgress } from "./setup";
 import { describeField, validateSettings } from "./validate";
 
 /**
@@ -23,6 +26,9 @@ import { describeField, validateSettings } from "./validate";
  */
 export class BlygSettingTab extends PluginSettingTab {
   private issuesSetting: Setting | null = null;
+  /** The "Check connection" rows drawn now, and the last result of each check (kept in memory while Obsidian runs, shown again only for the settings it was made with). */
+  private checks: Array<{ paint: () => void }> = [];
+  private readonly lastReports = new Map<string, { lines: { level: string; text: string }[]; at: Date }>();
   /**
    * The "Also publish to a GitHub-hosted site" switch (Advanced). Not saved and not in the settings schema: null until the page is first
    * drawn, then derived from the loaded settings (on when they carry a GitHub setup or a legacy route), kept while the settings tab is
@@ -71,6 +77,7 @@ export class BlygSettingTab extends PluginSettingTab {
   }
 
   override getSettingDefinitions(): SettingDefinitionItem[] {
+    this.checks = [];
     const s = this.plugin.settings;
     const studioOnly = this.studioOnlyView();
     const text = (name: string, desc: string, key: string, placeholder?: string): SettingGroupItem => ({
@@ -351,7 +358,10 @@ export class BlygSettingTab extends PluginSettingTab {
     ];
   }
 
-  /** A “Check connection” row: runs `run`, shows its lines under the button. */
+  /**
+   * A “Check connection” row: runs `run`, shows its lines under the button and keeps them. The result belongs to the settings it was made with (the
+   * Studio's address, mount and keychain entry, or the GitHub ones): change one and the old result is taken away instead of standing for something else.
+   */
   private checkConnectionItem(desc: string, run: () => Promise<{ lines: { level: string; text: string }[] }>, name = "Check connection"): SettingGroupItem {
     return {
       name,
@@ -359,17 +369,28 @@ export class BlygSettingTab extends PluginSettingTab {
       aliases: ["test", "token", "permissions"],
       render: (setting) => {
         const resultEl = setting.infoEl.createDiv({ cls: "blyg-check-result" });
+        const key = (): string => connectionCheckKey(this.plugin.settings, name);
+        const paint = (): void => {
+          resultEl.empty();
+          const last = this.lastReports.get(key());
+          if (!last) return;
+          for (const line of last.lines) resultEl.createDiv({ cls: `blyg-check-line blyg-${line.level}`, text: line.text });
+          resultEl.createDiv({ cls: "blyg-note", text: `Checked at ${last.at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.` });
+        };
+        this.checks.push({ paint });
+        paint();
         setting.addButton((btn) =>
           btn.setButtonText(name).onClick(async () => {
             btn.setDisabled(true);
+            const asked = key();
             resultEl.empty();
             resultEl.createDiv({ cls: "blyg-check-line", text: "Checking…" });
             try {
               const report = await run();
-              resultEl.empty();
-              for (const line of report.lines) {
-                resultEl.createDiv({ cls: `blyg-check-line blyg-${line.level}`, text: line.text });
-              }
+              this.lastReports.set(asked, { lines: report.lines, at: new Date() });
+              paint();
+              // The result stays under the button; the toast only says that the check ran.
+              new Notice(report.lines.some((l) => l.level === "error") ? "Connection checked: something needs attention. See below the button." : "Connection checked.", 4000);
             } finally {
               btn.setDisabled(false);
             }
@@ -446,6 +467,7 @@ export class BlygSettingTab extends PluginSettingTab {
 
   private changed(): void {
     this.renderIssues();
+    for (const c of this.checks) c.paint();
     this.refreshDomState();
     this.save();
   }
@@ -454,11 +476,16 @@ export class BlygSettingTab extends PluginSettingTab {
     const setting = this.issuesSetting;
     if (!setting) return;
     const issues = validateSettings(this.plugin.settings);
-    const errors = issues.filter((i) => i.severity === "error");
+    // Nothing connected yet: say the four steps in order (the panel says the same), instead of a list of empty fields. Step 1 shows a tick once the address is entered.
+    const { connecting, done, errors } = setupProgress(issues);
     const warnings = issues.filter((i) => i.severity === "warning");
-    setting.setName(errors.length > 0 ? "To fix before publishing" : warnings.length > 0 ? "Setup complete, with notes" : "Setup complete");
+    setting.setName(connecting ? "Connect your Studio" : errors.length > 0 ? "To fix before publishing" : warnings.length > 0 ? "Setup complete, with notes" : "Setup complete");
     const frag = createFragment();
-    if (issues.length === 0) {
+    if (connecting) {
+      const steps = frag.createEl("ol", { cls: "blyg-steps" });
+      CONNECT_STEPS.slice(0, 4).forEach((text, i) => steps.createEl("li", { text: `${done[i] ? "✓ " : ""}${text.replace(/^\d\. /, "")}` }));
+      frag.createDiv({ cls: "blyg-note", text: CONNECT_STEPS[4] ?? "" });
+    } else if (issues.length === 0) {
       frag.createDiv({ text: "Everything needed for publishing is filled in." });
     }
     for (const issue of errors) frag.createDiv({ cls: "blyg-issue", text: `${describeField(issue.field)}: ${issue.message}` });

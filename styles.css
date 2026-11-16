@@ -19,6 +19,15 @@
   font-size: var(--font-ui-smaller);
 }
 
+/* The four steps of connecting a Studio, in the Setup check of the settings and in the panel. */
+.blyg-steps {
+  margin: 0.25em 0 0.5em;
+  padding-left: 1.4em;
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+}
+.blyg-steps li { margin-bottom: 0.25em; }
+
 .blyg-check-result {
   margin: 0.5em 0 1em;
 }
