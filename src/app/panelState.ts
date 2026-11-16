@@ -507,7 +507,7 @@ function computeCore(input: PanelInput): CoreState {
       status: inSync ? "plain-in-sync" : "plain-changed",
       ...(hint ? { hint } : {}),
       headline: inSync ? `${capitalise(route.label)}: published${on} and up to date.` : `${capitalise(route.label)}: changed since it was published${on}.`,
-      notes: [inSync ? "Edit it; “Publish update…” appears here when there is something to send." : "Tap Publish update… to see the changes before they go out."],
+      notes: [inSync ? "Edit it to change it." : "Tap Publish update… to see the changes before they go out."],
       canPublish: true,
     };
   }
@@ -648,7 +648,7 @@ function computeCore(input: PanelInput): CoreState {
     ...hint,
     status: inSync ? "in-sync" : "local-changes",
     headline: inSync ? `Published${on}${withVersion} and up to date.` : `Published${on}${withVersion}, with changes not sent yet.`,
-    notes: [...notes, inSync ? "Edit the note; “Publish update…” appears here when there is something to send." : "Tap Publish update… to see the changes before they go out."],
+    notes: [...notes, inSync ? "Edit the note to change it." : "Tap Publish update… to see the changes before they go out."],
     canPublish: true,
     canWithdraw: true,
   };
@@ -796,7 +796,7 @@ function studioCore(
           ? "In this folder only drafts are sent: nothing goes live from here."
           : "Tap Send draft… to update the working copy in the Studio; the published version stays as it is."
         : inSync
-          ? "Edit the note; “Publish update…” appears here when there is something to send."
+          ? "Edit the note to change it."
           : "Tap Publish update… to see the Studio's preview before it goes out.",
     ],
     canPublish: true,

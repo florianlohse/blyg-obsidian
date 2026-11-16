@@ -399,6 +399,16 @@
   margin-top: 0.25em;
 }
 
+.blyg-pane .blyg-pane-top { margin: 0 0 0.5em; }
+.blyg-pane .blyg-pane-top button { flex: 1 1 auto; font-size: var(--font-ui-smaller); padding-inline: var(--size-4-2); min-width: 0; }
+.blyg-pane .blyg-pane-top { flex-wrap: nowrap; }
+
+/* Buttons inside the status card: the card is as dark as a button, so a plain button vanished into it. */
+.blyg-pane .blyg-pane-status button:not(.mod-cta):not(.mod-warning) {
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+}
+
 .blyg-pane .blyg-pane-section button {
   flex: 1 1 40%;
 }

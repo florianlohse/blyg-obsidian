@@ -209,11 +209,11 @@ describe("panel wording: one line per state, and why a link is missing", () => {
   it("the notes tell the user what to do next, per state and per route", () => {
     const note1 = (s: ReturnType<typeof state>) => s.notes[0] ?? "";
     expect(note1(state())).toBe("Tap Publish… to send it as version 1.");
-    expect(note1(state({ fm: { id: ID, version: 1, hash: "sha256:aaa" } }))).toContain("Publish update…");
+    expect(note1(state({ fm: { id: ID, version: 1, hash: "sha256:aaa" } }))).toBe("Edit the note to change it.");
     expect(note1(state({ fm: { id: ID, version: 1, hash: "sha256:old" } }))).toContain("Publish update… to see the changes");
     expect(note1(state({ fm: { id: ID, version: 4, hash: "sha256:aaa", withdrawn: true } }))).toContain("as v5");
     expect(note1(essayIn(undefined, { plainRecord: null }))).toContain("compare it with the site");
-    expect(note1(essayIn(undefined))).toContain("Publish update…");
+    expect(note1(essayIn(undefined))).toBe("Edit it to change it.");
     expect(essayIn(undefined).headline).toBe("Essay: published and up to date.");
     expect(state({ fm: { id: ID, version: 3, hash: "sha256:aaa" } }).headline).toBe("Published (v3) and up to date.");
   });
