@@ -10,10 +10,10 @@ import { plainText, renderForeign, type ImageMode } from "./defang";
 import { activeFilters, arrange, cardOf, DEFAULT_FILTER, frameable, LENGTH_LABELS, nextInOrder, postOfQuote, pullProgress, readingTimeLabel, relativeTime, SORT_LABELS, sourcesOf, type FeedFilter, type FeedLength, type FeedSort } from "./readerFeed";
 import { type ReaderFont } from "./readerFonts";
 import { CONTRASTS, type ReaderContrast } from "./readerLook";
-import { bottomClearance } from "./readerLayout";
 import { responseChip, responseIndex, type ResponseEntry } from "./readerResponses";
 import { changedCount, chooseWalk, knownOf, mergeFresh, READER_KEEP, type SyncMemory } from "./readerSync";
 import type { StudioListedItem } from "../studio/types";
+import { bottomClearance } from "./readerBottom";
 import { limiter, mentionLead, postOfMention, visibleMentions } from "./readerMentions";
 
 export const BLYG_READER_VIEW = "blyg-reader";
@@ -605,8 +605,14 @@ export class BlygReaderView extends ItemView {
   private clearBottom(): void {
     const root = this.contentEl;
     const bar = root.ownerDocument.querySelector(".mobile-navbar");
-    // The tablet layout has the element but does not draw it (display none: a box of size zero at the origin); that is "no bar", not a bar covering the whole pane.
-    const clear = bar?.instanceOf(HTMLElement) ? bottomClearance(root.getBoundingClientRect(), bar.getBoundingClientRect()) : null;
+    if (!bar?.instanceOf(HTMLElement)) {
+      root.style.removeProperty("--blyg-bottom-clear");
+      return;
+    }
+    // Not `offsetParent`: it is null for a fixed bar too, which is how the bar is drawn on a phone. A tablet's bar is `display: none`.
+    const style = bar.ownerDocument.defaultView?.getComputedStyle(bar);
+    const hidden = !style || style.display === "none" || style.visibility === "hidden";
+    const clear = bottomClearance(root.getBoundingClientRect(), { rect: bar.getBoundingClientRect(), hidden });
     if (clear === null) root.style.removeProperty("--blyg-bottom-clear");
     else root.style.setProperty("--blyg-bottom-clear", `${clear}px`);
   }
