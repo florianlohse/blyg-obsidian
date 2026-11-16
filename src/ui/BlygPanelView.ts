@@ -45,6 +45,8 @@ export interface PanelHost {
   makeThread(): Promise<void>;
   insertQuote(): Promise<void>;
   insertLink(): Promise<void>;
+  /** Open the reader (the same as the ribbon icon and the command "Open reader"). */
+  openReader(): Promise<void>;
 }
 
 /** A timestamp for people: the device's own time zone; text that is not a date is shown as it is. */
@@ -63,6 +65,8 @@ export class BlygPanelView extends ItemView {
   /** Only the newest refresh may draw: a slow read of an earlier note must not overwrite a later one. */
   private drawn = 0;
   private busy = false;
+  /** Which collapsible sections are open. The panel is redrawn on every refresh, so a section a person opened must stay open. */
+  private readonly openSections = new Set<string>();
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -101,6 +105,12 @@ export class BlygPanelView extends ItemView {
 
     this.drawTestMode(root, state);
 
+    // Who this is about, in one muted line: the note's name (without ".md") and whether it is a thread or a fragment.
+    if (state.note) {
+      const name = state.note.name.replace(/\.md$/i, "");
+      root.createDiv({ cls: "blyg-pane-identity", text: state.kind ? `${name} · ${state.kind === "thread" ? "Thread" : "Fragment"}` : name });
+    }
+
     // Normal text with a coloured edge and a green check when everything is fine (never colour on colour, see styles.css).
     const status = root.createDiv({ cls: `blyg-pane-status${state.ok ? " blyg-pane-status-ok" : ""}` });
     const headline = status.createDiv({ cls: `blyg-pane-headline blyg-pane-${state.status}` });
@@ -109,12 +119,128 @@ export class BlygPanelView extends ItemView {
     for (const line of state.notes) status.createDiv({ cls: "blyg-pane-note", text: line });
 
     this.drawStudioWarnings(root, state);
-    // What the note needs next (review and send it, or compare the two copies) stands right under its status, before the writing buttons: on a phone the
-    // drawer is taller than the screen, and the button a person came back for used to be below the facts list.
-    if (state.route && state.status !== "not-markdown" && state.status !== "studio-missing") this.drawDecision(root, state);
-    this.drawWriteButtons(root, state);
+    // The panel is organised by what a person wants to do (increment 5): first what this note needs next, then starting something new,
+    // then, folded away, what can be done with this note, how to manage it in the Studio, and the facts about it.
+    const publishable = !!state.route && state.status !== "not-markdown" && state.status !== "studio-missing";
+    if (publishable) this.drawDecision(root, state);
+    this.drawStartWriting(root, state);
+    this.drawWorkOnNote(root, state);
+    if (publishable || state.write.canImport) this.drawManage(root, state, publishable);
+    this.drawDetails(root, state);
 
-    const facts = root.createEl("dl", { cls: "blyg-pane-facts" });
+    this.drawDeploy(root, state);
+    root.createDiv({ cls: "blyg-pane-version", text: `Blyg ${this.host.version}` });
+  }
+
+  /** Studio notes: what the Studio said that is not about the note itself. Plain sentences, each on its own line. */
+  private drawStudioWarnings(root: HTMLElement, state: PanelState): void {
+    const lines = [...(state.studio?.warnings ?? []), ...(state.studio?.unreachable ? ["The Studio could not be reached just now. This is what the note itself says; the Studio’s own state is not known."] : [])];
+    if (lines.length > 0) {
+      const box = root.createDiv({ cls: "blyg-pane-testmode" });
+      for (const line of lines) box.createDiv({ text: line });
+    }
+    // Transparency only (a newer minor contract): one small muted line, no warning box, no icon.
+    for (const note of state.studio?.notes ?? []) root.createDiv({ cls: "blyg-pane-note", text: note });
+  }
+
+  /**
+   * Shown only while publishing is pointed at the test branch (the "preview" channel exists for developing the plugin and the
+   * site, not for everyday use): a short line and the way back. On production, the normal case, there is nothing to see.
+   * (New class names "blyg-pane-testmode*": a stale stylesheet cannot paint the old bars.)
+   */
+  private drawTestMode(root: HTMLElement, state: PanelState): void {
+    if (state.channel !== "preview") return;
+    const box = root.createDiv({ cls: "blyg-pane-testmode" });
+    box.createDiv({ text: `Test mode: publishing goes to the “${state.branch}” branch, not to your real site.` });
+    const back = box.createEl("button", { text: "Switch to production" });
+    back.disabled = !this.host.canSwitchTarget() || this.busy;
+    back.addEventListener("click", () => void this.run(() => this.host.setTarget("production")));
+  }
+
+  /** A button in a row; disabled while an action runs. */
+  private button(row: HTMLElement, text: string, enabled: boolean, action: () => Promise<void>, cls?: string): void {
+    const el = row.createEl("button", { text, ...(cls ? { cls } : {}) });
+    el.disabled = !enabled || this.busy;
+    el.addEventListener("click", () => void this.run(action));
+  }
+
+  /** A folded section (a native details element). It remembers whether it is open across the panel's redraws. */
+  private section(root: HTMLElement, key: string, title: string): HTMLElement {
+    const box = root.createEl("details", { cls: "blyg-pane-section" });
+    box.open = this.openSections.has(key);
+    box.createEl("summary", { text: title });
+    box.addEventListener("toggle", () => {
+      if (box.open) this.openSections.add(key);
+      else this.openSections.delete(key);
+    });
+    return box;
+  }
+
+  /** Start writing: always in sight. A new fragment or thread needs only a Blyg folder; replying and the reader need a Studio. */
+  private drawStartWriting(root: HTMLElement, state: PanelState): void {
+    const w = state.write;
+    const box = root.createDiv({ cls: "blyg-pane-write" });
+    box.createDiv({ cls: "blyg-pane-write-title", text: "Start writing" });
+    const row = box.createDiv({ cls: "blyg-pane-buttons" });
+    this.button(row, "New fragment", w.canCreate, () => this.host.newNote());
+    this.button(row, "New thread", w.canCreate, () => this.host.newThread());
+    if (w.canReply) this.button(row, "New reply thread…", true, () => this.host.replyToItem());
+    if (w.canReply) this.button(row, "Open reader", true, () => this.host.openReader());
+  }
+
+  /** Work on this note: what the open Blyg note can take (quote, link, continue, change its kind). Folded; grayed out where it does not apply. */
+  private drawWorkOnNote(root: HTMLElement, state: PanelState): void {
+    // These act on an open Blyg note: outside the Blyg folders they would only be dead buttons, so they are not drawn at all.
+    if ((state.route?.mode !== "blyg" && state.route?.mode !== "studio") || state.status === "not-markdown") return;
+    const w = state.write;
+    const box = this.section(root, "work", "Work on this note");
+    const row = box.createDiv({ cls: "blyg-pane-buttons" });
+    this.button(row, "Quote in new thread", w.canQuoteInThread, () => this.host.quoteInNewThread());
+    this.button(row, "Continue thread", w.canContinue, () => this.host.continueThread());
+    this.button(row, "Make thread", w.canMakeThread, () => this.host.makeThread());
+    if (w.canMakeReply) this.button(row, "Set reply target…", true, () => this.host.makeReply());
+    // Quotes and links come from the Studio's items: with no Studio set up there is nothing to pick from, so the two buttons are not drawn.
+    if (state.status === "studio-missing") return;
+    this.button(row, "Insert quote", w.canInsertQuote, () => this.host.insertQuote());
+    this.button(row, "Insert link", w.canInsertLink, () => this.host.insertLink());
+    // A grey "Insert quote" on a fragment is correct (only a thread can quote), but it looked like a fault in the device test: say why.
+    if (!w.canInsertQuote && state.kind === "fragment") {
+      box.createDiv({
+        cls: "blyg-pane-hint",
+        text: state.item
+          ? state.status === "draft"
+            ? "Insert quote works in threads only. This note is a fragment that was already sent to the Studio as a draft, so it can no longer be made a thread: start a new thread with Quote in new thread."
+            : "Insert quote works in threads only. This note is a published fragment, and the kind of a published item never changes: start a new thread with Quote in new thread."
+          : "Insert quote works in threads only. This note is a fragment: tap Make thread to turn it into a thread (possible until it is sent to the Studio).",
+      });
+    }
+  }
+
+  /** Manage: the rarer actions on the item in the Studio, and the import of items from it. Folded. */
+  private drawManage(root: HTMLElement, state: PanelState, publishable: boolean): void {
+    const box = this.section(root, "manage", state.route?.mode === "studio" || state.write.canImport ? "Manage Studio" : "Manage");
+    const row = box.createDiv({ cls: "blyg-pane-buttons" });
+    if (publishable) {
+      if (state.showWithdraw) this.button(row, "Withdraw", state.canWithdraw, () => this.host.withdraw(), "mod-warning");
+      if (state.showDelete) this.button(row, "Delete draft", state.canDelete, () => this.host.deleteDraft(), "mod-warning");
+      if (state.hoppers) {
+        this.button(row, "Hoppers…", true, () => this.host.chooseHoppers());
+      }
+      if (state.showOpenWeb) {
+        const el = row.createEl("button", { text: "Open on web" });
+        el.disabled = !state.canOpenWeb || this.busy;
+        el.addEventListener("click", () => {
+          if (state.webUrl) this.host.openWeb(state.webUrl);
+        });
+      }
+    }
+    if (state.write.canImport) this.button(row, "Import from Studio", true, () => this.host.importFromStudio());
+  }
+
+  /** Details: the facts about the note, folded; most of the time the status line above says all a person needs. */
+  private drawDetails(root: HTMLElement, state: PanelState): void {
+    const box = this.section(root, "details", "Details");
+    const facts = box.createEl("dl", { cls: "blyg-pane-facts" });
     const fact = (label: string, value: string): void => {
       facts.createEl("dt", { text: label });
       facts.createEl("dd", { text: value });
@@ -154,79 +280,7 @@ export class BlygPanelView extends ItemView {
       // An https address the plugin built itself (core/webAddress.ts), shown as a link: a tap opens it like any link in a note.
       facts.createEl("dd").createEl("a", { cls: "external-link", text: shortUrl(state.webUrl), href: state.webUrl });
     }
-
-    if (state.hint) root.createDiv({ cls: "blyg-pane-hint", text: state.hint });
-    if (state.hoppers?.differ) {
-      root.createDiv({ cls: "blyg-pane-hint", text: "The note's hoppers differ from the Studio's. Publishing or sending the note applies the changes you made in the note; “Use the Studio's hoppers” takes the Studio's into the note." });
-    }
-
-    this.drawDeploy(root, state);
-    // Withdraw, Delete draft, Hoppers and Open on web mean something only for a note in a publish folder; elsewhere the status above is all there is.
-    if (state.route && state.status !== "not-markdown" && state.status !== "studio-missing") this.drawButtons(root, state);
-    root.createDiv({ cls: "blyg-pane-version", text: `Blyg ${this.host.version}` });
-  }
-
-  /** Studio notes: what the Studio said that is not about the note itself. Plain sentences, each on its own line. */
-  private drawStudioWarnings(root: HTMLElement, state: PanelState): void {
-    const lines = [...(state.studio?.warnings ?? []), ...(state.studio?.unreachable ? ["The Studio could not be reached just now. This is what the note itself says; the Studio’s own state is not known."] : [])];
-    if (lines.length > 0) {
-      const box = root.createDiv({ cls: "blyg-pane-testmode" });
-      for (const line of lines) box.createDiv({ text: line });
-    }
-    // Transparency only (a newer minor contract): one small muted line, no warning box, no icon.
-    for (const note of state.studio?.notes ?? []) root.createDiv({ cls: "blyg-pane-note", text: note });
-  }
-
-  /**
-   * Shown only while publishing is pointed at the test branch (the "preview" channel exists for developing the plugin and the
-   * site, not for everyday use): a short line and the way back. On production, the normal case, there is nothing to see.
-   * (New class names "blyg-pane-testmode*": a stale stylesheet cannot paint the old bars.)
-   */
-  private drawTestMode(root: HTMLElement, state: PanelState): void {
-    if (state.channel !== "preview") return;
-    const box = root.createDiv({ cls: "blyg-pane-testmode" });
-    box.createDiv({ text: `Test mode: publishing goes to the “${state.branch}” branch, not to your real site.` });
-    const back = box.createEl("button", { text: "Switch to production" });
-    back.disabled = !this.host.canSwitchTarget() || this.busy;
-    back.addEventListener("click", () => void this.run(() => this.host.setTarget("production")));
-  }
-
-  /** Writing: make a new note or thread, quote the open note into a new thread, continue the open thread. Grayed out when it does not apply. */
-  private drawWriteButtons(root: HTMLElement, state: PanelState): void {
-    const w = state.write;
-    const box = root.createDiv({ cls: "blyg-pane-write" });
-    box.createDiv({ cls: "blyg-pane-write-title", text: "Write" });
-    const row = box.createDiv({ cls: "blyg-pane-buttons" });
-    const button = (text: string, enabled: boolean, action: () => Promise<void>): void => {
-      const el = row.createEl("button", { text });
-      el.disabled = !enabled || this.busy;
-      el.addEventListener("click", () => void this.run(action));
-    };
-    button("New thread", w.canCreate, () => this.host.newThread());
-    button("New fragment", w.canCreate, () => this.host.newNote());
-    if (w.canImport) button("Import from Studio", true, () => this.host.importFromStudio());
-    if (w.canReply) button("Reply to item", true, () => this.host.replyToItem());
-    if (w.canMakeReply) button("Make reply", true, () => this.host.makeReply());
-    // The rest act on an open Blyg note: outside the Blyg folders they would only be dead buttons, so they are not drawn at all.
-    if ((state.route?.mode !== "blyg" && state.route?.mode !== "studio") || state.status === "not-markdown") return;
-    button("Quote in thread", w.canQuoteInThread, () => this.host.quoteInNewThread());
-    button("Continue thread", w.canContinue, () => this.host.continueThread());
-    button("Make thread", w.canMakeThread, () => this.host.makeThread());
-    // Quotes and links come from the Studio's items: with no Studio set up there is nothing to pick from, so the two buttons are not drawn.
-    if (state.status === "studio-missing") return;
-    button("Insert quote", w.canInsertQuote, () => this.host.insertQuote());
-    button("Insert link", w.canInsertLink, () => this.host.insertLink());
-    // A grey "Insert quote" on a fragment is correct (only a thread can quote), but it looked like a fault in the device test: say why.
-    if (!w.canInsertQuote && state.kind === "fragment") {
-      box.createDiv({
-        cls: "blyg-pane-hint",
-        text: state.item
-          ? state.status === "draft"
-            ? "Insert quote works in threads only. This note is a fragment that was already sent to the Studio as a draft, so it can no longer be made a thread: start a new thread with Quote in thread."
-            : "Insert quote works in threads only. This note is a published fragment, and the kind of a published item never changes: start a new thread with Quote in thread."
-          : "Insert quote works in threads only. This note is a fragment: tap Make thread to turn it into a thread (possible until it is sent to the Studio).",
-      });
-    }
+    if (state.hint) box.createDiv({ cls: "blyg-pane-hint", text: state.hint });
   }
 
   private drawDeploy(root: HTMLElement, state: PanelState): void {
@@ -259,25 +313,10 @@ export class BlygPanelView extends ItemView {
     if (state.showRepost) button("Repost to Studio", state.canRepost, "mod-cta", () => void this.run(() => this.host.repost()));
     button(state.publishLabel, state.canPublish, state.emphasizePublish ? "mod-cta" : undefined, () => void this.run(() => this.host.publish()));
     if (state.showPull) button("Replace note from Studio", state.canPull, undefined, () => void this.run(() => this.host.pull()));
-  }
-
-  private drawButtons(root: HTMLElement, state: PanelState): void {
-    const row = root.createDiv({ cls: "blyg-pane-buttons" });
-    const button = (text: string, enabled: boolean, cls: string | undefined, onClick: () => void): void => {
-      const el = row.createEl("button", { text, ...(cls ? { cls } : {}) });
-      el.disabled = !enabled || this.busy;
-      el.addEventListener("click", onClick);
-    };
-    if (state.showWithdraw) button("Withdraw", state.canWithdraw, "mod-warning", () => void this.run(() => this.host.withdraw()));
-    if (state.showDelete) button("Delete draft", state.canDelete, "mod-warning", () => void this.run(() => this.host.deleteDraft()));
-    if (state.hoppers) {
-      button("Hoppers…", true, undefined, () => void this.run(() => this.host.chooseHoppers()));
-      if (state.hoppers.differ) button("Use the Studio's hoppers", state.hoppers.canTake, undefined, () => void this.run(() => this.host.takeHoppers()));
-    }
-    if (state.showOpenWeb) {
-      button("Open on web", state.canOpenWeb, undefined, () => {
-        if (state.webUrl) this.host.openWeb(state.webUrl);
-      });
+    if (state.hoppers?.differ) {
+      // A difference to settle belongs with the decision, not folded away: the note's hoppers and the Studio's disagree.
+      button("Use the Studio's hoppers", state.hoppers.canTake, undefined, () => void this.run(() => this.host.takeHoppers()));
+      root.createDiv({ cls: "blyg-pane-hint", text: "The note's hoppers differ from the Studio's. Publishing or sending the note applies the changes you made in the note; “Use the Studio's hoppers” takes the Studio's into the note." });
     }
   }
 

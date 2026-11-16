@@ -370,6 +370,39 @@
   flex: 1 1 40%;
 }
 
+/* Increment 5: the panel is grouped by what a person wants to do. One muted line says which note this is; the groups under the
+   status are "Start writing" (always in sight) and three folded sections. New class names, as always. */
+.blyg-pane .blyg-pane-identity {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  margin-bottom: 0.4em;
+  overflow-wrap: anywhere;
+}
+
+.blyg-pane .blyg-pane-section {
+  border-top: 1px solid var(--background-modifier-border);
+  padding: 0.25em 0;
+}
+
+.blyg-pane .blyg-pane-section > summary {
+  cursor: pointer;
+  padding: 0.55em 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.blyg-pane .blyg-pane-section[open] > summary {
+  color: var(--text-normal);
+}
+
+.blyg-pane .blyg-pane-section .blyg-pane-buttons {
+  margin-top: 0.25em;
+}
+
+.blyg-pane .blyg-pane-section button {
+  flex: 1 1 40%;
+}
+
 /* Buttons that do not apply are plainly dead: faint, flat, no accent colour (0.1.2 looked almost the same as live ones). */
 .blyg-pane button:disabled {
   opacity: 0.3;
