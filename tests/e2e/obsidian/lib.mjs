@@ -288,12 +288,6 @@ export async function launch({ data = fixtureData(), withDev = false } = {}) {
       const b = [...([...activeDocument.querySelectorAll(".modal-container .modal")].at(-1)?.querySelectorAll("button") ?? [])].find((x) => x.textContent?.trim() === t);
       if (!b || b.disabled) return false;
       b.click();
-      // Measured on Obsidian 1.15.1 in the EMULATED phone layout only: the first click on a destructive window button does nothing and the second goes through
-      // (on a real phone on the newest beta the first tap works, Florian 2026-11-16). A button that is still there 0.6 s later gets one more plain click; on
-      // 1.14.5 and on desktop the first click works, the button is gone, and nothing more happens.
-      if (window.app.isMobile && b.classList.contains("mod-destructive")) {
-        return new Promise((resolve) => window.setTimeout(() => { if (b.isConnected && !b.disabled) b.click(); resolve(true); }, 600));
-      }
       return true;
     }, text), ms, `the window button “${text}”`);
     return Boolean(ok);
