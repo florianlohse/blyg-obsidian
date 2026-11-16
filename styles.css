@@ -465,6 +465,16 @@
 .blyg-reader-bar, .blyg-reader-controls { display: flex; gap: var(--size-4-1); flex-wrap: wrap; align-items: center; }
 .blyg-reader-controls { margin-top: var(--size-4-1); }
 .blyg-reader-spacer { flex: 1 1 auto; }
+/* the feed's status line and the Refresh button are one bar; the plugin's version sits at its end */
+.blyg-reader-statusrow { display: flex; align-items: center; gap: var(--size-4-2); margin-top: var(--size-4-1); padding: var(--size-2-1) var(--size-2-2) var(--size-2-1) var(--size-4-3); border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); background: var(--background-secondary); }
+.blyg-reader-statusrow .blyg-reader-status { flex: 1 1 auto; padding-top: 0; min-height: 0; }
+.blyg-reader-statusrow .blyg-reader-status:empty { display: block; }
+.blyg-reader-statusrow .blyg-reader-status:empty:not(.is-busy)::before { content: "Not checked yet"; color: var(--text-faint); }
+.blyg-reader-statusrow .blyg-reader-refresh { flex: none; margin-left: auto; }
+.blyg-reader-version { flex: none; color: var(--text-faint); font-size: var(--font-ui-smaller); white-space: nowrap; margin-left: var(--size-4-2); }
+/* this post's actions share a tray; "Browser" is quieter and sits apart */
+.blyg-reader-btngroup { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--size-4-1); padding: var(--size-2-1); border-radius: var(--radius-m); background: var(--background-secondary); }
+.blyg-reader-quiet { background: transparent; box-shadow: none; color: var(--text-muted); }
 /* Buttons take the theme's own shape (a pill in some themes, a rounded box in others): only their SIZE is ours, scaled from one height, so any shape has room for its text. */
 .blyg-reader { --blyg-btn-h: var(--input-height, 30px); }
 .blyg-reader .blyg-reader-btn, .blyg-reader .blyg-reader-select { box-sizing: border-box; height: auto; min-height: var(--blyg-btn-h); padding-block: 0; font-size: var(--font-ui-small); line-height: 1.2; }
@@ -512,9 +522,9 @@
 .blyg-reader-card .blyg-reader-excerpt { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
 /* something is loading: the refresh button and the status line turn a small ring, so a wait never looks stuck */
 @keyframes blyg-spin { to { transform: rotate(360deg); } }
-.blyg-reader-status.is-busy::before, .blyg-reader-header.is-busy .blyg-reader-refresh::before { content: ""; display: inline-block; width: 0.85em; height: 0.85em; margin-right: 0.5em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; vertical-align: -0.12em; animation: blyg-spin 0.8s linear infinite; }
+.blyg-reader-status.is-busy::before { content: ""; display: inline-block; width: 0.85em; height: 0.85em; margin-right: 0.5em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; vertical-align: -0.12em; animation: blyg-spin 0.8s linear infinite; }
 .blyg-reader-header.is-busy .blyg-reader-refresh { opacity: 0.7; }
-@media (prefers-reduced-motion: reduce) { .blyg-reader-status.is-busy::before, .blyg-reader-header.is-busy .blyg-reader-refresh::before { animation: none; border-right-color: currentColor; } }
+@media (prefers-reduced-motion: reduce) { .blyg-reader-status.is-busy::before { animation: none; border-right-color: currentColor; } }
 /* the owner's font for a post's content in the text view (the interface keeps Obsidian's); the same stacks as ui/readerFonts.ts, which a test keeps in step */
 .blyg-reader.is-font-serif .blyg-reader-body { font-family: ui-serif, "New York", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif; }
 .blyg-reader.is-font-sans .blyg-reader-body { font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }

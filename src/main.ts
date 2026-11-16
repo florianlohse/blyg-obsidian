@@ -9,7 +9,7 @@ import { createDataWatch } from "./app/dataWatch";
 import { createDeployMemory } from "./app/deployMemory";
 import { TM } from "./app/threadMessages";
 import { expandTemplate, newItemText, templatePath, type ItemKind, type TemplateProblem } from "./app/itemTemplate";
-import { blockToInsert, cursorLineAboveQuote, embedReplacement, extractedItemBody, extractionVerdict, newItemName, pickerCandidates, quoteBlock, quoteBlockOf, renamedForThread, replyBody, threadConversion, type PickerEntry, type QuoteChoice } from "./app/threadCommands";
+import { blockToInsert, embedReplacement, extractedItemBody, extractionVerdict, newItemName, pickerCandidates, quoteBlock, quoteBlockOf, renamedForThread, replyBody, threadConversion, type PickerEntry, type QuoteChoice } from "./app/threadCommands";
 import { localKind } from "./core/blyg";
 import { isBlygId } from "./core/ids";
 import { newItemRoute, routeFor } from "./core/routes";
@@ -569,8 +569,8 @@ export default class BlygPlugin extends Plugin {
       new Notice(target.message, 10000);
       return;
     }
-    const quote = picked.quotable === false ? "" : replyBody(writtenRef(picked, picked.path ? this.linkTextOf({ path: picked.path }, "") : ""), this.settings.respond.writeAbove);
-    await this.createNote("thread", quote, target.target, { cursorAboveQuote: this.settings.respond.writeAbove });
+    const quote = picked.quotable === false ? "" : replyBody(writtenRef(picked, picked.path ? this.linkTextOf({ path: picked.path }, "") : ""));
+    await this.createNote("thread", quote, target.target);
   }
 
   /** "Make this thread a reply": the open, unpublished thread names the item it answers. The text is not touched. */
@@ -1077,7 +1077,7 @@ export default class BlygPlugin extends Plugin {
         const pick: StudioPick = { source: "studio", id: post.remoteId, kind: post.kind, title: excerptOf(post.contentHtml, 60), detail: post.subscriptionTitle, subscriptionId: post.subscriptionId, label: post.subscriptionTitle, origin: post.origin, version: post.version, quotable: true };
         const target = await runStudioReplyTarget(this.env(), pick);
         if (!target.ok) return void new Notice(target.message, 10000);
-        await this.createNote("thread", replyBody(writtenRef(pick, ""), this.settings.respond.writeAbove), target.target, { cursorAboveQuote: this.settings.respond.writeAbove });
+        await this.createNote("thread", replyBody(writtenRef(pick, "")), target.target);
       },
       mentionPost: async (m, posts) => {
         const known = postOfMention(posts, m);
@@ -1245,7 +1245,7 @@ export default class BlygPlugin extends Plugin {
    * A new note in that folder, opened with the cursor at its end: a fragment, or a thread (its property makes it one).
    * `body` is put after the properties (a thread that starts with a quote of the note it answers).
    */
-  private async createNote(kind: "fragment" | "thread", body = "", reply?: StubTarget, opts: { cursorAboveQuote?: boolean } = {}): Promise<void> {
+  private async createNote(kind: "fragment" | "thread", body = "", reply?: StubTarget): Promise<void> {
     const file = await this.makeFile(kind, body);
     if (!file) return;
     if (reply) {
@@ -1262,9 +1262,7 @@ export default class BlygPlugin extends Plugin {
     await leaf.openFile(file);
     if (leaf.view instanceof MarkdownView) {
       const editor = leaf.view.editor;
-      const above = opts.cursorAboveQuote === true ? cursorLineAboveQuote(editor.getValue().split("\n")) : null;
-      if (above !== null) editor.setCursor({ line: above, ch: 0 });
-      else editor.setCursor({ line: editor.lastLine(), ch: editor.getLine(editor.lastLine()).length });
+      editor.setCursor({ line: editor.lastLine(), ch: editor.getLine(editor.lastLine()).length });
       editor.focus();
     }
     new Notice(reply ? (body === "" ? TM.replyStartedNoQuote(stubLabel(reply)) : TM.replyStarted(stubLabel(reply))) : kind === "thread" ? TM.created : TM.createdNote, reply ? 10000 : 6000);

@@ -113,7 +113,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
     check(await click("Sort & filter"), `${layout}: "Sort & filter" opens them`);
     await wait(300);
     const options = await page.evaluate(() => [...document.querySelectorAll(".blyg-reader-controls select")].map((x) => [...x.options].map((o) => o.textContent)));
-    check(options.length === 5 && options[4].includes("Reduced contrast") && options[0].includes("Newest first") && options[0].includes("Longest read first") && options[1].some((o) => /^Blog B \(\d+\)$/.test(o ?? "")) && options[2].includes("Under 2 min") && options[3].some((o) => /Serif/.test(o ?? "")), `${layout}: order, blyg, length and font choices are there (${JSON.stringify(options.map((o) => o.length))} entries)`);
+    check(options.length === 3 && options[0].includes("Newest first") && options[0].includes("Longest read first") && options[1].some((o) => /^Blog B \(\d+\)$/.test(o ?? "")) && options[2].includes("Under 2 min"), `${layout}: order, blyg and length choices are there, and no font or contrast choice (those live in the settings) (${JSON.stringify(options.map((o) => o.length))} entries)`);
     check((await text(".blyg-reader-toggle")).some((t) => t.includes("Unread only")), `${layout}: the "Unread only" switch is there`);
     check(/\d+ min read/.test((await text(".blyg-reader-card"))[0] ?? ""), `${layout}: each card says how long it takes to read (${((await text(".blyg-reader-card"))[0] ?? "").match(/\d+ min read/)?.[0]})`);
     check(await click("Sort & filter"), `${layout}: ...and closes them again`);
@@ -262,17 +262,13 @@ await runScenario({ data: fixtureData() }, async (s) => {
   async function font() {
     await openReader();
     await wait(1000);
-    check(await click("Sort & filter"), "font: the choices open");
-    await wait(300);
+    // The font is a setting only (the header has no font choice); the pane follows the setting when the reader redraws.
     await page.evaluate(() => {
-      const el = [...document.querySelectorAll(".blyg-reader-controls select")].find((x) => x.getAttribute("aria-label") === "Font for posts");
-      el.value = "serif";
-      el.dispatchEvent(new Event("change", { bubbles: true }));
+      window.app.plugins.plugins.blyg.settings.readerPane.font = "serif";
+      window.app.workspace.getLeavesOfType("blyg-reader")[0].view.applyFont();
     });
     await wait(500);
-    check(await page.evaluate(() => window.app.plugins.plugins.blyg.settings.readerPane.font === "serif" && document.querySelector(".blyg-reader")?.classList.contains("is-font-serif")), "font: the choice is kept in the setting and on the pane");
-    await click("Sort & filter");
-    await wait(300);
+    check(await page.evaluate(() => window.app.plugins.plugins.blyg.settings.readerPane.font === "serif" && document.querySelector(".blyg-reader")?.classList.contains("is-font-serif")), "font: the setting reaches the pane");
     // text view
     await page.evaluate(() => {
       const view = window.app.workspace.getLeavesOfType("blyg-reader")[0].view;

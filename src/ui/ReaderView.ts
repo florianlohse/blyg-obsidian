@@ -8,8 +8,8 @@ import { ItemView, sanitizeHTMLToDom, setIcon, type WorkspaceLeaf } from "obsidi
 import { isUnread, type InboundMention, type ReadingPost } from "../studio/reading";
 import { plainText, renderForeign, type ImageMode } from "./defang";
 import { activeFilters, arrange, cardOf, DEFAULT_FILTER, frameable, LENGTH_LABELS, nextInOrder, postOfQuote, pullProgress, readingTimeLabel, relativeTime, SORT_LABELS, sourcesOf, type FeedFilter, type FeedLength, type FeedSort } from "./readerFeed";
-import { FONT_LABELS, isReaderFont, type ReaderFont } from "./readerFonts";
-import { CONTRAST_LABELS, CONTRASTS, isReaderContrast, type ReaderContrast } from "./readerLook";
+import { type ReaderFont } from "./readerFonts";
+import { CONTRASTS, type ReaderContrast } from "./readerLook";
 import { responseChip, responseIndex, type ResponseEntry } from "./readerResponses";
 import { changedCount, chooseWalk, knownOf, mergeFresh, READER_KEEP, type SyncMemory } from "./readerSync";
 import type { StudioListedItem } from "../studio/types";
@@ -459,9 +459,11 @@ export class BlygReaderView extends ItemView {
     if (!h) return;
     h.empty();
     h.toggleClass("is-busy", this.busyCount > 0);
+    this.statusEl = null;
     if (this.shown) this.drawPostHeader(h, this.shown);
     else this.drawFeedHeader(h);
-    this.statusEl = h.createDiv({ cls: "blyg-reader-status", text: this.status });
+    // The feed's header draws its own status line, joined with the Refresh button; an open post has the plain line below its buttons.
+    if (!this.statusEl) this.statusEl = h.createDiv({ cls: "blyg-reader-status", text: this.status });
     this.statusEl.toggleClass("is-busy", this.busyCount > 0);
   }
 
@@ -708,13 +710,18 @@ export class BlygReaderView extends ItemView {
       this.button(row, n > 0 ? `Sort & filter (${n})` : "Sort & filter", () => {
         this.filtersOpen = !this.filtersOpen;
         this.drawHeader();
-      }, { active: this.filtersOpen, cls: "blyg-reader-filterbtn", title: "Order, blyg, length, unread, and how posts open" });
+      }, { active: this.filtersOpen, cls: "blyg-reader-filterbtn", title: "Order, blyg, length and unread" });
     }
-    const refresh = this.button(row, "Refresh", () => {
+    // One item: what the last check found (or what is going on) and the button that checks again, in a single bar under the tabs.
+    const bar = h.createDiv({ cls: "blyg-reader-statusrow" });
+    this.statusEl = bar.createDiv({ cls: "blyg-reader-status", text: this.status });
+    const refresh = this.button(bar, "Refresh", () => {
       void this.checkForNew(true);
     }, { cls: "blyg-reader-refresh", title: "Look for new posts" });
+    this.addIcon(refresh, "refresh-cw");
     refresh.disabled = this.busyCount > 0;
     this.refreshEl = refresh;
+    bar.createSpan({ cls: "blyg-reader-version", text: `v${this.host.version}`, attr: { title: "Version of the Blyg plugin on this device" } });
     if (!canFilter || !this.filtersOpen || !this.data) return;
 
     const controls = h.createDiv({ cls: "blyg-reader-controls" });
@@ -732,12 +739,6 @@ export class BlygReaderView extends ItemView {
     const posts = this.data.posts;
     select("Blyg", [["", `All blygs (${posts.length})`], ...sourcesOf(posts).map((s): [string, string] => [s.id, `${s.title} (${s.count})`])], this.filter.source ?? "", (v) => { this.filter.source = v === "" ? null : v; this.saveFilter(); });
     select("Length", (Object.keys(LENGTH_LABELS) as FeedLength[]).map((k): [string, string] => [k, LENGTH_LABELS[k]]), this.filter.length, (v) => { this.filter.length = v as FeedLength; this.saveFilter(); });
-    select("Font for posts", (Object.keys(FONT_LABELS) as ReaderFont[]).map((k): [string, string] => [k, k === "default" ? "Font: as it is" : `Font: ${FONT_LABELS[k]}`]), this.host.font(), (v) => {
-      if (isReaderFont(v)) void this.host.setFont(v).then(() => this.applyFont());
-    }, () => undefined);
-    select("Contrast of the reading surface", CONTRASTS.map((k): [string, string] => [k, CONTRAST_LABELS[k]]), this.host.contrast(), (v) => {
-      if (isReaderContrast(v)) void this.host.setContrast(v).then(() => this.applyFont());
-    }, () => undefined);
     const unread = controls.createEl("label", { cls: "blyg-reader-toggle" });
     const box = unread.createEl("input", { attr: { type: "checkbox" } });
     box.checked = this.filter.unreadOnly;
@@ -762,9 +763,11 @@ export class BlygReaderView extends ItemView {
       const next = this.nextFor(p);
       this.button(main, unread ? "Read & next ›" : "Next ›", () => this.goNext(p), { cls: "blyg-reader-nextbtn", active: unread, title: unread ? "Mark this post read and open the next unread one" : next ? "Open the next unread post" : "No unread post left: back to the feed" });
     }
-    const row = h.createDiv({ cls: "blyg-reader-bar" });
-    this.button(row, "Reply", () => this.host.replyTo(p), { disabled: p.withdrawn || !held, title: held ? "Reply in Obsidian: a new thread that answers this post" : "Subscribe to this blyg in your Studio to reply to its posts from here" });
-    this.button(row, unread ? "○ Mark read" : "✓ Read", () => this.setRead(p, unread), {
+    // This post's actions sit together in one tray; "Browser" leaves the app and sits apart, quieter.
+    const row = h.createDiv({ cls: "blyg-reader-bar blyg-reader-bar-actions" });
+    const tray = row.createDiv({ cls: "blyg-reader-btngroup" });
+    this.button(tray, "Reply", () => this.host.replyTo(p), { disabled: p.withdrawn || !held, title: held ? "Reply in Obsidian: a new thread that answers this post" : "Subscribe to this blyg in your Studio to reply to its posts from here" });
+    this.button(tray, unread ? "○ Mark read" : "✓ Read", () => this.setRead(p, unread), {
       disabled: p.withdrawn || !held,
       active: !unread,
       cls: "blyg-reader-readtoggle",
@@ -772,10 +775,11 @@ export class BlygReaderView extends ItemView {
     });
     const chip = responseChip(this.respFor(p));
     if (chip) {
-      const b = this.button(row, chip.text, () => (this.responsesEl ? this.closeResponses() : this.showResponses(p, this.respFor(p))), { cls: `blyg-reader-resp${chip.mine ? " is-mine" : ""}`, title: chip.title });
+      const b = this.button(tray, chip.text, () => (this.responsesEl ? this.closeResponses() : this.showResponses(p, this.respFor(p))), { cls: `blyg-reader-resp${chip.mine ? " is-mine" : ""}`, title: chip.title });
       this.addIcon(b, "reply");
     }
-    this.button(row, "Browser", () => (web ? this.host.openWeb(web) : undefined), { disabled: web === null, title: "Open the whole page in the browser" });
+    row.createDiv({ cls: "blyg-reader-spacer" });
+    this.button(row, "Browser", () => (web ? this.host.openWeb(web) : undefined), { disabled: web === null, cls: "blyg-reader-quiet", title: "Open the whole page in the browser" });
     // Where it is from, and who wrote it, as links; its version when it has been edited; when; whether it is read.
     const meta = h.createDiv({ cls: "blyg-reader-meta blyg-reader-postmeta" });
     const blygUrl = p.origin ?? (web ? new URL(web).origin : null);
@@ -791,6 +795,7 @@ export class BlygReaderView extends ItemView {
       if (i > 0) meta.createSpan({ text: " · " });
       draw();
     });
+    meta.createSpan({ cls: "blyg-reader-version", text: `v${this.host.version}`, attr: { title: "Version of the Blyg plugin on this device" } });
   }
 
   private drawBody(): void {
