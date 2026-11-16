@@ -101,6 +101,24 @@
   border-left-color: var(--color-red, red);
 }
 
+/* A private action through a Studio (a draft, deleting a draft, taking the Studio's text into the note, comparing the two): nothing goes public, so no warning colour. */
+.blyg-preview .blyg-where-private {
+  border-left-color: var(--background-modifier-border-hover, var(--background-modifier-border));
+}
+
+/* What each choice of the compare window does next, and the Studio's rendering that waits behind a tap in an update. */
+.blyg-preview .blyg-choices {
+  margin: 0.75em 0;
+  padding-left: 1.2em;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+.blyg-preview .blyg-studio-more > summary {
+  cursor: pointer;
+  font-weight: var(--font-semibold);
+  margin: 0.75em 0 0.4em;
+}
+
 /* A publish through a Studio goes live at once and cannot be taken back (a withdrawal is the only undo): the same loud edge as production. */
 .blyg-preview .blyg-where-studio {
   border-left-color: var(--color-red, red);

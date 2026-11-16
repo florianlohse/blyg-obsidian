@@ -58,7 +58,7 @@ await runScenario({}, async (s) => {
 
     // §3 send it
     check(await s.clickPanel("Review draft"), `${layout}: Review draft`);
-    check(await s.waitModal("Send a draft to your Studio"), `${layout}: the window opens`);
+    check(await s.waitModal("Send private draft?"), `${layout}: the window opens`);
     check((await s.modalText()).includes(`Hoppers: + ${hopper.name}`), `${layout}: the window lists “Hoppers: + …”`);
     await s.clearNotices();
     await s.clickModal("Send draft");

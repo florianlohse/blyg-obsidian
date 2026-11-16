@@ -781,7 +781,7 @@ function studioCore(
       ...base, ...common, item, ...web,
       status: "edited-there",
       headline: `Published${withVersion}; its working copy in the Studio was changed there.`,
-      notes: ["Update sends this note to the Studio and replaces the online copy; “Replace this note with the online text” does the opposite. Both show the two texts first and ask; nothing is overwritten unless you agree."],
+      notes: ["“Review update” can replace the Studio working copy with this note; “Replace note from Studio” takes the Studio's text into the note instead. Both show the two texts first and ask; nothing is overwritten unless you agree."],
       canPublish: true,
       canWithdraw: true,
     };

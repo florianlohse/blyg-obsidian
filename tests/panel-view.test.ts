@@ -113,10 +113,10 @@ async function mount(state: PanelState, deploy: PanelDeploy | null = null, over:
 describe("BlygPanelView", () => {
   it("offers Use the Studio's copy only when the state says so, and runs it", async () => {
     const shown = await mount({ ...stateOf({}), showPull: true, canPull: true });
-    shown.button("Replace this note with the online text")?.click();
+    shown.button("Replace note from Studio")?.click();
     await vi.waitFor(() => expect(shown.calls).toContain("pull"));
     const hidden = await mount(stateOf({}));
-    expect(hidden.button("Replace this note with the online text")).toBeUndefined();
+    expect(hidden.button("Replace note from Studio")).toBeUndefined();
   });
 
   it("names the plugin version at the foot, whatever the note", async () => {
