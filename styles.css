@@ -477,7 +477,6 @@
 .blyg-reader-btn.is-active { background: var(--interactive-accent); color: var(--text-on-accent); }
 .blyg-reader-select { max-width: 100%; }
 .blyg-reader-toggle { display: inline-flex; gap: var(--size-4-1); align-items: center; color: var(--text-muted); font-size: var(--font-ui-small); }
-.blyg-reader-segment { display: inline-flex; gap: 1px; margin-left: auto; }
 .blyg-reader-status { color: var(--text-muted); font-size: var(--font-ui-smaller); min-height: 1.4em; padding-top: var(--size-2-1); -webkit-user-select: text; user-select: text; }
 .blyg-reader-status:empty { display: none; }
 .blyg-reader-note { color: var(--text-muted); margin-bottom: var(--size-4-3); }
@@ -511,8 +510,6 @@
 .blyg-reader-badge.is-done { color: var(--text-faint); }
 .blyg-reader-quote { color: var(--text-muted); font-style: italic; border-left: 2px solid var(--background-modifier-border); padding-left: var(--size-4-2); margin-bottom: var(--size-2-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .blyg-reader-card .blyg-reader-excerpt { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
-/* the post as its web page: it fills what the header leaves */
-.blyg-reader-frame { flex: 1 1 auto; width: 100%; min-height: 0; border: 0; background: var(--background-primary); }
 /* something is loading: the refresh button and the status line turn a small ring, so a wait never looks stuck */
 @keyframes blyg-spin { to { transform: rotate(360deg); } }
 .blyg-reader-status.is-busy::before, .blyg-reader-header.is-busy .blyg-reader-refresh::before { content: ""; display: inline-block; width: 0.85em; height: 0.85em; margin-right: 0.5em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; vertical-align: -0.12em; animation: blyg-spin 0.8s linear infinite; }
@@ -559,8 +556,7 @@
 .blyg-reader-back::before { content: "‹\00a0"; font-size: 1.3em; line-height: 1; }
 
 /* Between two posts: the text fades and "Marked read" shows for a moment. */
-.blyg-reader-bodywrap.is-leaving .blyg-reader-surface .blyg-reader-column, .blyg-reader-bodywrap.is-leaving .blyg-reader-frame { opacity: 0.12; transition: opacity 0.3s ease; }
-.blyg-reader-done { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%) scale(0.96); padding: var(--size-4-3) var(--size-4-6); border-radius: var(--radius-l); background: var(--background-secondary); color: var(--text-normal); border: 1px solid var(--background-modifier-border); box-shadow: var(--shadow-s); font-size: var(--font-ui-large); opacity: 0; transition: opacity 0.22s ease, transform 0.22s ease; pointer-events: none; }
+.blyg-reader-bodywrap.is-leaving .blyg-reader-surface .blyg-reader-column, .blyg-reader-bodywrap.is-leaving .blyg-reader-done { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%) scale(0.96); padding: var(--size-4-3) var(--size-4-6); border-radius: var(--radius-l); background: var(--background-secondary); color: var(--text-normal); border: 1px solid var(--background-modifier-border); box-shadow: var(--shadow-s); font-size: var(--font-ui-large); opacity: 0; transition: opacity 0.22s ease, transform 0.22s ease; pointer-events: none; }
 .blyg-reader-done.is-in { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 @media (prefers-reduced-motion: reduce) { .blyg-reader-done, .blyg-reader-surface .blyg-reader-column { transition: none; } }
 

@@ -10,24 +10,6 @@ const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
 let hits = 0;
 const referers = [];
 const imageServer = createServer((req, res) => {
-  if ((req.url ?? "").startsWith("/gone")) {
-    res.writeHead(404, { "content-type": "text/html" });
-    res.end("<p>gone</p>");
-    return;
-  }
-  if ((req.url ?? "").startsWith("/slow")) {
-    // A valid blyg page that is slow to arrive: the reader must show the post as text meanwhile.
-    setTimeout(() => {
-      res.writeHead(200, { "content-type": "text/html" });
-      res.end('<!doctype html><html><head><meta charset="utf-8"><title>t</title></head><body><div class="blyg"><article class="fragment"><div class="item-content"><p>The slow page has arrived.</p></div></article></div></body></html>');
-    }, 2500);
-    return;
-  }
-  if ((req.url ?? "").startsWith("/noframe")) {
-    res.writeHead(200, { "content-type": "text/html", "x-frame-options": "DENY" });
-    res.end("<p>This page refuses to be shown inside another app.</p>");
-    return;
-  }
   if ((req.url ?? "").startsWith("/pixel")) { hits++; referers.push(req.headers.referer ?? null); }
   // no-store: a request the browser answers from its cache would not reach this counter, so every load must come here.
   res.writeHead(200, { "content-type": "image/png", "cache-control": "no-store" });
@@ -91,7 +73,6 @@ await runScenario({ data: fixtureData() }, async (s) => {
     const view = window.app.workspace.getLeavesOfType("blyg-reader")[0].view;
     view.data.posts[0].contentHtml = h;
     view.shown = post ? view.data.posts[0] : null;
-    view.shownAs = "text";
     view.draw();
     await new Promise((r) => setTimeout(r, 1000));
   }, [html, one]);
@@ -134,7 +115,6 @@ await runScenario({ data: fixtureData() }, async (s) => {
     const options = await page.evaluate(() => [...document.querySelectorAll(".blyg-reader-controls select")].map((x) => [...x.options].map((o) => o.textContent)));
     check(options.length === 5 && options[4].includes("Reduced contrast") && options[0].includes("Newest first") && options[0].includes("Longest read first") && options[1].some((o) => /^Blog B \(\d+\)$/.test(o ?? "")) && options[2].includes("Under 2 min") && options[3].some((o) => /Serif/.test(o ?? "")), `${layout}: order, blyg, length and font choices are there (${JSON.stringify(options.map((o) => o.length))} entries)`);
     check((await text(".blyg-reader-toggle")).some((t) => t.includes("Unread only")), `${layout}: the "Unread only" switch is there`);
-    check(JSON.stringify(await text(".blyg-reader-segment button")) === '["Web page","Text"]' && (await text(".blyg-reader-segment .is-active"))[0] === "Web page", `${layout}: how posts open by default can be chosen (Web page is the start)`);
     check(/\d+ min read/.test((await text(".blyg-reader-card"))[0] ?? ""), `${layout}: each card says how long it takes to read (${((await text(".blyg-reader-card"))[0] ?? "").match(/\d+ min read/)?.[0]})`);
     check(await click("Sort & filter"), `${layout}: ...and closes them again`);
     await wait(300);
@@ -146,32 +126,17 @@ await runScenario({ data: fixtureData() }, async (s) => {
     check(layoutOk, `${layout}: the header sits outside the scrolling body (it never scrolls away) and the text in it can be selected`);
     await shot(`${layout}-1-feed`);
 
-    // A post opens as its web page: the text first, at once, then the page.
+    // A post opens as text, with its buttons in the header.
     await page.evaluate(() => document.querySelector(".blyg-reader-card")?.click());
-    await page.waitForSelector(".blyg-reader-frame", { timeout: 15000 }).catch(() => {});
-    const frame = await page.evaluate(() => {
-      const f = document.querySelector(".blyg-reader-frame");
-      return f ? { src: f.getAttribute("src"), sandbox: f.getAttribute("sandbox") ?? "" } : null;
-    });
-    check(frame !== null && frame.src?.startsWith("blob:"), `${layout}: tapping a post shows its web page, trimmed to the post, inside Obsidian (${frame?.src?.slice(0, 30) ?? "no frame"})`);
-    check(frame !== null && !/allow-scripts|allow-same-origin/.test(frame.sandbox), `${layout}: the page runs sandboxed, without scripts and without its origin (${frame?.sandbox})`);
-    await wait(1500);
-    const framed = page.frames().find((f) => f.url() === frame?.src);
-    const inside = framed ? await framed.evaluate(() => ({ text: document.body?.innerText ?? "", styles: [...document.querySelectorAll("style")].map((x) => x.textContent?.length ?? 0), font: getComputedStyle(document.body).fontFamily, article: document.querySelectorAll("article").length })).catch(() => null) : null;
-    check(Boolean(inside) && inside.text.length > 0 && inside.article === 1, `${layout}: the post really rendered in the frame (${(inside?.text ?? "").replace(/\s+/g, " ").slice(0, 60)}…)`);
-    check(Boolean(inside) && !/Made with Blygger|Find more blygs/.test(inside.text), `${layout}: the blyg's menu, masthead and links are left out`);
-    check(Boolean(inside) && inside.styles[0] > 1000 && inside.font.trim() !== '"Times New Roman"', `${layout}: the blyg's own stylesheet is applied, inline (${inside?.styles[0]} characters; font ${inside?.font?.slice(0, 40)})`);
+    await wait(800);
+    const body = (await text(".blyg-reader-body"))[0] ?? "";
+    check(body.length > 0 && (await page.$(".blyg-reader-frame")) === null, `${layout}: tapping a post shows it as text, never in a frame (${body.length} characters)`);
     const buttons = await text(".blyg-reader-header button");
-    check(["Back", "Reply", "○ Mark read", "Browser", "As text"].every((b) => buttons.includes(b)), `${layout}: the post's buttons are in the header: ${buttons.join(", ")}`);
+    check(["Back", "Reply", "○ Mark read", "Browser"].every((b) => buttons.includes(b)) && !buttons.includes("As text") && !buttons.includes("As web page"), `${layout}: the post's buttons are in the header, with no switch to a web page: ${buttons.join(", ")}`);
     const links = await page.evaluate(() => [...document.querySelectorAll(".blyg-reader-postmeta a.blyg-reader-link")].map((a) => a.getAttribute("href")));
     check(links.length >= 1 && links[0].startsWith("http://localhost:8788"), `${layout}: the post's blyg is a link to its page (${links.join(", ")})`);
     check((await text(".blyg-reader-postmeta")).some((t) => /unread/.test(t) && /\d+ min read/.test(t)), `${layout}: the post's header says it is unread and how long it takes to read`);
-    await shot(`${layout}-2-web`);
-
-    check(await click("As text"), `${layout}: "As text" can be tapped`);
-    await wait(500);
-    const body = (await text(".blyg-reader-body"))[0] ?? "";
-    check(body.length > 0 && (await page.$(".blyg-reader-frame")) === null, `${layout}: the same post as text, the frame gone (${body.length} characters)`);
+    await shot(`${layout}-2-text`);
     check(await page.evaluate(() => getComputedStyle(document.querySelector(".blyg-reader-body")).userSelect === "text"), `${layout}: the text of a post can be selected`);
 
     // Answering.
@@ -293,7 +258,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await closeReader();
   }
 
-  /** The font of a post in the text view only; the interface keeps Obsidian's, and the web page view is never changed. */
+  /** The font of a post; the interface keeps Obsidian's. */
   async function font() {
     await openReader();
     await wait(1000);
@@ -312,38 +277,11 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await page.evaluate(() => {
       const view = window.app.workspace.getLeavesOfType("blyg-reader")[0].view;
       view.shown = view.data.posts[0];
-      view.shownAs = "text";
-      view.draw();
+        view.draw();
     });
     await wait(500);
     const textFont = await page.evaluate(() => ({ body: getComputedStyle(document.querySelector(".blyg-reader-body")).fontFamily, ui: getComputedStyle(document.querySelector(".blyg-reader-btn")).fontFamily }));
     check(/Iowan|Palatino|Georgia/.test(textFont.body) && !/Iowan/.test(textFont.ui), `font: the text view's content is serif and the buttons keep Obsidian's font (${textFont.body.slice(0, 30)} / ${textFont.ui.slice(0, 20)})`);
-    // web page view: a fresh document that the font setting does not touch
-    await page.evaluate(() => {
-      const view = window.app.workspace.getLeavesOfType("blyg-reader")[0].view;
-      view.releasePage();
-      view.shownAs = "web";
-      view.drawHeader();
-      view.drawBody();
-    });
-    await page.waitForSelector(".blyg-reader-frame", { timeout: 15000 }).catch(() => {});
-    await wait(1500);
-    const src = await page.evaluate(() => document.querySelector(".blyg-reader-frame")?.getAttribute("src") ?? "");
-    const framed = page.frames().find((f) => f.url() === src);
-    const webFontOf = (f) => (f ? f.evaluate(() => getComputedStyle(document.querySelector(".item-content p") ?? document.body).fontFamily).catch(() => "") : Promise.resolve(""));
-    const webFont = await webFontOf(framed);
-    // The blyg's own stylesheet may well name a serif of its own, so the proof is the same page with the setting on "default": the same type.
-    await page.evaluate(() => {
-      window.app.plugins.plugins.blyg.settings.readerPane.font = "default";
-      const view = window.app.workspace.getLeavesOfType("blyg-reader")[0].view;
-      view.releasePage();
-      view.drawBody();
-    });
-    await page.waitForSelector(".blyg-reader-frame", { timeout: 15000 }).catch(() => {});
-    await wait(1500);
-    const src2 = await page.evaluate(() => document.querySelector(".blyg-reader-frame")?.getAttribute("src") ?? "");
-    const webFontDefault = await webFontOf(page.frames().find((f) => f.url() === src2));
-    check(Boolean(framed) && webFont !== "" && webFont === webFontDefault, `font: the web page view has the blyg's own type whatever the setting says (serif setting: ${webFont.slice(0, 30)}; default: ${webFontDefault.slice(0, 30)})`);
     await page.evaluate(() => { window.app.plugins.plugins.blyg.settings.readerPane.font = "default"; });
     await closeReader();
   }
@@ -361,75 +299,6 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await page.evaluate(() => window.app.commands.executeCommandById("blyg:open-reader-sidebar"));
     await wait(500);
     check((await page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader").length)) === 2, "...and asking again brings the open one forward instead of opening a third");
-    await closeReader();
-  }
-
-  /** How posts open by default, chosen in the feed: kept in the setting, and used by the next post you tap. */
-  async function defaultView() {
-    await resetReadMarks();
-    await openReader();
-    check(await click("Sort & filter"), "the feed's choices can be opened");
-    await wait(300);
-    check(await click("Text"), "the feed's \"Text\" choice can be tapped");
-    await wait(300);
-    check(await page.evaluate(() => window.app.plugins.plugins.blyg.settings.readerPane.view === "text"), "the choice is kept in the setting \"Open posts as\"");
-    await page.evaluate(() => document.querySelector(".blyg-reader-card")?.click());
-    await wait(800);
-    check((await page.$(".blyg-reader-frame")) === null && ((await text(".blyg-reader-body"))[0] ?? "").length > 0, "the next post opens as text");
-    check(await click("As web page"), "a post can still be switched to its web page for once");
-    await page.waitForSelector(".blyg-reader-frame", { timeout: 15000 }).catch(() => {});
-    check((await page.$(".blyg-reader-frame")) !== null, "...and then it is the web page");
-    check(await click("Back"), "Back");
-    await wait(300);
-    check(await click("Web page") || await click("Sort & filter") && (await wait(300), await click("Web page")), "the feed's \"Web page\" choice puts it back");
-    await wait(300);
-    await closeReader();
-  }
-
-  /** The post as text comes first and the page replaces it: a slow page does not leave an empty pane. */
-  async function textFirst() {
-    await openReader();
-    await page.evaluate(() => {
-      const view = window.app.workspace.getLeavesOfType("blyg-reader")[0].view;
-      view.data.posts[0].sourceUrl = "http://127.0.0.1:18999/slow";
-      view.releasePage();
-      view.shown = view.data.posts[0];
-      view.shownAs = "web";
-      view.drawHeader();
-      view.drawBody();
-    });
-    await wait(700);
-    const early = await page.evaluate(() => ({ text: document.querySelector(".blyg-reader-body")?.textContent?.length ?? 0, frame: !!document.querySelector(".blyg-reader-frame"), status: document.querySelector(".blyg-reader-status")?.textContent ?? "", spinner: document.querySelector(".blyg-reader-status")?.classList.contains("is-busy") ?? false }));
-    check(early.text > 0 && !early.frame && /Opening the page/.test(early.status) && early.spinner, `a slow page: the text is there at once, with a spinning "${early.status}"`);
-    await page.waitForSelector(".blyg-reader-frame", { timeout: 15000 }).catch(() => {});
-    await wait(800);
-    const late = await page.evaluate(() => ({ frame: !!document.querySelector(".blyg-reader-frame"), body: !!document.querySelector(".blyg-reader-body"), spinner: document.querySelector(".blyg-reader-status")?.classList.contains("is-busy") ?? true }));
-    check(late.frame && !late.body && !late.spinner, "...and when the page has arrived it replaces the text and the spinner stops");
-    await closeReader();
-  }
-
-  /** A page that cannot be shown: the post falls back to text, with a line that says why. And what desktop Obsidian does with a page that refuses framing. */
-  async function noFrame() {
-    await openReader();
-    const open = (url) => page.evaluate((u) => {
-      const view = window.app.workspace.getLeavesOfType("blyg-reader")[0].view;
-      view.data.posts[0].sourceUrl = u;
-      view.releasePage();
-      view.shown = view.data.posts[0];
-      view.shownAs = "web";
-      view.drawHeader();
-      view.drawBody();
-    }, url);
-    await open("http://127.0.0.1:18999/gone");
-    await wait(2500);
-    const note = (await text(".blyg-reader-note")).join(" ");
-    check((await page.$(".blyg-reader-frame")) === null && /could not be reached/.test(note) && ((await text(".blyg-reader-body"))[0] ?? "").length > 0, `a page that does not answer falls back to text, and says why ("${note.slice(0, 70)}")`);
-    // Desktop Obsidian removes X-Frame-Options and CSP frame-ancestors from every response (its own session hook), so a refusing page is framed anyway
-    // here; on mobile the header arrives and the post falls back to text (unit-tested in framePolicy, not checkable in this desktop harness).
-    await open("http://127.0.0.1:18999/noframe");
-    await wait(2500);
-    const whole = await page.evaluate(() => document.querySelector(".blyg-reader-frame")?.getAttribute("src") ?? null);
-    check(whole === "http://127.0.0.1:18999/noframe", `a page without the contract's article is shown whole; and desktop Obsidian strips X-Frame-Options, so even this refusing page is framed (documented, not the plugin's choice) (${whole})`);
     await closeReader();
   }
 
@@ -567,12 +436,11 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await closeReader();
   }
 
-  /** "Read & next ›" in the header (both views) through the feed's order to its end, the pull-up at the end of the text view, and the measured clearance for Obsidian's bottom bar. */
+  /** "Read & next ›" in the header  through the feed's order to its end, the pull-up at the end of the text view, and the measured clearance for Obsidian's bottom bar. */
   async function nextPost(layout) {
     await openReader();
     await wait(1000);
     check(await resetReadMarks(), `${layout}: next: every post starts unread`);
-    await page.evaluate(() => { window.app.workspace.getLeavesOfType("blyg-reader")[0].view.host.viewMode = () => "text"; });
     check((await text(".blyg-reader-nextbtn")).length === 0, `${layout}: next: no such button in the feed`);
     await page.evaluate(() => document.querySelector(".blyg-reader-card")?.click());
     await wait(500);
@@ -905,8 +773,6 @@ await runScenario({ data: fixtureData() }, async (s) => {
   await ribbon();
   await freshness();
   await economy("desktop");
-  await textFirst();
-  await noFrame();
   await markup();
   await bypasses();
   await images();
@@ -915,7 +781,6 @@ await runScenario({ data: fixtureData() }, async (s) => {
   await readingTime();
   await font();
   await sidebar();
-  await defaultView();
   await buttons("desktop");
   await responses("desktop");
   await quoteSource("desktop");

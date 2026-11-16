@@ -22,3 +22,12 @@ describe("reader image setting", () => {
     expect(migrateSettings({ ...fixture, readerPane: "always" }).settings.readerPane.images).toBe("click");
   });
 });
+
+describe("the removed 'Open posts as' choice", () => {
+  it("a data.json from a test build that still has readerPane.view loads, keeps its other choices and drops the old key", () => {
+    const s = migrateSettings({ ...fixture, readerPane: { images: "always", view: "web", font: "serif" } }).settings.readerPane;
+    expect(s.images).toBe("always");
+    expect(s.font).toBe("serif");
+    expect("view" in s).toBe(false);
+  });
+});

@@ -111,7 +111,6 @@ export interface BlygSettings {
     images: "click" | "always";
     /** How a post opens: `web` shows the author's own page inside Obsidian (sandboxed, no scripts; it loads like a visit to that page), `text` draws the
      *  post's text in Obsidian (images follow `images`). A page that refuses to be shown inside another app falls back to `text`. */
-    view: "web" | "text";
     /** The font of a post's content (not the interface). See ui/readerFonts.ts. */
     font: "default" | "serif" | "sans" | "mono";
     /** The contrast of the reading surface in the text view: reduced, normal or high. */
@@ -160,7 +159,7 @@ export function defaultSettings(flavour: "release" | "dev" = "release"): BlygSet
     respond: { draftsPrefix: "blyg/", writeAbove: true },
     mentions: { repoPath: "data/mentions.json" },
     webQuote: { ...DEFAULT_WEB_QUOTE },
-    readerPane: { images: "click", view: "web", font: "default", contrast: "normal", filter: { sort: "newest", source: null, unreadOnly: false, length: "any" } },
+    readerPane: { images: "click", font: "default", contrast: "normal", filter: { sort: "newest", source: null, unreadOnly: false, length: "any" } },
     dev: { allowLiveStudio: false },
   };
 }

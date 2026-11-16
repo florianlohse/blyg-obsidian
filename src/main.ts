@@ -51,9 +51,7 @@ import { drawPreview, type PreviewDeps } from "./ui/replyPreview";
 import { limiter, postFromPeek, postOfMention } from "./ui/readerMentions";
 import { parseReaderCache, readerCacheOf } from "./ui/readerCache";
 import { backoffDelay, READER_PAGE, READER_PAGES, reachedKnown } from "./ui/readerSync";
-import { BLYG_READER_VIEW, BlygReaderView, excerptOf, type PreparedPage, type ReaderHost, type ReadResult } from "./ui/ReaderView";
-import { framePolicy } from "./ui/readerFeed";
-import { stylesheetsOf, trimmedDocument } from "./ui/trimmedPage";
+import { BLYG_READER_VIEW, BlygReaderView, excerptOf, type ReaderHost, type ReadResult } from "./ui/ReaderView";
 import { buildStudio } from "./app/run";
 import type { InboundMention, ReadingPost } from "./studio/reading";
 import { confirmWithModal } from "./ui/WritePreviewModal";
@@ -830,8 +828,8 @@ export default class BlygPlugin extends Plugin {
           if (this.panelVisible()) for (const id of this.studioFacts.expired()) this.studioFacts.request(id, () => this.refreshPanels());
         }, DATA_LOOK_MS),
       );
-      this.registerDomEvent(document, "visibilitychange", () => {
-        if (document.visibilityState !== "visible") return;
+      this.registerDomEvent(activeDocument, "visibilitychange", () => {
+        if (activeDocument.visibilityState !== "visible") return;
         // Back from another app (the Studio's own editor, say): whatever it said before may be out of date.
         this.studioFacts.invalidate();
         watch.returned();
@@ -982,11 +980,6 @@ export default class BlygPlugin extends Plugin {
     return {
       version: this.manifest.version,
       imageMode: () => this.settings.readerPane.images,
-      viewMode: () => this.settings.readerPane.view,
-      setViewMode: async (mode) => {
-        this.settings.readerPane.view = mode;
-        await this.saveSettings();
-      },
       font: () => this.settings.readerPane.font,
       setFont: async (font) => {
         this.settings.readerPane.font = font;
@@ -1043,7 +1036,6 @@ export default class BlygPlugin extends Plugin {
           return null;
         }
       },
-      preparePage: (url) => this.readerPage(url),
       load: async (onProgress, opts) => {
         const waiting = opts?.force ? null : this.readerBackedOff();
         if (waiting) return { ok: false, message: waiting };
@@ -1148,41 +1140,6 @@ export default class BlygPlugin extends Plugin {
     } catch {
       return { ok: false, message: "The Studio could not be reached, so the read mark was not changed." };
     }
-  }
-
-  /** Stylesheets and prepared pages kept for the session, so the second post of a blyg does not wait for its stylesheet again. */
-  private readonly readerSheets = new Map<string, { at: number; text: string }>();
-  private readonly readerPages = new Map<string, { at: number; page: PreparedPage }>();
-
-  /** A post's page for the reader's frame (see trimmedPage.ts): plain requests (no token, no cookies), the stylesheets fetched side by side. */
-  private async readerPage(url: string): Promise<PreparedPage> {
-    const now = Date.now();
-    const cached = this.readerPages.get(url); // the web page is never changed by a setting, so the address is the whole key
-    if (cached && now - cached.at < 120_000) return cached.page;
-    const sheet = async (href: string): Promise<string | null> => {
-      const kept = this.readerSheets.get(href);
-      if (kept && Date.now() - kept.at < 600_000) return kept.text;
-      try {
-        const got = await obsidianTransport({ url: href, method: "GET", headers: {} });
-        if (got.status >= 400 || got.text.length >= 600_000) return null;
-        this.readerSheets.set(href, { at: Date.now(), text: got.text });
-        return got.text;
-      } catch {
-        return null; // a stylesheet that does not load: the post shows in plain type
-      }
-    };
-    let page: PreparedPage;
-    try {
-      const res = await obsidianTransport({ url, method: "GET", headers: {} });
-      if (res.status >= 400) return { kind: "unreachable" };
-      const css = (await Promise.all(stylesheetsOf(res.text, url).map(sheet))).filter((c): c is string => c !== null);
-      const doc = trimmedDocument({ pageHtml: res.text, pageUrl: url, css });
-      page = doc !== null ? { kind: "trimmed", doc } : framePolicy(res.headers) === "allowed" ? { kind: "full" } : { kind: "forbidden" };
-    } catch {
-      return { kind: "unreachable" };
-    }
-    this.readerPages.set(url, { at: Date.now(), page });
-    return page;
   }
 
   private async openPanel(): Promise<void> {

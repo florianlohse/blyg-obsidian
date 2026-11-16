@@ -137,20 +137,6 @@ export function sourcesOf(posts: ReadingPost[]): Array<{ id: string; title: stri
   return [...by.values()].sort((a, b) => a.title.localeCompare(b.title));
 }
 
-/**
- * May this page be shown inside Obsidian? Read from its response headers: `X-Frame-Options` of any value, or a CSP `frame-ancestors` that does not allow
- * every origin, says no (Obsidian's own origin is never one a site lists). No such header: yes.
- */
-export function framePolicy(headers: Record<string, string>): "allowed" | "forbidden" {
-  const get = (name: string): string | undefined => Object.entries(headers).find(([k]) => k.toLowerCase() === name)?.[1];
-  if ((get("x-frame-options") ?? "").trim() !== "") return "forbidden";
-  for (const directive of (get("content-security-policy") ?? "").split(";")) {
-    const [name, ...sources] = directive.trim().split(/\s+/);
-    if (name?.toLowerCase() === "frame-ancestors" && !sources.includes("*")) return "forbidden";
-  }
-  return "allowed";
-}
-
 /** An address a frame may load: absolute http(s) only. */
 export function frameable(url: string | null): url is string {
   if (!url) return false;

@@ -1,6 +1,6 @@
 // S15, the reader pane: a feed of the posts of the blygs the owner reads, a mentions list, one post at a time, and the hand-offs a reader needs (reply in
 // Obsidian, open in the browser, mark read). Drawing only; what it asks of the plugin is `ReaderHost`. Foreign markup goes through defang.ts and
-// `sanitizeHTMLToDom` only; a post's web page is shown by trimmedPage.ts in a frame without scripts and without an origin.
+// `sanitizeHTMLToDom` only. A post is always shown as text; "Browser" opens its page outside Obsidian.
 //
 // Layout: a header that never scrolls away (tabs and controls, or the post's buttons and its blyg, author and read state, then one status line) above a
 // body that scrolls by itself. Read state changes at once, in place, and is put back if the Studio refuses.
@@ -14,7 +14,6 @@ import { responseChip, responseIndex, type ResponseEntry } from "./readerRespons
 import { changedCount, chooseWalk, knownOf, mergeFresh, READER_KEEP, type SyncMemory } from "./readerSync";
 import type { StudioListedItem } from "../studio/types";
 import { limiter, mentionLead, postOfMention, visibleMentions } from "./readerMentions";
-import { frameUrlFor, READER_FRAME_SANDBOX } from "./trimmedPage";
 
 export const BLYG_READER_VIEW = "blyg-reader";
 
@@ -43,8 +42,6 @@ export interface ChangeMarks {
   reading: number;
   subscriptions: number;
 }
-
-export type PreparedPage = { kind: "trimmed"; doc: string } | { kind: "full" } | { kind: "forbidden" } | { kind: "unreachable" };
 
 export interface ReaderHost {
   /** The plugin's own version, shown at the foot of the feed so you can tell which build a device runs. */
@@ -78,9 +75,7 @@ export interface ReaderHost {
   markUnread(post: ReadingPost): Promise<ReadResult>;
   /** The owner's choices (settings): how a post opens, and what happens to images in the text view. */
   imageMode(): ImageMode;
-  viewMode(): "web" | "text";
-  setViewMode(mode: "web" | "text"): Promise<void>;
-  /** The font of the text view's content (the setting "Font for posts"). A web page is never changed by it. */
+  /** The font of the text view's content (the setting "Font for posts"). */
   font(): ReaderFont;
   setFont(font: ReaderFont): Promise<void>;
   /** The contrast of the text view's reading surface (the setting "Contrast of the reading surface"). */
@@ -96,12 +91,6 @@ export interface ReaderHost {
   checkForNew(force: boolean): Promise<{ asked: true; polling: number } | { asked: false; reason?: string }>;
   /** The Studio's change counters, or null when they cannot be read. The reading counter moves when the list does; the subscriptions counter when a blyg has been fetched. */
   changeMarks(): Promise<ChangeMarks | null>;
-  /**
-   * Prepare a post's page for the frame: `trimmed` (the post alone, with the blyg's stylesheets, see trimmedPage.ts), `full` (the page has no article the
-   * reader recognises, and allows framing: the whole page is shown), `forbidden` (no article, and its headers refuse framing), `unreachable`.
-   * Desktop Obsidian removes `X-Frame-Options` and CSP `frame-ancestors` from every response (its own session hook), so there `forbidden` is never seen.
-   */
-  preparePage(url: string): Promise<PreparedPage>;
 }
 
 /** The first words of a post, as plain text. Read from the string, never from an element: a list of posts must not request a single image. */
@@ -110,23 +99,13 @@ export function excerptOf(html: string, max = 140): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
-type PageState = { s: "unknown" } | { s: "asking" } | { s: "trimmed"; url: string } | { s: "full" } | { s: "forbidden" } | { s: "unreachable" };
 
 const keyOf = (p: ReadingPost): string => `${p.subscriptionId}/${p.remoteId}`;
-const OPENING = "Opening the page…";
 
 export class BlygReaderView extends ItemView {
   private data: ReaderData | null = null;
   private tab: "stream" | "mentions" = "stream";
   private shown: ReadingPost | null = null;
-  /** How the open post is shown (the start value is the setting; "As text" / "As web page" switch it for this post only). */
-  private shownAs: "web" | "text" = "web";
-  /** The open post's page, once prepared. `trimmed` holds an object URL that must be revoked when the post closes. */
-  private page: PageState = { s: "unknown" };
-  /** Read through a call, so a check after an assignment in the same function is not narrowed away by the type checker. */
-  private pageState(): PageState {
-    return this.page;
-  }
   private filter: FeedFilter = { ...DEFAULT_FILTER };
   /** Keep the feed's choices (order, blyg, length, unread) in the settings: every change goes through here. */
   private saveFilter(): void {
@@ -211,19 +190,12 @@ export class BlygReaderView extends ItemView {
 
   override async onClose(): Promise<void> {
     this.checking++;
-    this.releasePage();
     await Promise.resolve();
   }
 
   // ---- state -------------------------------------------------------------------------------------------------------------------------------
 
-  /** Forget the open post's page (and free its object URL). */
-  private releasePage(): void {
-    if (this.page.s === "trimmed") URL.revokeObjectURL(this.page.url);
-    this.page = { s: "unknown" };
-  }
-
-  /** The font of the post's content, as a class on the pane (the text view's CSS reads it; the web page view is never changed). */
+  /** The font of the post's content, as a class on the pane (the text view's CSS reads it). */
   private applyFont(): void {
     const font = this.host.font();
     for (const f of ["default", "serif", "sans", "mono"] as const) this.contentEl.toggleClass(`is-font-${f}`, f === font);
@@ -543,7 +515,7 @@ export class BlygReaderView extends ItemView {
 
   /**
    * Pull up at the end of a post in the text view, as at the end of a feed in other readers: a label shows what will happen and fills as you pull;
-   * let go early and nothing happens. (The web page view is a frame whose touches are not ours: it has the header button.) Touch only; a mouse has the button.
+   * let go early and nothing happens. Touch only; a mouse has the button.
    */
   private attachPull(scroll: HTMLElement, p: ReadingPost): void {
     if (!this.inFeed(p)) return;
@@ -601,7 +573,7 @@ export class BlygReaderView extends ItemView {
   private clearBottom(): void {
     const root = this.contentEl;
     const bar = root.ownerDocument.querySelector(".mobile-navbar");
-    if (!(bar instanceof HTMLElement)) {
+    if (!bar?.instanceOf(HTMLElement)) {
       root.style.removeProperty("--blyg-bottom-clear");
       return;
     }
@@ -699,7 +671,6 @@ export class BlygReaderView extends ItemView {
       return;
     }
     this.shown = null;
-    this.releasePage();
     this.drawHeader();
     this.drawBody();
   }
@@ -712,10 +683,8 @@ export class BlygReaderView extends ItemView {
     if (this.shown === null) this.feedScroll = this.scrollEl?.scrollTop ?? 0;
     if (via === "quote" && this.shown) this.trail.push(this.shown);
     else if (via === "feed") this.trail = [];
-    this.releasePage();
     this.closeResponses();
     this.shown = p;
-    this.shownAs = this.host.viewMode();
     this.drawHeader();
     this.drawBody();
     this.loadMine();
@@ -779,15 +748,6 @@ export class BlygReaderView extends ItemView {
       this.drawHeader();
       this.drawBody();
     });
-    // How posts open by default: the same choice as the setting "Open posts as", kept when you change it here.
-    const open = controls.createDiv({ cls: "blyg-reader-segment", attr: { role: "group", "aria-label": "Open posts as" } });
-    const mode = this.host.viewMode();
-    for (const [id, label] of [["web", "Web page"], ["text", "Text"]] as const) {
-      this.button(open, label, async () => {
-        await this.host.setViewMode(id);
-        this.drawHeader();
-      }, { active: mode === id, title: id === "web" ? "Open posts as the author's web page" : "Open posts as text" });
-    }
   }
 
   private drawPostHeader(h: HTMLElement, p: ReadingPost): void {
@@ -816,13 +776,6 @@ export class BlygReaderView extends ItemView {
       this.addIcon(b, "reply");
     }
     this.button(row, "Browser", () => (web ? this.host.openWeb(web) : undefined), { disabled: web === null, title: "Open the whole page in the browser" });
-    if (web) {
-      this.button(row, this.shownAs === "web" ? "As text" : "As web page", () => {
-        this.shownAs = this.shownAs === "web" ? "text" : "web";
-        this.drawHeader();
-        this.drawBody();
-      });
-    }
     // Where it is from, and who wrote it, as links; its version when it has been edited; when; whether it is read.
     const meta = h.createDiv({ cls: "blyg-reader-meta blyg-reader-postmeta" });
     const blygUrl = p.origin ?? (web ? new URL(web).origin : null);
@@ -958,7 +911,7 @@ export class BlygReaderView extends ItemView {
     });
   }
 
-  /** Open the mentioning post like any post: the web page or the text, the same header, the same bar below. */
+  /** Open the mentioning post like any post: the same header, the same bar below. */
   private async openMention(m: InboundMention): Promise<void> {
     await this.loadMention(m);
     const post = this.mentionInfo.get(m.id)?.post;
@@ -1028,36 +981,6 @@ export class BlygReaderView extends ItemView {
   }
 
   private drawPostBody(body: HTMLElement, p: ReadingPost): void {
-    const web = frameable(p.sourceUrl) ? p.sourceUrl : null;
-    if (this.shownAs === "web" && web && !p.withdrawn) {
-      if (this.page.s === "unknown") {
-        this.page = { s: "asking" };
-        this.setStatus(OPENING);
-        this.busy(+1);
-        void this.host.preparePage(web).then((prepared) => {
-          this.busy(-1);
-          if (this.status === OPENING) this.setStatus("");
-          if (!this.shown || keyOf(this.shown) !== keyOf(p)) return;
-          this.page = prepared.kind === "trimmed" ? { s: "trimmed", url: frameUrlFor(prepared.doc) } : { s: prepared.kind };
-          this.drawBody();
-        });
-      }
-      const page = this.pageState();
-      if (page.s === "trimmed" || page.s === "full") {
-        // The post's own page (trimmed to the post, or whole), as a visit would show it. Sandboxed without scripts and without an origin, so it cannot
-        // reach Obsidian; links open outside. It loads its images like any visit: that is what "as on the web" means (the setting says so).
-        body.createEl("iframe", { cls: "blyg-reader-frame", attr: { src: page.s === "trimmed" ? page.url : web, sandbox: READER_FRAME_SANDBOX, referrerpolicy: "no-referrer", title: `${p.subscriptionTitle} on the web` } });
-        return;
-      }
-      // Until the page is ready the text is shown, so there is something to read at once; it is replaced by the page when that arrives.
-      const scroll = body.createDiv({ cls: "blyg-reader-scroll blyg-reader-surface" });
-      const col = scroll.createDiv({ cls: "blyg-reader-column" });
-      this.attachPull(scroll, p);
-      if (page.s === "forbidden") col.createDiv({ cls: "blyg-reader-note", text: "This blyg does not allow its pages inside other apps, so the post is shown as text." });
-      else if (page.s === "unreachable") col.createDiv({ cls: "blyg-reader-note", text: "The page could not be reached, so the post is shown as text." });
-      this.drawText(col, p);
-      return;
-    }
     const scroll = body.createDiv({ cls: "blyg-reader-scroll blyg-reader-surface" });
     this.attachPull(scroll, p);
     this.drawText(scroll.createDiv({ cls: "blyg-reader-column" }), p);
