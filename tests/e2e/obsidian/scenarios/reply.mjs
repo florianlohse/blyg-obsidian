@@ -32,7 +32,7 @@ await runScenario({ data }, async (s) => {
     check(await s.openNote(seed), `${layout}: the panel follows a note in the Studio folder`);
 
     // Reply to item, by a pasted address (S10 §1/§2): a new thread that starts with the quote, and the Stub row
-    check(await s.clickPanel("Reply to item"), `${layout}: the panel offers “Reply to item”`);
+    check(await s.clickPanel("New reply thread…"), `${layout}: the panel offers “New reply thread…”`);
     check(Boolean(await s.becomes(() => s.pickerOpen(), 10000, "the picker")), `${layout}: the picker opens`);
     await s.clearNotices();
     await s.typeInPicker(`${STUDIO}/f/${ownId}/`);
@@ -58,7 +58,7 @@ await runScenario({ data }, async (s) => {
     // Reply to an item of a blyg you read (R5)
     if (imported) {
       await s.openNote(seed);
-      check(await s.clickPanel("Reply to item"), `${layout}: Reply to item again`);
+      check(await s.clickPanel("New reply thread…"), `${layout}: New reply thread… again`);
       await s.becomes(() => s.pickerOpen(), 10000, "the picker");
       await s.typeInPicker("remote fragment");
       check(await s.pickerHas("Blog B"), `${layout}: the words find the item of the blyg you read`);
@@ -76,7 +76,7 @@ await runScenario({ data }, async (s) => {
     await s.createNote(thread, "---\nblyg_kind: thread\n---\nMy own words first.\n");
     check(await s.openNote(thread), `${layout}: the panel follows a thread`);
     check(!(await s.panelFacts()).Stub, `${layout}: a plain thread shows no Stub row`);
-    check(await s.clickPanel("Make reply"), `${layout}: the panel offers “Make reply”`);
+    check(await s.clickPanel("Set reply target…"), `${layout}: the panel offers “Set reply target…”`);
     await s.becomes(() => s.pickerOpen(), 10000, "the picker");
     await s.clearNotices();
     await s.typeInPicker(`Reply target ${stamp}`);
@@ -89,7 +89,7 @@ await runScenario({ data }, async (s) => {
     await s.refreshPanel(thread);
     check(Boolean(await s.becomes(async () => /^a reply to /.test((await s.panelFacts()).Stub ?? ""), 15000, "the Stub row")), `${layout}: the panel's Stub row says “a reply to …”`);
     await s.openNote(seed);
-    check(!(await s.panelButtons()).some((b) => b.text === "Make reply"), `${layout}: a fragment has no “Make reply” button`);
+    check(!(await s.panelButtons()).some((b) => b.text === "Set reply target…"), `${layout}: a fragment has no “Set reply target…” button`);
   }
 
   await round("desktop");

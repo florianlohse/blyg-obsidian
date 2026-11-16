@@ -755,6 +755,7 @@ export default class BlygPlugin extends Plugin {
         const editor = this.activeEditor();
         return editor ? this.insertItemLink(editor) : Promise.resolve(void new Notice(TM.openANote, 6000));
       },
+      openReader: () => this.openReader(),
     };
   }
 
