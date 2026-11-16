@@ -57,7 +57,7 @@ await runScenario({}, async (s) => {
     check(Boolean(chosen), `${layout}: the note's property holds the hopper's name`);
 
     // §3 send it
-    check(await s.clickPanel("Review draft"), `${layout}: Review draft`);
+    check(await s.clickPanel("Send draft…"), `${layout}: Send draft…`);
     check(await s.waitModal("Send private draft?"), `${layout}: the window opens`);
     check((await s.modalText()).includes(`Hoppers: + ${hopper.name}`), `${layout}: the window lists “Hoppers: + …”`);
     await s.clearNotices();
@@ -79,7 +79,7 @@ await runScenario({}, async (s) => {
     await s.modalClosed();
     await wait(500);
     await s.clearNotices();
-    check(await s.clickPanel("Review draft"), `${layout}: Review draft after taking it out`);
+    check(await s.clickPanel("Send draft…"), `${layout}: Send draft… after taking it out`);
     check(Boolean(await s.waitNotice(`taken out of “${hopper.name}”`)), `${layout}: the notice says it was taken out of the hopper`);
     check(Boolean(await s.waitNotice("The text has no changes")), `${layout}: ... and that the text has no changes (no new version)`);
     check(!(await s.modalOpen()), `${layout}: no window was asked for (only the hoppers changed)`);
@@ -93,7 +93,7 @@ await runScenario({}, async (s) => {
     await s.modalClosed();
     await wait(500);
     await s.clearNotices();
-    check(await s.clickPanel("Review draft"), `${layout}: Review draft (added again)`);
+    check(await s.clickPanel("Send draft…"), `${layout}: Send draft… (added again)`);
     check(Boolean(await s.waitNotice(`added to “${hopper.name}”`)), `${layout}: the notice says it was added to the hopper again`);
     check(await inHopper(hopper.id, id), `${layout}: the item is in the hopper again`);
     const removed = await s.studio(`/hoppers/${encodeURIComponent(hopper.id)}/items/${encodeURIComponent("~own")}/${encodeURIComponent(id)}`, { method: "DELETE" });
@@ -102,7 +102,7 @@ await runScenario({}, async (s) => {
     check(Boolean(await s.becomes(async () => (await s.panelFacts())["In the Studio"] === "in no hopper", 15000, "the panel to see it")), `${layout}: the panel shows “In the Studio: in no hopper”`);
     check((await s.panelButtons()).some((b) => b.text === "Use the Studio's hoppers"), `${layout}: ... and offers “Use the Studio's hoppers”`);
     await s.clearNotices();
-    check(await s.clickPanel("Review draft"), `${layout}: Review draft without changing anything`);
+    check(await s.clickPanel("Send draft…"), `${layout}: Send draft… without changing anything`);
     check(Boolean(await s.waitNotice("already has this text — nothing to send")), `${layout}: the send says there is nothing to send`);
     check(!(await s.notices()).some((t) => /added to “/.test(t)), `${layout}: ... and says nothing about adding it to the hopper`);
     check(!(await inHopper(hopper.id, id)), `${layout}: the item is NOT put back (the removal in the Studio stands)`);
@@ -123,7 +123,7 @@ await runScenario({}, async (s) => {
     check((await s.readNote(path)).includes("blyg_hoppers: Nope"), `${layout}: “Nope” is still in the property`);
     await s.writeNote(path, (await s.readNote(path)).replace(/\n*$/, "\n") + "One more word.\n");
     await s.clearNotices();
-    check(await s.clickPanel("Review draft"), `${layout}: Review draft with “Nope” and a changed text`);
+    check(await s.clickPanel("Send draft…"), `${layout}: Send draft… with “Nope” and a changed text`);
     check(Boolean(await s.waitNotice(/there is no hopper “Nope”/)), `${layout}: refused again`);
     check((await s.readNote(path)).includes("blyg_hoppers: Nope"), `${layout}: “Nope” is still in the property`);
     await setHoppersProperty(path, null);
