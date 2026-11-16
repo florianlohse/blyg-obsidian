@@ -284,20 +284,19 @@ export async function launch({ data = fixtureData(), withDev = false } = {}) {
     return Boolean(ok);
   };
   s.clickModal = async (text, ms = 10000) => {
-    // In the phone layout the click is a real one: Obsidian 1.15.1 ignores a bare `click()` on a window button there (measured), and fake touch events without a
-    // touch list make Obsidian's own touch handlers throw. A mouse click at the button's centre goes through the browser's input like a person's tap.
-    // Elsewhere the plain click is what a mouse does.
-    const found = await s.becomes(() => page.evaluate((t) => {
+    const ok = await s.becomes(() => page.evaluate((t) => {
       const b = [...([...activeDocument.querySelectorAll(".modal-container .modal")].at(-1)?.querySelectorAll("button") ?? [])].find((x) => x.textContent?.trim() === t);
       if (!b || b.disabled) return false;
-      if (!window.app.isMobile) { b.click(); return { plain: true }; }
-      b.scrollIntoView({ block: "center" });
-      const r = b.getBoundingClientRect();
-      return { plain: false, x: r.x + r.width / 2, y: r.y + r.height / 2 };
+      b.click();
+      // Measured on Obsidian 1.15.1 in the EMULATED phone layout only: the first click on a destructive window button does nothing and the second goes through
+      // (on a real phone on the newest beta the first tap works, Florian 2026-11-16). A button that is still there 0.6 s later gets one more plain click; on
+      // 1.14.5 and on desktop the first click works, the button is gone, and nothing more happens.
+      if (window.app.isMobile && b.classList.contains("mod-destructive")) {
+        return new Promise((resolve) => window.setTimeout(() => { if (b.isConnected && !b.disabled) b.click(); resolve(true); }, 600));
+      }
+      return true;
     }, text), ms, `the window button “${text}”`);
-    if (!found) return false;
-    if (!found.plain) await page.mouse.click(found.x, found.y);
-    return true;
+    return Boolean(ok);
   };
   /** Flip the switch of the row named `name` in the open window; returns whether the row was found. */
   s.toggleInModal = (name) => page.evaluate((n) => {
