@@ -302,6 +302,11 @@ export async function launch({ data = fixtureData(), withDev = false } = {}) {
       const b = [...([...activeDocument.querySelectorAll(".modal-container .modal")].at(-1)?.querySelectorAll("button") ?? [])].find((x) => x.textContent?.trim() === t);
       if (!b || b.disabled) return false;
       window.__tap(b);
+      // Measured on 1.15.1 in the phone layout: the first tap on a destructive button does nothing visible and the second one goes through. A button that is
+      // still there after the first tap gets one more (on 1.14.5 and on desktop the first tap works, the button is gone, and nothing more happens).
+      if (window.app.isMobile && b.classList.contains("mod-destructive")) {
+        return new Promise((resolve) => window.setTimeout(() => { if (b.isConnected && !b.disabled) window.__tap(b); resolve(true); }, 600));
+      }
       return true;
     }, text), ms, `the window button “${text}”`);
     return Boolean(ok);
