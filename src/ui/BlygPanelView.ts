@@ -41,7 +41,7 @@ export interface PanelHost {
   /** "Studio: use the Studio's hoppers for this note" (roadmap S13). */
   takeHoppers(): Promise<void>;
   makeThread(): Promise<void>;
-  /** "Insert item…": pick an item, then quote it (threads) or link to it. */
+  /** "Insert quote or link…": pick an item, then quote it (threads) or link to it. */
   insertItem(): Promise<void>;
   /** Open the reader (the same as the ribbon icon and the command "Open reader"). */
   openReader(): Promise<void>;
@@ -203,7 +203,7 @@ export class BlygPanelView extends ItemView {
     const box = this.section(root, "work", "Work on this note");
     const row = box.createDiv({ cls: "blyg-pane-buttons" });
     // Quotes and links come from the Studio's items: with no Studio set up there is nothing to pick from, so the button is not drawn.
-    if (state.status !== "studio-missing") this.button(row, "Insert item…", w.canInsertLink, () => this.host.insertItem());
+    if (state.status !== "studio-missing") this.button(row, "Insert quote or link…", w.canInsertLink, () => this.host.insertItem());
     this.button(row, "Make thread", w.canMakeThread, () => this.host.makeThread());
     if (w.canMakeReply) this.button(row, "Mark as reply to…", true, () => this.host.makeReply());
   }

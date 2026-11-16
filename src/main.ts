@@ -1423,7 +1423,7 @@ export default class BlygPlugin extends Plugin {
   }
 
   /**
-   * "Insert item…" (the panel): in a thread, pick an item and then quote it (the whole item or a passage) or only link to it; in a fragment,
+   * "Insert quote or link…" (the panel): in a thread, pick an item and then quote it (the whole item or a passage) or only link to it; in a fragment,
    * which cannot quote, pick an item and link to it. The palette keeps "Insert quote" and "Insert link to item" as they were.
    */
   private async insertItem(editor: Editor): Promise<void> {

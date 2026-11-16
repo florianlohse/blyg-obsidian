@@ -43,7 +43,7 @@ Open the panel (paper-plane icon "Open blyg publisher", or command "Blyg: Open p
 
 | Button | Does | Live when |
 |---|---|---|
-| **Insert item…** | pick an item. In a thread you then choose to quote it (the whole item, or a passage you select) or to link to it only; in a fragment (which cannot quote) it inserts a link | a Blyg note is open |
+| **Insert quote or link…** | pick an item. In a thread you then choose to quote it (the whole item, or a passage you select) or to link to it only; in a fragment (which cannot quote) it inserts a link | a Blyg note is open |
 | **Make thread** | turns the open fragment into a thread (property `blyg_kind: thread`); an automatic name "Fragment …" becomes "Thread …" (a name you chose stays) | a fragment that has **never been sent to the Studio** |
 | **Mark as reply to…** | declares an unpublished thread to be a reply to an item you pick or paste | an unpublished Studio thread |
 
