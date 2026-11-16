@@ -392,10 +392,10 @@ describe("BlygPanelView", () => {
     expect(down.texts).not.toContain("Mentions");
   });
 
-  it("Insert quote or link… is live in a thread and in a fragment (a fragment can only link), and the old grey-button hint is gone", async () => {
+  it("Insert quote/link is live in a thread and in a fragment (a fragment can only link), and the old grey-button hint is gone", async () => {
     for (const fm of [{}, { kind: "thread" }, { blyg_id: ID, id: ID, version: 1, hash: "sha256:a" }]) {
       const m = await mount(stateOf(fm));
-      expect(m.button("Insert quote or link…")?.disabled).toBe(false);
+      expect(m.button("Insert quote/link")?.disabled).toBe(false);
       expect(m.texts.some((t) => /works in threads only/.test(t))).toBe(false);
       expect(m.button("Insert quote")).toBeUndefined();
       expect(m.button("Insert link")).toBeUndefined();
@@ -415,7 +415,7 @@ describe("BlygPanelView", () => {
     expect(write).toBeGreaterThan(decision);
     expect(facts).toBeGreaterThan(write);
     expect(withdraw).toBeGreaterThan(write); // the rarer actions stay below, folded
-    expect(facts).toBeGreaterThan(withdraw); // the facts come last
+    expect(withdraw).toBeGreaterThan(facts); // Withdraw is at the foot of Details, after the facts
   });
 
   it("a note outside the publish folders draws no next-step button", async () => {
@@ -436,7 +436,7 @@ describe("BlygPanelView", () => {
     expect(texts.some((t) => /30 days.*each device/.test(t))).toBe(true);
     expect(button("New fragment")?.disabled).toBe(false); // writing locally still works
     expect(button("New thread")?.disabled).toBe(false);
-    for (const gone of ["Publish…", "Send draft…", "Withdraw", "Hoppers…", "Hoppers...", "Open on web", "Insert quote or link…", "Import from Studio…", "Reply to item…", "Open reader"]) expect(button(gone), gone).toBeUndefined();
+    for (const gone of ["Publish…", "Send draft…", "Withdraw", "Hoppers…", "Hoppers...", "Open on web", "Insert quote/link", "Import from Studio…", "Reply to item…", "Open reader"]) expect(button(gone), gone).toBeUndefined();
     expect(els.some((e) => e.cls.has("blyg-pane-decision"))).toBe(false);
   });
 
@@ -509,14 +509,14 @@ describe("BlygPanelView", () => {
 });
 
 describe("the writing buttons", () => {
-  const WRITE = ["New thread", "New fragment", "Insert quote or link…", "Make thread"];
+  const WRITE = ["New thread", "New fragment", "Insert quote/link", "Make thread"];
   const noteState = (path: string, fm: Record<string, unknown>, ext = "md") =>
     computePanelState({ settings: settings(), note: { path, name: path.split("/").pop() ?? path, extension: ext }, frontmatter: fm, localHash: "sha256:a" });
 
   it("with no note open: only New thread and New fragment are drawn, and no Publish row", async () => {
     const { button, els } = await mount(computePanelState({ settings: settings(), note: null, frontmatter: {}, localHash: null }));
     expect(WRITE.map((t) => [t, button(t)?.disabled])).toEqual([
-      ["New thread", false], ["New fragment", false], ["Insert quote or link…", undefined], ["Make thread", undefined],
+      ["New thread", false], ["New fragment", false], ["Insert quote/link", undefined], ["Make thread", undefined],
     ]);
     expect(["Publish…", "Publish update…", "Withdraw", "Open on web"].map((t) => button(t))).toEqual([undefined, undefined, undefined, undefined]);
     expect(els.some((e) => e.cls.has("blyg-pane-buttons") && e.text === "Publish…")).toBe(false);
@@ -565,7 +565,7 @@ describe("the writing buttons", () => {
 
   it("each button runs its own action", async () => {
     const actions: Record<string, string> = {
-      "New thread": "newThread", "New fragment": "newNote", "Insert quote or link…": "insertItem",
+      "New thread": "newThread", "New fragment": "newNote", "Insert quote/link": "insertItem",
     };
     for (const [label, call] of Object.entries(actions)) {
       const { button, calls } = await mount(noteState("website/blyg/N.md", { kind: "thread" }));
@@ -591,10 +591,17 @@ describe("the grouped panel (increment 5)", () => {
     expect(els.find((e) => e.cls.has("blyg-pane-identity"))?.text).toBe("N · Thread");
   });
 
-  it("draws the folded sections, closed at first: Work on this note, Withdraw, Details", async () => {
+  it("Hoppers… is in Work on this note, Withdraw in Details", async () => {
+    const m = await mount(stateOf({ kind: "thread" }));
+    const inSection = (title: string, text: string): boolean => (sections(m.els).find((d) => titleOf(d) === title)?.all() ?? []).some((e) => e.tag === "button" && e.text === text);
+    expect(inSection("Details", "Withdraw")).toBe(true);
+    expect(inSection("Work on this note", "Withdraw")).toBe(false);
+  });
+
+  it("draws the folded sections, closed at first: Work on this note and Details", async () => {
     const { els } = await mount(stateOf({ kind: "thread" }));
     const found = sections(els);
-    expect(found.map(titleOf)).toEqual(["Work on this note", "Withdraw", "Details"]);
+    expect(found.map(titleOf)).toEqual(["Work on this note", "Details"]);
     expect(found.every((d) => !d.open)).toBe(true);
   });
 
@@ -612,16 +619,16 @@ describe("the grouped panel (increment 5)", () => {
 
   it("a section the person opened stays open when the panel is drawn again", async () => {
     const m = await mount(stateOf({ kind: "thread" }));
-    const manage = sections(m.els).find((d) => titleOf(d) === "Withdraw");
-    if (!manage) throw new Error("no Withdraw section");
+    const manage = sections(m.els).find((d) => titleOf(d) === "Details");
+    if (!manage) throw new Error("no Details section");
     manage.open = true;
     manage.handlers.forEach((h) => h());
     await m.view.refresh();
     const again = sections((m.view.contentEl as unknown as El).all());
-    expect(again.map((d) => [titleOf(d), d.open])).toEqual([["Work on this note", false], ["Withdraw", true], ["Details", false]]);
+    expect(again.map((d) => [titleOf(d), d.open])).toEqual([["Work on this note", false], ["Details", true]]);
   });
 
-  it("with no note open there is no Work on this note and no Withdraw; Details stays", async () => {
+  it("with no note open there is no Work on this note; Details stays", async () => {
     const { els } = await mount(computePanelState({ settings: settings(), note: null, frontmatter: {}, localHash: null }));
     expect(sections(els).map(titleOf)).toEqual(["Details"]);
   });

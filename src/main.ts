@@ -1090,9 +1090,8 @@ export default class BlygPlugin extends Plugin {
           }
           this.readerWorked();
           // The window is the newest posts only: older unread posts are not reachable yet ("load older" is planned).
-          const cut = !reading.value.complete && !reading.value.stopped;
           const bad = reading.value.unreadable + (mentions !== null && mentions.kind === "ok" ? mentions.value.unreadable : 0);
-          const note = [cut ? `Showing the newest ${READER_PAGE * READER_PAGES} posts; older ones are not loaded yet.` : "", bad > 0 ? `${bad} could not be read.` : "", mentions !== null && mentions.kind !== "ok" ? "Mentions are not available." : ""].filter(Boolean).join(" ");
+          const note = [bad > 0 ? `${bad} could not be read.` : "", mentions !== null && mentions.kind !== "ok" ? "Mentions are not available." : ""].filter(Boolean).join(" ");
           this.rememberPosts(reading.value.posts);
           return {
             ok: true,
@@ -1423,7 +1422,7 @@ export default class BlygPlugin extends Plugin {
   }
 
   /**
-   * "Insert quote or link…" (the panel): in a thread, pick an item and then quote it (the whole item or a passage) or only link to it; in a fragment,
+   * "Insert quote/link" (the panel): in a thread, pick an item and then quote it (the whole item or a passage) or only link to it; in a fragment,
    * which cannot quote, pick an item and link to it. The palette keeps "Insert quote" and "Insert link to item" as they were.
    */
   private async insertItem(editor: Editor): Promise<void> {

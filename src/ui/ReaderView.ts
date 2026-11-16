@@ -181,6 +181,7 @@ export class BlygReaderView extends ItemView {
   override async onOpen(): Promise<void> {
     this.registerInterval(window.setInterval(() => {
       if (this.checkedAt !== null && this.status.includes(" · checked ")) this.setStatus(this.checkedText());
+      else if (this.updatedAt !== null && this.status.startsWith("Updated ")) this.setStatus(this.updatedText());
     }, 20_000));
     // While the reader is on screen, look at the Studio's change counters now and then (a request that costs almost nothing) and read the list only when they moved.
     this.registerInterval(window.setInterval(() => void this.lookForMoves(), 30_000));
@@ -200,7 +201,9 @@ export class BlygReaderView extends ItemView {
       const saved = await this.host.readCache().catch(() => null);
       if (saved && this.data === null) {
         this.data = { posts: saved.posts, mentions: saved.mentions, note: "", studioOrigin: saved.studioOrigin, fromCache: true };
-        this.setStatus("Showing the list saved last time · updating…");
+        // The last-updated line is there from the first moment: the age of the saved list, then (when the Studio has answered) "just now".
+        this.updatedAt = saved.savedAt;
+        this.setStatus(`${this.updatedText()} · updating…`);
         this.draw();
         this.busy(+1);
         try {
@@ -209,7 +212,7 @@ export class BlygReaderView extends ItemView {
         } finally {
           this.busy(-1);
         }
-        if (this.status.startsWith("Showing the list saved")) this.setStatus(this.data?.note ?? "");
+        if (this.status.endsWith(" · updating…")) this.setStatus(this.afterReadText());
         return;
       }
       await this.reload();
@@ -246,6 +249,18 @@ export class BlygReaderView extends ItemView {
   private checkedText(): string {
     const ago = this.checkedAt === null ? "" : relativeTime(new Date(this.checkedAt).toISOString(), Date.now());
     return `${this.checkedFresh > 0 ? `${this.checkedFresh} new or changed post${this.checkedFresh === 1 ? "" : "s"}` : "Up to date"} · checked ${ago}`;
+  }
+
+  /** When the list was last read from the Studio (or, at the start, saved): shown as "Updated 3 min ago" until a check says more. */
+  private updatedAt: number | null = null;
+  private updatedText(): string {
+    const ago = this.updatedAt === null ? "" : relativeTime(new Date(this.updatedAt).toISOString(), Date.now());
+    return this.updatedAt === null ? "" : `Updated ${ago}`;
+  }
+  /** After a read: what the Studio said that needs saying (some items could not be read), else when the list was updated. */
+  private afterReadText(): string {
+    const note = this.data?.note ?? "";
+    return note !== "" ? note : this.updatedText();
   }
 
   private setStatus(text: string): void {
@@ -299,7 +314,8 @@ export class BlygReaderView extends ItemView {
           this.saveFilter();
         }
         // (A post opened from the first pages keeps its own status line, e.g. "Opening the page…".)
-        if (!quiet && (this.status === "" || this.status.startsWith("Loading"))) this.setStatus(got.data.note);
+        this.updatedAt = Date.now();
+        if (!quiet && (this.status === "" || this.status.startsWith("Loading"))) this.setStatus(this.afterReadText());
       } else if (!quiet) {
         this.data = held;
         this.setStatus(got.message);
@@ -332,7 +348,7 @@ export class BlygReaderView extends ItemView {
   }
 
   /**
-   * "Refresh": ask the Studio to fetch the blygs it reads, then watch its change counters (every three seconds) and read the list ONCE when it is done: when
+   * "Refresh": ask the Studio to fetch the blygs it reads, then watch its change counters (every one and a half seconds) and read the list ONCE when it is done: when
    * every blyg has reported (the subscriptions counter rises once per blyg fetched), after four quiet seconds once one has, or after half a minute. (The reader
    * used to read the whole list again whenever the reading counter moved, which with many blygs was dozens of reads of everything; measured in the notes.)
    */
@@ -350,12 +366,14 @@ export class BlygReaderView extends ItemView {
         return;
       }
       const known = new Set((this.data?.posts ?? []).map((p) => `${keyOf(p)}/${p.version}`));
-      this.setStatus(`Checking ${asked.polling} blyg${asked.polling === 1 ? "" : "s"} for new posts…`);
+      // "Checking blygs · 5/25": each blyg the Studio has fetched counts once (its subscriptions counter rises once per blyg), asked about every 1.5 seconds.
+      const progress = (reported: number): void => this.setStatus(`Checking blygs · ${Math.min(reported, asked.polling)}/${asked.polling}`);
+      progress(0);
       let mark = before;
       const startedAt = Date.now();
       let lastMove = startedAt;
       for (;;) {
-        await new Promise((r) => window.setTimeout(r, 3000));
+        await new Promise((r) => window.setTimeout(r, 1500));
         if (run !== this.checking || !this.contentEl.isConnected) return;
         const now = await this.host.changeMarks();
         if (now !== null) {
@@ -366,6 +384,7 @@ export class BlygReaderView extends ItemView {
           if (reset) break;
         }
         const reported = mark !== null && before !== null ? mark.subscriptions - before.subscriptions : 0;
+        progress(reported);
         if (reported >= asked.polling) break;
         if (reported > 0 && Date.now() - lastMove >= 4000) break;
         if (Date.now() - startedAt >= 30_000) break;
