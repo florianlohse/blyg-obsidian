@@ -258,7 +258,7 @@ export class BlygPanelView extends ItemView {
     };
     if (state.showRepost) button("Repost to Studio", state.canRepost, "mod-cta", () => void this.run(() => this.host.repost()));
     button(state.publishLabel, state.canPublish, state.emphasizePublish ? "mod-cta" : undefined, () => void this.run(() => this.host.publish()));
-    if (state.showPull) button("Replace this note with the online text", state.canPull, undefined, () => void this.run(() => this.host.pull()));
+    if (state.showPull) button("Replace note from Studio", state.canPull, undefined, () => void this.run(() => this.host.pull()));
   }
 
   private drawButtons(root: HTMLElement, state: PanelState): void {

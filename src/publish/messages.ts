@@ -246,7 +246,7 @@ export const M = {
   studioRepostNotNeeded: (id: string) => `This note already belongs to the Studio (${id}). Nothing to repost: use Publish or Update.`,
   studioRepostNothing: "This note has no record of another blyg, so there is nothing to repost. Use Publish.",
   studioRepostNotStudio: (path: string) => `Refusing to repost “${path}” — it is not in a Studio folder.`,
-  studioWithdrawn: (version: number, url: string) => `Withdrawn in the Studio: version ${version}. The address stays up as “withdrawn”. ${url}`,
+  studioWithdrawn: (version: number, url: string) => `Withdrawn · v${version}. The address stays up as “withdrawn”: ${url}`,
   studioNothingToWithdraw: (id: string) => `${id} was never published in the Studio, so there is nothing to withdraw. Delete the draft in the Studio if you do not want it.`,
   studioWithdrawCancelled: "Cancelled — nothing was withdrawn.",
   studioWithdrawStampFailed: (id: string, version: number) =>

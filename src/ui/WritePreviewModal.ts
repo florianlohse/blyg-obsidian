@@ -1,6 +1,6 @@
 // The window shown before every write that changes something (R2, decided): where it goes, what changes, and a clear
 // choice. Built only with createEl/text: nothing from a note is ever inserted as HTML.
-import { Modal, sanitizeHTMLToDom, Setting, type App } from "obsidian";
+import { Modal, sanitizeHTMLToDom, Setting, type App, type ButtonComponent } from "obsidian";
 import { diffText, type DiffBlock } from "../core/diff";
 import type { Confirmation, WritePreview } from "../publish/types";
 
@@ -19,6 +19,44 @@ const TITLES: Record<WritePreview["action"], string> = {
   draft: "Send a draft to your Studio",
   "delete-draft": "Delete this draft",
 };
+
+/** The window's question: what is about to happen, in the plugin's words (a Studio write names the kind; the older GitHub mode keeps its commit titles). */
+function titleOf(p: WritePreview): string {
+  if (!p.studio) return p.action === "create" ? `Commit a new ${p.label}` : TITLES[p.action];
+  if (p.studio.repost) return "Repost to your Studio";
+  switch (p.action) {
+    case "studio-conflict":
+      return "Compare copies";
+    case "studio-pull":
+      return "Replace vault note?";
+    case "draft":
+      return "Send private draft?";
+    case "delete-draft":
+      return "Delete Studio draft?";
+    case "withdraw":
+      return "Withdraw item?";
+    case "create":
+      return `Publish ${p.label === "thread" ? "thread" : "fragment"}?`;
+    default:
+      return "Publish update?";
+  }
+}
+
+/** The button that does it: the verb and its object, never just "Publish" (the question above names the same thing). */
+function confirmLabel(p: WritePreview): string {
+  if (!p.studio) return p.action === "withdraw" ? "Withdraw" : `Commit to ${p.branch}`;
+  if (p.studio.repost) return "Publish";
+  switch (p.action) {
+    case "withdraw":
+      return "Withdraw item";
+    case "draft":
+      return "Send draft";
+    case "create":
+      return `Publish ${p.label === "thread" ? "thread" : "fragment"}`;
+    default:
+      return "Publish update";
+  }
+}
 
 function renderBlock(parent: HTMLElement, block: DiffBlock): void {
   if (block.kind === "same") {
@@ -41,6 +79,8 @@ export class WritePreviewModal extends Modal {
   private decided = false;
   private note = "";
   private appendIds = true;
+  /** The harmless button of a window that asks about something that cannot be undone: it holds the keyboard focus, so a stray Enter or tap declines. */
+  private safe: ButtonComponent | null = null;
 
   constructor(
     app: App,
@@ -55,34 +95,27 @@ export class WritePreviewModal extends Modal {
     const p = this.preview;
     this.note = p.studio?.noteDefault ?? "";
     contentEl.addClass("blyg-preview");
-    this.setTitle(
-      p.action === "studio-conflict" || p.action === "studio-pull" || p.action === "draft" || p.action === "delete-draft"
-        ? TITLES[p.action]
-        : p.studio
-          ? p.studio.repost
-            ? "Repost to your Studio"
-            : p.action === "withdraw"
-            ? "Withdraw this item from your Studio"
-            : p.action === "create"
-            ? `Publish a new ${p.label} to your Studio`
-            : "Publish a new version to your Studio"
-          : p.action === "create"
-            ? `Commit a new ${p.label}`
-            : TITLES[p.action],
-    );
+    this.setTitle(titleOf(p));
     // Layout (styles.css): the target bar stays at the top and the buttons at the bottom; only the middle ("blyg-scroll")
     // scrolls. A long link list once pushed the diff out of reach on the iPad (0.0.10).
 
     // Class names changed from "blyg-target*" in 0.0.5: a stale stylesheet on the device (found on the iPad) painted the
     // old bar as an empty orange block. New names mean an old stylesheet cannot touch this element.
     contentEl.createDiv({
-      cls: p.studio ? "blyg-where blyg-where-studio" : `blyg-where blyg-where-${p.channel}`,
+      // Red only where something goes public; a private draft, a deleted draft and a local overwrite are not "live" and get a neutral edge.
+      cls: p.studio ? `blyg-where ${p.action === "draft" || p.action === "delete-draft" || p.action === "studio-pull" || p.action === "studio-conflict" ? "blyg-where-private" : "blyg-where-studio"}` : `blyg-where blyg-where-${p.channel}`,
       text: p.studio
         ? p.action === "draft"
           ? `Studio — ${p.studio.host} · draft only, nothing goes live`
           : p.action === "delete-draft"
             ? `Studio — ${p.studio.host} · deletes a draft that was never published`
-            : `Studio — ${p.studio.host} · goes live at once`
+            : p.action === "studio-pull"
+              ? `Studio — ${p.studio.host} · nothing is sent, only this note changes`
+              : p.action === "studio-conflict"
+                ? `Studio — ${p.studio.host} · nothing has been changed yet`
+                : p.action === "withdraw"
+                  ? `Studio — ${p.studio.host} · public: the address will say “Withdrawn”`
+                  : `Studio — ${p.studio.host} · goes live at once`
         : p.channel === "preview"
           ? `Preview — test channel · branch “${p.branch}”`
           : `Production — your real site · branch “${p.branch}”`,
@@ -125,21 +158,26 @@ export class WritePreviewModal extends Modal {
     if (p.action === "studio-conflict") {
       body.createDiv({
         cls: "blyg-warning",
-        text: "The working copy of this item was edited in the Studio since this note last sent it, and it differs from this note. Two ways out: “Replace the online copy with this note” sends this note’s text to the Studio and overwrites the online copy; “Replace this note with the online text” overwrites this note (on this device) with the online copy and sends nothing. Below: the online copy (before) and this note (after).",
+        text: "The Studio working copy of this item was edited in the Studio since this note last sent it, and it differs from this vault note. Nothing has been changed yet. Below: the Studio working copy (before) and this vault note (after).",
       });
       this.renderDiff(body);
+      // What each choice does next, said before the buttons (verified in the publish flow: the second one is followed by the normal publish window, it does not publish by itself).
+      const choices = body.createEl("ul", { cls: "blyg-choices" });
+      choices.createEl("li", { text: "Replace note from Studio: this vault note’s text becomes the Studio working copy. Nothing is sent to the Studio." });
+      choices.createEl("li", { text: "Replace Studio copy from note: the Studio working copy is overwritten with this vault note’s text. The publish window follows, and nothing goes public until you confirm there." });
       const footer = contentEl.createDiv({ cls: "blyg-footer" });
       new Setting(footer)
-        .addButton((b) => b.setButtonText("Cancel").setCta().onClick(() => this.finish(false)))
-        .addButton((b) => b.setButtonText("Replace this note with the online text").onClick(() => this.finish({ note: "", pull: true })))
-        .addButton((b) => b.setButtonText("Replace the online copy with this note").setDestructive().onClick(() => this.finish(true)));
+        .addButton((b) => ((this.safe = b), b.setButtonText("Cancel").onClick(() => this.finish(false))))
+        .addButton((b) => b.setButtonText("Replace note from Studio").setDestructive().onClick(() => this.finish({ note: "", pull: true })))
+        .addButton((b) => b.setButtonText("Replace Studio copy from note").setDestructive().onClick(() => this.finish(true)));
+      this.focusSafe();
       return;
     }
 
     if (p.action === "studio-pull") {
       body.createDiv({
         cls: "blyg-warning",
-        text: "This replaces the text of this note (on this device) with the online working copy of the item. Nothing is sent to the Studio, and the note’s properties stay. Below: this note as it is (before) and the online copy (after).",
+        text: "The Studio working copy will replace this note’s text (on this device). Nothing is sent to the Studio, and the note’s properties stay. Below: this vault note as it is (before) and the Studio working copy (after).",
       });
       this.renderDiff(body);
       const ids = p.blockIds ?? [];
@@ -155,23 +193,25 @@ export class WritePreviewModal extends Modal {
       }
       const footer = contentEl.createDiv({ cls: "blyg-footer" });
       new Setting(footer)
-        .addButton((b) => b.setButtonText("Cancel").setCta().onClick(() => this.finish(false)))
+        .addButton((b) => ((this.safe = b), b.setButtonText("Cancel").onClick(() => this.finish(false))))
         .addButton((b) =>
-          b.setButtonText("Replace this note with the online text").setDestructive().onClick(() => this.finish(ids.length > 0 ? { note: "", appendIds: this.appendIds } : true)),
+          b.setButtonText("Replace vault note").setDestructive().onClick(() => this.finish(ids.length > 0 ? { note: "", appendIds: this.appendIds } : true)),
         );
+      this.focusSafe();
       return;
     }
 
     if (p.action === "delete-draft") {
       body.createDiv({
         cls: "blyg-warning",
-        text: "This deletes the draft from the Studio for good. It was never published, so nothing public changes. The note keeps its text. Below: the draft’s text (before).",
+        text: `The private draft will be removed from ${p.studio?.host ?? "the Studio"} for good. It was never published, so nothing public changes. Your vault note keeps its text. Below: the draft’s text (before).`,
       });
       this.renderDiff(body);
       const footer = contentEl.createDiv({ cls: "blyg-footer" });
       new Setting(footer)
-        .addButton((b) => b.setButtonText("Cancel").setCta().onClick(() => this.finish(false)))
+        .addButton((b) => ((this.safe = b), b.setButtonText("Cancel").onClick(() => this.finish(false))))
         .addButton((b) => b.setButtonText("Delete draft").setDestructive().onClick(() => this.finish(true)));
+      this.focusSafe();
       return;
     }
 
@@ -192,24 +232,39 @@ export class WritePreviewModal extends Modal {
     this.renderThread(body);
     this.renderStudioQuotes(body);
     this.renderLinks(body);
-    this.renderStudioRendering(body);
+    // A new version: what changed comes first and the Studio's rendering of the whole text waits behind a tap. A first send: the rendering is the one
+    // preview (the same words again as "New text" in all-green is dropped, unless the Studio gave no rendering).
+    const update = p.studio !== undefined && p.action === "update";
+    const firstSend = p.studio !== undefined && p.before === null && (p.action === "create" || p.action === "draft") && p.studio.html.trim() !== "";
+    if (update) this.renderDiff(body);
+    this.renderStudioRendering(body, update);
 
     if (p.action === "withdraw") {
       body.createDiv({
         cls: "blyg-warning",
-        text: "A withdrawal cannot be deleted: the id stays on the web forever as “withdrawn”. You can publish the note again later, which creates a new version.",
+        text: "A withdrawal cannot be deleted: the address stays public and will say “Withdrawn”. Your vault note keeps its text. You can publish the note again later, which creates a new version.",
       });
-    } else {
+    } else if (!update && !firstSend) {
       this.renderDiff(body);
     }
 
     const footer = contentEl.createDiv({ cls: "blyg-footer" });
     new Setting(footer)
-      .addButton((b) => b.setButtonText("Cancel").onClick(() => this.finish(false)))
+      .addButton((b) => ((this.safe = b), b.setButtonText("Cancel").onClick(() => this.finish(false))))
       .addButton((b) => {
-        b.setButtonText(p.action === "withdraw" ? "Withdraw" : p.action === "draft" ? "Send draft" : p.studio ? "Publish" : `Commit to ${p.branch}`).setCta().onClick(() => this.finish(true));
+        b.setButtonText(confirmLabel(p));
+        // Taking something public back is the one choice here with a red button; everything else is the plain primary action.
         if (p.action === "withdraw") b.setDestructive();
+        else b.setCta();
+        b.onClick(() => this.finish(true));
       });
+    if (p.action === "withdraw") this.focusSafe();
+  }
+
+  /** Hand the keyboard focus to the harmless button (after the window is drawn). */
+  private focusSafe(): void {
+    const el: HTMLElement | undefined = this.safe?.buttonEl;
+    window.setTimeout(() => el?.focus(), 50);
   }
 
   /** Studio only, threads: what the Studio resolved each quote to. Plain text, never HTML. */
@@ -254,9 +309,15 @@ export class WritePreviewModal extends Modal {
    * Studio only: how the Studio renders the text, as readers will see it. The HTML is the Studio's, built from the note and, in
    * threads, from other blygs' items: foreign, so it goes through the sanitiser and never in as raw HTML (docs/SECURITY.md §2).
    */
-  private renderStudioRendering(parent: HTMLElement): void {
+  private renderStudioRendering(parent: HTMLElement, collapsed = false): void {
     const studio = this.preview.studio;
     if (!studio || studio.html.trim() === "") return;
+    if (collapsed) {
+      const more = parent.createEl("details", { cls: "blyg-studio-more" });
+      more.createEl("summary", { text: "As readers will see it" });
+      more.createDiv({ cls: "blyg-studio-render" }).appendChild(sanitizeHTMLToDom(studio.html));
+      return;
+    }
     parent.createDiv({ cls: "blyg-diff-heading", text: "As readers will see it" });
     parent.createDiv({ cls: "blyg-studio-render" }).appendChild(sanitizeHTMLToDom(studio.html));
   }

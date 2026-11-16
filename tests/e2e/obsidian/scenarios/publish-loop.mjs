@@ -23,10 +23,11 @@ await runScenario({}, async (s) => {
     check(await s.openNote(path), `${layout}: the panel follows the new note`);
     check((await s.panelFacts()).Route?.startsWith("Blyg item"), `${layout}: the panel names the route (${(await s.panelFacts()).Route ?? "nothing"})`);
     check(await s.clickPanel("Review draft"), `${layout}: the panel's button says “Review draft”`);
-    check(await s.waitModal("Send a draft to your Studio"), `${layout}: the window is titled “Send a draft to your Studio”`);
+    check(await s.waitModal("Send private draft?"), `${layout}: the window is titled “Send private draft?”`);
     const sheet = await s.modalText();
     check(/draft only, nothing goes live/.test(sheet), `${layout}: the window says nothing goes live`);
-    check(sheet.includes("New text") && sheet.includes("The first words"), `${layout}: the window shows the new text`);
+    check(sheet.includes("As readers will see it") && sheet.includes("The first words"), `${layout}: the window shows the text once, as readers will see it`);
+    check(!sheet.includes("New text"), `${layout}: ... and not a second time as all-new text`);
     await s.clearNotices();
     await s.clickModal("Send draft");
     const sent = await s.waitNotice(/Draft sent to the Studio \(/);
@@ -44,7 +45,7 @@ await runScenario({}, async (s) => {
     await s.becomes(async () => (await s.panelFacts()).Note !== undefined, 5000, "the panel");
     await wait(1000);
     check(await s.clickPanel("Review draft"), `${layout}: the panel offers “Review draft” again after an edit`);
-    check(await s.waitModal("Send a draft to your Studio"), `${layout}: the window opens again`);
+    check(await s.waitModal("Send private draft?"), `${layout}: the window opens again`);
     check(/Changes: \+\d+ word/.test(await s.modalText()), `${layout}: the window shows the changes as words added`);
     await s.clearNotices();
     await s.clickModal("Send draft");
@@ -62,8 +63,8 @@ await runScenario({}, async (s) => {
 
     // S2 / R10: delete the draft
     check(await s.clickPanel("Delete draft"), `${layout}: the panel offers “Delete draft”`);
-    check(await s.waitModal("Delete this draft"), `${layout}: the window is titled “Delete this draft”`);
-    check(/deletes the draft from the Studio for good/.test(await s.modalText()), `${layout}: the window says the deletion is for good and the note keeps its text`);
+    check(await s.waitModal("Delete Studio draft?"), `${layout}: the window is titled “Delete Studio draft?”`);
+    check(/removed from .* for good.*vault note keeps its text/s.test(await s.modalText()), `${layout}: the window says the deletion is for good and the note keeps its text`);
     await s.clearNotices();
     await s.clickModal("Delete draft");
     check(Boolean(await s.waitNotice(/Draft .* deleted from the Studio/)), `${layout}: the notice says the draft was deleted`);

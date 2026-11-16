@@ -92,7 +92,7 @@ await runScenario({ data }, async (s) => {
       await s.writeNote(path, await s.editorText(path));
       await s.refreshPanel(path);
       check(await s.clickPanel("Review publication"), `${layout}: Review publication on the thread`);
-      check(await s.waitModal(/^Publish a new /), `${layout}: the publish window opens`);
+      check(await s.waitModal(/^Publish (fragment|thread)\?$/), `${layout}: the publish window opens`);
       const sheet = await s.modalText();
       check(sheet.includes("Quotes in this thread") && sheet.includes("another blyg"), `${layout}: it lists the quote as from another blyg`);
       await s.clickModal("Cancel");

@@ -8,6 +8,7 @@ const registry = vi.hoisted(() => ({
   order: [] as string[],
   toggle: { name: "", value: null as boolean | null, set: (_v: boolean) => {} },
   fields: [] as { name: string; desc: string; placeholder: string; value: string; type: (v: string) => void }[],
+  focused: [] as string[],
 }));
 
 vi.mock("obsidian", () => {
@@ -102,6 +103,7 @@ vi.mock("obsidian", () => {
     addButton(cb: (b: unknown) => void) {
       const b = { text: "", cta: false, destructive: false, click: () => {} };
       const api = {
+        buttonEl: { focus: () => registry.focused.push(b.text) },
         setButtonText: (t: string) => ((b.text = t), api),
         setCta: () => ((b.cta = true), api),
         setDestructive: () => ((b.destructive = true), api),
@@ -116,6 +118,9 @@ vi.mock("obsidian", () => {
   return { Modal, Setting, sanitizeHTMLToDom };
 });
 
+// the window schedules the keyboard focus with window.setTimeout: here it runs at once
+vi.stubGlobal("window", { setTimeout: (fn: () => void) => (fn(), 0) });
+
 import { WritePreviewModal } from "../src/ui/WritePreviewModal";
 import type { Confirmation, WritePreview } from "../src/publish/types";
 
@@ -129,10 +134,11 @@ function open(p: WritePreview) {
   registry.toggle.value = null;
   registry.buttons.length = 0;
   registry.fields.length = 0;
+  registry.focused.length = 0;
   const answers: Confirmation[] = [];
   const modal = new WritePreviewModal({} as never, p, (v) => answers.push(v));
   modal.open();
-  const texts = (modal.contentEl as unknown as { all(): { text: string; cls: Set<string> }[] }).all();
+  const texts = (modal.contentEl as unknown as { all(): { text: string; cls: Set<string>; tag: string }[] }).all();
   return { modal, answers, texts, buttons: [...registry.buttons], fields: [...registry.fields], title: (modal as unknown as { title: string }).title };
 }
 
@@ -308,7 +314,7 @@ describe("WritePreviewModal", () => {
       preview({ channel: "production", branch: "https://studio.test", path: "https://studio.test/f/abc/", commitMessage: "", studio: { host: "https://studio.test", html: "<p>Hi <img src=x onerror=alert(1)></p>" } }),
     );
     expect(texts.some((t) => t.cls.has("blyg-where-studio") && t.text === "Studio — https://studio.test · goes live at once")).toBe(true);
-    expect(buttons.map((b) => b.text)).toEqual(["Cancel", "Publish"]);
+    expect(buttons.map((b) => b.text)).toEqual(["Cancel", "Publish update"]);
     expect(texts.some((t) => t.text === "Item")).toBe(true);
     expect(texts.some((t) => t.text === "Commit message" || t.text === "Writes to")).toBe(false);
     expect(texts.some((t) => t.text === "As readers will see it")).toBe(true);
@@ -341,7 +347,9 @@ describe("WritePreviewModal", () => {
 
     it("a draft says it goes nowhere, offers no change note, and the button says Send draft", () => {
       const { title, texts, buttons, fields, answers } = open(draftWindow());
-      expect(title).toBe("Send a draft to your Studio");
+      expect(title).toBe("Send private draft?");
+      expect(texts.some((t) => t.cls.has("blyg-where-private"))).toBe(true); // a private draft is not "live": no red edge
+      expect(texts.some((t) => t.cls.has("blyg-where-studio"))).toBe(false);
       expect(texts.some((t) => /draft only, nothing goes live/.test(t.text))).toBe(true);
       expect(texts.some((t) => /goes live at once/.test(t.text))).toBe(false);
       expect(texts.some((t) => t.cls.has("blyg-warning") && /^Nothing goes live\./.test(t.text))).toBe(true);
@@ -354,11 +362,12 @@ describe("WritePreviewModal", () => {
     it("deleting a draft is a destructive choice that defaults to keeping it", () => {
       const del = preview({ action: "delete-draft", branch: "https://studio.test", path: "https://studio.test/f/abc/", commitMessage: "", before: "The draft.", after: "", changes: ["The draft is deleted from the Studio."], studio: { host: "https://studio.test", html: "" } });
       const { title, texts, buttons, answers } = open(del);
-      expect(title).toBe("Delete this draft");
+      expect(title).toBe("Delete Studio draft?");
       expect(texts.some((t) => /deletes a draft that was never published/.test(t.text))).toBe(true);
       expect(buttons.map((b) => b.text)).toEqual(["Cancel", "Delete draft"]);
-      expect(buttons[0]?.cta).toBe(true);
+      expect(buttons[0]?.cta).toBe(false); // Cancel is plain: the red button is the only one with a colour, and Cancel holds the focus
       expect(buttons[1]?.destructive).toBe(true);
+      expect(registry.focused).toEqual(["Cancel"]);
       buttons[0]?.click();
       expect(answers).toEqual([false]);
     });
@@ -370,7 +379,7 @@ describe("WritePreviewModal", () => {
 
     it("offers an optional change note and sends it with the confirmation", () => {
       const { buttons, answers, fields, title } = open(studioUpdate());
-      expect(title).toBe("Publish a new version to your Studio");
+      expect(title).toBe("Publish update?");
       expect(fields).toHaveLength(1);
       expect(fields[0]).toMatchObject({ name: "Change note (optional)", placeholder: "What changed?" });
       fields[0]?.type("fixed a typo");
@@ -390,7 +399,7 @@ describe("WritePreviewModal", () => {
 
     it("a first version has no note field and answers a plain yes", () => {
       const { fields, buttons, answers, title } = open(studioUpdate({ action: "create", before: null }, false));
-      expect(title).toBe("Publish a new thread to your Studio");
+      expect(title).toBe("Publish thread?");
       expect(fields).toEqual([]);
       buttons[1]?.click();
       expect(answers).toEqual([true]);
@@ -454,13 +463,14 @@ describe("WritePreviewModal", () => {
 
     it("explains, shows the Studio's copy against the note, and defaults to keeping the Studio's work", () => {
       const { texts, buttons, title, fields } = open(conflict());
-      expect(title).toBe("The Studio’s copy was changed there");
+      expect(title).toBe("Compare copies");
       expect(texts.some((t) => t.cls.has("blyg-warning") && /edited in the Studio since this note last sent it/.test(t.text))).toBe(true);
       expect(texts.some((t) => t.cls.has("blyg-diff"))).toBe(true);
       expect(texts.some((t) => /^Changes: \+/.test(t.text))).toBe(true);
-      expect(buttons.map((b) => b.text)).toEqual(["Cancel", "Replace this note with the online text", "Replace the online copy with this note"]);
-      expect(buttons[0]?.cta).toBe(true);
-      expect(buttons[2]?.destructive).toBe(true);
+      expect(buttons.map((b) => b.text)).toEqual(["Cancel", "Replace note from Studio", "Replace Studio copy from note"]);
+      expect(buttons[0]?.cta).toBe(false);
+      expect([buttons[1]?.destructive, buttons[2]?.destructive]).toEqual([true, true]); // no preselected winner: both overwrite something
+      expect(registry.focused).toEqual(["Cancel"]);
       expect(fields).toEqual([]);
       expect(texts.some((t) => t.text === "As readers will see it")).toBe(false);
     });
@@ -500,11 +510,11 @@ describe("WritePreviewModal", () => {
 
     it("says that nothing is sent, shows both texts, and defaults to keeping the note", () => {
       const { texts, buttons, title, fields } = open(pulling());
-      expect(title).toBe("Replace this note with the online text");
+      expect(title).toBe("Replace vault note?");
       expect(texts.some((t) => t.cls.has("blyg-warning") && /Nothing is sent to the Studio/.test(t.text))).toBe(true);
       expect(texts.some((t) => t.cls.has("blyg-diff"))).toBe(true);
-      expect(buttons.map((b) => b.text)).toEqual(["Cancel", "Replace this note with the online text"]);
-      expect(buttons[0]?.cta).toBe(true);
+      expect(buttons.map((b) => b.text)).toEqual(["Cancel", "Replace vault note"]);
+      expect(buttons[0]?.cta).toBe(false);
       expect(buttons[1]?.destructive).toBe(true);
       expect(fields).toEqual([]);
     });
@@ -534,5 +544,83 @@ describe("WritePreviewModal", () => {
       closed.modal.close();
       expect(closed.answers).toEqual([false]);
     });
+  });
+});
+
+describe("the Studio windows say what will happen (S15 write windows)", () => {
+  const studio = (html = "<p>Rendered text.</p>", extra: Partial<NonNullable<WritePreview["studio"]>> = {}): NonNullable<WritePreview["studio"]> => ({ host: "https://studio.test", html, ...extra });
+  const base = { branch: "https://studio.test", path: "https://studio.test/f/abc/", commitMessage: "" };
+
+  it("a first publication asks a question that names the kind, and its button names it too", () => {
+    const fragment = open(preview({ ...base, action: "create", label: "fragment", before: null, after: "Words.", changes: ["Version 1"], studio: studio() }));
+    expect(fragment.title).toBe("Publish fragment?");
+    expect(fragment.buttons.map((b) => b.text)).toEqual(["Cancel", "Publish fragment"]);
+    const thread = open(preview({ ...base, action: "create", label: "thread", before: null, after: "Words.", changes: ["Version 1"], studio: studio() }));
+    expect(thread.title).toBe("Publish thread?");
+    expect(thread.buttons.map((b) => b.text)).toEqual(["Cancel", "Publish thread"]);
+    expect(thread.texts.some((t) => t.cls.has("blyg-where-studio") && /goes live at once/.test(t.text))).toBe(true);
+  });
+
+  it("a first publication shows the Studio's rendering once: no second, all-green copy of the same words", () => {
+    const first = open(preview({ ...base, action: "create", label: "fragment", before: null, after: "Words.", changes: ["Version 1"], studio: studio() }));
+    expect(first.texts.some((t) => t.text === "As readers will see it")).toBe(true);
+    expect(first.texts.some((t) => t.text === "New text")).toBe(false);
+    expect(first.texts.some((t) => t.cls.has("blyg-diff"))).toBe(false);
+    // no rendering from the Studio: the text itself is the preview, as it was
+    const bare = open(preview({ ...base, action: "create", label: "fragment", before: null, after: "Words.", changes: ["Version 1"], studio: studio("") }));
+    expect(bare.texts.some((t) => t.text === "New text")).toBe(true);
+  });
+
+  it("an update shows what changed first, and the whole rendering waits behind a tap", () => {
+    registry.order.length = 0;
+    const { texts, title } = open(preview({ ...base, action: "update", label: "fragment", before: "old words", after: "new words", changes: ["Version 1 → 2"], studio: studio("<p>x</p>", { askNote: true }) }));
+    expect(title).toBe("Publish update?");
+    const at = (name: string): number => registry.order.indexOf(name);
+    expect(at("blyg-diff")).toBeGreaterThan(-1);
+    expect(at("blyg-studio-more")).toBeGreaterThan(at("blyg-diff")); // the collapsed rendering comes after the diff
+    expect(at("note-field")).toBeLessThan(at("blyg-diff")); // the change note stays on top
+    expect(texts.some((t) => t.tag === "summary" && t.text === "As readers will see it")).toBe(true);
+    expect(texts.some((t) => t.cls.has("blyg-diff-heading") && t.text === "As readers will see it")).toBe(false); // not drawn open
+  });
+
+  it("only a draft, a deleted draft, a local overwrite and the comparison have no red edge, and none says it goes live", () => {
+    for (const action of ["draft", "delete-draft", "studio-pull", "studio-conflict"] as const) {
+      const { texts } = open(preview({ ...base, action, before: "a", after: "b", changes: [], studio: studio("") }));
+      expect(texts.some((t) => t.cls.has("blyg-where-private")), action).toBe(true);
+      expect(texts.some((t) => t.cls.has("blyg-where-studio")), action).toBe(false);
+      expect(texts.some((t) => /goes live at once/.test(t.text)), action).toBe(false);
+    }
+    const withdraw = open(preview({ ...base, action: "withdraw", before: "a", after: "", changes: [], studio: studio("") }));
+    expect(withdraw.texts.some((t) => t.cls.has("blyg-where-studio") && /address will say “Withdrawn”/.test(t.text))).toBe(true);
+  });
+
+  it("withdrawing: the question, the red button naming the item, and the keyboard focus on Cancel", () => {
+    const { title, buttons, texts } = open(preview({ ...base, action: "withdraw", before: "a", after: "", changes: ["Version 1 → 2"], studio: studio("") }));
+    expect(title).toBe("Withdraw item?");
+    expect(buttons.map((b) => b.text)).toEqual(["Cancel", "Withdraw item"]);
+    expect(buttons[1]).toMatchObject({ destructive: true, cta: false });
+    expect(buttons[0]?.cta).toBe(false);
+    expect(registry.focused).toEqual(["Cancel"]);
+    expect(texts.some((t) => t.cls.has("blyg-warning") && /address stays public and will say “Withdrawn”.*vault note keeps its text/.test(t.text))).toBe(true);
+  });
+
+  it("an ordinary publish keeps the primary look on the action and puts no special focus anywhere", () => {
+    const { buttons } = open(preview({ ...base, action: "update", before: "a", after: "b", changes: ["Version 1 → 2"], studio: studio() }));
+    expect(buttons[1]).toMatchObject({ text: "Publish update", cta: true, destructive: false });
+    expect(registry.focused).toEqual([]);
+  });
+
+  it("the comparison says what each choice does next, and the second one only leads on to the publish window", () => {
+    const { texts } = open(preview({ ...base, action: "studio-conflict", before: "Studio words", after: "Note words", changes: [], studio: studio("") }));
+    const lines = texts.map((t) => t.text);
+    expect(lines.find((t) => t.startsWith("Replace note from Studio:"))).toMatch(/Nothing is sent to the Studio/);
+    expect(lines.find((t) => t.startsWith("Replace Studio copy from note:"))).toMatch(/publish window follows.*nothing goes public until you confirm there/);
+    expect(texts.some((t) => t.cls.has("blyg-warning") && /Nothing has been changed yet/.test(t.text))).toBe(true);
+  });
+
+  it("taking the Studio's text into the note says whose text replaces whose, and that nothing is sent", () => {
+    const { texts, buttons } = open(preview({ ...base, action: "studio-pull", before: "Note words", after: "Studio words", changes: [], studio: studio("") }));
+    expect(texts.some((t) => t.cls.has("blyg-warning") && /Studio working copy will replace this note’s text.*Nothing is sent to the Studio/.test(t.text))).toBe(true);
+    expect(buttons[1]).toMatchObject({ text: "Replace vault note", destructive: true });
   });
 });
