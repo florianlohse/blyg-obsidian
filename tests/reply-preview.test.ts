@@ -2,7 +2,8 @@
 // (tests/e2e/obsidian/scenarios/reply-preview.mjs).
 import { describe, expect, it } from "vitest";
 import type { StudioClient } from "../src/studio/client";
-import { paragraphsOf, resolvePreview } from "../src/studio/previewResolver";
+import { paragraphsOf, previewOfPost, resolvePreview } from "../src/studio/previewResolver";
+import type { ReadingPost } from "../src/studio/reading";
 import { findDirectives } from "../src/core/previewDirectives";
 
 const ID = "2mhdb5wr1k5agypd4tspkyhst0";
@@ -73,5 +74,42 @@ describe("resolvePreview", () => {
     expect(await resolvePreview(fake({ search: async () => broke }), ID, null)).toMatchObject({ kind: "unavailable" });
     expect(await resolvePreview(fake({ search: async () => ok({ items: [{ id: ID, subscriptionId: "s1", sourceTitle: "B" }] }), getImported: async () => broke }), ID, null)).toMatchObject({ kind: "unavailable" });
     expect(await resolvePreview(fake({ peekItem: async () => broke }), ID, "https://far.example")).toMatchObject({ kind: "unavailable" });
+  });
+});
+
+describe("speed", () => {
+  it("asks whether it is the owner's own item and whether it is held at the same time, not one after the other", async () => {
+    const started: string[] = [];
+    let release: (v: unknown) => void = () => undefined;
+    const slow = new Promise((resolve) => (release = resolve));
+    const client = fake({
+      getItem: async () => {
+        started.push("getItem");
+        await slow;
+        return gone;
+      },
+      search: async () => {
+        started.push("search");
+        return ok({ items: [{ id: ID, subscriptionId: "s1", sourceTitle: "Blog B" }] });
+      },
+      getImported: async () => ok({ state: "current", contentHtml: "<p>held</p>" }),
+    });
+    const pending = resolvePreview(client, ID, null);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(started).toEqual(["getItem", "search"]); // search began while the first answer was still out
+    release(undefined);
+    expect(await pending).toMatchObject({ kind: "ready", item: { who: "Blog B", html: "<p>held</p>" } });
+  });
+  it("an own item still wins over a held one with the same id, and a failing first question still says it could not ask", async () => {
+    const hit = { id: ID, subscriptionId: "s1", sourceTitle: "Blog B" };
+    const both = await resolvePreview(fake({ getItem: async () => ok({ status: "public", version: 1, contentMd: "m", published: { contentHtml: "<p>mine</p>" } }), search: async () => ok({ items: [hit] }) }), ID, null);
+    expect(both).toMatchObject({ kind: "ready", item: { own: true, html: "<p>mine</p>" } });
+    expect(await resolvePreview(fake({ getItem: async () => broke, search: async () => ok({ items: [hit] }) }), ID, null)).toMatchObject({ kind: "unavailable" });
+  });
+  it("a post the reader already holds is previewed from itself, a withdrawn one with no text", () => {
+    const post = { subscriptionTitle: "Blog B", contentHtml: "<p>words</p>", withdrawn: false } as unknown as ReadingPost;
+    expect(previewOfPost(post)).toEqual({ who: "Blog B", html: "<p>words</p>", own: false, draft: false, withdrawn: false });
+    expect(previewOfPost({ ...post, withdrawn: true })).toMatchObject({ withdrawn: true, html: "" });
   });
 });

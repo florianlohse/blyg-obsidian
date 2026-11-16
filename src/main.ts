@@ -46,7 +46,7 @@ import { promptForStudioItem } from "./ui/StudioPicker";
 import { isEmptySettingsData, readMirror } from "./settings/mirror";
 import type { StudioListedItem } from "./studio/types";
 import { replyPreviewExtension } from "./editor/replyPreviewExtension";
-import { resolvePreview, type PreviewResult } from "./studio/previewResolver";
+import { previewOfPost, resolvePreview, type PreviewResult } from "./studio/previewResolver";
 import { drawPreview, type PreviewDeps } from "./ui/replyPreview";
 import { limiter, postFromPeek, postOfMention } from "./ui/readerMentions";
 import { parseReaderCache, readerCacheOf } from "./ui/readerCache";
@@ -931,19 +931,47 @@ export default class BlygPlugin extends Plugin {
   /** The owner's own items, kept for a few minutes for the replies chip of the reader. */
   private readerMine: { at: number; items: StudioListedItem[] } | null = null;
 
-  /** What a note's `![[id | label]]` points at, asked of the Studio once and kept for a few minutes in memory (never in the vault). */
+  /** What a note's `![[id | label]]` points at, asked of the Studio once and kept for a few minutes in memory (never in the vault). A found item is kept by its id alone. */
   private readonly previewCache = new Map<string, { at: number; value: PreviewResult }>();
   private readonly previewSlot = limiter(3);
+
+  /**
+   * Posts the reader has loaded this session, by id, plus (once) the saved list from the last session: a reply to a post you read needs no request to show
+   * that post. Capped; kept only in memory.
+   */
+  private readonly knownPosts = new Map<string, ReadingPost>();
+  private savedPostsRead = false;
+  private rememberPosts(posts: ReadingPost[]): void {
+    for (const p of posts) this.knownPosts.set(p.remoteId, p);
+    if (this.knownPosts.size > 600) for (const k of [...this.knownPosts.keys()].slice(0, this.knownPosts.size - 600)) this.knownPosts.delete(k);
+  }
+  private async knownPost(id: string): Promise<ReadingPost | null> {
+    const have = this.knownPosts.get(id);
+    if (have) return have;
+    if (!this.savedPostsRead) {
+      this.savedPostsRead = true;
+      const saved = await this.readReaderCache();
+      if (saved) for (const p of saved.posts) if (!this.knownPosts.has(p.remoteId)) this.knownPosts.set(p.remoteId, p);
+    }
+    return this.knownPosts.get(id) ?? null;
+  }
 
   private previewDeps(): PreviewDeps {
     return {
       resolve: (id, hintOrigin) => {
-        const kept = this.previewCache.get(`${id}|${hintOrigin ?? ""}`);
+        const missKey = `${id}|${hintOrigin ?? ""}`;
+        const kept = this.previewCache.get(id) ?? this.previewCache.get(missKey);
         if (kept && Date.now() - kept.at < (kept.value.kind === "ready" ? 10 * 60_000 : 30_000)) return Promise.resolve(kept.value);
         return this.previewSlot(async (): Promise<PreviewResult> => {
+          const held = await this.knownPost(id);
+          if (held) {
+            const value: PreviewResult = { kind: "ready", item: previewOfPost(held) };
+            this.previewCache.set(id, { at: Date.now(), value });
+            return value;
+          }
           const built = buildStudio(this.env());
-          const value: PreviewResult = built.ok ? await resolvePreview(built.studio.client, id, hintOrigin).catch((): PreviewResult => ({ kind: "unavailable", message: "The Studio could not be asked." })) : { kind: "unavailable", message: built.message };
-          this.previewCache.set(`${id}|${hintOrigin ?? ""}`, { at: Date.now(), value });
+          const value: PreviewResult = built.ok ? await resolvePreview(built.studio.client, id, hintOrigin).catch((): PreviewResult => ({ kind: "unavailable", message: "The Studio could not be asked." })) : { kind: "unavailable", message: "The Studio is not set up on this device." };
+          this.previewCache.set(value.kind === "ready" ? id : missKey, { at: Date.now(), value });
           return value;
         });
       },
@@ -964,6 +992,13 @@ export default class BlygPlugin extends Plugin {
       return typeof stub === "object" && stub !== null && (stub as { id?: unknown }).id === id && typeof (stub as { origin?: unknown }).origin === "string" ? (stub as { origin: string }).origin : null;
     };
     this.registerEditorExtension(replyPreviewExtension(deps, hintFor));
+    // Ask for the item a reply note answers as soon as the note is opened, so its text is there by the time the line is drawn.
+    this.registerEvent(this.app.workspace.on("file-open", (file) => {
+      if (!file) return;
+      const stub = this.app.metadataCache.getFileCache(file)?.frontmatter?.blyg_stub_of as unknown;
+      const id = typeof stub === "object" && stub !== null ? (stub as { id?: unknown }).id : null;
+      if (typeof id === "string" && id !== "") void deps.resolve(id, hintFor(file.path, id)).catch(() => undefined);
+    }));
     this.registerMarkdownPostProcessor((el, ctx) => {
       for (const embed of Array.from(el.querySelectorAll(".internal-embed"))) {
         const m = /^([0-9a-hjkmnp-tv-z]{26})(?:\s*\|(.*))?$/.exec((embed.getAttribute("src") ?? "").trim());
@@ -1060,6 +1095,7 @@ export default class BlygPlugin extends Plugin {
           const cut = !reading.value.complete && !reading.value.stopped;
           const bad = reading.value.unreadable + (mentions !== null && mentions.kind === "ok" ? mentions.value.unreadable : 0);
           const note = [cut ? `Showing the newest ${READER_PAGE * READER_PAGES} posts; older ones are not loaded yet.` : "", bad > 0 ? `${bad} could not be read.` : "", mentions !== null && mentions.kind !== "ok" ? "Mentions are not available." : ""].filter(Boolean).join(" ");
+          this.rememberPosts(reading.value.posts);
           return {
             ok: true,
             data: { posts: reading.value.posts, mentions: mentions !== null && mentions.kind === "ok" ? mentions.value.mentions : [], mentionsFetched: mentions !== null && mentions.kind === "ok", note, studioOrigin: built.studio.address.origin, incremental: reading.value.stopped },
@@ -1074,6 +1110,7 @@ export default class BlygPlugin extends Plugin {
       writeCache: (data) => this.writeReaderCache(data),
       openWeb: (url) => window.open(url, "_blank"),
       replyTo: async (post: ReadingPost) => {
+        this.rememberPosts([post]); // the note this starts shows this post's words at once
         const pick: StudioPick = { source: "studio", id: post.remoteId, kind: post.kind, title: excerptOf(post.contentHtml, 60), detail: post.subscriptionTitle, subscriptionId: post.subscriptionId, label: post.subscriptionTitle, origin: post.origin, version: post.version, quotable: true };
         const target = await runStudioReplyTarget(this.env(), pick);
         if (!target.ok) return void new Notice(target.message, 10000);

@@ -1,6 +1,7 @@
 // S15: the text of the item a reply (or a quote) points at, for a view-only preview in the note. Nothing here is written anywhere: the caller draws it and
 // forgets it (strangers' text does not enter the vault, decision of 2026-10-06). Asks the owner's Studio only.
 import type { StudioClient } from "./client";
+import type { ReadingPost } from "./reading";
 
 export interface PreviewItem {
   /** Whose it is, in words: "Your item", or the blyg's title / host. */
@@ -27,6 +28,11 @@ export function paragraphsOf(md: string): string {
     .join("");
 }
 
+/** The preview of a post the reader already holds (no request needed): the same words the Studio would answer with. */
+export function previewOfPost(post: ReadingPost): PreviewItem {
+  return { who: post.subscriptionTitle, html: post.withdrawn ? "" : post.contentHtml, own: false, draft: false, withdrawn: post.withdrawn };
+}
+
 const hostOf = (origin: string): string => {
   try {
     return new URL(origin).host;
@@ -40,14 +46,15 @@ const hostOf = (origin: string): string => {
  * note says which blyg it answers (`hintOrigin`), a look at that blyg by address. `missing`: none of them knows it.
  */
 export async function resolvePreview(client: StudioClient, id: string, hintOrigin: string | null): Promise<PreviewResult> {
-  const own = await client.getItem(id);
+  // Two questions at once: it is one of the owner's own, or held from a blyg the Studio reads. Asked one after the other, an item of someone else waited
+  // for the answer "not mine" before the second question even started.
+  const [own, found] = await Promise.all([client.getItem(id), client.search({ q: id, source: "imported", limit: 25 })]);
   if (own.kind === "ok") {
     const item = own.value;
     const html = item.published?.contentHtml || paragraphsOf(item.contentMd);
     return { kind: "ready", item: { who: item.status === "draft" || item.version === 0 ? "Your item (a draft)" : "Your item", html, own: true, draft: item.status === "draft" || item.version === 0, withdrawn: item.status === "withdrawn" } };
   }
   if (own.kind !== "not-found") return { kind: "unavailable", message: "The Studio could not be asked." };
-  const found = await client.search({ q: id, source: "imported", limit: 25 });
   if (found.kind === "ok") {
     const hit = found.value.items.find((h) => h.id === id && h.subscriptionId !== null);
     if (hit && hit.subscriptionId !== null) {
