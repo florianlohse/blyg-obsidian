@@ -44,6 +44,10 @@ becomes the release notes. Write entries for people who use the plugin, not for 
   - **Reply and more:** "Reply in Obsidian" (a new thread that answers the post) and "Browser" (the whole page, outside Obsidian).
 - **Setting "Images in posts you read".** "Load on click" (the default) shows each image as a button that names the server it comes from and loads it only when you tap it; "Always load" draws images with the post. Loading an image tells its server that you read the post.
 
+### Fixed
+
+- **Reader on an iPad (tablet layout).** The list of posts was squeezed into a strip a few pixels high: the reader keeps its last line above Obsidian's floating bottom bar, and the tablet layout has that bar's element in the page but does not draw it, which was read as a bar covering the whole pane. A bar that is not drawn, or does not meet the pane, is now ignored. The phone is unchanged.
+
 ## [0.11.0] — 2026-11-12
 
 You can now put images in your Studio notes. Nothing else changes, and your settings carry over unchanged.

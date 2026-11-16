@@ -10,6 +10,7 @@ import { plainText, renderForeign, type ImageMode } from "./defang";
 import { activeFilters, arrange, cardOf, DEFAULT_FILTER, frameable, LENGTH_LABELS, nextInOrder, postOfQuote, pullProgress, readingTimeLabel, relativeTime, SORT_LABELS, sourcesOf, type FeedFilter, type FeedLength, type FeedSort } from "./readerFeed";
 import { type ReaderFont } from "./readerFonts";
 import { CONTRASTS, type ReaderContrast } from "./readerLook";
+import { bottomClearance } from "./readerLayout";
 import { responseChip, responseIndex, type ResponseEntry } from "./readerResponses";
 import { changedCount, chooseWalk, knownOf, mergeFresh, READER_KEEP, type SyncMemory } from "./readerSync";
 import type { StudioListedItem } from "../studio/types";
@@ -604,12 +605,10 @@ export class BlygReaderView extends ItemView {
   private clearBottom(): void {
     const root = this.contentEl;
     const bar = root.ownerDocument.querySelector(".mobile-navbar");
-    if (!bar?.instanceOf(HTMLElement)) {
-      root.style.removeProperty("--blyg-bottom-clear");
-      return;
-    }
-    const overlap = Math.max(0, root.getBoundingClientRect().bottom - bar.getBoundingClientRect().top);
-    root.style.setProperty("--blyg-bottom-clear", `${Math.ceil(overlap)}px`);
+    // The tablet layout has the element but does not draw it (display none: a box of size zero at the origin); that is "no bar", not a bar covering the whole pane.
+    const clear = bar?.instanceOf(HTMLElement) ? bottomClearance(root.getBoundingClientRect(), bar.getBoundingClientRect()) : null;
+    if (clear === null) root.style.removeProperty("--blyg-bottom-clear");
+    else root.style.setProperty("--blyg-bottom-clear", `${clear}px`);
   }
 
   /** The owner's own items, loaded when a post is opened: their replies to it make the green "You" chip. Null until loaded. */
