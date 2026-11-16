@@ -539,10 +539,10 @@
 /* The feed's header (increment 5c): the three buttons share one line; under it one slim row: the Refresh icon (it spins while a check runs), the status or progress
    on the left (cut with "…" when long), the plugin's version on the right. The button keeps its text "Refresh" for screen readers and tests but draws only the icon. */
 .blyg-reader-header .blyg-reader-bar { flex-wrap: nowrap; }
-.blyg-reader-header .blyg-reader-bar .blyg-reader-btn { flex: 0 1 auto; white-space: nowrap; padding-inline: var(--size-4-3); min-width: 0; }
+.blyg-reader-header .blyg-reader-bar .blyg-reader-btn { flex: 0 1 auto; white-space: nowrap; padding-inline: calc(var(--blyg-btn-h) * 0.4); min-width: 0; }
 .blyg-reader-statusrow { display: flex; align-items: center; gap: var(--size-4-2); margin-top: var(--size-2-1); }
-.blyg-reader-statusrow .blyg-reader-refresh { flex: none; order: 0; margin: 0; padding-inline: var(--size-4-2); font-size: 0; background: transparent; border: 0; box-shadow: none; color: var(--text-accent); }
-.blyg-reader .blyg-reader-statusrow .blyg-reader-refresh { padding-inline: var(--size-4-2); font-size: 0; }
+.blyg-reader-statusrow .blyg-reader-refresh { flex: none; order: 0; margin: 0; font-size: 0; background: transparent; border: 0; box-shadow: none; color: var(--text-accent); }
+.blyg-reader .blyg-reader-statusrow .blyg-reader-refresh { padding-inline: calc(var(--blyg-btn-h) * 0.38); font-size: 0; }
 .blyg-reader .blyg-reader-statusrow .blyg-reader-refresh .blyg-reader-icon { font-size: var(--font-ui-medium); }
 .blyg-reader-statusrow .blyg-reader-refresh:hover { background: var(--background-modifier-hover); }
 .blyg-reader-header.is-busy .blyg-reader-refresh .blyg-reader-icon svg { animation: blyg-spin 0.9s linear infinite; }
