@@ -44,6 +44,15 @@ becomes the release notes. Write entries for people who use the plugin, not for 
   - **Reply and more:** "Reply in Obsidian" (a new thread that answers the post) and "Browser" (the whole page, outside Obsidian).
 - **Setting "Images in posts you read".** "Load on click" (the default) shows each image as a button that names the server it comes from and loads it only when you tap it; "Always load" draws images with the post. Loading an image tells its server that you read the post.
 
+### Changed
+
+- **The panel puts the note's next step first.** Under the status line, before the writing buttons and the facts, stands the one button the note needs next: **Review publication**, **Review update**, **Review republication** or **Review draft** (it only opens the window that shows what would be sent; that window's own button sends), and, when the Studio's copy was changed elsewhere, **Replace this note with the online text**. Withdraw, Delete draft, Hoppers and Open on web stay below. On a phone the drawer is taller than the screen, and the button used to be below the facts list.
+- **The hint under a grey "Insert quote" no longer calls a draft "published".** A note that was sent to the Studio as a draft now says so, and says it can no longer be made a thread.
+
+### Fixed
+
+- **Reader on an iPad (tablet layout).** The list of posts was squeezed into a strip a few pixels high: the reader keeps its last line above Obsidian's floating bottom bar, and the tablet layout has that bar's element in the page but does not draw it, which was read as a bar covering the whole pane. A bar that is not drawn, or does not meet the pane, is now ignored. The phone is unchanged.
+
 ## [0.11.0] — 2026-11-12
 
 You can now put images in your Studio notes. Nothing else changes, and your settings carry over unchanged.

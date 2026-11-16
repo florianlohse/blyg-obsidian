@@ -225,7 +225,7 @@ export interface PanelState {
   /** Everything is as it should be (published and unchanged): the panel shows a green check. */
   ok: boolean;
   /** What the main button says: "Publish", "Update" once the note has been published, "Publish again" after a withdrawal. */
-  publishLabel: "Publish" | "Update" | "Publish again" | "Send draft";
+  publishLabel: "Review publication" | "Review update" | "Review republication" | "Review draft";
   /** The main button is the call to action (there is something to send); false when it would only say "No changes". */
   emphasizePublish: boolean;
   /** Studio notes: what the Studio itself reported (mentions, warnings, whether it could be reached). Absent for other routes. */
@@ -319,7 +319,7 @@ export function computePanelState(input: PanelInput): PanelState {
     ...core,
     ...(core.status === "other-blyg" && !githubInUse(input.settings) ? { notes: ["This item belongs to another blyg, not to the Studio set up now. Publishing it here is not offered."] } : {}),
     ...publishButton(core.status),
-    ...(draftsOnly ? { publishLabel: "Send draft" as const, canWithdraw: false } : {}),
+    ...(draftsOnly ? { publishLabel: "Review draft" as const, canWithdraw: false } : {}),
     draftsOnly,
     showDelete: core.status === "draft",
     canDelete: core.status === "draft",
@@ -378,24 +378,24 @@ function studioInfo(studio: NonNullable<PanelInput["studio"]>): NonNullable<Pane
 
 type CoreState = Omit<PanelState, "ok" | "publishLabel" | "emphasizePublish" | "showWithdraw" | "showOpenWeb" | "showRepost" | "canRepost" | "showPull" | "canPull" | "draftsOnly" | "showDelete" | "canDelete" | "write">;
 
-/** The main button's wording follows the state: once something has been published, the button updates it. */
+/** The main button's wording follows the state. It only opens the preview window (the window's own button sends), which is why every wording starts with "Review". */
 function publishButton(status: PanelStatus): Pick<PanelState, "publishLabel" | "emphasizePublish"> {
   switch (status) {
     case "in-sync":
     case "plain-in-sync":
-      return { publishLabel: "Update", emphasizePublish: false };
+      return { publishLabel: "Review update", emphasizePublish: false };
     case "local-changes":
     case "plain-changed":
     case "edited-there":
-      return { publishLabel: "Update", emphasizePublish: true };
+      return { publishLabel: "Review update", emphasizePublish: true };
     case "production-note":
-      return { publishLabel: "Update", emphasizePublish: false };
+      return { publishLabel: "Review update", emphasizePublish: false };
     case "withdrawn":
-      return { publishLabel: "Publish again", emphasizePublish: true };
+      return { publishLabel: "Review republication", emphasizePublish: true };
     case "draft":
-      return { publishLabel: "Publish", emphasizePublish: true };
+      return { publishLabel: "Review publication", emphasizePublish: true };
     default:
-      return { publishLabel: "Publish", emphasizePublish: true };
+      return { publishLabel: "Review publication", emphasizePublish: true };
   }
 }
 
@@ -485,7 +485,7 @@ function computeCore(input: PanelInput): CoreState {
         ...(hint ? { hint } : {}),
         status: "plain-unknown",
         headline: `${capitalise(route.label)}: not checked${on} yet.`,
-        notes: ["Tap Publish to compare it with the site; nothing is written if it is already there."],
+        notes: ["Tap Review publication to compare it with the site; nothing is written if it is already there."],
         canPublish: true,
       };
     }
@@ -498,7 +498,7 @@ function computeCore(input: PanelInput): CoreState {
       status: inSync ? "plain-in-sync" : "plain-changed",
       ...(hint ? { hint } : {}),
       headline: inSync ? `${capitalise(route.label)}: published${on} and up to date.` : `${capitalise(route.label)}: changed since it was published${on}.`,
-      notes: [inSync ? "Edit it, then tap Update to send the changes." : "Tap Update to review the changes before they go out."],
+      notes: [inSync ? "Edit it; Review update shows what would go out." : "Tap Review update to see the changes before they go out."],
       canPublish: true,
     };
   }
@@ -556,7 +556,7 @@ function computeCore(input: PanelInput): CoreState {
       ...common,
       status: "not-published",
       headline: "Not published yet.",
-      notes: ["Tap Publish to send it as version 1."],
+      notes: ["Tap Review publication to send it as version 1."],
       canPublish: true,
     };
   }
@@ -588,7 +588,7 @@ function computeCore(input: PanelInput): CoreState {
       ...hint,
       status: "withdrawn",
       headline: `Withdrawn${on}${withVersion}.`,
-      notes: [...notes, `Its address stays up as “withdrawn”. Tap Publish again to bring it back${item.version !== null ? ` as v${item.version + 1}` : ""}.`],
+      notes: [...notes, `Its address stays up as “withdrawn”. Tap Review republication to bring it back${item.version !== null ? ` as v${item.version + 1}` : ""}.`],
       canPublish: true,
     };
   }
@@ -639,7 +639,7 @@ function computeCore(input: PanelInput): CoreState {
     ...hint,
     status: inSync ? "in-sync" : "local-changes",
     headline: inSync ? `Published${on}${withVersion} and up to date.` : `Published${on}${withVersion}, with changes not sent yet.`,
-    notes: [...notes, inSync ? "Edit the note, then tap Update to send the changes." : "Tap Update to review the changes before they go out."],
+    notes: [...notes, inSync ? "Edit the note; Review update shows what would go out." : "Tap Review update to see the changes before they go out."],
     canPublish: true,
     canWithdraw: true,
   };
@@ -686,8 +686,8 @@ function studioCore(
     }
     if (problems.length > 0) return { ...base, ...common, status: "thread-unreadable", headline: "Can't be published yet.", notes: problems.slice(0, 2) };
     return draftsOnly
-      ? { ...base, ...common, status: "not-published", headline: "Not sent yet.", notes: ["Tap Send draft to see the Studio's preview and send it as a draft. Nothing goes live from this folder."], canPublish: true }
-      : { ...base, ...common, status: "not-published", headline: "Not published yet.", notes: ["Tap Publish to see the Studio's preview and send it as version 1."], canPublish: true };
+      ? { ...base, ...common, status: "not-published", headline: "Not sent yet.", notes: ["Tap Review draft to see the Studio's preview and send it as a draft. Nothing goes live from this folder."], canPublish: true }
+      : { ...base, ...common, status: "not-published", headline: "Not published yet.", notes: ["Tap Review publication to see the Studio's preview and send it as version 1."], canPublish: true };
   }
   if (!isBlygId(rawId)) {
     return { ...base, ...common, status: "invalid-id", headline: "The blyg_id in this note is not valid.", notes: ["Fix or remove it in the note's properties; publishing is refused until then."] };
@@ -729,7 +729,7 @@ function studioCore(
       ...base, ...common, item: { ...item, version: facts.item.version }, ...web,
       status: "withdrawn",
       headline: `Withdrawn in the Studio (v${facts.item.version}).`,
-      notes: ["It was withdrawn there, not from this note. Tap Publish again to bring it back as the next version."],
+      notes: ["It was withdrawn there, not from this note. Tap Review republication to bring it back as the next version."],
       canPublish: true,
     };
   }
@@ -739,7 +739,7 @@ function studioCore(
       ...base, ...common, item, ...web,
       status: "withdrawn",
       headline: `Withdrawn${withVersion}.`,
-      notes: [`Its address stays up as “withdrawn”. Tap Publish again to bring it back${item.version !== null ? ` as v${item.version + 1}` : ""}.`],
+      notes: [`Its address stays up as “withdrawn”. Tap Review republication to bring it back${item.version !== null ? ` as v${item.version + 1}` : ""}.`],
       canPublish: true,
     };
   }
@@ -758,11 +758,11 @@ function studioCore(
       notes: [
         draftsOnly
           ? inSync
-            ? "Publish it in the Studio, or move the note to a normal Studio folder and tap Publish. “Delete draft” removes it."
-            : "Tap Send draft to update it. Nothing goes live from this folder."
+            ? "Publish it in the Studio, or move the note to a normal Studio folder and tap Review publication. “Delete draft” removes it."
+            : "Tap Review draft to update it. Nothing goes live from this folder."
           : inSync
-            ? "Tap Publish to make it version 1. “Delete draft” removes it from the Studio."
-            : "Tap Publish to see the Studio's preview before it goes out.",
+            ? "Tap Review publication to make it version 1. “Delete draft” removes it from the Studio."
+            : "Tap Review publication to see the Studio's preview before it goes out.",
       ],
       canPublish: true,
     };
@@ -785,10 +785,10 @@ function studioCore(
       draftsOnly
         ? inSync
           ? "In this folder only drafts are sent: nothing goes live from here."
-          : "Tap Send draft to update the working copy in the Studio; the published version stays as it is."
+          : "Tap Review draft to update the working copy in the Studio; the published version stays as it is."
         : inSync
-          ? "Edit the note, then tap Update to send the changes."
-          : "Tap Update to see the Studio's preview before it goes out.",
+          ? "Edit the note; Review update shows what would go out."
+          : "Tap Review update to see the Studio's preview before it goes out.",
     ],
     canPublish: true,
     canWithdraw: true,

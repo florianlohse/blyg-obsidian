@@ -178,7 +178,7 @@ export class WritePreviewModal extends Modal {
     if (p.action === "draft") {
       body.createDiv({
         cls: "blyg-warning",
-        text: "Nothing goes live. This sends the note’s text to the Studio as a draft (or as the working copy of an item); only you can see it there. Publish it in the Studio, or move the note to a normal Studio folder and tap Publish.",
+        text: "Nothing goes live. This sends the note’s text to the Studio as a draft (or as the working copy of an item); only you can see it there. Publish it in the Studio, or move the note to a normal Studio folder and tap Review publication.",
       });
     }
 
