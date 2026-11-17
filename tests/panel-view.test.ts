@@ -316,9 +316,9 @@ describe("BlygPanelView", () => {
     const studioSettings = { ...settings(), studio: { baseUrl: "https://studio.test", mount: "", tokenSecretName: "t", importFolder: "" }, routes: [{ vaultPrefix: "studio/", mode: "studio" as const, label: "Blyg item" }] };
     const st = computePanelState({ settings: studioSettings, note: { path: "elsewhere/N.md", name: "N.md", extension: "md" }, frontmatter: {}, localHash: "sha256:a" });
     const { button, calls } = await mount(st);
-    button("Import from Studio…")?.click();
+    button("Sync with Studio…")?.click();
     await vi.waitFor(() => expect(calls).toContain("importFromStudio"));
-    expect((await mount(stateOf({}))).button("Import from Studio…")).toBeUndefined();
+    expect((await mount(stateOf({}))).button("Sync with Studio…")).toBeUndefined();
   });
 
   it("a note with another blyg's record gets a Repost to Studio button only in a setup that uses GitHub (M1 0.9.0: R11)", async () => {
@@ -436,7 +436,7 @@ describe("BlygPanelView", () => {
     expect(texts.some((t) => /30 days.*each device/.test(t))).toBe(true);
     expect(button("New fragment")?.disabled).toBe(false); // writing locally still works
     expect(button("New thread")?.disabled).toBe(false);
-    for (const gone of ["Publish…", "Send draft…", "Withdraw", "Hoppers…", "Hoppers...", "Open on web", "Insert quote/link", "Import from Studio…", "Reply to item…", "Open reader"]) expect(button(gone), gone).toBeUndefined();
+    for (const gone of ["Publish…", "Send draft…", "Withdraw", "Hoppers…", "Hoppers...", "Open on web", "Insert quote/link", "Sync with Studio…", "Reply to item…", "Open reader"]) expect(button(gone), gone).toBeUndefined();
     expect(els.some((e) => e.cls.has("blyg-pane-decision"))).toBe(false);
   });
 
@@ -610,7 +610,7 @@ describe("the grouped panel (increment 5)", () => {
     expect(plain.button("Reply to item…")).toBeUndefined();
     expect(plain.button("Open reader")).toBeUndefined();
     const studio = await mount(studioState());
-    expect(studio.button("Import from Studio…")).toBeDefined();
+    expect(studio.button("Sync with Studio…")).toBeDefined();
     studio.button("Reply to item…")?.click();
     await vi.waitFor(() => expect(studio.calls).toContain("replyToItem"));
     studio.button("Open reader")?.click();

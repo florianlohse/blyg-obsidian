@@ -154,7 +154,7 @@ export class BlygSettingTab extends PluginSettingTab {
       heading: "Studio",
       items: [
         text("Studio address", "A Blygger Studio that Studio routes publish to: its host, e.g. https://blyg.example.com. The owner API is always at {host}/api.", "studio.baseUrl", "https://blyg.example.com"),
-        text("Studio mount", "Empty when the Studio has its own host. A path like /blyg when it is mounted below one. Public pages are then {host}{mount}/f/{id}/.", "studio.mount", "/blyg"),
+        text("Studio mount (optional)", "For a Studio under a path, enter that path, e.g. /blyg. Leave empty when the Studio has its own host. Public pages are then {host}{mount}/f/{id}/.", "studio.mount", "/blyg"),
         {
           name: "Studio token",
           desc: "A REST token from the Studio (More → Client access) with owner:read, owner:draft and owner:publish, plus owner:manage to change hoppers. It expires after 30 days. Pick or create an entry in the keychain; the plugin remembers only the entry's name.",
@@ -191,12 +191,12 @@ export class BlygSettingTab extends PluginSettingTab {
       heading: "Publication",
       items: [
         {
-          name: "Fragment character cap",
+          name: "Fragment character limit",
           desc: `Longer fragments are refused before anything is sent. At most ${CONTRACT_MAX_FRAGMENT_CAP}: the site rejects longer ones.`,
           control: { type: "number", key: "blyg.fragmentCharCap", min: 1, max: CONTRACT_MAX_FRAGMENT_CAP, step: 1 },
         },
         {
-          name: "Thread length warning",
+          name: "Warn for threads longer than",
           desc: "Threads longer than this get a warning (no hard limit).",
           control: { type: "number", key: "blyg.threadSoftCap", min: 1, step: 1 },
         },
@@ -227,13 +227,13 @@ export class BlygSettingTab extends PluginSettingTab {
       heading: "Web quote",
       items: [
         {
-          name: "Web quote format",
+          name: "Web quote Markdown",
           desc: "What “Insert web quote” writes, as a template for the whole block (it has nothing to do with blyg items). {quote} is the quote, {link} the whole link, {alias} its visible text, {url} the address. Each line stands as you type it, so a blank line appears only where you leave one. Default: “> {quote}” on one line and “> *{link}*” on the next (a quote with an italic source as its last line). The quote's own lines follow the marks in front of {quote}.",
           aliases: ["quote", "attribution", "source", "substack", "template"],
           control: { type: "textarea", key: "webQuote.format", placeholder: "> {quote}\n> *{link}*", rows: 3 },
         },
         {
-          name: "Remove tracking parameters",
+          name: "Remove tracking parameters from pasted links",
           desc: "Takes utm_*, fbclid, gclid and similar (and Substack's share parameters) out of the address before it is written. The page is the same without them.",
           control: { type: "toggle", key: "webQuote.stripTracking", defaultValue: true },
         },
@@ -245,10 +245,10 @@ export class BlygSettingTab extends PluginSettingTab {
       heading: "Reader",
       items: [
         {
-          name: "Images in posts you read",
+          name: "Post images",
           desc: "A post can carry images from its author's server, or from any server the author chose. Loading one tells that server that you read the post, and when. “Load on click” shows each image as a button and loads it only when you tap it; “Always load” draws images with the post. The list of posts never loads images, and frames and scripts in a post are never loaded.",
           aliases: ["reader", "images", "privacy", "tracking"],
-          control: { type: "dropdown", key: "readerPane.images", options: { click: "Load on click", always: "Always load" } },
+          control: { type: "dropdown", key: "readerPane.images", options: { click: "Load on tap", always: "Always load" } },
         },
         {
           name: "Font for posts",
@@ -289,7 +289,7 @@ export class BlygSettingTab extends PluginSettingTab {
       heading: "Routes",
       items: [
         {
-          name: "Which folders are published",
+          name: "Publish folders",
           desc:
             s.routes.length === 0
               ? "No routes yet: nothing can be published. Add one below."
@@ -304,7 +304,7 @@ export class BlygSettingTab extends PluginSettingTab {
       type: "group",
       items: [
         {
-          name: "Add route",
+          name: "Add publish folder",
           desc: "Adds an empty route at the end.",
           action: () => {
             s.routes.push({ vaultPrefix: "", mode: studioOnly ? "studio" : "blyg", label: "Blyg item" });

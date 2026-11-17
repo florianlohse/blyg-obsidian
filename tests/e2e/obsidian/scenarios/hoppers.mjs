@@ -51,7 +51,7 @@ await runScenario({}, async (s) => {
     check((await s.switchIsOn(hopper.name)) === false, `${layout}: its switch starts off`);
     await s.toggleInModal(hopper.name);
     await s.clearNotices();
-    await s.clickModal("Save");
+    await s.clickModal("Save to note");
     check(Boolean(await s.waitNotice("The Studio changes when you publish or send the note")), `${layout}: the notice says the Studio changes when the note is sent`);
     const chosen = await s.becomes(async () => JSON.stringify((await s.frontmatter(path))?.blyg_hoppers ?? null).includes(hopper.name), 15000, "blyg_hoppers");
     check(Boolean(chosen), `${layout}: the note's property holds the hopper's name`);
@@ -75,7 +75,7 @@ await runScenario({}, async (s) => {
     check(await s.waitModal("Hoppers for this note"), `${layout}: the window opens again`);
     check((await s.switchIsOn(hopper.name)) === true, `${layout}: its switch starts on`);
     await s.toggleInModal(hopper.name);
-    await s.clickModal("Save");
+    await s.clickModal("Save to note");
     await s.modalClosed();
     await wait(500);
     await s.clearNotices();
@@ -89,7 +89,7 @@ await runScenario({}, async (s) => {
     check(await s.clickPanel("Hoppers…"), `${layout}: put it back: Hoppers…`);
     check(await s.waitModal("Hoppers for this note"), `${layout}: the window opens`);
     await s.toggleInModal(hopper.name);
-    await s.clickModal("Save");
+    await s.clickModal("Save to note");
     await s.modalClosed();
     await wait(500);
     await s.clearNotices();

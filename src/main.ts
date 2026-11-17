@@ -114,9 +114,9 @@ export default class BlygPlugin extends Plugin {
 
     this.registerView(BLYG_PANEL_VIEW, (leaf) => new BlygPanelView(leaf, this.panelHost()));
     // The mobile menu (the bottom-right menu) lists the ribbon: two plainly named entries. The lint rule against the plugin's name covers command names only.
-    this.addRibbonIcon("send", "Open blyg publisher", () => void this.openPanel());
+    this.addRibbonIcon("send", "Open Blyg panel", () => void this.openPanel());
     this.registerReplyPreview();
-    this.addRibbonIcon("book-open", "Open blyg reader", () => void this.openReader());
+    this.addRibbonIcon("book-open", "Open Blyg reader", () => void this.openReader());
     this.registerView(BLYG_READER_VIEW, (leaf) => new BlygReaderView(leaf, this.readerHost()));
     this.addCommand({ id: "open-reader", name: "Open reader", callback: () => void this.openReader() });
     this.addCommand({ id: "open-reader-sidebar", name: "Open reader in the sidebar", callback: () => void this.openReader("sidebar") });
@@ -163,12 +163,12 @@ export default class BlygPlugin extends Plugin {
     });
     this.addCommand({
       id: "reply-to-item",
-      name: "Reply to an item",
+      name: "Reply to item…",
       callback: () => void this.replyToItem(),
     });
     this.addCommand({
       id: "make-thread-a-reply",
-      name: "Make this thread a reply",
+      name: "Mark this thread as a reply to…",
       callback: () => void this.makeActiveThreadAReply(),
     });
     this.addCommand({
@@ -183,7 +183,7 @@ export default class BlygPlugin extends Plugin {
     });
     this.addCommand({
       id: "import-from-studio",
-      name: "Studio: import new items",
+      name: "Studio: sync with Studio (new items)",
       callback: () => void this.importFromStudio(),
     });
     this.addCommand({
@@ -565,7 +565,7 @@ export default class BlygPlugin extends Plugin {
       new Notice(TM.replyNeedsStudio, 8000);
       return;
     }
-    const picked = await this.chooseStudioItem(this.app.workspace.getActiveFile(), "Choose the item to reply to, or paste its address…");
+    const picked = await this.chooseStudioItem(this.app.workspace.getActiveFile(), "Search words or paste a post link…");
     if (!picked) return;
     const target = await runStudioReplyTarget(this.env(), picked);
     if (!target.ok) {
@@ -595,7 +595,7 @@ export default class BlygPlugin extends Plugin {
       new Notice(TM.replyPublished, 10000);
       return;
     }
-    const picked = await this.chooseStudioItem(file, "Choose the item this thread answers, or paste its address…");
+    const picked = await this.chooseStudioItem(file, "Search words or paste a post link…");
     if (!picked) return;
     const target = await runStudioReplyTarget(this.env(), picked);
     if (!target.ok) {
@@ -1660,7 +1660,7 @@ export default class BlygPlugin extends Plugin {
 
   /** "Insert link" in a Studio folder: `[[Name]]` for a note of the vault, `[[id | label]]` for any other item the Studio knows. */
   private async insertStudioLink(editor: Editor, file: TFile): Promise<void> {
-    const picked = await this.chooseStudioItem(file, "Choose an item to link to, or paste its address…");
+    const picked = await this.chooseStudioItem(file, "Search words or paste a post link…");
     if (!picked) return;
     if (picked.quotable === false) {
       new Notice(M.stubCannotQuote, 10000);
@@ -1672,7 +1672,7 @@ export default class BlygPlugin extends Plugin {
 
   /** "Insert quote" in a Studio folder: the whole item or a passage of what readers see, from your own items or a blyg you read. */
   private async insertStudioQuote(editor: Editor, file: TFile): Promise<void> {
-    const picked = await this.chooseStudioItem(file, "Choose an item to quote, or paste its address…");
+    const picked = await this.chooseStudioItem(file, "Search words or paste a post link…");
     if (!picked) return;
     if (picked.quotable === false) {
       new Notice(M.stubCannotQuote, 10000);

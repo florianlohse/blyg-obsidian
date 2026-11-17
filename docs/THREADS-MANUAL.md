@@ -25,9 +25,9 @@ it and publish again; that is a new version of the same thread (the protocol's o
 
 ## The side panel's writing buttons
 
-Open the panel (paper-plane icon "Open blyg publisher", or command "Blyg: Open panel"). The panel is organised by what you want to do.
+Open the panel (paper-plane icon "Open Blyg panel", or command "Blyg: Open panel"). The panel is organised by what you want to do.
 
-**Top** (with a Studio): **Open reader** and **Import from Studio…**, the two things that belong to the whole Studio, not to the open note.
+**Top** (with a Studio): **Open reader** and **Sync with Studio…**, the two things that belong to the whole Studio, not to the open note.
 
 **The status card** says where the open note stands. The one button you may need is inside it, and only when there is something to do: **Publish…** (not sent yet), **Publish update…** (you changed the note, or it was changed in the Studio), **Publish again…** (withdrawn), **Send draft…** (a "Drafts only" folder). Each opens a preview window first; only that window's own button sends. A published, unchanged note has no button: the green line is all there is. **Open on web** and, when the note's hoppers differ from the Studio's, **Use the Studio's hoppers** sit here too.
 

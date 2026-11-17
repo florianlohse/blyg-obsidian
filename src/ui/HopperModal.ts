@@ -39,8 +39,9 @@ class HopperModal extends Modal {
     if (this.unknown.length > 0) {
       contentEl.createDiv({ cls: "blyg-note", text: `Not in the Studio, so left out when you save: ${this.unknown.map((n) => `“${n}”`).join(", ")}.` });
     }
+    contentEl.createDiv({ cls: "blyg-note", text: "Saving changes this note only. Your Studio updates next time you send or publish." });
     new Setting(contentEl)
-      .addButton((b) => b.setButtonText("Save").setCta().onClick(() => this.finish(this.hoppers.filter((h) => this.on.has(h.id)).map((h) => h.name))))
+      .addButton((b) => b.setButtonText("Save to note").setCta().onClick(() => this.finish(this.hoppers.filter((h) => this.on.has(h.id)).map((h) => h.name))))
       .addButton((b) => b.setButtonText("Cancel").onClick(() => this.finish(null)));
   }
 

@@ -44,7 +44,7 @@ describe("settings: web quote", () => {
     expect(issues).toHaveLength(1);
     expect(issues[0]?.severity).toBe("warning");
     expect(issues[0]?.message).toMatch(/needs \{quote\}.*default format is used/);
-    expect(describeField("webQuote.format")).toBe("Web quote format");
+    expect(describeField("webQuote.format")).toBe("Web quote Markdown");
     expect(validateSettings(s).filter((i) => i.severity === "error").length).toBe(validateSettings(defaultSettings()).filter((i) => i.severity === "error").length);
   });
 });
