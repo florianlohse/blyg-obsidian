@@ -364,8 +364,8 @@ export class BlygSettingTab extends PluginSettingTab {
   private websiteItems(text: (name: string, desc: string, key: string, placeholder?: string) => SettingGroupItem): SettingGroupItem[] {
     const s = this.plugin.settings;
     return [
-      text("GitHub owner", "The account or organisation that owns the site repository.", "github.owner"),
-      text("GitHub repository", "The site repository the plugin commits to.", "github.repo"),
+      text("GitHub owner", "The account or organisation that owns the site repository: just the name, e.g. “octocat” for github.com/octocat/your-site-repo. No address, no slash.", "github.owner", "octocat"),
+      text("GitHub repository", "The name of the site repository the plugin commits to, without the owner: e.g. “your-site-repo” for github.com/octocat/your-site-repo. No slash, no “.git”.", "github.repo", "your-site-repo"),
       text("Production branch", "Where published notes go live.", "github.branch"),
       {
         name: "GitHub token",
