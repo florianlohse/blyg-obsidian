@@ -33,6 +33,7 @@ import { obsidianKeychain, obsidianNotifier, systemClock, webRandom, windowTimer
 import { obsidianTransport } from "./platform/obsidianTransport";
 import { createSiteReader } from "./platform/siteReader";
 import { noteRefOf, obsidianBinaryVault, obsidianNoteEdit, obsidianVault, obsidianYaml } from "./platform/obsidianVault";
+import type { NoteRef } from "./platform/ports";
 import { redactingLogger } from "./platform/redact";
 import type { Outcome } from "./publish/types";
 import { migrateSettings } from "./settings/migrate";
@@ -755,10 +756,15 @@ export default class BlygPlugin extends Plugin {
 
   private panelState(): Promise<PanelState> {
     const file = this.app.workspace.getActiveFile();
+    // The text of the note open in an editor is read from the editor, not from disk: Obsidian saves a few seconds after typing, and the fragment counter must follow what is typed.
+    const base = obsidianVault(this.app);
+    const view = file ? this.activeMarkdownView() : null;
+    const editor = view && view.file?.path === file?.path ? view.editor : null;
+    const vault = file && editor ? { ...base, read: (note: NoteRef) => (note.path === file.path ? Promise.resolve(editor.getValue()) : base.read(note)) } : base;
     return loadPanelState(
       {
         settings: this.settings,
-        vault: obsidianVault(this.app),
+        vault,
         images: obsidianBinaryVault(this.app),
         imageDigests: this.imageDigests,
         published: this.published(),
@@ -794,6 +800,11 @@ export default class BlygPlugin extends Plugin {
     // Typing saves to disk every few seconds and each save re-reads the note: wait for a pause.
     const later = debounce(() => this.refreshPanels(), 600, true);
     this.registerEvent(this.app.workspace.on("file-open", () => this.refreshPanels()));
+    // The fragment counter follows typing: a short pause after the last key, only for the open note.
+    const afterTyping = debounce(() => this.refreshPanels(), 800, true);
+    this.registerEvent(this.app.workspace.on("editor-change", (_editor, info) => {
+      if (info.file && info.file.path === this.app.workspace.getActiveFile()?.path) afterTyping();
+    }));
     this.registerEvent(
       this.app.workspace.on("active-leaf-change", (leaf) => {
         // Tapping into the sidebar itself changes nothing about the note.

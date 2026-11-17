@@ -5,7 +5,7 @@
 import { readStubProperty, STUB_KEY, stubLabel } from "../studio/stub";
 import { HOPPERS_KEY, readHopperNames } from "../studio/hoppers";
 import type { DeployResult } from "../github/deployStatus";
-import { itemPagePath } from "../contract";
+import { CONTRACT_MAX_FRAGMENT_CAP, itemPagePath } from "../contract";
 import { checkFragmentBody, localKind, type BlygKind } from "../core/blyg";
 import { stripObsidianComments } from "../core/comments";
 import { stripFrontmatter } from "../core/frontmatter";
@@ -237,6 +237,11 @@ export interface PanelState {
    * not known), and whether the two differ. Changing hoppers needs no published item; "Use the Studio's hoppers" does.
    */
   hoppers?: { note: string[] | null; studio: string[] | null; differ: boolean; canTake: boolean };
+  /**
+   * Fragments in a Blyg or Studio folder: how long the text is that a publish would send (properties and `%%` comments left out, the same count as the limit
+   * check) and the limit that applies (the setting, never more than the contract allows). Absent for threads and for notes outside a publish folder.
+   */
+  fragment?: { chars: number; cap: number };
   /** Which buttons make sense. Publish and withdraw still ask the services, which refuse whatever must be refused. */
   canPublish: boolean;
   canWithdraw: boolean;
@@ -276,6 +281,8 @@ export interface PanelInput {
   plainRecord?: PublishedRecord | null;
   /** Blyg notes: from `summarizeThreadText`. */
   thread?: ThreadSummary;
+  /** Blyg and Studio notes: the length of the text a publish would send (see `PanelState.fragment`). */
+  chars?: number;
   /** Studio notes: what the Studio last said (a cached answer, never fetched here) and the warnings that hold for the whole Studio. */
   studio?: { facts?: StudioFacts; warnings: string[]; notes?: string[] };
 }
@@ -328,6 +335,7 @@ export function computePanelState(input: PanelInput): PanelState {
     ...core,
     ...(core.status === "other-blyg" && !githubInUse(input.settings) ? { notes: ["This item belongs to another blyg, not to the Studio set up now. Publishing it here is not offered."] } : {}),
     ...publishButton(core.status),
+    ...(openBlyg && core.kind === "fragment" && input.chars !== undefined ? { fragment: { chars: input.chars, cap: Math.min(input.settings.blyg.fragmentCharCap, CONTRACT_MAX_FRAGMENT_CAP) } } : {}),
     ...(draftsOnly ? { publishLabel: "Send draft…" as const, canWithdraw: false } : {}),
     draftsOnly,
     showDelete: core.status === "draft",
@@ -911,7 +919,7 @@ export async function loadPanelState(env: PanelEnv, note: NoteRef | null): Promi
       const address = studioAddress(settings.studio);
       const idOfThisStudio = address && isBlygId(frontmatter.id) && typeof frontmatter.origin === "string" && sameOrigin(frontmatter.origin, address.origin) ? frontmatter.id : null;
       const live = env.studioLive?.(note, idOfThisStudio);
-      return computePanelState({ settings, note, frontmatter, localHash: await localStudioHash(contentMd), thread, ...(live ? { studio: live } : {}) });
+      return computePanelState({ settings, note, frontmatter, localHash: await localStudioHash(contentMd), thread, chars: contentMd.length, ...(live ? { studio: live } : {}) });
     }
     if (route?.mode === "blyg" && note.extension === "md") {
       const raw = await vault.read(note);
@@ -920,7 +928,7 @@ export async function loadPanelState(env: PanelEnv, note: NoteRef | null): Promi
       const text = publishedTextOf(raw, { vault, routes: settings.routes, fromPath: note.path });
       if (!text.ok) return computePanelState({ settings, note, frontmatter, localHash: null, thread: { quotes: 0, passages: 0, links: 0, problems: [] } });
       const thread = summarizeContent(text.contentMd, kind, text.embedProblems, localPublishProblems(text.contentMd, kind, { settings, vault, note }));
-      return computePanelState({ settings, note, frontmatter, localHash: needsHash ? await contentHash(text.contentMd) : null, thread });
+      return computePanelState({ settings, note, frontmatter, localHash: needsHash ? await contentHash(text.contentMd) : null, thread, chars: text.contentMd.length });
     }
     return computePanelState({ settings, note, frontmatter, localHash: null });
   } catch {

@@ -46,6 +46,8 @@ becomes the release notes. Write entries for people who use the plugin, not for 
 
 ### Changed
 
+- **A character counter for fragments.** The panel's status card for a fragment shows "412 / 1000 characters", following what you type (a short pause after the last key). It counts what a publish would send: properties and `%% comments %%` are not counted, links to your notes count as the ids they are sent as. It turns into a warning near the limit and over it ("1034 / 1000 characters: 34 too many"). Threads have no limit and show nothing.
+- **The feed's cards show a little formatting.** A heading is shown in bold with a line break after it, bold text in bold and italic text in italics. Everything else in a card (links, lists, code) stays plain words, and the card's length and cut are as before. (Cards are built from text pieces, never from markup.)
 - **Sort & filter: "My posts" and "Replies to my posts only".** The Blyg choice lists **My posts** (your own posts in the feed) beside the blygs you read, and a switch **Replies to my posts only** shows just the posts that answer one of your own items. Both count on the "Sort & filter (n)" button, are remembered, and are lifted by "Clear filters".
 - **Your own posts stay in the feed after a Refresh.** A quick read of the list used to drop them until the next whole read; they are kept now.
 - **The hopper filter finds your own posts too.** Choosing a hopper in Sort & filter also shows your own posts you put into it (it showed only posts of the blygs you read, so a hopper that held only your own posts looked empty).

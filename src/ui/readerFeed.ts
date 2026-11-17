@@ -1,6 +1,6 @@
 // S15, the reader's feed: what a card shows, how the list is ordered and filtered, and whether a post's web page may be shown inside Obsidian.
 // Pure functions (no DOM, no network), so they are unit-tested; everything here reads text and returns text.
-import { plainText } from "./defang";
+import { decode, plainText } from "./defang";
 import { isUnread, type ReadingPost } from "../studio/reading";
 
 export interface Card {
@@ -8,8 +8,87 @@ export interface Card {
   quote: string | null;
   /** The author's own words. */
   words: string;
+  /** The same words with the three kinds of formatting a card shows (headings and bold in bold, italics in italics); the same length and cut as `words`. */
+  runs: Run[];
   /** How many images the post carries (none are loaded in the list). */
   images: number;
+}
+
+/** A piece of a card's text: its words and how they look. A heading is bold and ends its line (`breakAfter`). */
+export interface Run {
+  text: string;
+  bold?: boolean;
+  italic?: boolean;
+  breakAfter?: boolean;
+}
+
+const BOLD_TAGS = new Set(["strong", "b", "h1", "h2", "h3", "h4", "h5", "h6"]);
+const ITALIC_TAGS = new Set(["em", "i"]);
+const HEADING = /^h[1-6]$/;
+const BLOCK_TAGS = new Set(["p", "div", "li", "ul", "ol", "br", "blockquote", "pre", "tr", "table", "section", "article", "hr"]);
+
+/**
+ * The words of a post for a card, with a little formatting (increment 13): headings in bold with a line break after them, bold in bold, italics in italics.
+ * Everything else is plain words, as in `plainText`. Nothing is ever inserted as markup: the result is text pieces, drawn as spans. `max` cuts the words
+ * (characters, counted as in `words`); a cut ends with an ellipsis.
+ */
+export function formattedRuns(html: string, max = 320): Run[] {
+  const runs: Run[] = [];
+  let bold = 0;
+  let italic = 0;
+  let pendingSpace = false;
+  let length = 0;
+  const push = (text: string): void => {
+    const words = text.replace(/\s+/g, " ");
+    if (words.trim() === "" && words === "") return;
+    const lead = words.startsWith(" ");
+    const body = words.trim();
+    if (body === "") {
+      pendingSpace = true;
+      return;
+    }
+    const spaced = (pendingSpace || lead) && runs.length > 0 && !runs[runs.length - 1]?.breakAfter ? ` ${body}` : body;
+    pendingSpace = words.endsWith(" ");
+    const last = runs[runs.length - 1];
+    const same = last && !last.breakAfter && (last.bold ?? false) === bold > 0 && (last.italic ?? false) === italic > 0;
+    if (same) last.text += spaced;
+    else runs.push({ text: spaced, ...(bold > 0 ? { bold: true } : {}), ...(italic > 0 ? { italic: true } : {}) });
+    length += spaced.length;
+  };
+  const tag = /<(\/?)([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>|([^<]+)|</g;
+  for (const m of html.matchAll(tag)) {
+    if (length > max + 40) break; // enough to cut from
+    if (m[3] !== undefined) {
+      push(decode(m[3]));
+      continue;
+    }
+    const closing = m[1] === "/";
+    const name = (m[2] ?? "").toLowerCase();
+    if (BOLD_TAGS.has(name)) bold = Math.max(0, bold + (closing ? -1 : 1));
+    else if (ITALIC_TAGS.has(name)) italic = Math.max(0, italic + (closing ? -1 : 1));
+    if (HEADING.test(name) && closing) {
+      const last = runs[runs.length - 1];
+      if (last && !last.breakAfter) last.breakAfter = true;
+      pendingSpace = false;
+    } else if (BLOCK_TAGS.has(name)) pendingSpace = true;
+  }
+  // Cut to `max` characters: the words are counted as in `plainText` (one space between words).
+  let total = 0;
+  const out: Run[] = [];
+  for (const run of runs) {
+    if (total >= max) break;
+    const room = max - total;
+    if (run.text.length > room) {
+      out.push({ ...run, text: `${run.text.slice(0, Math.max(0, room - 1)).trimEnd()}…`, breakAfter: false });
+      total = max;
+      break;
+    }
+    out.push({ ...run });
+    total += run.text.length;
+  }
+  const lastOut = out[out.length - 1];
+  if (lastOut?.breakAfter) delete lastOut.breakAfter; // no line break at the very end
+  return out;
 }
 
 const QUOTE = /<blockquote\b[^>]*>([\s\S]*?)<\/blockquote>/gi;
@@ -19,7 +98,7 @@ export function cardOf(post: Pick<ReadingPost, "contentHtml">, max = 320): Card 
   const quotes = [...html.matchAll(QUOTE)].map((m) => plainText(m[1] ?? "")).filter((t) => t !== "");
   const own = plainText(html.replace(QUOTE, " "));
   const cut = (t: string, n: number): string => (t.length > n ? `${t.slice(0, n - 1).trimEnd()}…` : t);
-  return { quote: quotes.length ? cut(quotes.join(" … "), 160) : null, words: cut(own, max), images: (html.match(/<img\b/gi) ?? []).length };
+  return { quote: quotes.length ? cut(quotes.join(" … "), 160) : null, words: cut(own, max), runs: formattedRuns(html.replace(QUOTE, " "), max), images: (html.match(/<img\b/gi) ?? []).length };
 }
 
 /** "just now", "5 min ago", "3 h ago", "yesterday", "4 days ago", else the date. */

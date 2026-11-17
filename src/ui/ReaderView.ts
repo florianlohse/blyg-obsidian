@@ -1198,7 +1198,14 @@ export class BlygReaderView extends ItemView {
     if (!p.withdrawn) {
       const c = cardOf(p);
       if (c.quote) card.createDiv({ cls: "blyg-reader-quote", text: c.quote });
-      if (c.words) card.createDiv({ cls: "blyg-reader-excerpt", text: c.words });
+      if (c.words) {
+        // The words with a little formatting (headings and bold in bold, italics in italics): spans of text, never markup.
+        const excerpt = card.createDiv({ cls: "blyg-reader-excerpt" });
+        for (const run of c.runs) {
+          excerpt.createSpan({ cls: `${run.bold ? "blyg-reader-b " : ""}${run.italic ? "blyg-reader-i" : ""}`.trim(), text: run.text });
+          if (run.breakAfter) excerpt.createEl("br");
+        }
+      }
       if (c.images > 0) card.createDiv({ cls: "blyg-reader-meta", text: `${c.images} image${c.images === 1 ? "" : "s"}` });
     }
   }

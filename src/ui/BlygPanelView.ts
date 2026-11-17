@@ -119,6 +119,16 @@ export class BlygPanelView extends ItemView {
     if (state.ok) headline.createSpan({ cls: "blyg-pane-check", text: "✓" });
     headline.createSpan({ text: state.headline });
     for (const line of state.notes) status.createDiv({ cls: "blyg-pane-note", text: line });
+    if (state.fragment) {
+      // A fragment's length against its limit, counted as a publish counts it: a quiet line, a warning near the limit and over it.
+      const { chars, cap } = state.fragment;
+      const over = chars - cap;
+      status.createDiv({
+        cls: `blyg-pane-count${over > 0 ? " is-over" : chars >= cap * 0.9 ? " is-near" : ""}`,
+        text: over > 0 ? `${chars} / ${cap} characters: ${over} too many` : `${chars} / ${cap} characters`,
+        attr: { title: "The text a publish would send: properties and %% comments are not counted" },
+      });
+    }
     if (publishable) this.drawDecision(status, state);
 
     this.drawStudioWarnings(root, state);
