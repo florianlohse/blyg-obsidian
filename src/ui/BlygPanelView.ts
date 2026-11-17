@@ -41,7 +41,7 @@ export interface PanelHost {
   /** "Studio: use the Studio's hoppers for this note" (roadmap S13). */
   takeHoppers(): Promise<void>;
   makeThread(): Promise<void>;
-  /** "Insert quote or link…": pick an item, then quote it (threads) or link to it. */
+  /** "Insert quote/link": pick an item, then quote it (threads) or link to it. */
   insertItem(): Promise<void>;
   /** Open the reader (the same as the ribbon icon and the command "Open reader"). */
   openReader(): Promise<void>;
@@ -124,7 +124,6 @@ export class BlygPanelView extends ItemView {
     this.drawStudioWarnings(root, state);
     this.drawStartWriting(root, state);
     this.drawWorkOnNote(root, state);
-    if (publishable) this.drawWithdraw(root, state);
     this.drawDetails(root, state);
 
     this.drawDeploy(root, state);
@@ -203,25 +202,16 @@ export class BlygPanelView extends ItemView {
     const box = this.section(root, "work", "Work on this note");
     const row = box.createDiv({ cls: "blyg-pane-buttons" });
     // Quotes and links come from the Studio's items: with no Studio set up there is nothing to pick from, so the button is not drawn.
-    if (state.status !== "studio-missing") this.button(row, "Insert quote or link…", w.canInsertLink, () => this.host.insertItem());
+    if (state.status !== "studio-missing") this.button(row, "Insert quote/link", w.canInsertLink, () => this.host.insertItem());
     this.button(row, "Make thread", w.canMakeThread, () => this.host.makeThread());
     if (w.canMakeReply) this.button(row, "Mark as reply to…", true, () => this.host.makeReply());
-  }
-
-  /** Withdraw / Delete draft act on this item and are rare: folded at the foot, away from the status. */
-  private drawWithdraw(root: HTMLElement, state: PanelState): void {
-    if (!state.showWithdraw && !state.showDelete) return;
-    const box = this.section(root, "withdraw", state.showDelete ? "Delete draft" : "Withdraw");
-    const row = box.createDiv({ cls: "blyg-pane-buttons" });
-    if (state.showWithdraw) this.button(row, "Withdraw", state.canWithdraw, () => this.host.withdraw(), "mod-warning");
-    if (state.showDelete) this.button(row, "Delete draft", state.canDelete, () => this.host.deleteDraft(), "mod-warning");
+    if (state.hoppers && state.status !== "studio-missing") this.button(row, "Hoppers…", true, () => this.host.chooseHoppers());
   }
 
   /** Details: the facts about the note, folded; most of the time the status line above says all a person needs. */
   private drawDetails(root: HTMLElement, state: PanelState): void {
     const box = this.section(root, "details", "Details");
     const facts = box.createEl("dl", { cls: "blyg-pane-facts" });
-    let hoppersRow = false;
     const fact = (label: string, value: string): void => {
       facts.createEl("dt", { text: label });
       facts.createEl("dd", { text: value });
@@ -243,7 +233,6 @@ export class BlygPanelView extends ItemView {
       const { note, studio, differ } = state.hoppers;
       fact("Hoppers", note === null ? "blyg_hoppers cannot be read" : note.length === 0 ? "none" : note.join(", "));
       if (differ && studio) fact("In the Studio", studio.length === 0 ? "in no hopper" : studio.join(", "));
-      hoppersRow = true;
     }
     if (state.studio?.mentions) {
       const { count, complete } = state.studio.mentions;
@@ -263,9 +252,12 @@ export class BlygPanelView extends ItemView {
       facts.createEl("dd").createEl("a", { cls: "external-link", text: shortUrl(state.webUrl), href: state.webUrl });
     }
     if (state.hint) box.createDiv({ cls: "blyg-pane-hint", text: state.hint });
-    if (hoppersRow && state.route && state.status !== "not-markdown" && state.status !== "studio-missing") {
+    // Withdraw and Delete draft act on this item and are rare: here, at the foot of the facts, away from the status and the writing buttons.
+    const publishable = !!state.route && state.status !== "not-markdown" && state.status !== "studio-missing";
+    if (publishable && (state.showWithdraw || state.showDelete)) {
       const row = box.createDiv({ cls: "blyg-pane-buttons" });
-      this.button(row, "Hoppers…", true, () => this.host.chooseHoppers());
+      if (state.showWithdraw) this.button(row, "Withdraw", state.canWithdraw, () => this.host.withdraw(), "mod-warning");
+      if (state.showDelete) this.button(row, "Delete draft", state.canDelete, () => this.host.deleteDraft(), "mod-warning");
     }
   }
 

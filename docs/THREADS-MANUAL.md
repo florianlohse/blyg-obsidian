@@ -43,11 +43,11 @@ Open the panel (paper-plane icon "Open blyg publisher", or command "Blyg: Open p
 
 | Button | Does | Live when |
 |---|---|---|
-| **Insert quote or link…** | pick an item. In a thread you then choose to quote it (the whole item, or a passage you select) or to link to it only; in a fragment (which cannot quote) it inserts a link | a Blyg note is open |
+| **Insert quote/link** | pick an item. In a thread you then choose to quote it (the whole item, or a passage you select) or to link to it only; in a fragment (which cannot quote) it inserts a link | a Blyg note is open |
 | **Make thread** | turns the open fragment into a thread (property `blyg_kind: thread`); an automatic name "Fragment …" becomes "Thread …" (a name you chose stays) | a fragment that has **never been sent to the Studio** |
 | **Mark as reply to…** | declares an unpublished thread to be a reply to an item you pick or paste | an unpublished Studio thread |
 
-**Withdraw** / **Delete draft** are in a folded section of their own, away from the status. **Details** (folded) holds the facts about the note (id, version, quotes, hoppers with **Hoppers…** to change them, mentions, dates, link).
+**Hoppers…** (choose the hoppers the note asks for) is in **Work on this note**. **Details** (folded) holds the facts about the note (id, version, quotes, hoppers, mentions, dates, link) and, at its foot, **Withdraw** / **Delete draft**.
 
 Outside your Blyg folders the panel shows only the status information, Start writing and Details; the buttons that act on a Blyg note appear
 only when one is open. (The same actions are in the command palette: "Blyg: New
