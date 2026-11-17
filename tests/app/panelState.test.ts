@@ -369,6 +369,21 @@ describe("loadPanelState", () => {
     updateFrontmatter: () => Promise.resolve(),
   });
 
+  it("a fragment's length is the text a publish would send: properties and %% comments are not counted; the limit is the setting, never above the contract's", async () => {
+    const fm = {};
+    const s = await loadPanelState({ settings: settings(), vault: fakeVault(fm, "---\ntags: [a]\n---\n\nHello %%a private remark%% world\n") }, BLYG);
+    expect(s.fragment).toEqual({ chars: "Hello  world".length, cap: 1000 });
+    const lowered = await loadPanelState({ settings: settings({}, { fragmentCharCap: 280 }), vault: fakeVault(fm, "Hello") }, BLYG);
+    expect(lowered.fragment).toEqual({ chars: 5, cap: 280 });
+    const raised = await loadPanelState({ settings: settings({}, { fragmentCharCap: 5000 }), vault: fakeVault(fm, "Hello") }, BLYG);
+    expect(raised.fragment?.cap).toBe(1000);
+  });
+
+  it("a thread has no count, and neither does a note outside the publish folders", async () => {
+    expect((await loadPanelState({ settings: settings(), vault: fakeVault({ blyg_kind: "thread" }, "A thread, long enough.") }, BLYG)).fragment).toBeUndefined();
+    expect((await loadPanelState({ settings: settings(), vault: fakeVault({}, "Elsewhere") }, note("Daily/2026-11-17.md"))).fragment).toBeUndefined();
+  });
+
   it("compares the stamped hash with the text as it is now", async () => {
     const hash = await contentHash("Hello world");
     const fm = { blyg_id: ID, blyg_version: 2, blyg_hash: hash };

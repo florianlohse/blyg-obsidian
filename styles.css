@@ -728,3 +728,8 @@
 /* The card's words with a little formatting (increment 13). */
 .blyg-reader-excerpt .blyg-reader-b { font-weight: var(--font-semibold); }
 .blyg-reader-excerpt .blyg-reader-i { font-style: italic; }
+
+/* The fragment's character count in the panel's status card. */
+.blyg-pane .blyg-pane-count { color: var(--text-muted); font-size: var(--font-ui-small); margin-top: 0.25em; font-variant-numeric: tabular-nums; }
+.blyg-pane .blyg-pane-count.is-near { color: var(--text-warning); }
+.blyg-pane .blyg-pane-count.is-over { color: var(--text-error); font-weight: var(--font-semibold); }

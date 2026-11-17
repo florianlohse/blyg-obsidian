@@ -633,3 +633,22 @@ describe("the grouped panel (increment 5)", () => {
     expect(sections(els).map(titleOf)).toEqual(["Details"]);
   });
 });
+
+describe("the fragment counter in the status card", () => {
+  const withCount = (chars: number, cap = 1000): PanelState => ({ ...stateOf({}), fragment: { chars, cap } });
+  const countOf = async (s: PanelState) => (await mount(s)).els.find((e) => e.cls.has("blyg-pane-count"));
+  it("says how long the text is against the limit, quietly", async () => {
+    const c = await countOf(withCount(412));
+    expect(c?.text).toBe("412 / 1000 characters");
+    expect(c?.cls.has("is-near") || c?.cls.has("is-over")).toBe(false);
+  });
+  it("warns near the limit and over it, and says by how much", async () => {
+    expect((await countOf(withCount(910)))?.cls.has("is-near")).toBe(true);
+    const over = await countOf(withCount(1034));
+    expect(over?.cls.has("is-over")).toBe(true);
+    expect(over?.text).toBe("1034 / 1000 characters: 34 too many");
+  });
+  it("is not drawn without a count (threads, notes outside the folders)", async () => {
+    expect(await countOf(stateOf({ kind: "thread" }))).toBeUndefined();
+  });
+});
