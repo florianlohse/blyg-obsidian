@@ -115,7 +115,7 @@ export interface BlygSettings {
     /** The contrast of the reading surface in the text view: reduced, normal or high. */
     contrast: "reduced" | "normal" | "high";
     /** The feed's order and choices, kept across restarts (ui/readerFeed.ts). `source` is a subscription id of the Studio, null for all blygs. */
-    filter: { sort: "newest" | "oldest" | "shortest" | "longest"; source: string | null; unreadOnly: boolean; length: "any" | "short" | "medium" | "long"; showMine: boolean; repliesToMe: boolean };
+    filter: { sort: "newest" | "oldest" | "shortest" | "longest"; source: string | null; unreadOnly: boolean; length: "any" | "short" | "medium" | "long"; repliesToMe: boolean };
   };
   /** Development build only (ignored by the release plugin). `allowLiveStudio`: lift the test-Studio lock (studio/devLock.ts) on the owner's say. */
   dev: { allowLiveStudio: boolean };
@@ -158,7 +158,7 @@ export function defaultSettings(flavour: "release" | "dev" = "release"): BlygSet
     respond: { draftsPrefix: "blyg/" },
     mentions: { repoPath: "data/mentions.json" },
     webQuote: { ...DEFAULT_WEB_QUOTE },
-    readerPane: { images: "click", font: "default", contrast: "normal", filter: { sort: "newest", source: null, unreadOnly: false, length: "any", showMine: true, repliesToMe: false } },
+    readerPane: { images: "click", font: "default", contrast: "normal", filter: { sort: "newest", source: null, unreadOnly: false, length: "any", repliesToMe: false } },
     dev: { allowLiveStudio: false },
   };
 }

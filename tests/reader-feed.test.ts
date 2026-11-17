@@ -50,20 +50,11 @@ describe("arrange", () => {
   it("unread only (c was read)", () => {
     expect(arrange([a, b, c], { ...DEFAULT_FILTER, unreadOnly: true }).map((p) => p.remoteId)).toEqual(["b", "a"]);
   });
-  it("only the posts of a hopper (their keys), combined with the other choices", () => {
-    const only = new Set([`${a.subscriptionId}/a`, `${b.subscriptionId}/b`]);
-    expect(arrange([a, b, c], DEFAULT_FILTER, only).map((p) => p.remoteId)).toEqual(["b", "a"]);
-    expect(arrange([a, b, c], { ...DEFAULT_FILTER, source: "s2" }, only).map((p) => p.remoteId)).toEqual(["b"]);
-    expect(arrange([a, b, c], DEFAULT_FILTER, new Set()).map((p) => p.remoteId)).toEqual([]);
-    expect(arrange([a, b, c], DEFAULT_FILTER, null)).toHaveLength(3);
-  });
-  it("the owner's own posts can be hidden (Show my posts), are never unread, and are no blyg in the source list", () => {
+  it("the owner's own posts are always in the feed, are never unread, and are no blyg in the source list", () => {
     const mine = readOwnReadingEntry({ source: "own", displayAt: "2026-11-06T00:00:00Z", own: { id: "m1", kind: "fragment", withdrawn: false, updated: "2026-11-06T00:00:00Z", contentHtml: "<p>My own words.</p>" } });
     expect(mine).toMatchObject({ own: true, subscriptionId: "", remoteId: "m1", readVersion: 1, version: 1 });
     expect(arrange([a, b, mine as ReadingPost], DEFAULT_FILTER).map((p) => p.remoteId)).toEqual(["m1", "b", "a"]);
-    expect(arrange([a, b, mine as ReadingPost], { ...DEFAULT_FILTER, showMine: false }).map((p) => p.remoteId)).toEqual(["b", "a"]);
     expect(arrange([a, b, mine as ReadingPost], { ...DEFAULT_FILTER, unreadOnly: true }).map((p) => p.remoteId)).toEqual(["b", "a"]);
-    expect(activeFilters({ ...DEFAULT_FILTER, showMine: false })).toBe(1);
     expect(sourcesOf([a, mine as ReadingPost]).map((s) => s.id)).toEqual(["s1"]);
   });
   it("My posts in the Blyg choice, and only the replies to my posts", () => {
@@ -72,7 +63,7 @@ describe("arrange", () => {
     const replyToOther: ReadingPost = { ...post({ remoteId: "x", created: "2026-11-02T12:00:00Z" }), isReply: true, stubTarget: { origin: "https://o/", id: "other" } };
     const ids = new Set(["m1"]);
     expect(arrange([a, mine, reply], { ...DEFAULT_FILTER, source: OWN_SOURCE }).map((p) => p.remoteId)).toEqual(["m1"]);
-    expect(arrange([a, mine, reply, replyToOther], { ...DEFAULT_FILTER, repliesToMe: true }, null, ids).map((p) => p.remoteId)).toEqual(["r"]);
+    expect(arrange([a, mine, reply, replyToOther], { ...DEFAULT_FILTER, repliesToMe: true }, ids).map((p) => p.remoteId)).toEqual(["r"]);
     expect(arrange([a, reply], { ...DEFAULT_FILTER, repliesToMe: true }).map((p) => p.remoteId)).toEqual([]); // my items not known yet: nothing matches
     expect(isReplyToMine(reply, ids)).toBe(true);
     expect(isReplyToMine(replyToOther, ids)).toBe(false);
