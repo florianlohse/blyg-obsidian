@@ -730,6 +730,16 @@ export class BlygReaderView extends ItemView {
     return this.hopper === null ? null : (this.hopperSets.get(this.hopper) ?? null);
   }
 
+  /** Lift every restriction of the feed (blyg, length, unread, hopper; "Show my posts" back on) and keep the order: a remembered choice must never leave the feed looking empty with no way out. */
+  private clearFilters(): void {
+    this.filter = { ...this.filter, source: null, unreadOnly: false, length: "any", showMine: true };
+    this.hopper = null;
+    this.orderMemo = null;
+    this.saveFilter();
+    this.drawHeader();
+    this.drawBody();
+  }
+
   /** The hoppers, asked for once when the feed's choices are first opened. */
   private ensureHoppers(): void {
     if (this.hopperList !== null) return;
@@ -1072,7 +1082,11 @@ export class BlygReaderView extends ItemView {
       return;
     }
     const shown = arrange(posts, this.filter, this.onlyKeys());
-    if (shown.length === 0) col.createDiv({ cls: "blyg-reader-note", text: "No post matches." });
+    if (shown.length === 0) {
+      const restricted = this.filter.source !== null || this.filter.unreadOnly || this.filter.length !== "any" || !this.filter.showMine || this.hopper !== null;
+      const note = col.createDiv({ cls: "blyg-reader-note", text: restricted ? "No post matches the choices in Sort & filter." : "No post matches." });
+      if (restricted) this.button(note, "Clear filters", () => this.clearFilters(), { title: "Show every post again (the order stays)" });
+    }
     // Only a first screenful is built at once, and more as you scroll: building all 200 cards costs tens of milliseconds on a desktop and several times that
     // on a phone, and Obsidian's start must not pay for it. A change of order or filter starts from the first screenful again.
     const sig = JSON.stringify([this.filter, this.hopper]);
@@ -1122,9 +1136,18 @@ export class BlygReaderView extends ItemView {
     card.toggleClass("is-read", !unread && !p.withdrawn && p.own !== true);
     const head = card.createDiv({ cls: "blyg-reader-cardhead" });
     const title = head.createDiv({ cls: "blyg-reader-cardtitle" });
-    title.createSpan({ cls: "blyg-reader-source", text: p.subscriptionTitle || p.origin || "" });
-    const meta = [p.authorName, relativeTime(p.created ?? p.observedAt, Date.now()), p.withdrawn ? "" : readingTimeLabel(p)].filter(Boolean).join(" · ");
-    if (meta) title.createSpan({ cls: "blyg-reader-meta", text: ` · ${meta}` });
+    const source = p.subscriptionTitle || p.origin || "";
+    title.createSpan({ cls: "blyg-reader-source", text: source });
+    // One name when the author is the blyg ("Teo Brandt · Teo Brandt" said nothing twice), and each piece of the line stays whole: "1 min read" never breaks across two lines.
+    const author = p.authorName !== null && p.authorName.trim().toLowerCase() !== source.trim().toLowerCase() ? p.authorName : null;
+    const pieces = [author, relativeTime(p.created ?? p.observedAt, Date.now()), p.withdrawn ? "" : readingTimeLabel(p)].filter((x): x is string => !!x);
+    if (pieces.length > 0) {
+      const meta = title.createDiv({ cls: "blyg-reader-meta blyg-reader-cardmeta" });
+      pieces.forEach((piece, i) => {
+        if (i > 0) meta.appendText(" · ");
+        meta.createSpan({ cls: "blyg-reader-nowrap", text: piece });
+      });
+    }
     if (!p.withdrawn && p.own !== true) {
       const check = head.createEl("button", {
         cls: "blyg-reader-check",

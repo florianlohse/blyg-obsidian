@@ -114,7 +114,7 @@ export function promptForStudioItem(app: App, source: StudioPickerSource, placeh
     }
     const picker = new StudioItemPicker(app);
     picker.setPlaceholder(placeholder);
-    picker.setInstructions([{ command: "type or paste", purpose: "words to search for, or the address of an item (its id works for your own items and subscribed blygs)" }]);
+    picker.setInstructions([{ command: "search or paste", purpose: "words, or a post link" }]);
     picker.open();
   });
 }
