@@ -95,6 +95,8 @@ export interface StudioClient {
   hideMention(id: string, hidden: boolean): Promise<StudioResult<{ hidden: boolean }>>;
   /** S15: ask the Studio to fetch every blyg it reads now (`POST /subscriptions/poll`, `owner:manage`). The fetch runs in the background; `polling` is how many. */
   pollSubscriptions(): Promise<StudioResult<{ polling: number }>>;
+  /** S15-H: ask the Studio to fetch one blyg it reads now (`POST /subscriptions/{id}/resync`, needs `owner:manage`); `changed` is how many items that changed. */
+  resyncSubscription(id: string): Promise<StudioResult<{ changed: number }>>;
   /** S15: the Studio's change counters (`GET /changes`, `owner:read`): cheap, to see whether the reading list moved without walking it. */
   changes(): Promise<StudioResult<{ epoch: string; domains: Record<string, number> }>>;
 }
@@ -400,6 +402,13 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
       return { kind: "ok", value: { polling: res.json.polling } } as const;
     },
 
+    resyncSubscription: async (id: string) => {
+      const res = await http.send(token, { method: "POST", area: "api", path: `/subscriptions/${encodeURIComponent(id)}/resync`, body: {} });
+      if (res.status !== 200) return failure(res);
+      if (!isRecord(res.json)) return unreadable(res);
+      return { kind: "ok", value: { changed: typeof res.json.changed === "number" ? res.json.changed : 0 } } as const;
+    },
+
     changes: async () => {
       const res = await http.send(token, { area: "api", path: "/changes" });
       if (res.status !== 200) return failure(res);
@@ -501,6 +510,7 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
     markUnread: guard(inner.markUnread),
     hideMention: guard(inner.hideMention),
     pollSubscriptions: guard(inner.pollSubscriptions),
+    resyncSubscription: guard(inner.resyncSubscription),
     changes: guard(inner.changes),
     classifyLinks: guard(inner.classifyLinks),
     peekItem: guard(inner.peekItem),

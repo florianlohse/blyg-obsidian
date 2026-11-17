@@ -153,3 +153,20 @@ describe("a reply's first lines", () => {
     expect(text).toBe("---\nblyg_kind: thread\n---\n![[x]]\n\n");
   });
 });
+
+import { passageFromSelection } from "../../src/app/threadCommands";
+
+describe("passageFromSelection (reply to a selected passage)", () => {
+  const text = "The first block, a little long.\nThe second block\nholds more words.";
+  it("takes a selection that is in the item's text as it is", () => {
+    expect(passageFromSelection(text, "first block, a little")).toBe("first block, a little");
+  });
+  it("finds it again when the page's whitespace differs (double newlines, runs of spaces) and cuts the passage from the item's own text", () => {
+    expect(passageFromSelection(text, "a little long.\n\nThe  second block")).toBe("a little long.\nThe second block");
+    expect(passageFromSelection("One  two\tthree", "two three")).toBe("two three");
+  });
+  it("says null for text that is not in the item, or nothing", () => {
+    expect(passageFromSelection(text, "never written")).toBeNull();
+    expect(passageFromSelection(text, "  \n ")).toBeNull();
+  });
+});

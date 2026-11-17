@@ -33,6 +33,7 @@ export const TM = {
   cannotQuote:
     "That passage has a web address next to characters that Markdown would change, so it cannot be quoted exactly. Select a different part.",
   selectFirst: "Select some text first.",
+  selectionNotFound: "That selection could not be found in the post's text (it may cross a picture or a table). Choose the passage in this window.",
   quoteInserted: "Quote inserted.",
   passageInserted: "Passage inserted. It is frozen with the thread when the thread is published.",
   extractPlain:
