@@ -90,7 +90,7 @@ await runScenario({}, async (s) => {
     });
     check((await owner()) === "someone", `${layout}: the GitHub owner field holds its value`);
     const toggle = () => s.evaluate(() => {
-      const row = [...activeDocument.querySelectorAll(".modal.mod-settings .setting-item")].find((r) => /Also publish to a GitHub-hosted site/.test(r.textContent ?? ""));
+      const row = [...activeDocument.querySelectorAll(".modal.mod-settings .setting-item")].find((r) => /Publish to a GitHub-hosted site/.test(r.textContent ?? ""));
       row?.querySelector(".checkbox-container")?.click();
     });
     await toggle();

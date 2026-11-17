@@ -138,13 +138,13 @@ copy and the community copy together.
 6. Open a note in the route folder, open the panel (the ribbon icon “Open Blyg panel”, or the command **Blyg: Open panel**)
    and tap **Publish…** (**Send draft…** on a Drafts-only route); the window that opens shows what will be sent, and its **Publish** (**Send draft**) button sends it.
 
-GitHub settings, “Blyg address”, the folder “Kind” and the preview channel belong to an older way of running a blyg from a
-GitHub repository. They stay hidden unless you switch on **Advanced → Also publish to a GitHub-hosted site** at the bottom
-of the settings; the GitHub fields then appear right under the switch, and switching it off hides them again without deleting
-anything. The commands that move an old GitHub-site item into the Studio (**Studio: repost this note**, **Studio: list
-reposted items**) are offered only then.
+GitHub settings and the folder “Kind” stay hidden unless you switch on **Website (GitHub) → Publish to a GitHub-hosted site**.
+That box holds what essays, pages and other plain files need: the repository, the production branch and the GitHub token.
+The box **Advanced**, shown below it, holds only the older way of running a blyg from a GitHub repository (the preview channel,
+“Blyg address”, the items folder). Switching the switch off hides both without deleting anything. The commands that move an
+old GitHub-site item into the Studio (**Studio: repost this note**, **Studio: list reposted items**) are offered only then.
 
-<p><img src="images/readme/advanced-github-switch.png" width="300" alt="The Blyg settings on a phone with the Advanced switch Also publish to a GitHub-hosted site turned on and the GitHub owner, repository and branch fields shown directly below it"></p>
+<p><img src="images/readme/advanced-github-switch.png" width="300" alt="The Blyg settings on a phone with the switch Publish to a GitHub-hosted site turned on and the GitHub owner, repository and branch fields shown directly below it"></p>
 
 ## What is sent where
 

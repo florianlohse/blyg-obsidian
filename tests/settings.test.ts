@@ -299,3 +299,36 @@ describe("a route's web address", () => {
     }
   });
 });
+
+describe("typos in a plain route", () => {
+  const settingsWith = (over: { dest?: string; webUrl?: string }) => {
+    const s = defaultSettings();
+    s.github = { ...s.github, owner: "o", repo: "r" };
+    s.routes = [{ vaultPrefix: "website/essays/", mode: "plain", label: "Essays", dest: "src/content/essays/", ...over }];
+    return s;
+  };
+  const warningsAt = (s: ReturnType<typeof defaultSettings>, field: string) => validateSettings(s).filter((i) => i.field === field && i.severity === "warning");
+
+  it("warns, without blocking, when the repository folder does not start with src/content/", () => {
+    const typo = warningsAt(settingsWith({ dest: "scr/content/essays/" }), "routes[0].dest");
+    expect(typo).toHaveLength(1);
+    expect(validateSettings(settingsWith({ dest: "scr/content/essays/" })).some((i) => i.severity === "error" && i.field === "routes[0].dest")).toBe(false);
+    expect(warningsAt(settingsWith({ dest: "src/content/tools/" }), "routes[0].dest")).toHaveLength(0);
+  });
+
+  it("warns about a stray character where the slash of a web address belongs", () => {
+    expect(warningsAt(settingsWith({ webUrl: "{site}/essays|{slug}" }), "routes[0].webUrl")).toHaveLength(1);
+    expect(warningsAt(settingsWith({ webUrl: "{site}/essays{slug}" }), "routes[0].webUrl")).toHaveLength(1);
+    expect(warningsAt(settingsWith({ webUrl: "{site}/essays/{slug}/" }), "routes[0].webUrl")).toHaveLength(0);
+    expect(warningsAt(settingsWith({ webUrl: "https://site.example.com/tools/{slug}/" }), "routes[0].webUrl")).toHaveLength(0);
+  });
+
+  it("warns when {site} would be the Studio's host, and not when it is another site", () => {
+    const s = settingsWith({ webUrl: "{site}/essays/{slug}/" });
+    s.studio.baseUrl = "https://blyg.example.com";
+    s.blyg.origin = "https://blyg.example.com/";
+    expect(warningsAt(s, "routes[0].webUrl")).toHaveLength(1);
+    s.blyg.origin = "https://example.com/blyg/";
+    expect(warningsAt(s, "routes[0].webUrl")).toHaveLength(0);
+  });
+});

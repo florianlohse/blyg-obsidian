@@ -1,5 +1,5 @@
 import { CONTRACT_ITEMS_DIR, CONTRACT_MAX_FRAGMENT_CAP } from "../contract";
-import { checkWebAddress } from "../core/webAddress";
+import { checkWebAddress, siteOrigin } from "../core/webAddress";
 import { formatProblem } from "../core/webQuote";
 import { studioBaseProblem, studioMountProblem } from "../studio/address";
 import type { BlygSettings } from "./schema";
@@ -80,6 +80,9 @@ export function validateSettings(s: BlygSettings): SettingsIssue[] {
         add(`${at}.dest`, "Repo folder ending with “/”, no leading “/”.");
       } else if (`${r.dest}`.startsWith(`${s.blyg.itemsDir}/`) || `${r.dest}` === `${s.blyg.itemsDir}/`) {
         add(`${at}.dest`, "A plain route may never write into the Blyg items folder.");
+      } else if (!r.dest.startsWith("src/content/")) {
+        // Only a warning: a site may keep its content elsewhere. For the common Astro layout it catches typos such as "scr/content/".
+        warn(`${at}.dest`, "Does not start with “src/content/”. Files would be committed to this folder as written: check it for a typo.");
       }
     }
   });
@@ -107,6 +110,25 @@ export function validateSettings(s: BlygSettings): SettingsIssue[] {
     const problem = checkWebAddress(r.webUrl);
     // Only the button depends on it, so this is a warning: publishing stays possible.
     if (problem) warn(`routes[${i}].webUrl`, problem);
+    else {
+      const url = r.webUrl.trim();
+      // "{site}/essays|{slug}": a stray character where the "/" belongs still makes a valid address, a wrong one.
+      if (/[|\\\s]/.test(url)) warn(`routes[${i}].webUrl`, "Contains a space, “|” or “\\”. Check it: a path is written with “/”.");
+      else if (/\{(slug|name|path)\}/.test(url) && !/\/\{(slug|name|path)\}/.test(url)) warn(`routes[${i}].webUrl`, "Needs a “/” in front of the file name placeholder, e.g. {site}/essays/{slug}/.");
+      // {site} is taken from the Blyg address: if that is the Studio's host, "Open on web" would open the Studio, not the site.
+      if (url.includes("{site}") && s.studio.baseUrl !== "") {
+        const site = siteOrigin(s.blyg.origin);
+        let studioHost = "";
+        try {
+          studioHost = new URL(s.studio.baseUrl).host;
+        } catch {
+          // an unusable Studio address is reported on its own field
+        }
+        if (site && studioHost && new URL(site).host === studioHost) {
+          warn(`routes[${i}].webUrl`, "{site} stands for the Blyg address, which is your Studio's host. Write the full site address instead, e.g. https://example.com/essays/{slug}/.");
+        }
+      }
+    }
   });
 
   // A template inside a publish folder is itself a note the plugin would offer to publish.

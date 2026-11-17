@@ -39,12 +39,12 @@ try {
     check(open, `${layout}, ${label}: the Settings window opens`);
     if (!open) return;
     await page.evaluate(() => { window.app.setting.openTabById("blyg"); });
-    const drawn = await until(async () => /Also publish to a GitHub-hosted site/.test(await text()), 15000, "the plugin's settings tab").catch(() => false);
-    check(drawn, `${layout}, ${label}: the plugin's tab shows the Advanced switch`);
+    const drawn = await until(async () => /Publish to a GitHub-hosted site/.test(await text()), 15000, "the plugin's settings tab").catch(() => false);
+    check(drawn, `${layout}, ${label}: the plugin's tab shows the GitHub site switch`);
     if (drawn) {
       const githubShown = async () => /GitHub owner/.test(await text());
       const toggle = () => page.evaluate(() => {
-        const row = [...activeDocument.querySelectorAll(".modal.mod-settings .setting-item")].find((r) => /Also publish to a GitHub-hosted site/.test(r.textContent ?? ""));
+        const row = [...activeDocument.querySelectorAll(".modal.mod-settings .setting-item")].find((r) => /Publish to a GitHub-hosted site/.test(r.textContent ?? ""));
         row?.querySelector(".checkbox-container")?.click();
       });
       check((await githubShown()) === wantOn, `${layout}, ${label}: the switch starts ${wantOn ? "on, with the GitHub settings under it" : "off, with no GitHub settings"}`);
