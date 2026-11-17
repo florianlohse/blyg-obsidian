@@ -7,7 +7,7 @@
 import { ItemView, sanitizeHTMLToDom, setIcon, type WorkspaceLeaf } from "obsidian";
 import { isUnread, type InboundMention, type ReadingPost } from "../studio/reading";
 import { plainText, renderForeign, type ImageMode } from "./defang";
-import { activeFilters, arrange, readFilter, cardOf, DEFAULT_FILTER, frameable, LENGTH_LABELS, nextInOrder, postOfQuote, pullProgress, readingTimeLabel, relativeTime, SORT_LABELS, sourcesOf, type FeedFilter, type FeedLength, type FeedSort } from "./readerFeed";
+import { activeFilters, arrange, isReplyToMine, OWN_SOURCE, readFilter, cardOf, DEFAULT_FILTER, frameable, LENGTH_LABELS, nextInOrder, postOfQuote, pullProgress, readingTimeLabel, relativeTime, SORT_LABELS, sourcesOf, type FeedFilter, type FeedLength, type FeedSort } from "./readerFeed";
 import { type ReaderFont } from "./readerFonts";
 import { CONTRASTS, type ReaderContrast } from "./readerLook";
 import { responseChip, responseIndex, type ResponseEntry } from "./readerResponses";
@@ -337,7 +337,7 @@ export class BlygReaderView extends ItemView {
         for (const m of mentions.slice(0, 8)) void this.loadMention(m);
         this.host.writeCache({ posts, mentions });
         // A blyg the Studio no longer reads cannot stay chosen: the feed would be empty with no way to tell why.
-        if (this.filter.source !== null && !posts.some((q) => q.subscriptionId === this.filter.source)) {
+        if (this.filter.source !== null && !posts.some((q) => (this.filter.source === OWN_SOURCE ? q.own === true : q.subscriptionId === this.filter.source))) {
           this.filter.source = null;
           this.saveFilter();
         }
@@ -679,6 +679,10 @@ export class BlygReaderView extends ItemView {
     void this.host.myItems().then((items) => {
       this.mine = items;
       this.mineIds = new Set(items.map((i) => i.id));
+      if (this.filter.repliesToMe && !this.shown) {
+        this.orderMemo = null; // the posts that answer yours are known only now
+        this.drawBody();
+      }
       if (this.shown) {
         this.drawHeader();
         this.drawReplies(this.shown);
@@ -734,7 +738,7 @@ export class BlygReaderView extends ItemView {
 
   /** Lift every restriction of the feed (blyg, length, unread, hopper; "Show my posts" back on) and keep the order: a remembered choice must never leave the feed looking empty with no way out. */
   private clearFilters(): void {
-    this.filter = { ...this.filter, source: null, unreadOnly: false, length: "any", showMine: true };
+    this.filter = { ...this.filter, source: null, unreadOnly: false, length: "any", showMine: true, repliesToMe: false };
     this.hopper = null;
     this.orderMemo = null;
     this.saveFilter();
@@ -776,8 +780,8 @@ export class BlygReaderView extends ItemView {
   private nextFor(p: ReadingPost): ReadingPost | null {
     const posts = this.data?.posts;
     if (!posts) return null;
-    const key = `${this.filter.sort}|${this.filter.source ?? ""}|${this.filter.length}|${this.hopper ?? ""}`;
-    if (!this.orderMemo || this.orderMemo.posts !== posts || this.orderMemo.key !== key) this.orderMemo = { posts, key, order: arrange(posts, { ...this.filter, unreadOnly: false }, this.onlyKeys()) };
+    const key = `${this.filter.sort}|${this.filter.source ?? ""}|${this.filter.length}|${this.hopper ?? ""}|${this.filter.repliesToMe ? 1 : 0}|${this.mineIds.size}`;
+    if (!this.orderMemo || this.orderMemo.posts !== posts || this.orderMemo.key !== key) this.orderMemo = { posts, key, order: arrange(posts, { ...this.filter, unreadOnly: false }, this.onlyKeys(), this.mineIds) };
     return nextInOrder(this.orderMemo.order, p);
   }
 
@@ -944,7 +948,12 @@ export class BlygReaderView extends ItemView {
     };
     select("Order", (Object.keys(SORT_LABELS) as FeedSort[]).map((k): [string, string] => [k, SORT_LABELS[k]]), this.filter.sort, (v) => { this.filter.sort = v as FeedSort; this.saveFilter(); });
     const posts = this.data.posts;
-    select("Blyg", [["", `All blygs (${posts.length})`], ...sourcesOf(posts).map((s): [string, string] => [s.id, `${s.title} (${s.count})`])], this.filter.source ?? "", (v) => { this.filter.source = v === "" ? null : v; this.saveFilter(); });
+    const ownCount = posts.filter((q) => q.own === true).length;
+    select("Blyg", [["", `All blygs (${posts.length - (this.filter.showMine ? 0 : ownCount)})`], ...(ownCount > 0 ? ([[OWN_SOURCE, `My posts (${ownCount})`]] as Array<[string, string]>) : []), ...sourcesOf(posts).map((s): [string, string] => [s.id, `${s.title} (${s.count})`])], this.filter.source ?? "", (v) => {
+      this.filter.source = v === "" ? null : v;
+      if (v === OWN_SOURCE) this.filter.showMine = true; // asking for my posts and hiding them would show nothing
+      this.saveFilter();
+    });
     if (this.hopperList !== null && this.hopperList.length > 0) {
       const el = controls.createEl("select", { cls: "dropdown blyg-reader-select", attr: { "aria-label": "Hopper", title: "Only the posts of one of your hoppers" } });
       el.createEl("option", { value: "", text: "All hoppers" });
@@ -959,10 +968,22 @@ export class BlygReaderView extends ItemView {
     mine.appendText(" Show my posts");
     mineBox.addEventListener("change", () => {
       this.filter.showMine = mineBox.checked;
+      if (!mineBox.checked && this.filter.source === OWN_SOURCE) this.filter.source = null;
       this.saveFilter();
       this.orderMemo = null;
       // Own posts come with a whole read of the list: asked for now when they were never read in.
       if (mineBox.checked && !(this.data?.posts.some((q) => q.own === true) ?? false)) void this.reload(true, { walk: "full" });
+      this.drawHeader();
+      this.drawBody();
+    });
+    const replies = controls.createEl("label", { cls: "blyg-reader-toggle" });
+    const repliesBox = replies.createEl("input", { attr: { type: "checkbox" } });
+    repliesBox.checked = this.filter.repliesToMe;
+    replies.appendText(" Replies to my posts only");
+    repliesBox.addEventListener("change", () => {
+      this.filter.repliesToMe = repliesBox.checked;
+      this.saveFilter();
+      this.orderMemo = null;
       this.drawHeader();
       this.drawBody();
     });
@@ -1083,9 +1104,9 @@ export class BlygReaderView extends ItemView {
       col.createDiv({ cls: "blyg-reader-note", text: "Nothing to read yet. Subscribe to a blyg in your Studio." });
       return;
     }
-    const shown = arrange(posts, this.filter, this.onlyKeys());
+    const shown = arrange(posts, this.filter, this.onlyKeys(), this.mineIds);
     if (shown.length === 0) {
-      const restricted = this.filter.source !== null || this.filter.unreadOnly || this.filter.length !== "any" || !this.filter.showMine || this.hopper !== null;
+      const restricted = this.filter.source !== null || this.filter.unreadOnly || this.filter.length !== "any" || !this.filter.showMine || this.filter.repliesToMe || this.hopper !== null;
       const note = col.createDiv({ cls: "blyg-reader-note", text: restricted ? "No post matches the choices in Sort & filter." : "No post matches." });
       if (restricted) this.button(note, "Clear filters", () => this.clearFilters(), { title: "Show every post again (the order stays)" });
     }
@@ -1163,7 +1184,7 @@ export class BlygReaderView extends ItemView {
     }
     const badges = card.createDiv({ cls: "blyg-reader-badges" });
     if (p.own === true) badges.createSpan({ cls: "blyg-reader-badge is-you", text: "You", attr: { title: "One of your own posts" } });
-    const toYou = p.isReply && p.stubTarget != null && this.mineIds.has(p.stubTarget.id);
+    const toYou = isReplyToMine(p, this.mineIds);
     card.toggleClass("is-reply-to-you", toYou);
     if (toYou) badges.createSpan({ cls: "blyg-reader-badge is-toyou", text: "reply to you", attr: { title: "This post answers one of your own items" } });
     else if (p.isReply) badges.createSpan({ cls: "blyg-reader-badge", text: "reply" });

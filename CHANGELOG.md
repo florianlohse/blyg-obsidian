@@ -46,6 +46,7 @@ becomes the release notes. Write entries for people who use the plugin, not for 
 
 ### Changed
 
+- **Sort & filter: "My posts" and "Replies to my posts only".** The Blyg choice lists **My posts** (your own posts in the feed) beside the blygs you read, and a switch **Replies to my posts only** shows just the posts that answer one of your own items. Both count on the "Sort & filter (n)" button, are remembered, and are lifted by "Clear filters".
 - **Your own posts stay in the feed after a Refresh.** A quick read of the list used to drop them until the next whole read; they are kept now.
 - **The hopper filter finds your own posts too.** Choosing a hopper in Sort & filter also shows your own posts you put into it (it showed only posts of the blygs you read, so a hopper that held only your own posts looked empty).
 - **"Reply to you" has its own colour.** A post that answers one of your items has a green edge and a green badge (not the accent colour of "unread"), and keeps them after you have read it.

@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { readOwnReadingEntry, readReadingPost, type ReadingPost } from "../src/studio/reading";
-import { activeFilters, arrange, cardOf, DEFAULT_FILTER, frameable, nextAfter, postOfQuote, PULL_THRESHOLD, pullProgress, readingMinutes, readingTimeLabel, relativeTime, sourcesOf } from "../src/ui/readerFeed";
+import { activeFilters, arrange, cardOf, DEFAULT_FILTER, isReplyToMine, OWN_SOURCE, frameable, nextAfter, postOfQuote, PULL_THRESHOLD, pullProgress, readingMinutes, readingTimeLabel, relativeTime, sourcesOf } from "../src/ui/readerFeed";
 
 const fixture = (name: string): string => readFileSync(new URL(`./fixtures/studio/reader/${name}-0.51.0.html`, import.meta.url), "utf8");
 const post = (patch: Record<string, unknown>): ReadingPost =>
@@ -65,6 +65,19 @@ describe("arrange", () => {
     expect(arrange([a, b, mine as ReadingPost], { ...DEFAULT_FILTER, unreadOnly: true }).map((p) => p.remoteId)).toEqual(["b", "a"]);
     expect(activeFilters({ ...DEFAULT_FILTER, showMine: false })).toBe(1);
     expect(sourcesOf([a, mine as ReadingPost]).map((s) => s.id)).toEqual(["s1"]);
+  });
+  it("My posts in the Blyg choice, and only the replies to my posts", () => {
+    const mine = readOwnReadingEntry({ source: "own", displayAt: "2026-11-06T00:00:00Z", own: { id: "m1", kind: "fragment", withdrawn: false, updated: "2026-11-06T00:00:00Z", contentHtml: "<p>Mine.</p>" } }) as ReadingPost;
+    const reply: ReadingPost = { ...post({ remoteId: "r", created: "2026-11-02T00:00:00Z" }), isReply: true, stubTarget: { origin: "https://o/", id: "m1" } };
+    const replyToOther: ReadingPost = { ...post({ remoteId: "x", created: "2026-11-02T12:00:00Z" }), isReply: true, stubTarget: { origin: "https://o/", id: "other" } };
+    const ids = new Set(["m1"]);
+    expect(arrange([a, mine, reply], { ...DEFAULT_FILTER, source: OWN_SOURCE }).map((p) => p.remoteId)).toEqual(["m1"]);
+    expect(arrange([a, mine, reply, replyToOther], { ...DEFAULT_FILTER, repliesToMe: true }, null, ids).map((p) => p.remoteId)).toEqual(["r"]);
+    expect(arrange([a, reply], { ...DEFAULT_FILTER, repliesToMe: true }).map((p) => p.remoteId)).toEqual([]); // my items not known yet: nothing matches
+    expect(isReplyToMine(reply, ids)).toBe(true);
+    expect(isReplyToMine(replyToOther, ids)).toBe(false);
+    expect(isReplyToMine(a, ids)).toBe(false);
+    expect(activeFilters({ ...DEFAULT_FILTER, repliesToMe: true })).toBe(1);
   });
   it("an entry of the merged list is an own post only when it says source own and carries its item", () => {
     expect(readOwnReadingEntry({ source: "imported", imported: {} })).toBeNull();
