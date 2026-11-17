@@ -91,14 +91,43 @@ export function formattedRuns(html: string, max = 320): Run[] {
   return out;
 }
 
-const QUOTE = /<blockquote\b[^>]*>([\s\S]*?)<\/blockquote>/gi;
+/** Split a post's HTML into its outermost quotes (inner HTML of each top-level blockquote, nested ones included) and what is left outside them. A quote may hold a quote: only the matching close ends it. */
+function splitQuotes(html: string): { quotes: string[]; rest: string } {
+  const tag = /<(\/?)blockquote\b[^>]*>/gi;
+  const quotes: string[] = [];
+  let rest = "";
+  let depth = 0;
+  let from = 0; // start of the text not yet placed
+  let innerStart = 0;
+  for (const m of html.matchAll(tag)) {
+    const closing = m[1] === "/";
+    if (!closing) {
+      if (depth === 0) {
+        rest += `${html.slice(from, m.index)} `;
+        innerStart = m.index + m[0].length;
+      }
+      depth++;
+    } else if (depth > 0) {
+      depth--;
+      if (depth === 0) {
+        quotes.push(html.slice(innerStart, m.index));
+        from = m.index + m[0].length;
+      }
+    }
+  }
+  // A quote that is never closed runs to the end of the post (nothing of it is the author's own words).
+  if (depth > 0) quotes.push(html.slice(innerStart));
+  else rest += html.slice(from);
+  return { quotes, rest };
+}
 
 export function cardOf(post: Pick<ReadingPost, "contentHtml">, max = 320): Card {
   const html = post.contentHtml;
-  const quotes = [...html.matchAll(QUOTE)].map((m) => plainText(m[1] ?? "")).filter((t) => t !== "");
-  const own = plainText(html.replace(QUOTE, " "));
+  const split = splitQuotes(html);
+  const quotes = split.quotes.map((q) => plainText(q)).filter((t) => t !== "");
+  const own = plainText(split.rest);
   const cut = (t: string, n: number): string => (t.length > n ? `${t.slice(0, n - 1).trimEnd()}…` : t);
-  return { quote: quotes.length ? cut(quotes.join(" … "), 160) : null, words: cut(own, max), runs: formattedRuns(html.replace(QUOTE, " "), max), images: (html.match(/<img\b/gi) ?? []).length };
+  return { quote: quotes.length ? cut(quotes.join(" … "), 160) : null, words: cut(own, max), runs: formattedRuns(split.rest, max), images: (html.match(/<img\b/gi) ?? []).length };
 }
 
 /** "just now", "5 min ago", "3 h ago", "yesterday", "4 days ago", else the date. */

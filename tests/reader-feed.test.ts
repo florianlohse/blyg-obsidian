@@ -12,6 +12,18 @@ describe("cardOf", () => {
   it("a thread: the quoted words apart from the author's own, from real Studio output", () => {
     expect(cardOf({ contentHtml: fixture("imported-thread-partial") })).toEqual({ quote: "It has a quotable sentence.", words: "My own words under a partial quote, with a link.", runs: [{ text: "My own words under a partial quote, with a link." }], images: 0 });
   });
+  it("a quote that holds a quote: only the author's own words after it are the card's words", () => {
+    const html = "<blockquote><blockquote><p>The first thought.</p></blockquote><p>Their answer to it.</p></blockquote><p>My reply, last.</p>";
+    const c = cardOf({ contentHtml: html });
+    expect(c.words).toBe("My reply, last.");
+    expect(c.runs).toEqual([{ text: "My reply, last." }]);
+    expect(c.quote).toContain("The first thought.");
+    expect(c.quote).toContain("Their answer to it.");
+  });
+  it("words between two quotes are kept, and an unclosed quote swallows the rest", () => {
+    expect(cardOf({ contentHtml: "<blockquote><p>A</p></blockquote><p>Mine.</p><blockquote><p>B</p></blockquote>" }).words).toBe("Mine.");
+    expect(cardOf({ contentHtml: "<p>Mine.</p><blockquote><p>B" }).words).toBe("Mine.");
+  });
   it("a fragment with an image: its words, and the image counted, not loaded", () => {
     expect(cardOf({ contentHtml: fixture("imported-image") })).toEqual({ quote: null, words: "A post with a picture.", runs: [{ text: "A post with a picture." }], images: 1 });
   });
