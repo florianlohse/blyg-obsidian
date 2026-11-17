@@ -1024,6 +1024,7 @@ export class BlygReaderView extends ItemView {
     if (chip) {
       second.push(() => {
         const a = meta2.createEl("a", { cls: `blyg-reader-link blyg-reader-resp${chip.mine ? " is-mine" : ""}`, text: chip.text, attr: { href: "#", role: "button", title: chip.title } });
+        this.addIcon(a, "reply");
         a.addEventListener("click", (e) => {
           e.preventDefault();
           this.responsesEl?.scrollIntoView({ block: "start", behavior: "smooth" });

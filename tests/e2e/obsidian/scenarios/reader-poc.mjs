@@ -114,7 +114,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await wait(300);
     const options = await page.evaluate(() => [...document.querySelectorAll(".blyg-reader-controls select")].map((x) => [...x.options].map((o) => o.textContent)));
     check(options.length === 3 && options[0].includes("Newest first") && options[0].includes("Longest read first") && options[1].some((o) => /^Blog B \(\d+\)$/.test(o ?? "")) && options[2].includes("Under 2 min"), `${layout}: order, blyg and length choices are there, and no font or contrast choice (those live in the settings) (${JSON.stringify(options.map((o) => o.length))} entries)`);
-    check((await text(".blyg-reader-toggle")).some((t) => t.includes("Unread only")), `${layout}: the "Unread only" switch is there`);
+    check((await text(".blyg-reader-chip")).some((t) => t.includes("Unread only")), `${layout}: the "Unread only" switch is there`);
     check(/\d+ min read/.test((await text(".blyg-reader-card"))[0] ?? ""), `${layout}: each card says how long it takes to read (${((await text(".blyg-reader-card"))[0] ?? "").match(/\d+ min read/)?.[0]})`);
     check(await click("Sort & filter"), `${layout}: ...and closes them again`);
     await wait(300);
@@ -135,7 +135,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
     check(["Reader", "Reply", "○ Mark read", "Browser"].every((b) => buttons.includes(b)) && !buttons.includes("As text") && !buttons.includes("As web page"), `${layout}: the post's buttons are in the header, with no switch to a web page: ${buttons.join(", ")}`);
     const links = await page.evaluate(() => [...document.querySelectorAll(".blyg-reader-postmeta a.blyg-reader-link")].map((a) => a.getAttribute("href")));
     check(links.length >= 1 && links[0].startsWith("http://localhost:8788"), `${layout}: the post's blyg is a link to its page (${links.join(", ")})`);
-    check((await text(".blyg-reader-postmeta")).some((t) => /unread/.test(t) && /\d+ min read/.test(t)), `${layout}: the post's header says it is unread and how long it takes to read`);
+    check((await text(".blyg-reader-postmeta")).some((t) => /\d+ min read/.test(t)) && (await text(".blyg-reader-postmeta2")).some((t) => /unread/.test(t)), `${layout}: the post's header says it is unread and how long it takes to read`);
     await shot(`${layout}-2-text`);
     check(await page.evaluate(() => getComputedStyle(document.querySelector(".blyg-reader-body")).userSelect === "text"), `${layout}: the text of a post can be selected`);
 
@@ -194,7 +194,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await page.evaluate(() => document.querySelector(".blyg-reader-card")?.click());
     await wait(800);
     await page.evaluate(() => { window.__t0 = performance.now(); [...document.querySelectorAll(".blyg-reader-header button")].find((b) => b.textContent?.trim() === "○ Mark read")?.click(); });
-    const instant = await page.evaluate(() => ({ label: [...document.querySelectorAll(".blyg-reader-header button")].map((b) => b.textContent?.trim()), meta: document.querySelector(".blyg-reader-postmeta")?.textContent ?? "", ms: performance.now() - window.__t0 }));
+    const instant = await page.evaluate(() => ({ label: [...document.querySelectorAll(".blyg-reader-header button")].map((b) => b.textContent?.trim()), meta: document.querySelector(".blyg-reader-postmeta2")?.textContent ?? "", ms: performance.now() - window.__t0 }));
     check(instant.label.includes("✓ Read") && /✓ read/.test(instant.meta) && instant.ms < 100, `read marks: marking read shows at once in the post's header (${Math.round(instant.ms)} ms, "${instant.label.find((l) => /Read/.test(l))}")`);
     await wait(1500);
     check(await click("Reader"), "read marks: Reader goes back to the feed");
