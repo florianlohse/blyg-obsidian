@@ -716,3 +716,10 @@
 
 /* Your own posts in the feed (increment 8b). */
 .blyg-reader-badge.is-you { background: var(--background-modifier-border); color: var(--text-normal); }
+
+/* Reader cards (increment 10): the line under a card's title keeps each piece whole; settings: a folded help row. */
+.blyg-reader-nowrap { white-space: nowrap; }
+.blyg-reader-cardmeta { display: block; }
+.blyg-reader-note .blyg-reader-btn { margin-left: var(--size-4-2); }
+.blyg-help > summary { cursor: pointer; color: var(--text-muted); }
+.blyg-help .blyg-note { margin-top: var(--size-4-1); }

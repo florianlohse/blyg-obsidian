@@ -68,6 +68,20 @@ export class BlygSettingTab extends PluginSettingTab {
     if (key.startsWith("readerPane.")) for (const paint of this.previews) paint();
   }
 
+  /** A setting row that is only a folded help: a native details element (keyboard and screen reader friendly), closed at first. */
+  private helpItem(name: string, summary: string, lines: string[]): SettingGroupItem {
+    return {
+      name,
+      desc: "",
+      aliases: ["help", "placeholders", "variables"],
+      render: (setting) => {
+        const box = setting.infoEl.createEl("details", { cls: "blyg-help" });
+        box.createEl("summary", { text: summary });
+        for (const line of lines) box.createDiv({ cls: "blyg-note", text: line });
+      },
+    };
+  }
+
   /** "Preview" under the font and contrast settings: a few lines drawn with the very classes the reader uses, so the choice can be judged without opening the reader. */
   private fontPreviewItem(): SettingGroupItem {
     return {
@@ -209,16 +223,21 @@ export class BlygSettingTab extends PluginSettingTab {
       items: [
         text(
           "Fragment template",
-          "A note in your vault that every new fragment starts from (path, e.g. “Templates/Fragment.md”). Applies to New fragment and to text moved out of another note. Placeholders: {{title}}, {{date}}, {{time}}, {{date:FORMAT}}. Empty: a bare note.",
+          "A note in your vault that new fragments start from, e.g. “Templates/Fragment.md”. Empty: a bare note.",
           "templates.fragment",
           "Templates/Fragment.md",
         ),
         text(
           "Thread template",
-          "The same for every new thread (New thread, Quote in thread, text moved into a thread). The thread property is added for you; the template must not set the other kind or any other blyg_ property.",
+          "The same for new threads. The thread property is added for you.",
           "templates.thread",
           "Templates/Thread.md",
         ),
+        this.helpItem("Template placeholders and rules", "Show the placeholders", [
+          "Placeholders: {{title}}, {{date}}, {{time}} and {{date:FORMAT}}.",
+          "A template applies to New fragment, New thread, Reply to item… and to text moved out of another note.",
+          "The template must not set the other kind or any other blyg_ property.",
+        ]),
       ],
     });
 
@@ -228,10 +247,15 @@ export class BlygSettingTab extends PluginSettingTab {
       items: [
         {
           name: "Web quote Markdown",
-          desc: "What “Insert web quote” writes, as a template for the whole block (it has nothing to do with blyg items). {quote} is the quote, {link} the whole link, {alias} its visible text, {url} the address. Each line stands as you type it, so a blank line appears only where you leave one. Default: “> {quote}” on one line and “> *{link}*” on the next (a quote with an italic source as its last line). The quote's own lines follow the marks in front of {quote}.",
+          desc: "What “Insert web quote” writes, as a template for the whole block. It has nothing to do with blyg items.",
           aliases: ["quote", "attribution", "source", "substack", "template"],
           control: { type: "textarea", key: "webQuote.format", placeholder: "> {quote}\n> *{link}*", rows: 3 },
         },
+        this.helpItem("Web quote placeholders", "Show the placeholders", [
+          "{quote} is the quote, {link} the whole link, {alias} its visible text, {url} the address.",
+          "Each line stands as you type it, so a blank line appears only where you leave one.",
+          "Default: “> {quote}” on one line and “> *{link}*” on the next (a quote with an italic source as its last line). The quote's own lines follow the marks in front of {quote}.",
+        ]),
         {
           name: "Remove tracking parameters from pasted links",
           desc: "Takes utm_*, fbclid, gclid and similar (and Substack's share parameters) out of the address before it is written. The page is the same without them.",
