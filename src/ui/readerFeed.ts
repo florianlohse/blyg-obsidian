@@ -143,14 +143,12 @@ export interface FeedFilter {
   source: string | null;
   unreadOnly: boolean;
   length: FeedLength;
-  /** Show the owner's own posts in the feed ("Show my posts"); on by default. */
-  showMine: boolean;
   /** Only the posts that answer one of the owner's own items ("Replies to my posts only"); off by default. */
   repliesToMe: boolean;
 }
 /** The value of `source` that stands for the owner's own posts (not a subscription id). */
 export const OWN_SOURCE = "~own";
-export const DEFAULT_FILTER: FeedFilter = { sort: "newest", source: null, unreadOnly: false, length: "any", showMine: true, repliesToMe: false };
+export const DEFAULT_FILTER: FeedFilter = { sort: "newest", source: null, unreadOnly: false, length: "any", repliesToMe: false };
 
 /** Does this post answer one of the owner's own items (`mine`: the ids of those items)? */
 export const isReplyToMine = (p: ReadingPost, mine: ReadonlySet<string>): boolean => p.isReply && p.stubTarget != null && mine.has(p.stubTarget.id);
@@ -165,22 +163,20 @@ export function readFilter(raw: unknown): FeedFilter {
     source: typeof o.source === "string" && o.source !== "" ? o.source : null,
     unreadOnly: o.unreadOnly === true,
     length: lengths.find((x) => x === o.length) ?? DEFAULT_FILTER.length,
-    showMine: o.showMine !== false,
     repliesToMe: o.repliesToMe === true,
   };
 }
 
 /** How many of the feed's choices differ from the start (shown on the button that opens them). */
-export const activeFilters = (f: FeedFilter): number => (f.sort !== "newest" ? 1 : 0) + (f.source !== null ? 1 : 0) + (f.unreadOnly ? 1 : 0) + (!f.showMine ? 1 : 0) + (f.repliesToMe ? 1 : 0) + (f.length !== "any" ? 1 : 0);
+export const activeFilters = (f: FeedFilter): number => (f.sort !== "newest" ? 1 : 0) + (f.source !== null ? 1 : 0) + (f.unreadOnly ? 1 : 0) + (f.repliesToMe ? 1 : 0) + (f.length !== "any" ? 1 : 0);
 
 const inLength = (minutes: number, length: FeedLength): boolean => length === "any" || (length === "short" ? minutes < 2 : length === "medium" ? minutes >= 2 && minutes <= 5 : minutes > 5);
 
 /** The key a post is known by in sets of posts (a hopper's members): the blyg's subscription and the item's id. */
 export const postKey = (p: ReadingPost): string => `${p.subscriptionId}/${p.remoteId}`;
 
-/** `only`: when given, just the posts whose key is in it (the posts of one hopper, increment 8); null/undefined: no such limit. */
-export function arrange(posts: ReadingPost[], f: FeedFilter, only: ReadonlySet<string> | null = null, mine: ReadonlySet<string> = new Set()): ReadingPost[] {
-  const kept = posts.filter((p) => (only === null || only.has(postKey(p))) && (f.showMine || p.own !== true) && (f.source === null || (f.source === OWN_SOURCE ? p.own === true : p.subscriptionId === f.source)) && (!f.repliesToMe || isReplyToMine(p, mine)) && (!f.unreadOnly || isUnread(p)) && inLength(readingMinutes(p), f.length));
+export function arrange(posts: ReadingPost[], f: FeedFilter, mine: ReadonlySet<string> = new Set()): ReadingPost[] {
+  const kept = posts.filter((p) => (f.source === null || (f.source === OWN_SOURCE ? p.own === true : p.subscriptionId === f.source)) && (!f.repliesToMe || isReplyToMine(p, mine)) && (!f.unreadOnly || isUnread(p)) && inLength(readingMinutes(p), f.length));
   const byTime = f.sort === "newest" ? -1 : 1;
   return kept
     .map((p, i) => ({ p, i, t: Date.parse(dateOf(p)), m: readingMinutes(p) }))
@@ -199,8 +195,8 @@ export function arrange(posts: ReadingPost[], f: FeedFilter, only: ReadonlySet<s
  * The post to open after `current`: the next unread one in the order the feed shows now (its sort, blyg and length choices; "unread only" does not
  * matter, because the post just read is no longer unread). Not wrapping round: at the end there is none, and the reader goes back to the feed.
  */
-export function nextAfter(posts: ReadingPost[], f: FeedFilter, current: ReadingPost, only: ReadonlySet<string> | null = null, mine: ReadonlySet<string> = new Set()): ReadingPost | null {
-  return nextInOrder(arrange(posts, { ...f, unreadOnly: false }, only, mine), current);
+export function nextAfter(posts: ReadingPost[], f: FeedFilter, current: ReadingPost, mine: ReadonlySet<string> = new Set()): ReadingPost | null {
+  return nextInOrder(arrange(posts, { ...f, unreadOnly: false }, mine), current);
 }
 
 /** The same, from an order already worked out (the reader keeps it while the list and the order choices stay as they are). */

@@ -1163,30 +1163,6 @@ export default class BlygPlugin extends Plugin {
           return null;
         }
       },
-      hoppers: async () => {
-        const built = buildStudio(this.env());
-        if (!built.ok) return [];
-        try {
-          const got = await built.studio.client.listHoppers();
-          return got.kind === "ok" ? got.value.map((h) => ({ id: h.id, name: h.name })) : [];
-        } catch {
-          return [];
-        }
-      },
-      hopperKeys: async (hopperId) => {
-        const built = buildStudio(this.env());
-        if (!built.ok) return null;
-        try {
-          // The imported posts held in the hopper, and the owner's own items in it (a post of yours put into a hopper is in the feed now too).
-          const [got, mine] = await Promise.all([built.studio.client.readingKeysInHopper(hopperId), built.studio.client.hopperMembers(hopperId)]);
-          if (got.kind !== "ok") return null;
-          const keys = new Set(got.value.keys);
-          if (mine.kind === "ok") for (const id of mine.value.ids) keys.add(`/${id}`);
-          return keys;
-        } catch {
-          return null;
-        }
-      },
       resyncBlyg: async (post) => {
         const built = buildStudio(this.env());
         if (!built.ok) return { ok: false, message: built.message };
