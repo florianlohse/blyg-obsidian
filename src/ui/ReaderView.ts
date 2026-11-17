@@ -7,7 +7,7 @@
 import { ItemView, sanitizeHTMLToDom, setIcon, type WorkspaceLeaf } from "obsidian";
 import { isUnread, type InboundMention, type ReadingPost } from "../studio/reading";
 import { plainText, renderForeign, type ImageMode } from "./defang";
-import { activeFilters, arrange, cardOf, DEFAULT_FILTER, frameable, LENGTH_LABELS, nextInOrder, postOfQuote, pullProgress, readingTimeLabel, relativeTime, SORT_LABELS, sourcesOf, type FeedFilter, type FeedLength, type FeedSort } from "./readerFeed";
+import { activeFilters, arrange, readFilter, cardOf, DEFAULT_FILTER, frameable, LENGTH_LABELS, nextInOrder, postOfQuote, pullProgress, readingTimeLabel, relativeTime, SORT_LABELS, sourcesOf, type FeedFilter, type FeedLength, type FeedSort } from "./readerFeed";
 import { type ReaderFont } from "./readerFonts";
 import { CONTRASTS, type ReaderContrast } from "./readerLook";
 import { responseChip, responseIndex, type ResponseEntry } from "./readerResponses";
@@ -50,7 +50,7 @@ export interface ReaderHost {
   /** Load the stream and the mentions, or say in words why not. */
   load(
     onProgress?: (postsSoFar: ReadingPost[]) => void,
-    opts?: { known?: Map<string, string> | null; mentions?: boolean; force?: boolean },
+    opts?: { known?: Map<string, string> | null; mentions?: boolean; force?: boolean; own?: boolean },
   ): Promise<{ ok: true; data: ReaderData } | { ok: false; message: string }>;
   /** The list kept by the last session (for the Studio now in use), or null. Posts of other people: in the plugin's own folder, never in a note. */
   readCache(): Promise<{ posts: ReadingPost[]; mentions: InboundMention[]; savedAt: number; studioOrigin: string } | null>;
@@ -187,7 +187,7 @@ export class BlygReaderView extends ItemView {
 
   constructor(leaf: WorkspaceLeaf, private readonly host: ReaderHost) {
     super(leaf);
-    this.filter = host.filter();
+    this.filter = readFilter(host.filter()); // a saved filter from before a choice existed (or a hand-edited one) never leaves that choice undefined
   }
 
   override getViewType(): string {
@@ -314,7 +314,7 @@ export class BlygReaderView extends ItemView {
         }
         this.setStatus(`Loading… ${soFar.length} ${soFar.length === 1 ? "post" : "posts"} so far`);
         this.drawHeader();
-      }, { known, mentions: withMentions, force: o.force === true });
+      }, { known, mentions: withMentions, force: o.force === true, own: this.filter.showMine });
       if (got.ok) {
         let posts = got.data.posts;
         if (got.data.incremental && held) {
@@ -941,6 +941,19 @@ export class BlygReaderView extends ItemView {
       el.addEventListener("change", () => void this.chooseHopper(el.value === "" ? null : el.value));
     }
     select("Length", (Object.keys(LENGTH_LABELS) as FeedLength[]).map((k): [string, string] => [k, LENGTH_LABELS[k]]), this.filter.length, (v) => { this.filter.length = v as FeedLength; this.saveFilter(); });
+    const mine = controls.createEl("label", { cls: "blyg-reader-toggle" });
+    const mineBox = mine.createEl("input", { attr: { type: "checkbox" } });
+    mineBox.checked = this.filter.showMine;
+    mine.appendText(" Show my posts");
+    mineBox.addEventListener("change", () => {
+      this.filter.showMine = mineBox.checked;
+      this.saveFilter();
+      this.orderMemo = null;
+      // Own posts come with a whole read of the list: asked for now when they were never read in.
+      if (mineBox.checked && !(this.data?.posts.some((q) => q.own === true) ?? false)) void this.reload(true, { walk: "full" });
+      this.drawHeader();
+      this.drawBody();
+    });
     const unread = controls.createEl("label", { cls: "blyg-reader-toggle" });
     const box = unread.createEl("input", { attr: { type: "checkbox" } });
     box.checked = this.filter.unreadOnly;
@@ -971,12 +984,19 @@ export class BlygReaderView extends ItemView {
     const row = h.createDiv({ cls: "blyg-reader-bar blyg-reader-bar-actions" });
     const tray = row.createDiv({ cls: "blyg-reader-btngroup" });
     this.button(tray, "Browser", () => (web ? this.host.openWeb(web) : undefined), { disabled: web === null, cls: "blyg-reader-quiet", title: "Open the whole page in the browser" });
-    this.button(tray, unread ? "○ Mark read" : "✓ Read", () => this.setRead(p, unread), {
-      disabled: p.withdrawn || !held,
-      active: !unread,
-      cls: "blyg-reader-readtoggle",
-      title: unread ? "Mark this post read" : "Read. Tap to mark it unread again",
-    });
+    if (p.own === true) {
+      // Your own post: no read mark; the note it came from is one tap away.
+      this.button(tray, "Open note", async () => {
+        if (!(await this.host.openOwnItem(p.remoteId))) this.setStatus("No note of this vault holds this post.");
+      }, { title: "Open the note this post was published from" });
+    } else {
+      this.button(tray, unread ? "○ Mark read" : "✓ Read", () => this.setRead(p, unread), {
+        disabled: p.withdrawn || !held,
+        active: !unread,
+        cls: "blyg-reader-readtoggle",
+        title: unread ? "Mark this post read" : "Read. Tap to mark it unread again",
+      });
+    }
     const chip = responseChip(this.respFor(p));
     if (chip) {
       const b = this.button(tray, chip.text, () => this.responsesEl?.scrollIntoView({ block: "start", behavior: "smooth" }), { cls: `blyg-reader-resp${chip.mine ? " is-mine" : ""}`, title: chip.title });
@@ -986,7 +1006,7 @@ export class BlygReaderView extends ItemView {
     this.replyBtn = this.button(row, "Reply", () => {
       const sel = this.replySelection();
       void this.host.replyTo(p, sel.trim() !== "" ? sel : undefined);
-    }, { disabled: p.withdrawn || !held, cls: "blyg-reader-replybtn", title: held ? "Reply in Obsidian: a new thread that answers this post" : fetched ? "Subscribe to this blyg in your Studio to reply to its posts from here." : "Your Studio has not fetched this post yet." });
+    }, { disabled: p.withdrawn || !held, cls: "blyg-reader-replybtn", title: p.own === true ? "Your own post: write the follow-up in your vault" : held ? "Reply in Obsidian: a new thread that answers this post" : fetched ? "Subscribe to this blyg in your Studio to reply to its posts from here." : "Your Studio has not fetched this post yet." });
     this.showReplyLabel();
     if (p.subscriptionId !== "" && !fetched && !p.withdrawn) {
       const note = h.createDiv({ cls: "blyg-reader-fetchnote" });
@@ -1003,7 +1023,7 @@ export class BlygReaderView extends ItemView {
     const when = relativeTime(p.created ?? p.observedAt, Date.now());
     if (when) parts.push(() => meta.createSpan({ text: when }));
     if (!p.withdrawn) parts.push(() => meta.createSpan({ text: readingTimeLabel(p) }));
-    parts.push(() => meta.createSpan({ cls: unread ? "blyg-reader-unreadmark" : "blyg-reader-readmark", text: p.withdrawn ? "withdrawn" : unread ? (p.readVersion !== null ? "updated since you read it" : "unread") : "✓ read" }));
+    if (p.own !== true) parts.push(() => meta.createSpan({ cls: unread ? "blyg-reader-unreadmark" : "blyg-reader-readmark", text: p.withdrawn ? "withdrawn" : unread ? (p.readVersion !== null ? "updated since you read it" : "unread") : "✓ read" }));
     parts.forEach((draw, i) => {
       if (i > 0) meta.createSpan({ text: " · " });
       draw();
@@ -1099,13 +1119,13 @@ export class BlygReaderView extends ItemView {
     card.empty();
     const unread = isUnread(p);
     card.toggleClass("is-unread", unread);
-    card.toggleClass("is-read", !unread && !p.withdrawn);
+    card.toggleClass("is-read", !unread && !p.withdrawn && p.own !== true);
     const head = card.createDiv({ cls: "blyg-reader-cardhead" });
     const title = head.createDiv({ cls: "blyg-reader-cardtitle" });
     title.createSpan({ cls: "blyg-reader-source", text: p.subscriptionTitle || p.origin || "" });
     const meta = [p.authorName, relativeTime(p.created ?? p.observedAt, Date.now()), p.withdrawn ? "" : readingTimeLabel(p)].filter(Boolean).join(" · ");
     if (meta) title.createSpan({ cls: "blyg-reader-meta", text: ` · ${meta}` });
-    if (!p.withdrawn) {
+    if (!p.withdrawn && p.own !== true) {
       const check = head.createEl("button", {
         cls: "blyg-reader-check",
         text: unread ? "○" : "✓",
@@ -1117,6 +1137,7 @@ export class BlygReaderView extends ItemView {
       });
     }
     const badges = card.createDiv({ cls: "blyg-reader-badges" });
+    if (p.own === true) badges.createSpan({ cls: "blyg-reader-badge is-you", text: "You", attr: { title: "One of your own posts" } });
     const toYou = p.isReply && p.stubTarget != null && this.mineIds.has(p.stubTarget.id);
     card.toggleClass("is-reply-to-you", toYou);
     if (toYou) badges.createSpan({ cls: "blyg-reader-badge is-toyou", text: "reply to you", attr: { title: "This post answers one of your own items" } });
@@ -1124,7 +1145,7 @@ export class BlygReaderView extends ItemView {
     else if (p.kind === "thread") badges.createSpan({ cls: "blyg-reader-badge", text: "thread" });
     if (p.withdrawn) badges.createSpan({ cls: "blyg-reader-badge", text: "withdrawn" });
     if (unread) badges.createSpan({ cls: "blyg-reader-badge is-new", text: p.readVersion !== null ? "updated" : "unread" });
-    else if (!p.withdrawn) badges.createSpan({ cls: "blyg-reader-badge is-done", text: "✓ read" });
+    else if (!p.withdrawn && p.own !== true) badges.createSpan({ cls: "blyg-reader-badge is-done", text: "✓ read" });
     // The replies you can see (same rule as in an open post): green when one of them is yours.
     const chip = this.mine !== null || (this.data?.posts.length ?? 0) > 0 ? responseChip(this.respFor(p)) : null;
     if (chip) this.addIcon(badges.createSpan({ cls: `blyg-reader-badge blyg-reader-resp-badge${chip.mine ? " is-mine" : ""}`, text: chip.text, attr: { title: chip.title } }), "reply");

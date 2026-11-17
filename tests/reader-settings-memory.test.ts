@@ -8,8 +8,10 @@ import { DEFAULT_FILTER, readFilter } from "../src/ui/readerFeed";
 describe("the feed's choices are kept in the settings", () => {
   it("start as the start values, and come back as saved", () => {
     expect(defaultSettings().readerPane.filter).toEqual(DEFAULT_FILTER);
-    const saved = { sort: "longest", source: "sub-1", unreadOnly: true, length: "long" };
+    const saved = { sort: "longest", source: "sub-1", unreadOnly: true, length: "long", showMine: false };
     expect(migrateSettings({ readerPane: { filter: saved } }).settings.readerPane.filter).toEqual(saved);
+    // a file from before "Show my posts" shows them
+    expect(migrateSettings({ readerPane: { filter: { sort: "newest", source: null, unreadOnly: false, length: "any" } } }).settings.readerPane.filter.showMine).toBe(true);
   });
   it("anything unknown is the start value, never a broken feed", () => {
     expect(readFilter({ sort: "random", source: 5, unreadOnly: "yes", length: "huge" })).toEqual(DEFAULT_FILTER);

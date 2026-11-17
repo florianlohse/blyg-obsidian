@@ -1080,9 +1080,12 @@ export default class BlygPlugin extends Plugin {
           const { client } = built.studio;
           const known = opts?.known ?? null;
           const wantMentions = opts?.mentions !== false;
-          const [reading, mentions] = await Promise.all([
+          // The owner's own posts (increment 8b) come from the Studio's merged list, with a whole read only: a quick look keeps the ones held.
+          const wantOwn = opts?.own === true && known === null;
+          const [reading, mentions, own] = await Promise.all([
             client.listReading(READER_PAGES, onProgress, { pageSize: READER_PAGE, ...(known ? { stopAfter: (rows: ReadingPost[]) => reachedKnown(rows, known) } : {}) }),
             wantMentions ? client.listInboundMentions() : Promise.resolve(null),
+            wantOwn ? client.listOwnReading() : Promise.resolve(null),
           ]);
           if (reading.kind !== "ok") {
             if (reading.kind === "error") this.readerFailed();
@@ -1095,7 +1098,7 @@ export default class BlygPlugin extends Plugin {
           this.rememberPosts(reading.value.posts);
           return {
             ok: true,
-            data: { posts: reading.value.posts, mentions: mentions !== null && mentions.kind === "ok" ? mentions.value.mentions : [], mentionsFetched: mentions !== null && mentions.kind === "ok", note, studioOrigin: built.studio.address.origin, incremental: reading.value.stopped },
+            data: { posts: own !== null && own.kind === "ok" ? [...reading.value.posts, ...own.value.posts] : reading.value.posts, mentions: mentions !== null && mentions.kind === "ok" ? mentions.value.mentions : [], mentionsFetched: mentions !== null && mentions.kind === "ok", note, studioOrigin: built.studio.address.origin, incremental: reading.value.stopped },
           };
         } catch (err) {
           this.readerFailed();

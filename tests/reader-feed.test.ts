@@ -1,7 +1,7 @@
 // S15, the reader's feed: cards, order and filters, and whether a post's page may be shown inside Obsidian. Pure functions.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { readReadingPost, type ReadingPost } from "../src/studio/reading";
+import { readOwnReadingEntry, readReadingPost, type ReadingPost } from "../src/studio/reading";
 import { activeFilters, arrange, cardOf, DEFAULT_FILTER, frameable, nextAfter, postOfQuote, PULL_THRESHOLD, pullProgress, readingMinutes, readingTimeLabel, relativeTime, sourcesOf } from "../src/ui/readerFeed";
 
 const fixture = (name: string): string => readFileSync(new URL(`./fixtures/studio/reader/${name}-0.51.0.html`, import.meta.url), "utf8");
@@ -56,6 +56,21 @@ describe("arrange", () => {
     expect(arrange([a, b, c], { ...DEFAULT_FILTER, source: "s2" }, only).map((p) => p.remoteId)).toEqual(["b"]);
     expect(arrange([a, b, c], DEFAULT_FILTER, new Set()).map((p) => p.remoteId)).toEqual([]);
     expect(arrange([a, b, c], DEFAULT_FILTER, null)).toHaveLength(3);
+  });
+  it("the owner's own posts can be hidden (Show my posts), are never unread, and are no blyg in the source list", () => {
+    const mine = readOwnReadingEntry({ source: "own", displayAt: "2026-11-06T00:00:00Z", own: { id: "m1", kind: "fragment", withdrawn: false, updated: "2026-11-06T00:00:00Z", contentHtml: "<p>My own words.</p>" } });
+    expect(mine).toMatchObject({ own: true, subscriptionId: "", remoteId: "m1", readVersion: 1, version: 1 });
+    expect(arrange([a, b, mine as ReadingPost], DEFAULT_FILTER).map((p) => p.remoteId)).toEqual(["m1", "b", "a"]);
+    expect(arrange([a, b, mine as ReadingPost], { ...DEFAULT_FILTER, showMine: false }).map((p) => p.remoteId)).toEqual(["b", "a"]);
+    expect(arrange([a, b, mine as ReadingPost], { ...DEFAULT_FILTER, unreadOnly: true }).map((p) => p.remoteId)).toEqual(["b", "a"]);
+    expect(activeFilters({ ...DEFAULT_FILTER, showMine: false })).toBe(1);
+    expect(sourcesOf([a, mine as ReadingPost]).map((s) => s.id)).toEqual(["s1"]);
+  });
+  it("an entry of the merged list is an own post only when it says source own and carries its item", () => {
+    expect(readOwnReadingEntry({ source: "imported", imported: {} })).toBeNull();
+    expect(readOwnReadingEntry({ source: "own", own: { id: "", kind: "fragment", contentHtml: "x" } })).toBeNull();
+    expect(readOwnReadingEntry({ source: "own", own: { id: "x", kind: "essay", contentHtml: "x" } })).toBeNull();
+    expect(readOwnReadingEntry("junk")).toBeNull();
   });
   it("the source picker lists each blyg once, with its count, by title", () => {
     expect(sourcesOf([a, b, c])).toEqual([{ id: "s1", title: "Blog A", count: 2 }, { id: "s2", title: "Blog B", count: 1 }]);

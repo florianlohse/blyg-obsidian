@@ -64,8 +64,10 @@ export interface FeedFilter {
   source: string | null;
   unreadOnly: boolean;
   length: FeedLength;
+  /** Show the owner's own posts in the feed ("Show my posts"); on by default. */
+  showMine: boolean;
 }
-export const DEFAULT_FILTER: FeedFilter = { sort: "newest", source: null, unreadOnly: false, length: "any" };
+export const DEFAULT_FILTER: FeedFilter = { sort: "newest", source: null, unreadOnly: false, length: "any", showMine: true };
 
 /** The feed's choices as kept in the settings: anything that is not one of the known values is the start value (an old or hand-edited file never breaks the feed). */
 export function readFilter(raw: unknown): FeedFilter {
@@ -77,11 +79,12 @@ export function readFilter(raw: unknown): FeedFilter {
     source: typeof o.source === "string" && o.source !== "" ? o.source : null,
     unreadOnly: o.unreadOnly === true,
     length: lengths.find((x) => x === o.length) ?? DEFAULT_FILTER.length,
+    showMine: o.showMine !== false,
   };
 }
 
 /** How many of the feed's choices differ from the start (shown on the button that opens them). */
-export const activeFilters = (f: FeedFilter): number => (f.sort !== "newest" ? 1 : 0) + (f.source !== null ? 1 : 0) + (f.unreadOnly ? 1 : 0) + (f.length !== "any" ? 1 : 0);
+export const activeFilters = (f: FeedFilter): number => (f.sort !== "newest" ? 1 : 0) + (f.source !== null ? 1 : 0) + (f.unreadOnly ? 1 : 0) + (!f.showMine ? 1 : 0) + (f.length !== "any" ? 1 : 0);
 
 const inLength = (minutes: number, length: FeedLength): boolean => length === "any" || (length === "short" ? minutes < 2 : length === "medium" ? minutes >= 2 && minutes <= 5 : minutes > 5);
 
@@ -90,7 +93,7 @@ export const postKey = (p: ReadingPost): string => `${p.subscriptionId}/${p.remo
 
 /** `only`: when given, just the posts whose key is in it (the posts of one hopper, increment 8); null/undefined: no such limit. */
 export function arrange(posts: ReadingPost[], f: FeedFilter, only: ReadonlySet<string> | null = null): ReadingPost[] {
-  const kept = posts.filter((p) => (only === null || only.has(postKey(p))) && (f.source === null || p.subscriptionId === f.source) && (!f.unreadOnly || isUnread(p)) && inLength(readingMinutes(p), f.length));
+  const kept = posts.filter((p) => (only === null || only.has(postKey(p))) && (f.showMine || p.own !== true) && (f.source === null || p.subscriptionId === f.source) && (!f.unreadOnly || isUnread(p)) && inLength(readingMinutes(p), f.length));
   const byTime = f.sort === "newest" ? -1 : 1;
   return kept
     .map((p, i) => ({ p, i, t: Date.parse(dateOf(p)), m: readingMinutes(p) }))
@@ -134,6 +137,7 @@ export const pullProgress = (dy: number): number => (dy <= 0 ? 0 : Math.min(1, d
 export function sourcesOf(posts: ReadingPost[]): Array<{ id: string; title: string; count: number }> {
   const by = new Map<string, { id: string; title: string; count: number }>();
   for (const p of posts) {
+    if (p.own) continue; // the owner's own posts are not a blyg read
     const s = by.get(p.subscriptionId) ?? { id: p.subscriptionId, title: p.subscriptionTitle || p.origin || p.subscriptionId, count: 0 };
     s.count++;
     by.set(p.subscriptionId, s);
