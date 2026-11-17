@@ -180,7 +180,7 @@ export class BlygPanelView extends ItemView {
     if (!w.canReply && !w.canImport) return;
     const row = root.createDiv({ cls: "blyg-pane-buttons blyg-pane-top" });
     if (w.canReply) this.button(row, "Open reader", true, () => this.host.openReader());
-    if (w.canImport) this.button(row, "Import from Studio…", true, () => this.host.importFromStudio());
+    if (w.canImport) this.button(row, "Sync with Studio…", true, () => this.host.importFromStudio());
   }
 
   /** Start writing: always in sight. A new fragment or thread needs only a Blyg folder; replying needs a Studio. */

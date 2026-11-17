@@ -1145,7 +1145,7 @@ export class BlygReaderView extends ItemView {
       const text = row.createDiv({ cls: "blyg-reader-excerpt" });
       const own = row.createDiv({ cls: "blyg-reader-meta blyg-reader-ownitem" });
       const actions = row.createDiv({ cls: "blyg-reader-bar blyg-reader-mention-actions" });
-      this.button(actions, "Dismiss", () => this.dismissMention(m), { cls: "blyg-reader-quiet blyg-reader-dismiss", title: "Hide this mention. It is hidden in your Studio too." });
+      this.button(actions, "Dismiss in Studio", () => this.dismissMention(m), { cls: "blyg-reader-quiet blyg-reader-dismiss", title: "Hide this mention. It is hidden in your Studio too." });
       const fill = (): void => {
         const info = this.mentionInfo.get(m.id);
         text.setText(info?.post ? excerptOf(info.post.contentHtml, 220) || "(no text)" : info?.done ? "Its text could not be shown here." : "…");

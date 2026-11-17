@@ -379,7 +379,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
   /** The entries of the menu: two plainly named ribbon entries (the mobile menu lists them). */
   async function ribbon() {
     const labels = await page.evaluate(() => [...document.querySelectorAll(".side-dock-ribbon-action")].map((e) => e.getAttribute("aria-label")));
-    check(labels.includes("Open blyg reader") && labels.includes("Open blyg publisher") && !labels.includes("Open panel"), `the ribbon (the mobile menu) has "Open blyg reader" and "Open blyg publisher" (${labels.filter((l) => /Open/.test(l ?? "")).join(", ")})`);
+    check(labels.includes("Open Blyg reader") && labels.includes("Open Blyg panel") && !labels.includes("Open panel"), `the ribbon (the mobile menu) has "Open Blyg reader" and "Open Blyg panel" (${labels.filter((l) => /Open/.test(l ?? "")).join(", ")})`);
   }
 
   /** The bypasses found in review (2026-11-13): each fetched without a tap under the old deny-list. Now each is refused or dropped, and nothing is requested. */

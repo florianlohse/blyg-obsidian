@@ -56,7 +56,7 @@ describe("settings → publish settings", () => {
     expect(preflight(githubUser)).toMatch(/Owner: Required · Repository: Required\. Open Settings/);
     const s = userSettings();
     s.blyg.fragmentCharCap = 5000;
-    expect(preflight(s)).toMatch(/Fragment character cap/);
+    expect(preflight(s)).toMatch(/Fragment character limit/);
     const warnOnly = userSettings();
     warnOnly.blyg.itemsDir = "content/items"; // only a warning
     expect(preflight(warnOnly)).toBeNull();

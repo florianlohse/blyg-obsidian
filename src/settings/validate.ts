@@ -145,13 +145,13 @@ const FIELD_LABELS: Record<string, string> = {
   "blyg.origin": "Blyg address",
   "blyg.previewOrigin": "Preview blyg address",
   "blyg.itemsDir": "Items folder",
-  "blyg.fragmentCharCap": "Fragment character cap",
+  "blyg.fragmentCharCap": "Fragment character limit",
   "studio.baseUrl": "Studio address",
-  "studio.mount": "Studio mount",
+  "studio.mount": "Studio mount (optional)",
   "studio.tokenSecretName": "Studio token",
   "templates.fragment": "Fragment template",
   "templates.thread": "Thread template",
-  "webQuote.format": "Web quote format",
+  "webQuote.format": "Web quote Markdown",
   routes: "Routes",
 };
 

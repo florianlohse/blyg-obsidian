@@ -147,7 +147,7 @@ describe("settings tab definitions", () => {
     const find = (name: string): Def | undefined =>
       (tab.getSettingDefinitions() as Def[]).flatMap((d) => d.items ?? []).find((i) => i.name === name);
 
-    (find("Add route")?.action as () => void)();
+    (find("Add publish folder")?.action as () => void)();
     expect(settings.routes).toHaveLength(3);
     expect(update).toHaveBeenCalledTimes(1);
 
@@ -222,7 +222,7 @@ describe("settings tab for someone with only a Studio (M1 A2.4)", () => {
   it("a new route is a Studio route", () => {
     const { tab, plugin } = makeTab(studioOnly());
     const defs = tab.getSettingDefinitions() as unknown as Def[];
-    const add = defs.flatMap((d) => d.items ?? []).find((d) => d.name === "Add route");
+    const add = defs.flatMap((d) => d.items ?? []).find((d) => d.name === "Add publish folder");
     (add?.action as () => void)();
     expect(plugin.settings.routes.at(-1)?.mode).toBe("studio");
   });
