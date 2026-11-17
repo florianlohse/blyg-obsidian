@@ -1,6 +1,6 @@
 // S15, the reader pane: a feed of the posts of the blygs the owner reads, a mentions list, one post at a time, and the hand-offs a reader needs (reply in
 // Obsidian, open in the browser, mark read). Drawing only; what it asks of the plugin is `ReaderHost`. Foreign markup goes through defang.ts and
-// `sanitizeHTMLToDom` only. A post is always shown as text; "Browser" opens its page outside Obsidian.
+// `sanitizeHTMLToDom` only. A post is always shown as text; the blyg's name above it opens the post's page outside Obsidian.
 //
 // Layout: a header that never scrolls away (tabs and controls, or the post's buttons and its blyg, author and read state, then one status line) above a
 // body that scrolls by itself. Read state changes at once, in place, and is put back if the Studio refuses.
@@ -906,7 +906,7 @@ export class BlygReaderView extends ItemView {
     };
     chip("Unread only", this.filter.unreadOnly, "Show only posts you have not read", (v) => { this.filter.unreadOnly = v; });
     chip("Replies to my posts", this.filter.repliesToMe, "Show only replies to your own posts", (v) => { this.filter.repliesToMe = v; });
-    if (activeFilters({ ...this.filter, sort: "newest" }) > 0) this.button(chips, "Clear", () => this.clearFilters(), { cls: "blyg-reader-chip-clear", title: "Lift every choice again (the order stays)" });
+    if (activeFilters({ ...this.filter, sort: "newest" }) > 0) this.button(chips, "Clear filter", () => this.clearFilters(), { cls: "blyg-reader-chip-clear", title: "Lift every choice again (the order stays)" });
   }
 
   private drawPostHeader(h: HTMLElement, p: ReadingPost): void {
@@ -919,18 +919,20 @@ export class BlygReaderView extends ItemView {
     const main = h.createDiv({ cls: "blyg-reader-bar blyg-reader-bar-main" });
     const toPost = this.trail.length > 0;
     this.button(main, toPost ? "Back" : "Reader", () => this.closePost(), { cls: "blyg-reader-back", title: toPost ? "Back to the post you came from" : "Back to the reader" });
-    // Row 2: the small print, one line: the blyg (its name is the only link), when, how long, whether it is read, and the replies chip when something answers it.
+    // Row 2: the small print, one line: the blyg (its name is the only link), how long it takes to read (bold, first), when, and the replies chip when something answers it. Read state is the Mark read button's.
     const meta = h.createDiv({ cls: "blyg-reader-meta blyg-reader-postmeta" });
     const blygUrl = p.origin ?? (web ? new URL(web).origin : null);
     const name = meta.createSpan({ cls: "blyg-reader-postblyg" });
-    if (p.subscriptionTitle || blygUrl) this.link(name, p.subscriptionTitle || new URL(blygUrl ?? "").host, blygUrl);
+    // The name opens the post's own page (what the Browser button did); a post with no page of its own opens its blyg.
+    if (p.subscriptionTitle || blygUrl) this.link(name, p.subscriptionTitle || new URL(blygUrl ?? "").host, web ?? blygUrl);
     meta.createSpan({ cls: "blyg-reader-postsep", text: "·" });
     const rest = meta.createSpan({ cls: "blyg-reader-postrest" });
     const bits: Array<() => void> = [];
+    if (!p.withdrawn) bits.push(() => rest.createEl("strong", { cls: "blyg-reader-readtime", text: readingTimeLabel(p) }));
     const when = relativeTime(p.created ?? p.observedAt, Date.now());
     if (when) bits.push(() => rest.createSpan({ text: when }));
-    if (!p.withdrawn) bits.push(() => rest.createSpan({ text: readingTimeLabel(p) }));
-    if (p.own !== true) bits.push(() => rest.createSpan({ cls: unread ? "blyg-reader-unreadmark" : "blyg-reader-readmark", text: p.withdrawn ? "withdrawn" : unread ? (p.readVersion !== null ? "updated since you read it" : "unread") : "✓ read" }));
+    // Only what the button cannot say: the post changed since you read it, or it was withdrawn.
+    if (p.own !== true && (p.withdrawn || (unread && p.readVersion !== null))) bits.push(() => rest.createSpan({ cls: "blyg-reader-unreadmark", text: p.withdrawn ? "withdrawn" : "updated since you read it" }));
     const chip = responseChip(this.respFor(p));
     if (chip) {
       bits.push(() => {
@@ -943,10 +945,9 @@ export class BlygReaderView extends ItemView {
       });
     }
     this.joined(rest, bits);
-    // The actions of this post are one centred bar of three: Browser leaves the app, Mark read (or Open note), and Reply, the main one.
+    // The actions of this post are one centred bar of two buttons of the same width: Mark read (or Open note) and Reply, the main one.
     const row = h.createDiv({ cls: "blyg-reader-bar blyg-reader-bar-actions" });
     const tray = row.createDiv({ cls: "blyg-reader-btngroup" });
-    this.button(tray, "Browser", () => (web ? this.host.openWeb(web) : undefined), { disabled: web === null, cls: "blyg-reader-quiet", title: "Open the whole page in the browser" });
     if (p.own === true) {
       // Your own post: no read mark; the note it came from is one tap away.
       this.button(tray, "Open note", async () => {
