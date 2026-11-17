@@ -1,7 +1,7 @@
 // S15: how the reader keeps its list current without reading more than it must (ui/readerSync.ts).
 import { describe, expect, it } from "vitest";
 import type { ReadingPost } from "../src/studio/reading";
-import { backoffDelay, changedCount, chooseWalk, FULL_GAP_MS, knownOf, mergeFresh, reachedKnown, SAFETY_MS, signature } from "../src/ui/readerSync";
+import { backoffDelay, changedCount, chooseWalk, FULL_GAP_MS, keepOwnPosts, knownOf, mergeFresh, reachedKnown, SAFETY_MS, signature } from "../src/ui/readerSync";
 
 const post = (id: string, over: Partial<ReadingPost> = {}): ReadingPost => ({ subscriptionId: "s", subscriptionTitle: "S", origin: null, remoteId: id, kind: "fragment", withdrawn: false, version: 1, readVersion: null, observedAt: "2026-11-10T00:00:00Z", created: null, isReply: false, contentHtml: "<p>x</p>", contentMd: "", authorName: null, authorUrl: null, sourceUrl: null, ...over });
 
@@ -65,5 +65,20 @@ describe("backoffDelay", () => {
   it("is 30 s, doubling, at most 30 minutes", () => {
     expect([1, 2, 3, 4, 5, 6, 7, 8, 9].map(backoffDelay)).toEqual([30_000, 60_000, 120_000, 240_000, 480_000, 960_000, 1_800_000, 1_800_000, 1_800_000]);
     expect(backoffDelay(0)).toBe(30_000);
+  });
+});
+
+describe("keepOwnPosts (a quick read must not drop the owner's own posts)", () => {
+  const mine = post("m1", { own: true, subscriptionId: "" });
+  it("adds the held own posts to a fresh list that has none", () => {
+    expect(keepOwnPosts([post("a"), mine], [post("b")]).map((p) => p.remoteId)).toEqual(["b", "m1"]);
+  });
+  it("leaves a fresh list that brings its own posts as it is", () => {
+    const fresh = [post("b"), { ...mine, remoteId: "m2" }];
+    expect(keepOwnPosts([mine], fresh)).toBe(fresh);
+  });
+  it("changes nothing when none are held", () => {
+    const fresh = [post("b")];
+    expect(keepOwnPosts([post("a")], fresh)).toBe(fresh);
   });
 });
