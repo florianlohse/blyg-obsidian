@@ -209,13 +209,14 @@ describe("settings tab for someone with only a Studio (M1 A2.4)", () => {
 
   const toggleOf = (tab: ReturnType<typeof makeTab>["tab"]) => {
     const defs = tab.getSettingDefinitions() as unknown as Def[];
+    const web = defs.find((d) => d.heading === "Website (GitHub)");
     const adv = defs.find((d) => d.heading === "Advanced");
-    const row = adv?.items?.find((d) => d.name === "Also publish to a GitHub-hosted site");
+    const row = web?.items?.find((d) => d.name === "Publish to a GitHub-hosted site");
     let value: boolean | undefined;
     let onChange: ((on: boolean) => void) | undefined;
     const t = { setValue: (v: boolean) => ((value = v), t), onChange: (f: (on: boolean) => void) => ((onChange = f), t) };
     (row?.render as ((setting: unknown) => void) | undefined)?.({ addToggle: (f: (x: typeof t) => void) => f(t) });
-    return { defs, adv, value, flip: (on: boolean) => onChange?.(on) };
+    return { defs, web, adv, value, flip: (on: boolean) => onChange?.(on) };
   };
   const keysOf = (defs: Def[]): (string | undefined)[] => controls(defs).map((d) => d.control?.key);
 
@@ -231,15 +232,21 @@ describe("settings tab for someone with only a Studio (M1 A2.4)", () => {
     const { tab } = makeTab(studioOnly());
     const first = toggleOf(tab);
     expect(first.value).toBe(false);
-    expect(keysOf(first.adv?.items ?? [])).not.toContain("github.owner");
+    expect(keysOf(first.web?.items ?? [])).not.toContain("github.owner");
+    expect(first.adv).toBeUndefined();
     first.flip(true);
     const on = toggleOf(tab);
     expect(on.value).toBe(true);
-    // the GitHub fields now sit inside the Advanced box, right after the switch, and nowhere else
-    expect(on.adv?.items?.[0]?.name).toBe("Also publish to a GitHub-hosted site");
-    expect(keysOf(on.adv?.items ?? [])).toEqual(expect.arrayContaining(["github.owner", "github.repo", "github.watchDeploy", "blyg.origin", "blyg.itemsDir"]));
+    // what plain routes need sits in the "Website (GitHub)" box, right after the switch (the token row is a custom render, so it is found by name);
+    // the legacy Blyg-over-GitHub fields sit in "Advanced", and nowhere else
+    expect(on.web?.items?.[0]?.name).toBe("Publish to a GitHub-hosted site");
+    expect(keysOf(on.web?.items ?? [])).toEqual(expect.arrayContaining(["github.owner", "github.repo", "github.branch", "github.watchDeploy"]));
+    expect(on.web?.items?.map((d) => d.name)).toContain("GitHub token");
+    expect(keysOf(on.web?.items ?? [])).not.toContain("blyg.origin");
+    expect(keysOf(on.adv?.items ?? [])).toEqual(expect.arrayContaining(["github.previewBranch", "github.useBranch", "blyg.origin", "blyg.previewOrigin", "blyg.itemsDir"]));
+    expect(keysOf(on.adv?.items ?? [])).not.toContain("github.owner");
     expect(headings(on.defs)).not.toContain("GitHub");
-    expect(keysOf(on.defs.filter((d) => d.heading !== "Advanced"))).not.toContain("github.owner");
+    expect(keysOf(on.defs.filter((d) => d.heading !== "Advanced" && d.heading !== "Website (GitHub)"))).not.toContain("github.owner");
     const kind = controls(on.defs).find((d) => d.control?.key === "routes.0.mode");
     expect(typeof kind?.visible === "function" ? kind.visible() : kind?.visible).not.toBe(false);
     on.flip(false);
@@ -259,7 +266,7 @@ describe("settings tab for someone with only a Studio (M1 A2.4)", () => {
     const { tab, plugin } = makeTab(s);
     const start = toggleOf(tab);
     expect(start.value).toBe(true);
-    expect(keysOf(start.adv?.items ?? [])).toEqual(expect.arrayContaining(["github.owner", "github.repo", "github.branch", "github.previewBranch", "github.useBranch", "github.watchDeploy", "blyg.origin", "blyg.previewOrigin", "blyg.itemsDir"]));
+    expect([...keysOf(start.web?.items ?? []), ...keysOf(start.adv?.items ?? [])]).toEqual(expect.arrayContaining(["github.owner", "github.repo", "github.branch", "github.previewBranch", "github.useBranch", "github.watchDeploy", "blyg.origin", "blyg.previewOrigin", "blyg.itemsDir"]));
     expect(controls(start.defs).map((d) => d.control?.key)).toContain("routes.0.mode");
     start.flip(false);
     expect(keysOf(toggleOf(tab).defs)).not.toContain("github.owner");
