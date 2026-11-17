@@ -7,7 +7,7 @@ import { readWireStub, stubForWire, type StubTarget } from "./stub";
 import type { StudioHttp, StudioResponse } from "./http";
 import type { StudioCapabilities, StudioCommandDone, StudioFailure, StudioHit, StudioImported, StudioHopper, StudioItem, StudioItemKind, StudioListedItem, StudioManifest, StudioMediaDone, StudioPeek, StudioPreview, StudioProblem, StudioResolvedQuote, StudioResult, StudioSubscription } from "./types";
 import { contractVerdict, incompatibleMessage, type ContractVerdict } from "./version";
-import { readInboundMention, readReadingPost, type InboundMention, type ReadingPost } from "./reading";
+import { readInboundMention, readOwnReadingEntry, readReadingPost, type InboundMention, type ReadingPost } from "./reading";
 
 /** What the gate remembers about a Studio's contract (per plugin session, so a publish does not ask every time); "Check connection" asks again. */
 export interface ContractCache {
@@ -97,6 +97,8 @@ export interface StudioClient {
   pollSubscriptions(): Promise<StudioResult<{ polling: number }>>;
   /** S15-H: ask the Studio to fetch one blyg it reads now (`POST /subscriptions/{id}/resync`, needs `owner:manage`); `changed` is how many items that changed. */
   resyncSubscription(id: string): Promise<StudioResult<{ changed: number }>>;
+  /** Increment 8b: the owner's own posts among the newest entries of the Studio's merged reading list (`GET /reading`, `owner:read`), at most `maxPages` pages of 50. */
+  listOwnReading(maxPages?: number): Promise<StudioResult<{ posts: ReadingPost[] }>>;
   /** Increment 8: the keys (`subscriptionId/remoteId`) of the imported posts held in one hopper (`GET /reading?hopper=`, `owner:read`), at most 8 pages of 50; `complete` is false when there were more. */
   readingKeysInHopper(hopperId: string): Promise<StudioResult<{ keys: string[]; complete: boolean }>>;
   /** S15: the Studio's change counters (`GET /changes`, `owner:read`): cheap, to see whether the reading list moved without walking it. */
@@ -404,6 +406,12 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
       return { kind: "ok", value: { polling: res.json.polling } } as const;
     },
 
+    listOwnReading: async (maxPages = 2) => {
+      const walked = await walk("/reading", {}, 50, maxPages, readOwnReadingEntry);
+      if (walked.kind !== "ok") return walked;
+      return { kind: "ok", value: { posts: walked.value.rows } } as const;
+    },
+
     readingKeysInHopper: async (hopperId: string) => {
       const walked = await walk("/reading", { hopper: hopperId }, 50, 8, (row) => {
         if (!isRecord(row) || !isRecord(row.imported)) return null; // an entry of the owner's own (or an unreadable one) is not an imported post
@@ -525,6 +533,7 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
     pollSubscriptions: guard(inner.pollSubscriptions),
     resyncSubscription: guard(inner.resyncSubscription),
     readingKeysInHopper: guard(inner.readingKeysInHopper),
+    listOwnReading: guard(inner.listOwnReading),
     changes: guard(inner.changes),
     classifyLinks: guard(inner.classifyLinks),
     peekItem: guard(inner.peekItem),
