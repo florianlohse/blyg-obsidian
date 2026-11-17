@@ -40,7 +40,7 @@ await runScenario({ data }, async (s) => {
     check((await s.quoteBoxText()).includes(`Quotable source ${stamp}`), `${layout}: ... showing the item's text`);
     if (process.env.E2E_DEBUG) console.error("EDITOR BEFORE", JSON.stringify(await s.editorText(path)));
     await s.clearNotices();
-    await s.clickModal("Quote the whole item");
+    await s.clickModal("Quote whole post");
     check(Boolean(await s.waitNotice(/quote/i)), `${layout}: a notice says the quote was inserted`);
     if (process.env.E2E_DEBUG) console.error("EDITOR AFTER WHOLE", JSON.stringify(await s.editorText(path)));
     const whole = await s.becomes(async () => (await s.editorText(path)).includes(`![[${ownId}`), 10000, "the embed");
@@ -57,7 +57,7 @@ await runScenario({ data }, async (s) => {
     check(await s.selectInQuoteBox("A second sentence to quote."), `${layout}: a passage is selected in the text`);
     check(Boolean(await s.becomes(async () => /\d+ characters selected/.test(await s.modalText()), 5000, "the status")), `${layout}: the window says how many characters are selected`);
     await s.clearNotices();
-    await s.clickModal("Quote the selection");
+    await s.clickModal(/^Quote selection/);
     const passage = await s.becomes(async () => (await s.editorText(path)).includes("> A second sentence to quote."), 10000, "the passage");
     check(Boolean(passage), `${layout}: the note holds the passage as a > line`);
 
@@ -87,7 +87,7 @@ await runScenario({ data }, async (s) => {
       await s.pickItem("Blog B");
       check(await s.waitModal("Quote from this item"), `${layout}: the quote window opens for it`);
       check(await s.selectInQuoteBox(sentence), `${layout}: a passage is selected`);
-      await s.clickModal("Quote the selection");
+      await s.clickModal(/^Quote selection/);
       check(Boolean(await s.becomes(async () => (await s.editorText(path)).includes(`> ${sentence}`), 10000, "the passage")), `${layout}: the note holds the passage of the other blyg's item`);
       await s.writeNote(path, await s.editorText(path));
       await s.refreshPanel(path);

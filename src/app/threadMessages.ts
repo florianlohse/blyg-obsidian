@@ -45,5 +45,5 @@ export const TM = {
   extractTooLong: (n: number, cap: number) => `The moved text is ${n} characters, longer than a fragment may be (${cap}). It was moved anyway: make it a thread instead (open it and tap “Make thread” in the panel).`,
   extractDone: (name: string, chars: number) => `Moved ${chars} characters into “${name}”; this note now embeds it. Undo with the editor's undo if that was a mistake.`,
   extractPublishFirst: "The new item must be published before this thread can be.",
-  selectInBox: "Select some text in the box first, then tap “Quote the selection”.",
+  selectInBox: "Select some text in the box first, then tap “Quote selection”.",
 } as const;

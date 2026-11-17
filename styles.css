@@ -554,7 +554,11 @@
 @media (prefers-reduced-motion: reduce) { .blyg-reader-header.is-busy .blyg-reader-refresh .blyg-reader-icon svg { animation: none; } }
 .blyg-reader-version { flex: none; color: var(--text-faint); font-size: var(--font-ui-smaller); white-space: nowrap; margin-left: var(--size-4-2); }
 /* this post's actions share a tray; "Browser" is quieter and sits apart */
-.blyg-reader-btngroup { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--size-4-1); padding: var(--size-2-1); border-radius: var(--radius-m); background: var(--background-secondary); }
+.blyg-reader-btngroup { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0; padding: 0; border-radius: var(--radius-m); border: 1px solid var(--background-modifier-border); background: transparent; overflow: hidden; }
+/* The tray is one segmented control: its buttons are flat and separated by hairlines, so they read as belonging together and below the Back / Next row. */
+.blyg-reader-btngroup .blyg-reader-btn { border-radius: 0; background: transparent; box-shadow: none; border: 0; border-right: 1px solid var(--background-modifier-border); }
+.blyg-reader-btngroup .blyg-reader-btn:last-child { border-right: 0; }
+.blyg-reader-btngroup .blyg-reader-btn.is-active { background: var(--interactive-accent); color: var(--text-on-accent); }
 .blyg-reader-quiet { background: transparent; box-shadow: none; color: var(--text-muted); }
 /* Reply is the post's main action: it stands apart at the far end of the row, accented; its label grows to "Reply to selection (N chars)" while a passage is selected. */
 .blyg-reader .blyg-reader-header .blyg-reader-bar .blyg-reader-replybtn { background: var(--interactive-accent); color: var(--text-on-accent); white-space: nowrap; flex: 0 0 auto; margin-left: auto; }
@@ -640,16 +644,26 @@
 .blyg-reader-surface .blyg-reader-body blockquote { margin: 1.3em 0; padding: 0.1em 0 0.1em 1em; border-left: 3px solid var(--blyg-rule); color: var(--blyg-quote-ink); }
 .blyg-reader-surface .blyg-reader-body blockquote p { margin: 0.5em 0; }
 /* A quote of another blyg's item (a transclusion): the editor's pencil colour for the bar, a faint tint, and a small label saying what it is; a passage says so. */
-.blyg-reader-surface .blyg-reader-body blockquote.blyg-transclusion { border-left: 3px solid var(--text-accent); background: color-mix(in srgb, var(--text-accent) 7%, transparent); padding: 0.6em 1em 0.4em; border-radius: 0 var(--radius-m) var(--radius-m) 0; color: var(--blyg-quote-ink); }
+.blyg-reader-surface .blyg-reader-body blockquote.blyg-transclusion { border-left: 3px solid var(--text-accent); background: none; padding: 0.4em 0 0.3em 1em; border-radius: 0; color: var(--blyg-quote-ink); }
+/* Nested quotes (increment 7): no boxes at all; the bar on the left carries the depth, the accent colour getting lighter with every level. */
+.blyg-reader-surface .blyg-reader-body blockquote.blyg-transclusion blockquote { border-left-color: color-mix(in srgb, var(--text-accent) 65%, transparent); }
+.blyg-reader-surface .blyg-reader-body blockquote.blyg-transclusion blockquote blockquote { border-left-color: color-mix(in srgb, var(--text-accent) 42%, transparent); }
+.blyg-reader-surface .blyg-reader-body blockquote.blyg-transclusion blockquote blockquote blockquote { border-left-color: color-mix(in srgb, var(--text-accent) 26%, transparent); }
 .blyg-reader-surface .blyg-reader-body blockquote.blyg-transclusion::before { content: "Quote from a blyg"; display: block; margin-bottom: 0.3em; font-size: 0.72em; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-accent); }
 .blyg-reader-surface .blyg-reader-body blockquote.blyg-transclusion.blyg-partial::before { content: "Passage from a blyg"; }
 .blyg-reader-surface .blyg-reader-body hr { border: 0; border-top: 1px solid var(--blyg-rule); margin: 1.6em 0; }
 .blyg-reader-surface .blyg-reader-body :is(pre, code) { background: color-mix(in srgb, var(--blyg-ink) 7%, transparent); border-radius: var(--radius-s); }
+/* Code and tables never break the frame: a code box scrolls sideways, a long word in inline code may break, a wide table scrolls. */
+.blyg-reader-column { min-width: 0; }
+.blyg-reader-surface .blyg-reader-body pre { max-width: 100%; overflow-x: auto; padding: 0.6em 0.8em; white-space: pre; tab-size: 4; -webkit-overflow-scrolling: touch; }
+.blyg-reader-surface .blyg-reader-body pre code { background: none; white-space: pre; overflow-wrap: normal; }
+.blyg-reader-surface .blyg-reader-body :not(pre) > code { overflow-wrap: anywhere; }
+.blyg-reader-surface .blyg-reader-body table { display: block; max-width: 100%; overflow-x: auto; }
 
 /* Header: the way back and on to the next post are large and first. */
 /* a mention's own button row */
 .blyg-reader-mention-actions { margin-top: var(--size-2-2); justify-content: flex-end; }
-.blyg-reader-bar-main { margin-bottom: var(--size-4-1); }
+.blyg-reader-bar-main { margin-bottom: var(--size-4-1); padding-bottom: var(--size-4-2); border-bottom: 1px solid var(--background-modifier-border); }
 .blyg-reader-bar-main { --blyg-btn-h: 44px; }
 .blyg-reader-bar-main .blyg-reader-btn { font-size: var(--font-ui-medium); }
 .blyg-reader-back::before { content: "‹\00a0"; font-size: 1.3em; line-height: 1; }
@@ -690,3 +704,8 @@
 .blyg-reply-preview button { font-size: var(--font-ui-smaller); box-shadow: none; height: auto; min-height: 0; padding: var(--size-2-1) var(--size-4-3); }
 .blyg-reply-preview-more { margin-top: var(--size-2-2); }
 .blyg-reply-preview-body > :last-child { margin-bottom: 0; }
+
+/* Settings: the live preview under "Font for posts" and "Contrast of the reading surface". */
+.blyg-font-preview { margin-top: var(--size-4-2); border-radius: var(--radius-m); overflow: hidden; }
+.blyg-font-preview .blyg-reader-surface { background: var(--blyg-surface); padding: var(--size-4-3) var(--size-4-4); }
+.blyg-font-preview .blyg-reader-body { color: var(--blyg-ink); font-size: var(--font-text-size); line-height: 1.6; }
