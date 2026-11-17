@@ -85,8 +85,12 @@ export const activeFilters = (f: FeedFilter): number => (f.sort !== "newest" ? 1
 
 const inLength = (minutes: number, length: FeedLength): boolean => length === "any" || (length === "short" ? minutes < 2 : length === "medium" ? minutes >= 2 && minutes <= 5 : minutes > 5);
 
-export function arrange(posts: ReadingPost[], f: FeedFilter): ReadingPost[] {
-  const kept = posts.filter((p) => (f.source === null || p.subscriptionId === f.source) && (!f.unreadOnly || isUnread(p)) && inLength(readingMinutes(p), f.length));
+/** The key a post is known by in sets of posts (a hopper's members): the blyg's subscription and the item's id. */
+export const postKey = (p: ReadingPost): string => `${p.subscriptionId}/${p.remoteId}`;
+
+/** `only`: when given, just the posts whose key is in it (the posts of one hopper, increment 8); null/undefined: no such limit. */
+export function arrange(posts: ReadingPost[], f: FeedFilter, only: ReadonlySet<string> | null = null): ReadingPost[] {
+  const kept = posts.filter((p) => (only === null || only.has(postKey(p))) && (f.source === null || p.subscriptionId === f.source) && (!f.unreadOnly || isUnread(p)) && inLength(readingMinutes(p), f.length));
   const byTime = f.sort === "newest" ? -1 : 1;
   return kept
     .map((p, i) => ({ p, i, t: Date.parse(dateOf(p)), m: readingMinutes(p) }))
@@ -105,8 +109,8 @@ export function arrange(posts: ReadingPost[], f: FeedFilter): ReadingPost[] {
  * The post to open after `current`: the next unread one in the order the feed shows now (its sort, blyg and length choices; "unread only" does not
  * matter, because the post just read is no longer unread). Not wrapping round: at the end there is none, and the reader goes back to the feed.
  */
-export function nextAfter(posts: ReadingPost[], f: FeedFilter, current: ReadingPost): ReadingPost | null {
-  return nextInOrder(arrange(posts, { ...f, unreadOnly: false }), current);
+export function nextAfter(posts: ReadingPost[], f: FeedFilter, current: ReadingPost, only: ReadonlySet<string> | null = null): ReadingPost | null {
+  return nextInOrder(arrange(posts, { ...f, unreadOnly: false }, only), current);
 }
 
 /** The same, from an order already worked out (the reader keeps it while the list and the order choices stay as they are). */

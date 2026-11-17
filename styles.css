@@ -709,3 +709,7 @@
 .blyg-font-preview { margin-top: var(--size-4-2); border-radius: var(--radius-m); overflow: hidden; }
 .blyg-font-preview .blyg-reader-surface { background: var(--blyg-surface); padding: var(--size-4-3) var(--size-4-4); }
 .blyg-font-preview .blyg-reader-body { color: var(--blyg-ink); font-size: var(--font-text-size); line-height: 1.6; }
+
+/* A post that answers one of your own items (increment 8): an accent edge and a badge saying so. */
+.blyg-reader-card.is-reply-to-you { border-left: 3px solid var(--text-accent); }
+.blyg-reader-badge.is-toyou { background: var(--text-accent); color: var(--text-on-accent); border-color: var(--text-accent); }

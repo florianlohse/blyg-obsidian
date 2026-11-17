@@ -97,6 +97,8 @@ export interface StudioClient {
   pollSubscriptions(): Promise<StudioResult<{ polling: number }>>;
   /** S15-H: ask the Studio to fetch one blyg it reads now (`POST /subscriptions/{id}/resync`, needs `owner:manage`); `changed` is how many items that changed. */
   resyncSubscription(id: string): Promise<StudioResult<{ changed: number }>>;
+  /** Increment 8: the keys (`subscriptionId/remoteId`) of the imported posts held in one hopper (`GET /reading?hopper=`, `owner:read`), at most 8 pages of 50; `complete` is false when there were more. */
+  readingKeysInHopper(hopperId: string): Promise<StudioResult<{ keys: string[]; complete: boolean }>>;
   /** S15: the Studio's change counters (`GET /changes`, `owner:read`): cheap, to see whether the reading list moved without walking it. */
   changes(): Promise<StudioResult<{ epoch: string; domains: Record<string, number> }>>;
 }
@@ -402,6 +404,17 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
       return { kind: "ok", value: { polling: res.json.polling } } as const;
     },
 
+    readingKeysInHopper: async (hopperId: string) => {
+      const walked = await walk("/reading", { hopper: hopperId }, 50, 8, (row) => {
+        if (!isRecord(row) || !isRecord(row.imported)) return null; // an entry of the owner's own (or an unreadable one) is not an imported post
+        const sub = str(row.imported.subscriptionId);
+        const rid = str(row.imported.remoteId);
+        return sub !== null && rid !== null ? `${sub}/${rid}` : null;
+      });
+      if (walked.kind !== "ok") return walked;
+      return { kind: "ok", value: { keys: walked.value.rows, complete: walked.value.complete } } as const;
+    },
+
     resyncSubscription: async (id: string) => {
       const res = await http.send(token, { method: "POST", area: "api", path: `/subscriptions/${encodeURIComponent(id)}/resync`, body: {} });
       if (res.status !== 200) return failure(res);
@@ -511,6 +524,7 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
     hideMention: guard(inner.hideMention),
     pollSubscriptions: guard(inner.pollSubscriptions),
     resyncSubscription: guard(inner.resyncSubscription),
+    readingKeysInHopper: guard(inner.readingKeysInHopper),
     changes: guard(inner.changes),
     classifyLinks: guard(inner.classifyLinks),
     peekItem: guard(inner.peekItem),
