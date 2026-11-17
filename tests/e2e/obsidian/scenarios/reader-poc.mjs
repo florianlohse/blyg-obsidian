@@ -113,7 +113,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
     check(await click("Sort & filter"), `${layout}: "Sort & filter" opens them`);
     await wait(300);
     const options = await page.evaluate(() => [...document.querySelectorAll(".blyg-reader-controls select")].map((x) => [...x.options].map((o) => o.textContent)));
-    check(options.length === 3 && options[0].includes("Newest") && options[0].includes("Longest read") && options[1].some((o) => /^Blog B \(\d+\)$/.test(o ?? "")) && options[2].includes("Under 2 min"), `${layout}: order, blyg and length choices are there, and no font or contrast choice (those live in the settings) (${JSON.stringify(options.map((o) => o.length))} entries)`);
+    check(options.length === 3 && options[0].includes("Newest") && options[0].includes("Longest read") && options[1].some((o) => /^Blog B \(\d+\)$/.test(o ?? "")) && options[2].includes("< 2 min"), `${layout}: order, blyg and length choices are there, and no font or contrast choice (those live in the settings) (${JSON.stringify(options.map((o) => o.length))} entries)`);
     check((await text(".blyg-reader-chip")).some((t) => t.includes("Unread only")), `${layout}: the "Unread only" switch is there`);
     check(/\d+ min read/.test((await text(".blyg-reader-card"))[0] ?? ""), `${layout}: each card says how long it takes to read (${((await text(".blyg-reader-card"))[0] ?? "").match(/\d+ min read/)?.[0]})`);
     check(await click("Sort & filter"), `${layout}: ...and closes them again`);
@@ -132,10 +132,10 @@ await runScenario({ data: fixtureData() }, async (s) => {
     const body = (await text(".blyg-reader-body"))[0] ?? "";
     check(body.length > 0 && (await page.$(".blyg-reader-frame")) === null, `${layout}: tapping a post shows it as text, never in a frame (${body.length} characters)`);
     const buttons = await text(".blyg-reader-header button");
-    check(["Reader", "Reply", "○ Mark read", "Browser"].every((b) => buttons.includes(b)) && !buttons.includes("As text") && !buttons.includes("As web page"), `${layout}: the post's buttons are in the header, with no switch to a web page: ${buttons.join(", ")}`);
+    check(["Reader", "Reply", "○ Mark read"].every((b) => buttons.includes(b)) && !buttons.includes("Browser") && !buttons.includes("As text") && !buttons.includes("As web page"), `${layout}: the post's buttons are in the header, with no switch to a web page: ${buttons.join(", ")}`);
     const links = await page.evaluate(() => [...document.querySelectorAll(".blyg-reader-postmeta a.blyg-reader-link")].map((a) => a.getAttribute("href")));
     check(links.length >= 1 && links[0].startsWith("http://localhost:8788"), `${layout}: the post's blyg is a link to its page (${links.join(", ")})`);
-    check((await text(".blyg-reader-postmeta")).some((t) => /\d+ min read/.test(t) && /unread/.test(t)), `${layout}: the post's header says it is unread and how long it takes to read`);
+    check((await text(".blyg-reader-postmeta")).some((t) => /^.+·\s*\d+ min read/.test(t)) && !(await text(".blyg-reader-postmeta")).some((t) => /unread|✓ read/.test(t)) && await page.evaluate(() => { const r = document.querySelector(".blyg-reader-postmeta .blyg-reader-readtime"); return !!r && Number(getComputedStyle(r).fontWeight) >= 600; }), `${layout}: the post's one line of small print puts the reading time first and in bold, and does not repeat the read state`);
     await shot(`${layout}-2-text`);
     check(await page.evaluate(() => getComputedStyle(document.querySelector(".blyg-reader-body")).userSelect === "text"), `${layout}: the text of a post can be selected`);
 
@@ -193,9 +193,12 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await wait(1500);
     await page.evaluate(() => document.querySelector(".blyg-reader-card")?.click());
     await wait(800);
+    const barWidth = () => page.evaluate(() => Math.round(document.querySelector(".blyg-reader-header .blyg-reader-btngroup")?.getBoundingClientRect().width ?? 0));
+    const widthBefore = await barWidth();
     await page.evaluate(() => { window.__t0 = performance.now(); [...document.querySelectorAll(".blyg-reader-header button")].find((b) => b.textContent?.trim() === "○ Mark read")?.click(); });
     const instant = await page.evaluate(() => ({ label: [...document.querySelectorAll(".blyg-reader-header button")].map((b) => b.textContent?.trim()), meta: document.querySelector(".blyg-reader-postmeta")?.textContent ?? "", ms: performance.now() - window.__t0 }));
-    check(instant.label.includes("✓ Read") && /✓ read/.test(instant.meta) && instant.ms < 100, `read marks: marking read shows at once in the post's header (${Math.round(instant.ms)} ms, "${instant.label.find((l) => /Read/.test(l))}")`);
+    check(instant.label.includes("✓ Read") && instant.ms < 100, `read marks: marking read shows at once in the post's header (${Math.round(instant.ms)} ms, "${instant.label.find((l) => /Read/.test(l))}")`);
+    check(widthBefore > 0 && (await barWidth()) === widthBefore, `read marks: the action bar keeps its width when Mark read turns into Read (${widthBefore} px, then ${await barWidth()} px)`);
     await wait(1500);
     check(await click("Reader"), "read marks: Reader goes back to the feed");
     await wait(300);

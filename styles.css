@@ -759,3 +759,10 @@
 .blyg-reader .blyg-reader-controls .blyg-reader-select.is-set { color: var(--text-on-accent); background: var(--interactive-accent); }
 .blyg-reader .blyg-reader-chips .blyg-reader-chip:not(.is-active) { color: var(--text-muted); background: var(--background-modifier-hover); }
 .blyg-reader-postsep { color: var(--text-faint); flex: none; }
+
+/* Final polish: a closing line and a gap above Obsidian's bottom bar; a bar of equal-width buttons that does not change width when Mark read turns into Read; the reading time in bold. */
+.blyg-reader-bodywrap { border-bottom: 1px solid var(--background-modifier-border); }
+.is-mobile .view-content.blyg-reader { padding-bottom: calc(var(--blyg-bottom-clear, calc(var(--mobile-navbar-height, 0px) + env(safe-area-inset-bottom, 0px))) + var(--size-4-3)); }
+.blyg-reader-bar-actions .blyg-reader-btngroup { display: inline-grid; grid-auto-flow: column; grid-auto-columns: minmax(8.5em, 1fr); }
+.blyg-reader-bar-actions .blyg-reader-btngroup .blyg-reader-btn { white-space: nowrap; }
+.blyg-reader-readtime { color: var(--text-normal); font-weight: var(--font-semibold); }
