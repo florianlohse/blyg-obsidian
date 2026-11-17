@@ -31,6 +31,8 @@ export interface ReadingPost {
   authorUrl: string | null;
   /** The origin's public page for the item, when it declares one (a hand-off target: "open on the web"). */
   sourceUrl: string | null;
+  /** One of the owner's own posts (from the Studio's `/reading`, `source: "own"`), not a post of a blyg read: never unread, no read mark, no Reply from here. */
+  own?: boolean;
 }
 
 export const isUnread = (p: ReadingPost): boolean => !p.withdrawn && (p.readVersion === null || p.readVersion < p.version);
@@ -63,6 +65,37 @@ export function readReadingPost(row: unknown): ReadingPost | null {
     authorName: author,
     authorUrl,
     sourceUrl: str(row.sourceUrl) ?? str(row.page),
+  };
+}
+
+/** An entry of the Studio's merged reading list (`GET /reading`) that is the owner's own post, as a post of the feed; anything else is null. */
+export function readOwnReadingEntry(row: unknown): ReadingPost | null {
+  if (!isRecord(row) || row.source !== "own" || !isRecord(row.own)) return null;
+  const own = row.own;
+  const id = str(own.id);
+  const contentHtml = str(own.contentHtml) ?? str(row.contentHtml);
+  if (!id || contentHtml === null) return null;
+  const kind = own.kind === "thread" ? "thread" : own.kind === "fragment" ? "fragment" : null;
+  if (kind === null) return null;
+  const when = str(row.displayAt) ?? str(own.updated) ?? "";
+  return {
+    subscriptionId: "",
+    subscriptionTitle: "Your blyg",
+    origin: null,
+    remoteId: id,
+    kind,
+    withdrawn: own.withdrawn === true,
+    version: 1,
+    readVersion: 1, // never unread
+    observedAt: when,
+    created: str(own.updated) ?? (when || null),
+    isReply: false,
+    contentHtml,
+    contentMd: "",
+    authorName: null,
+    authorUrl: null,
+    sourceUrl: null,
+    own: true,
   };
 }
 

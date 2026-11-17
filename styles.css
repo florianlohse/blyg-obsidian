@@ -713,3 +713,6 @@
 /* A post that answers one of your own items (increment 8): an accent edge and a badge saying so. */
 .blyg-reader-card.is-reply-to-you { border-left: 3px solid var(--text-accent); }
 .blyg-reader-badge.is-toyou { background: var(--text-accent); color: var(--text-on-accent); border-color: var(--text-accent); }
+
+/* Your own posts in the feed (increment 8b). */
+.blyg-reader-badge.is-you { background: var(--background-modifier-border); color: var(--text-normal); }

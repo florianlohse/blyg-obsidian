@@ -246,7 +246,9 @@ await runScenario({ data: fixtureData() }, async (s) => {
       view.draw();
     });
     await wait(300);
-    check(await click("Sort & filter"), "reading time: the choices open");
+    const opened = await click("Sort & filter");
+    if (!opened) console.error("  (no “Sort & filter” button; the reader has:", JSON.stringify(await page.evaluate(() => [...document.querySelectorAll(".blyg-reader button")].map((b) => b.textContent?.trim()))), ")");
+    check(opened, "reading time: the choices open");
     await wait(300);
     const choose = (label, value) => page.evaluate(([l, v]) => {
       const el = [...document.querySelectorAll(".blyg-reader-controls select")].find((x) => x.getAttribute("aria-label") === l);
