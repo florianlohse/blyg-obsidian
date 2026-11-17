@@ -113,7 +113,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
     check(await click("Sort & filter"), `${layout}: "Sort & filter" opens them`);
     await wait(300);
     const options = await page.evaluate(() => [...document.querySelectorAll(".blyg-reader-controls select")].map((x) => [...x.options].map((o) => o.textContent)));
-    check(options.length === 3 && options[0].includes("Newest first") && options[0].includes("Longest read first") && options[1].some((o) => /^Blog B \(\d+\)$/.test(o ?? "")) && options[2].includes("Under 2 min"), `${layout}: order, blyg and length choices are there, and no font or contrast choice (those live in the settings) (${JSON.stringify(options.map((o) => o.length))} entries)`);
+    check(options.length === 3 && options[0].includes("Newest") && options[0].includes("Longest read") && options[1].some((o) => /^Blog B \(\d+\)$/.test(o ?? "")) && options[2].includes("Under 2 min"), `${layout}: order, blyg and length choices are there, and no font or contrast choice (those live in the settings) (${JSON.stringify(options.map((o) => o.length))} entries)`);
     check((await text(".blyg-reader-chip")).some((t) => t.includes("Unread only")), `${layout}: the "Unread only" switch is there`);
     check(/\d+ min read/.test((await text(".blyg-reader-card"))[0] ?? ""), `${layout}: each card says how long it takes to read (${((await text(".blyg-reader-card"))[0] ?? "").match(/\d+ min read/)?.[0]})`);
     check(await click("Sort & filter"), `${layout}: ...and closes them again`);
@@ -135,7 +135,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
     check(["Reader", "Reply", "○ Mark read", "Browser"].every((b) => buttons.includes(b)) && !buttons.includes("As text") && !buttons.includes("As web page"), `${layout}: the post's buttons are in the header, with no switch to a web page: ${buttons.join(", ")}`);
     const links = await page.evaluate(() => [...document.querySelectorAll(".blyg-reader-postmeta a.blyg-reader-link")].map((a) => a.getAttribute("href")));
     check(links.length >= 1 && links[0].startsWith("http://localhost:8788"), `${layout}: the post's blyg is a link to its page (${links.join(", ")})`);
-    check((await text(".blyg-reader-postmeta")).some((t) => /\d+ min read/.test(t)) && (await text(".blyg-reader-postmeta2")).some((t) => /unread/.test(t)), `${layout}: the post's header says it is unread and how long it takes to read`);
+    check((await text(".blyg-reader-postmeta")).some((t) => /\d+ min read/.test(t) && /unread/.test(t)), `${layout}: the post's header says it is unread and how long it takes to read`);
     await shot(`${layout}-2-text`);
     check(await page.evaluate(() => getComputedStyle(document.querySelector(".blyg-reader-body")).userSelect === "text"), `${layout}: the text of a post can be selected`);
 
@@ -194,7 +194,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await page.evaluate(() => document.querySelector(".blyg-reader-card")?.click());
     await wait(800);
     await page.evaluate(() => { window.__t0 = performance.now(); [...document.querySelectorAll(".blyg-reader-header button")].find((b) => b.textContent?.trim() === "○ Mark read")?.click(); });
-    const instant = await page.evaluate(() => ({ label: [...document.querySelectorAll(".blyg-reader-header button")].map((b) => b.textContent?.trim()), meta: document.querySelector(".blyg-reader-postmeta2")?.textContent ?? "", ms: performance.now() - window.__t0 }));
+    const instant = await page.evaluate(() => ({ label: [...document.querySelectorAll(".blyg-reader-header button")].map((b) => b.textContent?.trim()), meta: document.querySelector(".blyg-reader-postmeta")?.textContent ?? "", ms: performance.now() - window.__t0 }));
     check(instant.label.includes("✓ Read") && /✓ read/.test(instant.meta) && instant.ms < 100, `read marks: marking read shows at once in the post's header (${Math.round(instant.ms)} ms, "${instant.label.find((l) => /Read/.test(l))}")`);
     await wait(1500);
     check(await click("Reader"), "read marks: Reader goes back to the feed");
@@ -451,7 +451,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await closeReader();
   }
 
-  /** "Read & next ›" in the header  through the feed's order to its end, the pull-up at the end of the text view, and the measured clearance for Obsidian's bottom bar. */
+  /** Previous / Next at the foot of an open post (a tap steps, holding Next marks read and steps), and the measured clearance for Obsidian's bottom bar. */
   async function nextPost(layout) {
     await openReader();
     await wait(1000);
@@ -459,35 +459,8 @@ await runScenario({ data: fixtureData() }, async (s) => {
     check((await page.$(".blyg-reader-stepbar")) === null, `${layout}: next: no previous / next bar in the feed`);
     await page.evaluate(() => document.querySelector(".blyg-reader-card")?.click());
     await wait(500);
-    const first = await page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader")[0].view.shown?.remoteId);
     check((await page.$(".blyg-reader-header .blyg-reader-step")) === null && (await page.$(".blyg-reader-nextbtn")) === null, `${layout}: next: previous / next are at the foot of the post, not in the header, and there is no "Read & next" button`);
     check((await page.$(".blyg-reader-postfoot")) === null, `${layout}: next: no bar below the post's text`);
-    // The pull-up: a short post fits the pane, so it is "at the end" already. Touch events as a finger makes them.
-    const touch = (type, y) => page.evaluate(([t, yy]) => {
-      const el = document.querySelector(".blyg-reader-scroll");
-      const point = new Touch({ identifier: 1, target: el, clientX: 100, clientY: yy });
-      el.dispatchEvent(new TouchEvent(t, { bubbles: true, cancelable: true, touches: t === "touchend" ? [] : [point], changedTouches: [point] }));
-    }, [type, y]);
-    const hint = () => page.evaluate(() => { const h = document.querySelector(".blyg-reader-pull"); return h ? { shown: h.classList.contains("is-shown"), ready: h.classList.contains("is-ready"), text: h.textContent } : null; });
-    await touch("touchstart", 600); await touch("touchmove", 580);
-    const slight = await hint();
-    check(slight?.shown && !slight.ready && /Keep pulling to mark read and open next/.test(slight.text ?? ""), `${layout}: pull-up: a short pull shows what it will do (${JSON.stringify(slight)})`);
-    await touch("touchend", 580); await wait(300);
-    check((await page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader")[0].view.shown?.remoteId)) === first, `${layout}: pull-up: letting go early does nothing`);
-    await touch("touchstart", 600); await touch("touchmove", 540);
-    await wait(300);
-    const fading = await page.evaluate(() => parseFloat(getComputedStyle(document.querySelector(".blyg-reader-surface .blyg-reader-column")).opacity));
-    check(fading < 0.9 && fading > 0.3, `${layout}: pull-up: the text fades as you pull (opacity ${fading})`);
-    await touch("touchmove", 500);
-    check((await hint())?.ready === true, `${layout}: pull-up: past the threshold it says "let go"`);
-    await touch("touchend", 500);
-    await wait(400);
-    const moment = await page.evaluate(() => { const d = document.querySelector(".blyg-reader-done"); return d ? { text: d.textContent, shown: d.classList.contains("is-in"), op: parseFloat(getComputedStyle(d).opacity) } : null; });
-    check(moment?.text === "✓ Marked read" && moment.shown && moment.op > 0.5, `${layout}: pull-up: a centred "Marked read" appears before the next post (${JSON.stringify(moment)})`);
-    await wait(1500);
-    check((await page.$(".blyg-reader-done")) === null, `${layout}: pull-up: ...and is gone again`);
-    const moved = await page.evaluate((id) => { const v = window.app.workspace.getLeavesOfType("blyg-reader")[0].view; return { now: v.shown?.remoteId, was: v.data.posts.find((p) => p.remoteId === id)?.readVersion }; }, first);
-    check(moved.now !== first && moved.now !== undefined && moved.was !== null, `${layout}: pull-up: letting go past it marks the post read and opens another`);
     // Previous / Next through the feed (a tap steps, a long press on Next marks the post read and steps).
     const steps = () => page.evaluate(() => { const c = document.querySelector(".blyg-reader-stepcount")?.textContent ?? ""; const m = /^(\d+) of (\d+)$/.exec(c); const nx = document.querySelector(".blyg-reader-step-next"); return { i: m ? Number(m[1]) : 0, n: m ? Number(m[2]) : 0, prevOff: document.querySelector(".blyg-reader-stepbar .blyg-reader-step")?.disabled, nextOff: nx?.disabled, h: nx?.getBoundingClientRect().height ?? 0, inFoot: !!nx && !nx.closest(".blyg-reader-header") }; });
     const shownId = () => page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader")[0].view.shown?.remoteId);
@@ -523,13 +496,6 @@ await runScenario({ data: fixtureData() }, async (s) => {
     const clear = await page.evaluate(() => { const r = document.querySelector(".blyg-reader"); const bar = document.querySelector(".mobile-navbar"); const sc = document.querySelector(".blyg-reader-bodywrap").getBoundingClientRect(); return { pad: getComputedStyle(r).paddingBottom, bottom: sc.bottom, top: bar.getBoundingClientRect().top }; });
     check(parseFloat(clear.pad) > 0 && clear.bottom <= clear.top + 1, `${layout}: bottom bar: the pane ends above it (padding ${clear.pad}, pane bottom ${Math.round(clear.bottom)}, bar top ${Math.round(clear.top)})`);
     await page.evaluate(() => document.querySelector(".mobile-navbar")?.remove());
-    let hops = 0;
-    while (hops < 30 && (await shownId()) !== undefined) {
-      await page.evaluate(() => { const v = window.app.workspace.getLeavesOfType("blyg-reader")[0].view; return v.goNext(v.shown); });
-      await wait(1700);
-      hops++;
-    }
-    check(hops >= 1 && (await page.$(".blyg-reader-card")) !== null && (await text(".blyg-reader-status")).some((t) => t.includes("No more unread")), `${layout}: next: the last post goes back to the feed and says so (${hops} taps)`);
     check(await resetReadMarks(), `${layout}: next: housekeeping afterwards`);
     await closeReader();
   }
