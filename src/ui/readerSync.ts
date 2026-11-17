@@ -53,6 +53,16 @@ export function mergeFresh(held: ReadingPost[], fresh: ReadingPost[], keep: numb
   return [...byKey.values()].sort((a, b) => time(b) - time(a)).slice(0, keep);
 }
 
+/**
+ * A read of the list that did not ask for the owner's own posts (a quick look: they come with a whole read only) must not make them vanish: the ones held
+ * stay, unless the fresh list brings them itself.
+ */
+export function keepOwnPosts(held: ReadingPost[], fresh: ReadingPost[]): ReadingPost[] {
+  if (fresh.some((p) => p.own === true)) return fresh;
+  const own = held.filter((p) => p.own === true);
+  return own.length === 0 ? fresh : [...fresh, ...own];
+}
+
 export interface SyncMemory {
   /** When the whole window was last read (0: never). */
   lastFullAt: number;

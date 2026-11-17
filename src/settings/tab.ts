@@ -86,7 +86,7 @@ export class BlygSettingTab extends PluginSettingTab {
   private fontPreviewItem(): SettingGroupItem {
     return {
       name: "Preview",
-      desc: "How a post looks with the font and the contrast above.",
+      desc: "How a reader item looks with the font and the contrast above. This only changes how the reader shows what you read; it does not change how your own blyg looks.",
       aliases: ["reader", "font", "contrast", "sample"],
       render: (setting) => {
         const box = setting.infoEl.createDiv({ cls: "blyg-font-preview" });
@@ -96,9 +96,9 @@ export class BlygSettingTab extends PluginSettingTab {
           const contrast = this.plugin.settings.readerPane.contrast;
           const root = box.createDiv({ cls: `blyg-reader is-font-${font} is-contrast-${contrast}` });
           const body = root.createDiv({ cls: "blyg-reader-surface" }).createDiv({ cls: "blyg-reader-body" });
-          body.createEl("p", { text: "A post is read here: the quick brown fox jumps over the lazy dog, 0123456789." });
+          body.createEl("p", { text: "A reader item is shown here: the quick brown fox jumps over the lazy dog, 0123456789." });
           const quote = body.createEl("blockquote", { cls: "blyg-transclusion" });
-          quote.createEl("p", { text: "A quote of another blyg's post looks like this." });
+          quote.createEl("p", { text: "A quote of another blyg's item looks like this." });
         };
         this.previews.push(paint);
         paint();
@@ -269,14 +269,14 @@ export class BlygSettingTab extends PluginSettingTab {
       heading: "Reader",
       items: [
         {
-          name: "Post images",
-          desc: "A post can carry images from its author's server, or from any server the author chose. Loading one tells that server that you read the post, and when. “Load on click” shows each image as a button and loads it only when you tap it; “Always load” draws images with the post. The list of posts never loads images, and frames and scripts in a post are never loaded.",
+          name: "Images in the reader",
+          desc: "An item you read can carry images from its author's server, or from any server the author chose. Loading one tells that server that you read the post, and when. “Load on click” shows each image as a button and loads it only when you tap it; “Always load” draws images with the post. The list of posts never loads images, and frames and scripts in a post are never loaded.",
           aliases: ["reader", "images", "privacy", "tracking"],
           control: { type: "dropdown", key: "readerPane.images", options: { click: "Load on tap", always: "Always load" } },
         },
         {
-          name: "Font for posts",
-          desc: "The font of a post in the reader's text view (not of the buttons and lists). “As Obsidian has it” leaves the text view in Obsidian's. The others are fonts your device already has; none is downloaded.",
+          name: "Font in the reader",
+          desc: "The font of the items you read in the reader's text view (not of the buttons and lists, and not how your own blyg looks). “As Obsidian has it” leaves the text view in Obsidian's. The others are fonts your device already has; none is downloaded.",
           aliases: ["reader", "typeface", "serif", "reading font"],
           control: { type: "dropdown", key: "readerPane.font", options: { default: "As Obsidian has it", serif: "Serif", sans: "Sans-serif", mono: "Monospace" } },
         },

@@ -11,7 +11,7 @@ import { activeFilters, arrange, readFilter, cardOf, DEFAULT_FILTER, frameable, 
 import { type ReaderFont } from "./readerFonts";
 import { CONTRASTS, type ReaderContrast } from "./readerLook";
 import { responseChip, responseIndex, type ResponseEntry } from "./readerResponses";
-import { changedCount, chooseWalk, knownOf, mergeFresh, READER_KEEP, type SyncMemory } from "./readerSync";
+import { changedCount, chooseWalk, keepOwnPosts, knownOf, mergeFresh, READER_KEEP, type SyncMemory } from "./readerSync";
 import type { StudioListedItem } from "../studio/types";
 import { bottomClearance } from "./readerBottom";
 import { limiter, mentionLead, postOfMention, visibleMentions } from "./readerMentions";
@@ -86,7 +86,7 @@ export interface ReaderHost {
   markUnread(post: ReadingPost): Promise<ReadResult>;
   /** The owner's choices (settings): how a post opens, and what happens to images in the text view. */
   imageMode(): ImageMode;
-  /** The font of the text view's content (the setting "Font for posts"). */
+  /** The font of the text view's content (the setting "Font in the reader"). */
   font(): ReaderFont;
   setFont(font: ReaderFont): Promise<void>;
   /** The contrast of the text view's reading surface (the setting "Contrast of the reading surface"). */
@@ -322,6 +322,8 @@ export class BlygReaderView extends ItemView {
           this.sync.movedWithoutNew = this.sync.readingMoved && changed === 0;
           posts = mergeFresh(held.posts, posts, READER_KEEP);
         } else {
+          // A quick look that read the whole list asked for no own posts: the held ones stay (a whole read brings them itself).
+          if (known !== null && held) posts = keepOwnPosts(held.posts, posts);
           this.sync.lastFullAt = Date.now();
           this.sync.readingMoved = false;
           this.sync.movedWithoutNew = false;
