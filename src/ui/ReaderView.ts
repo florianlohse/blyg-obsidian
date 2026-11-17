@@ -199,7 +199,8 @@ export class BlygReaderView extends ItemView {
     this.registerInterval(window.setInterval(() => void this.lookForMoves(), 30_000));
     this.registerEvent(this.app.workspace.on("layout-change", () => this.clearBottom()));
     this.registerDomEvent(activeWindow, "resize", () => this.clearBottom());
-    this.registerDomEvent(activeDocument, "selectionchange", () => this.noteSelection());
+    // The reader's own window (a popout has its own document; `activeDocument` can be another window than the one the reader is in).
+    this.registerDomEvent(this.contentEl.ownerDocument, "selectionchange", () => this.noteSelection());
     this.draw();
     // Obsidian waits for a view to finish opening before it finishes restoring the layout, so a reader tab left open would hold up the start of the whole app
     // for as long as the Studio takes to answer. Opening ends here, with the empty shell; the disk and the network are used after the layout is ready.
@@ -794,7 +795,7 @@ export class BlygReaderView extends ItemView {
 
   /** What is selected inside the open post's text now (not in its header or its replies); "" when nothing. */
   private selectionInPost(): string {
-    const sel = activeDocument.getSelection();
+    const sel = this.contentEl.ownerDocument.getSelection();
     if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return "";
     const surface = this.contentEl.querySelector(".blyg-reader-surface .blyg-reader-body");
     const node = sel.getRangeAt(0).commonAncestorContainer;
