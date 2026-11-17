@@ -7,7 +7,7 @@
 import { ItemView, sanitizeHTMLToDom, setIcon, type WorkspaceLeaf } from "obsidian";
 import { isUnread, type InboundMention, type ReadingPost } from "../studio/reading";
 import { plainText, renderForeign, type ImageMode } from "./defang";
-import { activeFilters, arrange, isReplyToMine, OWN_SOURCE, readFilter, cardOf, DEFAULT_FILTER, frameable, LENGTH_LABELS, nextInOrder, postOfQuote, pullProgress, readingTimeLabel, relativeTime, SORT_LABELS, sourcesOf, type FeedFilter, type FeedLength, type FeedSort } from "./readerFeed";
+import { activeFilters, arrange, isReplyToMine, OWN_SOURCE, readFilter, cardOf, DEFAULT_FILTER, frameable, LENGTH_LABELS, postOfQuote, readingTimeLabel, relativeTime, SORT_LABELS, sourcesOf, type FeedFilter, type FeedLength, type FeedSort } from "./readerFeed";
 import { type ReaderFont } from "./readerFonts";
 import { CONTRASTS, type ReaderContrast } from "./readerLook";
 import { responseChip, responseIndex, type ResponseEntry } from "./readerResponses";
@@ -547,29 +547,6 @@ export class BlygReaderView extends ItemView {
   /** True while the "marked read" moment plays, so a second tap or pull does not start a second one. */
   private moving = false;
 
-  /**
-   * Mark the post read (if it is not) and open the next unread one in the feed's order; with none left, back to the feed. Used by the header button
-   * and the pull-up. The mark is shown at once and goes to the Studio meanwhile; the text fades and "Marked read" shows for a moment before the next post.
-   */
-  private async goNext(p: ReadingPost): Promise<void> {
-    if (!this.inFeed(p) || this.moving) return;
-    this.moving = true;
-    try {
-      const wasUnread = isUnread(p) && !p.withdrawn;
-      if (wasUnread) void this.setRead(p, true);
-      const after = this.nextFor(p);
-      await this.markedMoment(wasUnread);
-      if (after) this.openPost(after);
-      else {
-        this.trail = []; // nothing is left to read: the list, not the post a quote was followed from
-        this.closePost();
-        this.setStatus("No more unread posts in this order.");
-      }
-    } finally {
-      this.moving = false;
-    }
-  }
-
   /** The short moment between two posts: the text fades, a centred "Marked read" appears and goes again. (Reduced motion: no waiting.) */
   private async markedMoment(wasUnread: boolean): Promise<void> {
     const reduce = activeWindow.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -585,59 +562,6 @@ export class BlygReaderView extends ItemView {
     await pause(wasUnread ? 220 : 0);
     note?.remove();
     body.removeClass("is-leaving");
-  }
-
-  /**
-   * Pull up at the end of a post in the text view, as at the end of a feed in other readers: a label shows what will happen and fills as you pull;
-   * let go early and nothing happens. Touch only; a mouse has the button.
-   */
-  private attachPull(scroll: HTMLElement, p: ReadingPost): void {
-    if (!this.inFeed(p)) return;
-    const hint = this.bodyEl?.createDiv({ cls: "blyg-reader-pull" });
-    if (!hint) return;
-    const words = (ready: boolean): string => {
-      const next = this.nextFor(p);
-      const unread = isUnread(this.live(p));
-      const what = unread ? (next ? "mark read and open next" : "mark read and go back") : next ? "open next" : "go back to the feed";
-      return ready ? `Let go to ${what}` : `Keep pulling to ${what}`;
-    };
-    let startY: number | null = null;
-    let ready = false;
-    const reset = (): void => {
-      startY = null;
-      ready = false;
-      hint.removeClass("is-shown", "is-ready");
-      hint.setCssProps({ "--pull": "0" });
-      scroll.setCssProps({ "--pull": "0" });
-    };
-    const atEnd = (): boolean => scroll.scrollTop + scroll.clientHeight >= scroll.scrollHeight - 2;
-    scroll.addEventListener("touchstart", (e) => {
-      startY = atEnd() && e.touches.length === 1 ? (e.touches[0]?.clientY ?? null) : null;
-    }, { passive: true });
-    scroll.addEventListener("touchmove", (e) => {
-      if (startY === null) return;
-      const y = e.touches[0]?.clientY;
-      if (y === undefined) return;
-      const progress = pullProgress(startY - y);
-      if (progress <= 0 || !atEnd()) {
-        hint.removeClass("is-shown", "is-ready");
-        scroll.setCssProps({ "--pull": "0" });
-        ready = false;
-        return;
-      }
-      ready = progress >= 1;
-      hint.setText(words(ready));
-      hint.addClass("is-shown");
-      hint.toggleClass("is-ready", ready);
-      hint.setCssProps({ "--pull": String(progress) });
-      scroll.setCssProps({ "--pull": String(progress) });
-    }, { passive: true });
-    scroll.addEventListener("touchend", () => {
-      const go = ready;
-      reset();
-      if (go) void this.goNext(p);
-    }, { passive: true });
-    scroll.addEventListener("touchcancel", reset, { passive: true });
   }
 
   /**
@@ -675,8 +599,7 @@ export class BlygReaderView extends ItemView {
       this.mine = items;
       this.mineIds = new Set(items.map((i) => i.id));
       if (this.filter.repliesToMe && !this.shown) {
-        this.orderMemo = null; // the posts that answer yours are known only now
-        this.drawBody();
+            this.drawBody();
       }
       if (this.shown) {
         this.drawHeader();
@@ -729,19 +652,9 @@ export class BlygReaderView extends ItemView {
   /** Lift every restriction of the feed (blyg, length, unread, replies to my posts) and keep the order: a remembered choice must never leave the feed looking empty with no way out. */
   private clearFilters(): void {
     this.filter = { ...this.filter, source: null, unreadOnly: false, length: "any", repliesToMe: false };
-    this.orderMemo = null;
     this.saveFilter();
     this.drawHeader();
     this.drawBody();
-  }
-
-  private orderMemo: { posts: ReadingPost[]; key: string; order: ReadingPost[] } | null = null;
-  private nextFor(p: ReadingPost): ReadingPost | null {
-    const posts = this.data?.posts;
-    if (!posts) return null;
-    const key = `${this.filter.sort}|${this.filter.source ?? ""}|${this.filter.length}|${this.filter.repliesToMe ? 1 : 0}|${this.mineIds.size}`;
-    if (!this.orderMemo || this.orderMemo.posts !== posts || this.orderMemo.key !== key) this.orderMemo = { posts, key, order: arrange(posts, { ...this.filter, unreadOnly: false }, this.mineIds) };
-    return nextInOrder(this.orderMemo.order, p);
   }
 
   /** The replies you can see, looked up per post from an index built once per list and set of own items. */
@@ -962,8 +875,9 @@ export class BlygReaderView extends ItemView {
 
     // Two rows: the three choices side by side, then the two switches as chips and "Clear" at the end.
     const controls = h.createDiv({ cls: "blyg-reader-controls" });
-    const select = (label: string, options: Array<[string, string]>, value: string, set: (v: string) => void, after: () => void = () => this.drawBody()): void => {
-      const el = controls.createEl("select", { cls: "dropdown blyg-reader-select", attr: { "aria-label": label, title: label } });
+    const select = (label: string, options: Array<[string, string]>, value: string, set: (v: string) => void, isSet: boolean, after: () => void = () => this.drawBody()): void => {
+      // A choice that differs from the start value is drawn in the accent colour, like an active chip; the others stay grey.
+      const el = controls.createEl("select", { cls: `dropdown blyg-reader-select${isSet ? " is-set" : ""}`, attr: { "aria-label": label, title: label } });
       for (const [v, text] of options) el.createEl("option", { value: v, text });
       el.value = value;
       el.addEventListener("change", () => {
@@ -972,21 +886,20 @@ export class BlygReaderView extends ItemView {
         after();
       });
     };
-    select("Order", (Object.keys(SORT_LABELS) as FeedSort[]).map((k): [string, string] => [k, SORT_LABELS[k]]), this.filter.sort, (v) => { this.filter.sort = v as FeedSort; this.saveFilter(); });
+    select("Order", (Object.keys(SORT_LABELS) as FeedSort[]).map((k): [string, string] => [k, SORT_LABELS[k]]), this.filter.sort, (v) => { this.filter.sort = v as FeedSort; this.saveFilter(); }, this.filter.sort !== DEFAULT_FILTER.sort);
     const posts = this.data.posts;
     const ownCount = posts.filter((q) => q.own === true).length;
-    select("Blyg", [["", `All blygs (${posts.length})`], ...(ownCount > 0 ? ([[OWN_SOURCE, `My posts (${ownCount})`]] as Array<[string, string]>) : []), ...sourcesOf(posts).map((s): [string, string] => [s.id, `${s.title} (${s.count})`])], this.filter.source ?? "", (v) => {
+    select("Blyg", [["", "All blygs"], ...(ownCount > 0 ? ([[OWN_SOURCE, `My posts (${ownCount})`]] as Array<[string, string]>) : []), ...sourcesOf(posts).map((s): [string, string] => [s.id, `${s.title} (${s.count})`])], this.filter.source ?? "", (v) => {
       this.filter.source = v === "" ? null : v;
       this.saveFilter();
-    });
-    select("Length", (Object.keys(LENGTH_LABELS) as FeedLength[]).map((k): [string, string] => [k, LENGTH_LABELS[k]]), this.filter.length, (v) => { this.filter.length = v as FeedLength; this.saveFilter(); });
+    }, this.filter.source !== null);
+    select("Length", (Object.keys(LENGTH_LABELS) as FeedLength[]).map((k): [string, string] => [k, LENGTH_LABELS[k]]), this.filter.length, (v) => { this.filter.length = v as FeedLength; this.saveFilter(); }, this.filter.length !== DEFAULT_FILTER.length);
     const chips = h.createDiv({ cls: "blyg-reader-chips" });
     const chip = (text: string, on: boolean, title: string, set: (v: boolean) => void): void => {
       const b = this.button(chips, text, () => {
         set(!on);
         this.saveFilter();
-        this.orderMemo = null;
-        this.drawHeader();
+            this.drawHeader();
         this.drawBody();
       }, { active: on, cls: "blyg-reader-chip", title });
       b.setAttr("aria-pressed", String(on));
@@ -1006,24 +919,22 @@ export class BlygReaderView extends ItemView {
     const main = h.createDiv({ cls: "blyg-reader-bar blyg-reader-bar-main" });
     const toPost = this.trail.length > 0;
     this.button(main, toPost ? "Back" : "Reader", () => this.closePost(), { cls: "blyg-reader-back", title: toPost ? "Back to the post you came from" : "Back to the reader" });
-    // Rows 2 and 3: the small print, two lines. Where it is from and who wrote it, when, how long; then what you have done with it and its links.
+    // Row 2: the small print, one line: the blyg (its name is the only link), when, how long, whether it is read, and the replies chip when something answers it.
     const meta = h.createDiv({ cls: "blyg-reader-meta blyg-reader-postmeta" });
     const blygUrl = p.origin ?? (web ? new URL(web).origin : null);
-    const first: Array<() => void> = [];
-    if (p.subscriptionTitle || blygUrl) first.push(() => this.link(meta, p.subscriptionTitle || new URL(blygUrl ?? "").host, blygUrl));
-    if (p.authorName) first.push(() => meta.createSpan({ text: p.authorName ?? "" }));
+    const name = meta.createSpan({ cls: "blyg-reader-postblyg" });
+    if (p.subscriptionTitle || blygUrl) this.link(name, p.subscriptionTitle || new URL(blygUrl ?? "").host, blygUrl);
+    meta.createSpan({ cls: "blyg-reader-postsep", text: "·" });
+    const rest = meta.createSpan({ cls: "blyg-reader-postrest" });
+    const bits: Array<() => void> = [];
     const when = relativeTime(p.created ?? p.observedAt, Date.now());
-    if (when) first.push(() => meta.createSpan({ text: when }));
-    if (!p.withdrawn) first.push(() => meta.createSpan({ text: readingTimeLabel(p) }));
-    this.joined(meta, first);
-    const meta2 = h.createDiv({ cls: "blyg-reader-meta blyg-reader-postmeta2" });
-    const second: Array<() => void> = [];
-    if (p.own !== true) second.push(() => meta2.createSpan({ cls: unread ? "blyg-reader-unreadmark" : "blyg-reader-readmark", text: p.withdrawn ? "withdrawn" : unread ? (p.readVersion !== null ? "updated since you read it" : "unread") : "✓ read" }));
-    if (p.version > 1) second.push(() => meta2.createSpan({ text: `version ${p.version}` }));
+    if (when) bits.push(() => rest.createSpan({ text: when }));
+    if (!p.withdrawn) bits.push(() => rest.createSpan({ text: readingTimeLabel(p) }));
+    if (p.own !== true) bits.push(() => rest.createSpan({ cls: unread ? "blyg-reader-unreadmark" : "blyg-reader-readmark", text: p.withdrawn ? "withdrawn" : unread ? (p.readVersion !== null ? "updated since you read it" : "unread") : "✓ read" }));
     const chip = responseChip(this.respFor(p));
     if (chip) {
-      second.push(() => {
-        const a = meta2.createEl("a", { cls: `blyg-reader-link blyg-reader-resp${chip.mine ? " is-mine" : ""}`, text: chip.text, attr: { href: "#", role: "button", title: chip.title } });
+      bits.push(() => {
+        const a = rest.createEl("a", { cls: `blyg-reader-link blyg-reader-resp${chip.mine ? " is-mine" : ""}`, text: chip.text, attr: { href: "#", role: "button", title: chip.title } });
         this.addIcon(a, "reply");
         a.addEventListener("click", (e) => {
           e.preventDefault();
@@ -1031,21 +942,7 @@ export class BlygReaderView extends ItemView {
         });
       });
     }
-    // "copy link": the post's address on its own site, to paste anywhere.
-    if (web) {
-      second.push(() => {
-        const copy = meta2.createEl("a", { cls: "blyg-reader-link blyg-reader-copylink", text: "copy link", attr: { href: "#", role: "button", title: "Copy this post's address" } });
-        copy.addEventListener("click", (e) => {
-          e.preventDefault();
-          void navigator.clipboard.writeText(web).then(
-            () => this.setStatus("Link copied."),
-            () => this.setStatus("The link could not be copied."),
-          );
-        });
-      });
-    }
-    this.joined(meta2, second);
-    meta2.createSpan({ cls: "blyg-reader-version", text: `v${this.host.version}`, attr: { title: "Version of the Blyg plugin on this device" } });
+    this.joined(rest, bits);
     // The actions of this post are one centred bar of three: Browser leaves the app, Mark read (or Open note), and Reply, the main one.
     const row = h.createDiv({ cls: "blyg-reader-bar blyg-reader-bar-actions" });
     const tray = row.createDiv({ cls: "blyg-reader-btngroup" });
@@ -1359,7 +1256,6 @@ export class BlygReaderView extends ItemView {
   private drawPostBody(body: HTMLElement, p: ReadingPost): void {
     this.drawStepBar(body, p);
     const scroll = body.createDiv({ cls: "blyg-reader-scroll blyg-reader-surface" });
-    this.attachPull(scroll, p);
     const col = scroll.createDiv({ cls: "blyg-reader-column" });
     this.postColumn = col;
     this.drawText(col, p);

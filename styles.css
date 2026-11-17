@@ -523,11 +523,7 @@
 /* On a phone Obsidian's bar floats over the pane: keep the pane's last line, and the bar below a post, clear of it. */
 .view-content.blyg-reader { padding-bottom: var(--blyg-bottom-clear, 0px); }
 .is-mobile .view-content.blyg-reader { padding-bottom: var(--blyg-bottom-clear, calc(var(--mobile-navbar-height, 0px) + env(safe-area-inset-bottom, 0px))); }
-/* Pull up at the end of a post (text view): a label that fills as you pull; let go early and nothing happens. */
 .blyg-reader-bodywrap { position: relative; }
-.blyg-reader-pull { position: absolute; left: 50%; bottom: var(--size-4-3); transform: translateX(-50%); display: none; max-width: 90%; padding: var(--size-4-2) var(--size-4-4); border-radius: var(--radius-m); background: var(--background-secondary); color: var(--text-muted); border: 1px solid var(--background-modifier-border); box-shadow: var(--shadow-s); font-size: var(--font-ui-small); text-align: center; pointer-events: none; opacity: calc(0.35 + var(--pull, 0) * 0.65); }
-.blyg-reader-pull.is-shown { display: block; }
-.blyg-reader-pull.is-ready { background: var(--interactive-accent); color: var(--text-on-accent); border-color: var(--interactive-accent); }
 .blyg-reader-header { flex: none; padding: var(--size-4-2) var(--size-4-3) var(--size-2-2); border-bottom: 1px solid var(--background-modifier-border); background: var(--background-primary); }
 .blyg-reader-bodywrap { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .blyg-reader-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--size-4-3); -webkit-user-select: text; user-select: text; }
@@ -634,7 +630,7 @@
 .blyg-reader.is-contrast-high { --blyg-surface: color-mix(in srgb, var(--background-primary) 96%, var(--text-normal)); --blyg-ink: color-mix(in srgb, var(--text-normal) 82%, var(--blyg-pole)); }
 .blyg-reader { --blyg-quote-ink: color-mix(in srgb, var(--blyg-ink) 72%, var(--blyg-surface)); --blyg-rule: color-mix(in srgb, var(--blyg-ink) 28%, var(--blyg-surface)); }
 .blyg-reader-surface { background: var(--blyg-surface); color: var(--blyg-ink); padding: var(--size-4-5) var(--size-4-4) var(--size-4-8); }
-.blyg-reader-surface .blyg-reader-column { transition: opacity 0.2s ease; opacity: calc(1 - var(--pull, 0) * 0.6); }
+.blyg-reader-surface .blyg-reader-column { transition: opacity 0.2s ease; }
 .blyg-reader-surface .blyg-reader-body { font-size: calc(var(--font-text-size, 16px) * 1.06); line-height: 1.7; margin: 0; color: var(--blyg-ink); overflow-wrap: break-word; }
 .blyg-reader-surface .blyg-reader-body p { margin: 0 0 1em; }
 .blyg-reader-surface .blyg-reader-body :is(h1, h2, h3, h4, h5, h6) { color: var(--blyg-ink); line-height: 1.3; margin: 1.4em 0 0.5em; }
@@ -743,8 +739,9 @@
 .blyg-reader .blyg-reader-chips .blyg-reader-chip-clear { margin-left: auto; background: transparent; color: var(--text-accent); box-shadow: none; border: 0; }
 .blyg-reader-bar-main { margin-bottom: 0; padding-bottom: 0; border-bottom: 0; --blyg-btn-h: 36px; }
 .blyg-reader-bar-main .blyg-reader-btn { font-size: var(--font-ui-small); }
-.blyg-reader-postmeta, .blyg-reader-postmeta2 { margin-top: var(--size-2-1); line-height: 1.35; }
-.blyg-reader-postmeta2 { -webkit-user-select: text; user-select: text; }
+.blyg-reader-postmeta { display: flex; flex-wrap: nowrap; align-items: baseline; gap: 0.4em; margin-top: var(--size-2-1); line-height: 1.35; overflow: hidden; }
+.blyg-reader-postblyg { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.blyg-reader-postrest { flex: 0 0 auto; white-space: nowrap; }
 .blyg-reader-header .blyg-reader-bar.blyg-reader-bar-actions { justify-content: center; margin-top: var(--size-4-2); }
 .blyg-reader .blyg-reader-header .blyg-reader-bar .blyg-reader-replybtn { margin-left: 0; }
 .blyg-reader-replyhint { display: none; text-align: center; color: var(--text-muted); font-size: var(--font-ui-smaller); margin-top: var(--size-2-1); }
@@ -754,6 +751,11 @@
 .blyg-reader-stepbar .blyg-reader-step:first-child { justify-self: start; }
 .blyg-reader-stepbar .blyg-reader-step-next { justify-self: end; }
 .blyg-reader-stepcount { color: var(--text-muted); font-size: var(--font-ui-smaller); }
-.blyg-reader-bodywrap.has-stepbar .blyg-reader-pull { bottom: calc(var(--size-4-3) + 44px); }
-.blyg-reader-postmeta2 .blyg-reader-resp { display: inline-flex; align-items: center; gap: 0.25em; vertical-align: bottom; }
-.blyg-reader-postmeta2 .blyg-reader-resp.is-mine { color: var(--color-green, var(--text-success)); }
+.blyg-reader-postmeta .blyg-reader-resp { display: inline-flex; align-items: center; gap: 0.25em; vertical-align: bottom; }
+.blyg-reader-postmeta .blyg-reader-resp.is-mine { color: var(--color-green, var(--text-success)); }
+
+/* Filters: grey while at their start value, accent once chosen (like an active chip). */
+.blyg-reader .blyg-reader-controls .blyg-reader-select { color: var(--text-muted); background: var(--background-modifier-hover); }
+.blyg-reader .blyg-reader-controls .blyg-reader-select.is-set { color: var(--text-on-accent); background: var(--interactive-accent); }
+.blyg-reader .blyg-reader-chips .blyg-reader-chip:not(.is-active) { color: var(--text-muted); background: var(--background-modifier-hover); }
+.blyg-reader-postsep { color: var(--text-faint); flex: none; }

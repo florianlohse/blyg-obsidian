@@ -135,8 +135,8 @@ export const readingTimeLabel = (post: Pick<ReadingPost, "contentHtml">): string
 export type FeedSort = "newest" | "oldest" | "shortest" | "longest";
 /** Which posts by length: short (under 2 minutes), medium (2 to 5), long (over 5). */
 export type FeedLength = "any" | "short" | "medium" | "long";
-export const LENGTH_LABELS: Record<FeedLength, string> = { any: "Any length", short: "Under 2 min", medium: "2 to 5 min", long: "Over 5 min" };
-export const SORT_LABELS: Record<FeedSort, string> = { newest: "Newest first", oldest: "Oldest first", shortest: "Shortest read first", longest: "Longest read first" };
+export const LENGTH_LABELS: Record<FeedLength, string> = { any: "Length", short: "Under 2 min", medium: "2 to 5 min", long: "Over 5 min" };
+export const SORT_LABELS: Record<FeedSort, string> = { newest: "Newest", oldest: "Oldest", shortest: "Shortest read", longest: "Longest read" };
 export interface FeedFilter {
   sort: FeedSort;
   /** A subscription id, or null for all blygs. */
@@ -191,30 +191,10 @@ export function arrange(posts: ReadingPost[], f: FeedFilter, mine: ReadonlySet<s
     .map((x) => x.p);
 }
 
-/**
- * The post to open after `current`: the next unread one in the order the feed shows now (its sort, blyg and length choices; "unread only" does not
- * matter, because the post just read is no longer unread). Not wrapping round: at the end there is none, and the reader goes back to the feed.
- */
-export function nextAfter(posts: ReadingPost[], f: FeedFilter, current: ReadingPost, mine: ReadonlySet<string> = new Set()): ReadingPost | null {
-  return nextInOrder(arrange(posts, { ...f, unreadOnly: false }, mine), current);
-}
-
-/** The same, from an order already worked out (the reader keeps it while the list and the order choices stay as they are). */
-export function nextInOrder(order: ReadingPost[], current: ReadingPost): ReadingPost | null {
-  const same = (q: ReadingPost): boolean => q.subscriptionId === current.subscriptionId && q.remoteId === current.remoteId;
-  const at = order.findIndex(same);
-  return order.slice(at + 1).find((q) => isUnread(q) && !same(q)) ?? null;
-}
-
 /** The post a quote (`blockquote.blyg-transclusion`, `data-blyg-id`) was taken from, when the Studio reads that blyg and holds it. Null otherwise. */
 export function postOfQuote(posts: ReadingPost[], itemId: string): ReadingPost | null {
   return itemId === "" ? null : (posts.find((q) => q.remoteId === itemId && !q.withdrawn) ?? posts.find((q) => q.remoteId === itemId) ?? null);
 }
-
-/** How far a finger has to pull up past the end of a post (CSS pixels) before letting go counts. */
-export const PULL_THRESHOLD = 90;
-/** How far into the pull it is: 0 (not pulling) to 1 (let go now). */
-export const pullProgress = (dy: number): number => (dy <= 0 ? 0 : Math.min(1, dy / PULL_THRESHOLD));
 
 /** The blygs in the list, for the source picker: id, title and how many posts, by title. */
 export function sourcesOf(posts: ReadingPost[]): Array<{ id: string; title: string; count: number }> {
