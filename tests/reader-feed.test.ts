@@ -50,6 +50,13 @@ describe("arrange", () => {
   it("unread only (c was read)", () => {
     expect(arrange([a, b, c], { ...DEFAULT_FILTER, unreadOnly: true }).map((p) => p.remoteId)).toEqual(["b", "a"]);
   });
+  it("only the posts of a hopper (their keys), combined with the other choices", () => {
+    const only = new Set([`${a.subscriptionId}/a`, `${b.subscriptionId}/b`]);
+    expect(arrange([a, b, c], DEFAULT_FILTER, only).map((p) => p.remoteId)).toEqual(["b", "a"]);
+    expect(arrange([a, b, c], { ...DEFAULT_FILTER, source: "s2" }, only).map((p) => p.remoteId)).toEqual(["b"]);
+    expect(arrange([a, b, c], DEFAULT_FILTER, new Set()).map((p) => p.remoteId)).toEqual([]);
+    expect(arrange([a, b, c], DEFAULT_FILTER, null)).toHaveLength(3);
+  });
   it("the source picker lists each blyg once, with its count, by title", () => {
     expect(sourcesOf([a, b, c])).toEqual([{ id: "s1", title: "Blog A", count: 2 }, { id: "s2", title: "Blog B", count: 1 }]);
   });

@@ -63,6 +63,10 @@ export interface ReaderHost {
   isImported(post: ReadingPost): Promise<boolean | null>;
   /** Ask the Studio to fetch the blyg this post belongs to now. */
   resyncBlyg(post: ReadingPost): Promise<ReadResult>;
+  /** The owner's hoppers (for the feed's hopper filter); empty when there are none or they cannot be had. */
+  hoppers(): Promise<Array<{ id: string; name: string }>>;
+  /** The keys (`subscriptionId/remoteId`) of the posts of the feed that sit in one hopper; null when they cannot be had. */
+  hopperKeys(hopperId: string): Promise<Set<string> | null>;
   /** Hide a mention in the Studio (it is hidden there too, for every client). Needs the token permission `owner:manage`; the message says so when it is missing. */
   hideMention(m: InboundMention): Promise<ReadResult>;
   /** Mark this version read, or unread again. Needs the token permission `reading:state`; the message says so when it is missing. */
@@ -127,6 +131,11 @@ export class BlygReaderView extends ItemView {
   private tab: "stream" | "mentions" = "stream";
   private shown: ReadingPost | null = null;
   private filter: FeedFilter = { ...DEFAULT_FILTER };
+  /** The hopper the feed is limited to (kept for this session only), the hoppers there are, and the posts of each hopper once asked for. */
+  private hopper: string | null = null;
+  private hopperList: Array<{ id: string; name: string }> | null = null;
+  private readonly hopperSets = new Map<string, Set<string>>();
+  private hopperNote = "";
   /** Keep the feed's choices (order, blyg, length, unread) in the settings: every change goes through here. */
   private saveFilter(): void {
     void this.host.setFilter({ ...this.filter });
@@ -147,7 +156,8 @@ export class BlygReaderView extends ItemView {
   private headerEl: HTMLElement | null = null;
   /** What mentions have shown so far (the mentioning post, the item it was about): asked for once, a few at a time. */
   private readonly mentionInfo = new Map<string, { post: ReadingPost | null; own: string | null; done: boolean }>();
-  private readonly mentionSlot = limiter(3);
+  private readonly mentionSlot = limiter(4);
+  private readonly mentionAsked = new Map<string, Promise<void>>();
   private bodyEl: HTMLElement | null = null;
   private statusEl: HTMLElement | null = null;
   /** Posts of blygs the Studio reads but has not fetched (S15-H): they cannot be replied to or marked read, whatever a peek said. */
@@ -321,6 +331,8 @@ export class BlygReaderView extends ItemView {
         const mentions = got.data.mentionsFetched === false && held ? held.mentions : got.data.mentions;
         if (got.data.mentionsFetched !== false) this.lastMentionsAt = Date.now();
         this.data = { ...got.data, posts, mentions, incremental: false, fromCache: false };
+        // What the first mentions show (the post and the item it is about) is fetched in the background now, a few at a time, so the Mentions tab opens filled.
+        for (const m of mentions.slice(0, 8)) void this.loadMention(m);
         this.host.writeCache({ posts, mentions });
         // A blyg the Studio no longer reads cannot stay chosen: the feed would be empty with no way to tell why.
         if (this.filter.source !== null && !posts.some((q) => q.subscriptionId === this.filter.source)) {
@@ -652,6 +664,8 @@ export class BlygReaderView extends ItemView {
 
   /** The owner's own items, loaded when a post is opened: their replies to it make the green "You" chip. Null until loaded. */
   private mine: StudioListedItem[] | null = null;
+  /** The ids of the owner's own items: a post that answers one of them is "a reply to you" (increment 8). */
+  private mineIds: ReadonlySet<string> = new Set();
   private mineAsked = false;
   private responsesEl: HTMLElement | null = null;
   /** The reading column of the open post (the replies are drawn at its end). */
@@ -662,6 +676,7 @@ export class BlygReaderView extends ItemView {
     this.mineAsked = true;
     void this.host.myItems().then((items) => {
       this.mine = items;
+      this.mineIds = new Set(items.map((i) => i.id));
       if (this.shown) {
         this.drawHeader();
         this.drawReplies(this.shown);
@@ -710,12 +725,47 @@ export class BlygReaderView extends ItemView {
   }
 
   /** The order the feed has now (without "unread only"), kept while the list and the order choices stay as they are: the open post and its buttons ask for the next unread post often. */
+  /** The posts the feed is limited to by the chosen hopper (null: no hopper chosen, or its posts are not known yet). */
+  private onlyKeys(): ReadonlySet<string> | null {
+    return this.hopper === null ? null : (this.hopperSets.get(this.hopper) ?? null);
+  }
+
+  /** The hoppers, asked for once when the feed's choices are first opened. */
+  private ensureHoppers(): void {
+    if (this.hopperList !== null) return;
+    this.hopperList = [];
+    void this.host.hoppers().then((list) => {
+      this.hopperList = list;
+      if (list.length > 0) this.drawHeader();
+    }).catch(() => undefined);
+  }
+
+  /** Limit the feed to one hopper (the Studio says which posts it holds), or lift the limit. */
+  private async chooseHopper(id: string | null): Promise<void> {
+    this.hopper = id;
+    this.hopperNote = "";
+    if (id !== null && !this.hopperSets.has(id)) {
+      this.setStatus("Looking up the hopper…");
+      const keys = await this.host.hopperKeys(id).catch(() => null);
+      if (keys === null) {
+        this.hopper = null;
+        this.setStatus("The hopper's posts could not be read just now.");
+      } else {
+        this.hopperSets.set(id, keys);
+        this.setStatus(this.afterReadText());
+      }
+    }
+    this.orderMemo = null;
+    this.drawHeader();
+    this.drawBody();
+  }
+
   private orderMemo: { posts: ReadingPost[]; key: string; order: ReadingPost[] } | null = null;
   private nextFor(p: ReadingPost): ReadingPost | null {
     const posts = this.data?.posts;
     if (!posts) return null;
-    const key = `${this.filter.sort}|${this.filter.source ?? ""}|${this.filter.length}`;
-    if (!this.orderMemo || this.orderMemo.posts !== posts || this.orderMemo.key !== key) this.orderMemo = { posts, key, order: arrange(posts, { ...this.filter, unreadOnly: false }) };
+    const key = `${this.filter.sort}|${this.filter.source ?? ""}|${this.filter.length}|${this.hopper ?? ""}`;
+    if (!this.orderMemo || this.orderMemo.posts !== posts || this.orderMemo.key !== key) this.orderMemo = { posts, key, order: arrange(posts, { ...this.filter, unreadOnly: false }, this.onlyKeys()) };
     return nextInOrder(this.orderMemo.order, p);
   }
 
@@ -850,9 +900,10 @@ export class BlygReaderView extends ItemView {
     row.createDiv({ cls: "blyg-reader-spacer" });
     const canFilter = this.tab === "stream" && this.data !== null && this.data.posts.length > 0;
     if (canFilter) {
-      const n = activeFilters(this.filter);
+      const n = activeFilters(this.filter) + (this.hopper !== null ? 1 : 0);
       this.button(row, n > 0 ? `Sort & filter (${n})` : "Sort & filter", () => {
         this.filtersOpen = !this.filtersOpen;
+        if (this.filtersOpen) this.ensureHoppers();
         this.drawHeader();
       }, { active: this.filtersOpen, cls: "blyg-reader-filterbtn", title: "Order, blyg, length and unread" });
     }
@@ -882,6 +933,13 @@ export class BlygReaderView extends ItemView {
     select("Order", (Object.keys(SORT_LABELS) as FeedSort[]).map((k): [string, string] => [k, SORT_LABELS[k]]), this.filter.sort, (v) => { this.filter.sort = v as FeedSort; this.saveFilter(); });
     const posts = this.data.posts;
     select("Blyg", [["", `All blygs (${posts.length})`], ...sourcesOf(posts).map((s): [string, string] => [s.id, `${s.title} (${s.count})`])], this.filter.source ?? "", (v) => { this.filter.source = v === "" ? null : v; this.saveFilter(); });
+    if (this.hopperList !== null && this.hopperList.length > 0) {
+      const el = controls.createEl("select", { cls: "dropdown blyg-reader-select", attr: { "aria-label": "Hopper", title: "Only the posts of one of your hoppers" } });
+      el.createEl("option", { value: "", text: "All hoppers" });
+      for (const h of this.hopperList) el.createEl("option", { value: h.id, text: h.name });
+      el.value = this.hopper ?? "";
+      el.addEventListener("change", () => void this.chooseHopper(el.value === "" ? null : el.value));
+    }
     select("Length", (Object.keys(LENGTH_LABELS) as FeedLength[]).map((k): [string, string] => [k, LENGTH_LABELS[k]]), this.filter.length, (v) => { this.filter.length = v as FeedLength; this.saveFilter(); });
     const unread = controls.createEl("label", { cls: "blyg-reader-toggle" });
     const box = unread.createEl("input", { attr: { type: "checkbox" } });
@@ -993,11 +1051,11 @@ export class BlygReaderView extends ItemView {
       col.createDiv({ cls: "blyg-reader-note", text: "Nothing to read yet. Subscribe to a blyg in your Studio." });
       return;
     }
-    const shown = arrange(posts, this.filter);
+    const shown = arrange(posts, this.filter, this.onlyKeys());
     if (shown.length === 0) col.createDiv({ cls: "blyg-reader-note", text: "No post matches." });
     // Only a first screenful is built at once, and more as you scroll: building all 200 cards costs tens of milliseconds on a desktop and several times that
     // on a phone, and Obsidian's start must not pay for it. A change of order or filter starts from the first screenful again.
-    const sig = JSON.stringify(this.filter);
+    const sig = JSON.stringify([this.filter, this.hopper]);
     if (sig !== this.limitSig) {
       this.limitSig = sig;
       this.renderLimit = FEED_FIRST;
@@ -1059,7 +1117,10 @@ export class BlygReaderView extends ItemView {
       });
     }
     const badges = card.createDiv({ cls: "blyg-reader-badges" });
-    if (p.isReply) badges.createSpan({ cls: "blyg-reader-badge", text: "reply" });
+    const toYou = p.isReply && p.stubTarget != null && this.mineIds.has(p.stubTarget.id);
+    card.toggleClass("is-reply-to-you", toYou);
+    if (toYou) badges.createSpan({ cls: "blyg-reader-badge is-toyou", text: "reply to you", attr: { title: "This post answers one of your own items" } });
+    else if (p.isReply) badges.createSpan({ cls: "blyg-reader-badge", text: "reply" });
     else if (p.kind === "thread") badges.createSpan({ cls: "blyg-reader-badge", text: "thread" });
     if (p.withdrawn) badges.createSpan({ cls: "blyg-reader-badge", text: "withdrawn" });
     if (unread) badges.createSpan({ cls: "blyg-reader-badge is-new", text: p.readVersion !== null ? "updated" : "unread" });
@@ -1129,14 +1190,18 @@ export class BlygReaderView extends ItemView {
   private loadMention(m: InboundMention): Promise<void> {
     const have = this.mentionInfo.get(m.id);
     if (have?.done) return Promise.resolve();
-    return this.mentionSlot(async () => {
+    const asked = this.mentionAsked.get(m.id);
+    if (asked) return asked; // already on its way (the background fetch and a card asking at once share one request)
+    const run = this.mentionSlot(async () => {
       const posts = this.data?.posts ?? [];
       const [post, own] = await Promise.all([
         postOfMention(posts, m) ?? this.host.mentionPost(m, posts).catch(() => null),
         this.host.ownExcerpt(m.targetItemId).catch(() => null),
       ]);
       this.mentionInfo.set(m.id, { post, own, done: true });
-    });
+    }).finally(() => this.mentionAsked.delete(m.id));
+    this.mentionAsked.set(m.id, run);
+    return run;
   }
 
   /** Open the mentioning post like any post: the same header, the same bar below. */

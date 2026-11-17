@@ -1149,6 +1149,26 @@ export default class BlygPlugin extends Plugin {
           return null;
         }
       },
+      hoppers: async () => {
+        const built = buildStudio(this.env());
+        if (!built.ok) return [];
+        try {
+          const got = await built.studio.client.listHoppers();
+          return got.kind === "ok" ? got.value.map((h) => ({ id: h.id, name: h.name })) : [];
+        } catch {
+          return [];
+        }
+      },
+      hopperKeys: async (hopperId) => {
+        const built = buildStudio(this.env());
+        if (!built.ok) return null;
+        try {
+          const got = await built.studio.client.readingKeysInHopper(hopperId);
+          return got.kind === "ok" ? new Set(got.value.keys) : null;
+        } catch {
+          return null;
+        }
+      },
       resyncBlyg: async (post) => {
         const built = buildStudio(this.env());
         if (!built.ok) return { ok: false, message: built.message };
@@ -1199,6 +1219,9 @@ export default class BlygPlugin extends Plugin {
         return (await built.studio.client.getItem(itemId)).kind === "ok";
       },
       ownExcerpt: async (itemId) => {
+        // The owner's items were listed already (the reader asks for them when it opens), working copy included: no request per mention.
+        const listed = this.readerMine?.items.find((i) => i.id === itemId);
+        if (listed && listed.contentMd.trim() !== "") return excerptOf(`<p>${listed.contentMd.replace(/[<>&]/g, " ")}</p>`, 90) || null;
         const built = buildStudio(this.env());
         if (!built.ok) return null;
         const got = await built.studio.client.getItem(itemId);

@@ -46,6 +46,9 @@ becomes the release notes. Write entries for people who use the plugin, not for 
 
 ### Changed
 
+- **The feed marks posts that answer your items.** A post that is a reply to one of your own items carries an accent "reply to you" badge (the plain "reply" badge stays for answers to others).
+- **Sort & filter: a Hopper choice.** When you have hoppers, "Sort & filter" offers "All hoppers" or one of them: the feed then shows only the posts of the blygs you read that you put into that hopper (the Studio says which; kept for the session).
+- **Faster Mentions.** What the first mentions show (the post, and the excerpt of your item they are about) is fetched in the background as soon as the list arrives, a few at a time; your item's excerpt now comes from the list of your items the reader already holds, with no request per mention.
 - **Reader post view, clearer and tidier.** Nested quotes (a quote of a quote) have no boxes any more: the bar on the left carries the depth, in the accent colour, lighter with every level. Code boxes scroll sideways and wide tables scroll, so they no longer break the frame. Under the Back / Next row a hairline separates the post's own buttons, which now form one segmented control (Browser, Mark read, replies) with Reply apart at the end. The line that says where a post is from ends with a small "copy link" that copies the post's address.
 - **Settings: a live preview under "Font for posts" and "Contrast of the reading surface"**, drawn with the reader's own styles, so the choice can be judged without opening the reader.
 - **The quote window says what it does:** "Quote selection (N chars)" (the count follows your selection) and "Quote whole post".
