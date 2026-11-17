@@ -9,7 +9,7 @@ import { createDataWatch } from "./app/dataWatch";
 import { createDeployMemory } from "./app/deployMemory";
 import { TM } from "./app/threadMessages";
 import { expandTemplate, newItemText, templatePath, type ItemKind, type TemplateProblem } from "./app/itemTemplate";
-import { blockToInsert, embedReplacement, extractedItemBody, extractionVerdict, newItemName, pickerCandidates, quoteBlock, quoteBlockOf, renamedForThread, replyBody, threadConversion, type PickerEntry, type QuoteChoice } from "./app/threadCommands";
+import { blockToInsert, embedReplacement, extractedItemBody, extractionVerdict, newItemName, pickerCandidates, quoteBlock, quoteBlockOf, renamedForThread, passageFromSelection, replyBody, threadConversion, type PickerEntry, type QuoteChoice } from "./app/threadCommands";
 import { localKind } from "./core/blyg";
 import { isBlygId } from "./core/ids";
 import { newItemRoute, routeFor } from "./core/routes";
@@ -1106,12 +1106,60 @@ export default class BlygPlugin extends Plugin {
       readCache: () => this.readReaderCache(),
       writeCache: (data) => this.writeReaderCache(data),
       openWeb: (url) => window.open(url, "_blank"),
-      replyTo: async (post: ReadingPost) => {
+      replyTo: async (post: ReadingPost, selection?: string) => {
         this.rememberPosts([post]); // the note this starts shows this post's words at once
         const pick: StudioPick = { source: "studio", id: post.remoteId, kind: post.kind, title: excerptOf(post.contentHtml, 60), detail: post.subscriptionTitle, subscriptionId: post.subscriptionId, label: post.subscriptionTitle, origin: post.origin, version: post.version, quotable: true };
         const target = await runStudioReplyTarget(this.env(), pick);
         if (!target.ok) return void new Notice(target.message, 10000);
-        await this.createNote("thread", replyBody(writtenRef(pick, "")), target.target);
+        const ref = writtenRef(pick, "");
+        // Text selected in the post: the reply quotes exactly that passage (a partial quote, protocol 10.2). The passage is cut from the item's own text, so it matches
+        // what the Studio checks; when the selection cannot be found there, the quote window opens and the passage is chosen in it.
+        if (selection !== undefined && selection.trim() !== "") {
+          new Notice(TM.reading, 3000);
+          const quotable = await runStudioQuotable(this.env(), pick);
+          if (!quotable.ok) return void this.show(quotable.outcome);
+          let choice: QuoteChoice | "link" | null = null;
+          const found = passageFromSelection(quotable.text, selection);
+          if (found !== null) choice = { kind: "passage", selected: found };
+          else {
+            new Notice(TM.selectionNotFound, 8000);
+            choice = await promptForQuote(this.app, quotable);
+          }
+          if (choice === null) return;
+          if (choice === "link") {
+            await this.createNote("thread", replyBody(ref), target.target);
+            return;
+          }
+          const block = quoteBlockOf(ref, choice);
+          if (!block.ok) return void new Notice(block.reason === "cannot" ? TM.cannotQuote : TM.selectFirst, 8000);
+          await this.createNote("thread", `${block.text}\n\n`, target.target);
+          return;
+        }
+        await this.createNote("thread", replyBody(ref), target.target);
+      },
+      isImported: async (post) => {
+        if (post.subscriptionId === "") return false;
+        const built = buildStudio(this.env());
+        if (!built.ok) return null;
+        try {
+          const got = await built.studio.client.getImported(post.subscriptionId, post.remoteId);
+          if (got.kind === "ok") return true;
+          return got.kind === "not-found" ? false : null;
+        } catch {
+          return null;
+        }
+      },
+      resyncBlyg: async (post) => {
+        const built = buildStudio(this.env());
+        if (!built.ok) return { ok: false, message: built.message };
+        try {
+          const done = await built.studio.client.resyncSubscription(post.subscriptionId);
+          if (done.kind === "ok") return { ok: true };
+          if (done.kind === "forbidden") return { ok: false, message: "Your token cannot ask the Studio to fetch a blyg. It needs the permission “owner:manage”: make a new token with every permission." };
+          return { ok: false, message: "message" in done ? done.message : "The Studio could not be asked to fetch this blyg." };
+        } catch {
+          return { ok: false, message: "The Studio could not be reached." };
+        }
       },
       mentionPost: async (m, posts) => {
         const known = postOfMention(posts, m);

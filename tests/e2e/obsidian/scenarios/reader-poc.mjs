@@ -139,6 +139,20 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await shot(`${layout}-2-text`);
     check(await page.evaluate(() => getComputedStyle(document.querySelector(".blyg-reader-body")).userSelect === "text"), `${layout}: the text of a post can be selected`);
 
+    // The Reply button follows a selection in the post: "Reply to selection (N chars)" (increment 6; what the reply then writes is covered by the unit tests of passageFromSelection and by the demo vault's shot script).
+    const picked = await page.evaluate(() => {
+      const w = document.createTreeWalker(document.querySelector(".blyg-reader-surface .blyg-reader-body"), NodeFilter.SHOW_TEXT);
+      let n; let node = null;
+      while ((n = w.nextNode())) if (n.textContent.trim().length > 20) { node = n; break; }
+      if (!node) return "";
+      const r = document.createRange(); r.setStart(node, 0); r.setEnd(node, 20);
+      const sel = document.getSelection(); sel.removeAllRanges(); sel.addRange(r); return sel.toString();
+    });
+    await page.waitForFunction(() => /^Reply to selection \(\d+ chars\)$/.test(document.querySelector(".blyg-reader-replybtn")?.textContent ?? ""), null, { timeout: 5000 }).catch(() => {});
+    check(picked !== "" && /^Reply to selection \(\d+ chars\)$/.test(await page.evaluate(() => document.querySelector(".blyg-reader-replybtn")?.textContent ?? "")), `${layout}: selecting text in a post turns Reply into “Reply to selection (N chars)”`);
+    await page.evaluate(() => document.getSelection()?.removeAllRanges());
+    await wait(1800); // the label goes back to “Reply” once the selection has been gone for a moment
+
     // Answering.
     await page.evaluate(() => document.querySelector(".blyg-reader-card")?.click());
     await wait(800);

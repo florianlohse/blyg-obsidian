@@ -556,6 +556,12 @@
 /* this post's actions share a tray; "Browser" is quieter and sits apart */
 .blyg-reader-btngroup { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--size-4-1); padding: var(--size-2-1); border-radius: var(--radius-m); background: var(--background-secondary); }
 .blyg-reader-quiet { background: transparent; box-shadow: none; color: var(--text-muted); }
+/* Reply is the post's main action: it stands apart at the far end of the row, accented; its label grows to "Reply to selection (N chars)" while a passage is selected. */
+.blyg-reader .blyg-reader-header .blyg-reader-bar .blyg-reader-replybtn { background: var(--interactive-accent); color: var(--text-on-accent); white-space: nowrap; flex: 0 0 auto; margin-left: auto; }
+.blyg-reader-bar-actions .blyg-reader-btngroup { flex: 0 0 auto; }
+.blyg-reader-header .blyg-reader-bar.blyg-reader-bar-actions { flex-wrap: wrap; }
+.blyg-reader .blyg-reader-header .blyg-reader-bar .blyg-reader-replybtn:disabled { background: var(--background-modifier-border); color: var(--text-faint); }
+.blyg-reader-fetchnote { display: flex; flex-wrap: wrap; align-items: center; gap: var(--size-4-2); margin-top: var(--size-4-1); padding: var(--size-4-2) var(--size-4-3); border-left: 3px solid var(--text-warning); background: var(--background-secondary); color: var(--text-muted); font-size: var(--font-ui-small); }
 /* Buttons take the theme's own shape (a pill in some themes, a rounded box in others): only their SIZE is ours, scaled from one height, so any shape has room for its text. */
 .blyg-reader { --blyg-btn-h: var(--input-height, 30px); }
 .blyg-reader .blyg-reader-btn, .blyg-reader .blyg-reader-select { box-sizing: border-box; height: auto; min-height: var(--blyg-btn-h); padding-block: 0; font-size: var(--font-ui-small); line-height: 1.2; }

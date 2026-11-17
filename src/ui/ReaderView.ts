@@ -57,8 +57,12 @@ export interface ReaderHost {
   /** Keep this list for the next session (the host waits a moment and writes once). */
   writeCache(data: { posts: ReadingPost[]; mentions: InboundMention[] }): void;
   openWeb(url: string): void;
-  /** Start a reply thread to this post (the same path as "Reply to an item"). */
-  replyTo(post: ReadingPost): Promise<void>;
+  /** Start a reply thread to this post (the same path as "Reply to an item"). With `selection`, the reply quotes exactly that passage of the post. */
+  replyTo(post: ReadingPost, selection?: string): Promise<void>;
+  /** Does the owner's Studio hold this post? false: it has not fetched it (so it cannot be replied to or marked read); null: cannot be told now. */
+  isImported(post: ReadingPost): Promise<boolean | null>;
+  /** Ask the Studio to fetch the blyg this post belongs to now. */
+  resyncBlyg(post: ReadingPost): Promise<ReadResult>;
   /** Hide a mention in the Studio (it is hidden there too, for every client). Needs the token permission `owner:manage`; the message says so when it is missing. */
   hideMention(m: InboundMention): Promise<ReadResult>;
   /** Mark this version read, or unread again. Needs the token permission `reading:state`; the message says so when it is missing. */
@@ -146,6 +150,14 @@ export class BlygReaderView extends ItemView {
   private readonly mentionSlot = limiter(3);
   private bodyEl: HTMLElement | null = null;
   private statusEl: HTMLElement | null = null;
+  /** Posts of blygs the Studio reads but has not fetched (S15-H): they cannot be replied to or marked read, whatever a peek said. */
+  private readonly notFetched = new Set<string>();
+  private readonly fetchChecked = new Set<string>();
+  /** The passage selected in the open post (kept for a moment after the selection goes, since tapping a button can clear it first), and the Reply button that shows it. */
+  private selected = "";
+  private selectedAt = 0;
+  private replyBtn: HTMLButtonElement | null = null;
+  private selectionTimer = 0;
   private refreshEl: HTMLButtonElement | null = null;
   private scrollEl: HTMLElement | null = null;
   private feedScroll = 0;
@@ -187,6 +199,7 @@ export class BlygReaderView extends ItemView {
     this.registerInterval(window.setInterval(() => void this.lookForMoves(), 30_000));
     this.registerEvent(this.app.workspace.on("layout-change", () => this.clearBottom()));
     this.registerDomEvent(activeWindow, "resize", () => this.clearBottom());
+    this.registerDomEvent(activeDocument, "selectionchange", () => this.noteSelection());
     this.draw();
     // Obsidian waits for a view to finish opening before it finishes restoring the layout, so a reader tab left open would hold up the start of the whole app
     // for as long as the Studio takes to answer. Opening ends here, with the empty shell; the disk and the network are used after the layout is ready.
@@ -738,9 +751,88 @@ export class BlygReaderView extends ItemView {
     else if (via === "feed") this.trail = [];
     this.responsesEl = null;
     this.shown = p;
+    this.selected = "";
     this.drawHeader();
     this.drawBody();
     this.loadMine();
+    this.checkFetched(p);
+  }
+
+  /** A post that did not come from the feed (a mention's, a quote's): ask whether the Studio really holds it, and say so in the header when it does not (S15-H). */
+  private checkFetched(p: ReadingPost): void {
+    const key = keyOf(p);
+    if (p.subscriptionId === "" || this.inFeed(p) || this.fetchChecked.has(key)) return;
+    this.fetchChecked.add(key);
+    void this.host.isImported(p).then((held) => {
+      if (held !== false) return;
+      this.notFetched.add(key);
+      if (this.shown && keyOf(this.shown) === key) this.drawHeader();
+    });
+  }
+
+  /** "Ask Studio to fetch": the Studio fetches that blyg, then the post is looked for again a few times. */
+  private async askToFetch(p: ReadingPost): Promise<void> {
+    const key = keyOf(p);
+    this.setStatus("Asking your Studio to fetch this blyg…");
+    const done = await this.host.resyncBlyg(p);
+    if (!done.ok) {
+      this.setStatus(done.message);
+      return;
+    }
+    for (let i = 0; i < 4; i++) {
+      await new Promise((r) => window.setTimeout(r, 2500));
+      if (!this.contentEl.isConnected) return;
+      if ((await this.host.isImported(p)) === true) {
+        this.notFetched.delete(key);
+        this.setStatus("Your Studio has fetched this post.");
+        if (this.shown && keyOf(this.shown) === key) this.drawHeader();
+        return;
+      }
+    }
+    this.setStatus("The Studio has not fetched this post yet. Try again in a minute.");
+  }
+
+  /** What is selected inside the open post's text now (not in its header or its replies); "" when nothing. */
+  private selectionInPost(): string {
+    const sel = activeDocument.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return "";
+    const surface = this.contentEl.querySelector(".blyg-reader-surface .blyg-reader-body");
+    const node = sel.getRangeAt(0).commonAncestorContainer;
+    if (!surface || !surface.contains(node)) return "";
+    return sel.toString();
+  }
+
+  /** The Reply button follows the selection: "Reply to selection (N chars)" while a passage is selected, "Reply" otherwise. */
+  private noteSelection(): void {
+    if (!this.shown) return;
+    const now = this.selectionInPost();
+    window.clearTimeout(this.selectionTimer);
+    if (now.trim() !== "") {
+      this.selected = now;
+      this.selectedAt = Date.now();
+      // The label (and so the row) changes only when the selection has settled: while a handle is being dragged the text must not move under the finger.
+      this.selectionTimer = window.setTimeout(() => this.showReplyLabel(), 500);
+      return;
+    }
+    // Tapping the button itself can clear the selection before the tap arrives: the label and the passage stay a moment.
+    this.selectionTimer = window.setTimeout(() => {
+      this.selected = "";
+      this.showReplyLabel();
+    }, 1500);
+  }
+
+  private replySelection(): string {
+    const now = this.selectionInPost();
+    if (now.trim() !== "") return now;
+    return Date.now() - this.selectedAt < 1500 ? this.selected : "";
+  }
+
+  private showReplyLabel(): void {
+    const b = this.replyBtn;
+    if (!b || !b.isConnected) return;
+    const n = this.selected.trim().length;
+    b.setText(n > 0 ? `Reply to selection (${n} chars)` : "Reply");
+    b.setAttr("title", n > 0 ? "Reply in Obsidian: a new thread that quotes exactly the passage you selected" : "Reply in Obsidian: a new thread that answers this post");
   }
 
   private drawFeedHeader(h: HTMLElement): void {
@@ -804,7 +896,9 @@ export class BlygReaderView extends ItemView {
 
   private drawPostHeader(h: HTMLElement, p: ReadingPost): void {
     const web = frameable(p.sourceUrl) ? p.sourceUrl : null;
-    const held = p.subscriptionId !== ""; // the Studio reads this blyg; otherwise (a mention's post) there is no read mark and nothing to quote from
+    const key = keyOf(p);
+    const fetched = !this.notFetched.has(key); // false: the Studio follows this blyg but has not fetched this post (S15-H)
+    const held = p.subscriptionId !== "" && fetched; // the Studio holds it; otherwise (a mention's post) there is no read mark and nothing to quote from
     const unread = isUnread(p);
     // The two things done most come first and large: the way back, and on to the next post. The rest sits below them.
     const main = h.createDiv({ cls: "blyg-reader-bar blyg-reader-bar-main" });
@@ -814,10 +908,10 @@ export class BlygReaderView extends ItemView {
       const next = this.nextFor(p);
       this.button(main, unread ? "Read & next ›" : "Next ›", () => this.goNext(p), { cls: "blyg-reader-nextbtn", active: unread, title: unread ? "Mark this post read and open the next unread one" : next ? "Open the next unread post" : "No unread post left: back to the feed" });
     }
-    // This post's actions sit together in one tray; "Browser" leaves the app and sits apart, quieter.
+    // This post's actions sit together in one tray; "Browser" leaves the app and is the quiet first one. Reply, the main action, stands apart at the far end.
     const row = h.createDiv({ cls: "blyg-reader-bar blyg-reader-bar-actions" });
     const tray = row.createDiv({ cls: "blyg-reader-btngroup" });
-    this.button(tray, "Reply", () => this.host.replyTo(p), { disabled: p.withdrawn || !held, title: held ? "Reply in Obsidian: a new thread that answers this post" : "Subscribe to this blyg in your Studio to reply to its posts from here" });
+    this.button(tray, "Browser", () => (web ? this.host.openWeb(web) : undefined), { disabled: web === null, cls: "blyg-reader-quiet", title: "Open the whole page in the browser" });
     this.button(tray, unread ? "○ Mark read" : "✓ Read", () => this.setRead(p, unread), {
       disabled: p.withdrawn || !held,
       active: !unread,
@@ -830,7 +924,16 @@ export class BlygReaderView extends ItemView {
       this.addIcon(b, "reply");
     }
     row.createDiv({ cls: "blyg-reader-spacer" });
-    this.button(row, "Browser", () => (web ? this.host.openWeb(web) : undefined), { disabled: web === null, cls: "blyg-reader-quiet", title: "Open the whole page in the browser" });
+    this.replyBtn = this.button(row, "Reply", () => {
+      const sel = this.replySelection();
+      void this.host.replyTo(p, sel.trim() !== "" ? sel : undefined);
+    }, { disabled: p.withdrawn || !held, cls: "blyg-reader-replybtn", title: held ? "Reply in Obsidian: a new thread that answers this post" : fetched ? "Subscribe to this blyg in your Studio to reply to its posts from here." : "Your Studio has not fetched this post yet." });
+    this.showReplyLabel();
+    if (p.subscriptionId !== "" && !fetched && !p.withdrawn) {
+      const note = h.createDiv({ cls: "blyg-reader-fetchnote" });
+      note.createSpan({ text: "Your Studio has not fetched this post yet, so it cannot be replied to or marked read. " });
+      this.button(note, "Ask Studio to fetch", () => this.askToFetch(p), { title: "Ask your Studio to fetch this blyg now" });
+    }
     // Where it is from, and who wrote it, as links; its version when it has been edited; when; whether it is read.
     const meta = h.createDiv({ cls: "blyg-reader-meta blyg-reader-postmeta" });
     const blygUrl = p.origin ?? (web ? new URL(web).origin : null);

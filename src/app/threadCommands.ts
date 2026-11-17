@@ -167,3 +167,39 @@ export function extractedItemBody(selection: string): string {
 export function embedReplacement(at: { before: string; after: string }, ref: string): string {
   return `${at.before.trim() !== "" ? "\n\n" : ""}![[${ref}]]${at.after.trim() !== "" ? "\n\n" : ""}`;
 }
+
+/**
+ * A selection made in the reader's rendered post, as the exact passage of the item's text (what readers see) it came from, or null when it cannot be found there.
+ * The page's selection and the item's text differ in whitespace only (a block break may be one or two newlines, runs of spaces collapse), so the two are compared with
+ * whitespace collapsed and the passage is cut out of the item's own text, never taken from the page.
+ */
+export function passageFromSelection(itemText: string, selected: string): string | null {
+  const wanted = normalizeSelection(selected);
+  if (wanted === "") return null;
+  if (itemText.includes(wanted)) return wanted;
+  // Collapsed copies of both, with a map from each collapsed position back to the item's text.
+  const map: number[] = [];
+  let collapsed = "";
+  let space = true;
+  for (let i = 0; i < itemText.length; i++) {
+    const ch = itemText.charAt(i);
+    if (/\s/.test(ch)) {
+      if (!space) {
+        collapsed += " ";
+        map.push(i);
+        space = true;
+      }
+    } else {
+      collapsed += ch;
+      map.push(i);
+      space = false;
+    }
+  }
+  const needle = wanted.replace(/\s+/g, " ").trim();
+  const at = collapsed.indexOf(needle);
+  if (needle === "" || at < 0) return null;
+  const start = map[at] ?? 0;
+  const end = (map[at + needle.length - 1] ?? itemText.length - 1) + 1;
+  const passage = normalizeSelection(itemText.slice(start, end));
+  return passage === "" ? null : passage;
+}
