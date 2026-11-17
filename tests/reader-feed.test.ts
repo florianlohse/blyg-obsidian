@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { readOwnReadingEntry, readReadingPost, type ReadingPost } from "../src/studio/reading";
-import { activeFilters, arrange, cardOf, DEFAULT_FILTER, isReplyToMine, OWN_SOURCE, frameable, nextAfter, postOfQuote, PULL_THRESHOLD, pullProgress, readingMinutes, readingTimeLabel, relativeTime, sourcesOf } from "../src/ui/readerFeed";
+import { activeFilters, arrange, cardOf, DEFAULT_FILTER, formattedRuns, isReplyToMine, OWN_SOURCE, frameable, nextAfter, postOfQuote, PULL_THRESHOLD, pullProgress, readingMinutes, readingTimeLabel, relativeTime, sourcesOf } from "../src/ui/readerFeed";
 
 const fixture = (name: string): string => readFileSync(new URL(`./fixtures/studio/reader/${name}-0.51.0.html`, import.meta.url), "utf8");
 const post = (patch: Record<string, unknown>): ReadingPost =>
@@ -10,10 +10,10 @@ const post = (patch: Record<string, unknown>): ReadingPost =>
 
 describe("cardOf", () => {
   it("a thread: the quoted words apart from the author's own, from real Studio output", () => {
-    expect(cardOf({ contentHtml: fixture("imported-thread-partial") })).toEqual({ quote: "It has a quotable sentence.", words: "My own words under a partial quote, with a link.", images: 0 });
+    expect(cardOf({ contentHtml: fixture("imported-thread-partial") })).toEqual({ quote: "It has a quotable sentence.", words: "My own words under a partial quote, with a link.", runs: [{ text: "My own words under a partial quote, with a link." }], images: 0 });
   });
   it("a fragment with an image: its words, and the image counted, not loaded", () => {
-    expect(cardOf({ contentHtml: fixture("imported-image") })).toEqual({ quote: null, words: "A post with a picture.", images: 1 });
+    expect(cardOf({ contentHtml: fixture("imported-image") })).toEqual({ quote: null, words: "A post with a picture.", runs: [{ text: "A post with a picture." }], images: 1 });
   });
   it("long words are cut with an ellipsis", () => {
     const c = cardOf({ contentHtml: `<p>${"word ".repeat(200)}</p>` }, 50);
@@ -181,5 +181,37 @@ describe("postOfQuote: where a quote comes from", () => {
     const posts = [mk("a", true), mk("a")];
     expect(postOfQuote(posts, "a")).toBe(posts[1]);
     expect(postOfQuote([mk("a", true)], "a")?.withdrawn).toBe(true);
+  });
+});
+
+describe("formattedRuns (a card's words with a little formatting)", () => {
+  const joined = (r: ReturnType<typeof formattedRuns>): string => r.map((x) => x.text).join("");
+  it("a heading is bold and ends its line; the paragraph after it starts clean", () => {
+    expect(formattedRuns("<h2>A heading</h2><p>Some words follow.</p>")).toEqual([{ text: "A heading", bold: true, breakAfter: true }, { text: "Some words follow." }]);
+  });
+  it("bold and italics are kept; the space between words belongs to the word that follows", () => {
+    expect(formattedRuns("<p>one <strong>two</strong> and <em>three</em>, <b>four</b> <i>five</i>.</p>")).toEqual([
+      { text: "one" }, { text: " two", bold: true }, { text: " and" }, { text: " three", italic: true }, { text: "," }, { text: " four", bold: true }, { text: " five", italic: true }, { text: "." },
+    ]);
+  });
+  it("nested bold and italic, entities, and links stay plain words", () => {
+    const runs = formattedRuns('<p><strong>very <em>much</em></strong> &amp; <a href="https://x">a link</a></p>');
+    expect(runs[0]).toEqual({ text: "very", bold: true });
+    expect(runs[1]).toEqual({ text: " much", bold: true, italic: true });
+    expect(joined(runs)).toBe("very much & a link");
+  });
+  it("the words are the plain text's words, whitespace collapsed, one space between paragraphs", () => {
+    const html = "<p>First  paragraph.</p>\n<p>Second   one.</p><ul><li>item</li></ul>";
+    expect(joined(formattedRuns(html))).toBe(cardOf({ contentHtml: html }).words);
+  });
+  it("is cut at the card length with an ellipsis, across runs, and never ends on a line break", () => {
+    const runs = formattedRuns(`<h1>Head</h1><p>${"word ".repeat(100)}</p>`, 40);
+    expect(joined(runs).length).toBeLessThanOrEqual(40);
+    expect(joined(runs).endsWith("…")).toBe(true);
+    expect(formattedRuns("<p>x</p><h2>Last</h2>").at(-1)?.breakAfter).toBeUndefined();
+  });
+  it("tags it does not know and scripts' text are not markup: only words come out", () => {
+    const runs = formattedRuns("<p>safe <script>alert(1)</script> <span onclick=x>words</span></p>");
+    expect(runs.every((r) => !/[<>]/.test(r.text))).toBe(true);
   });
 });

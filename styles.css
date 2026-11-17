@@ -724,3 +724,7 @@
 .blyg-reader-note .blyg-reader-btn { margin-left: var(--size-4-2); }
 .blyg-help > summary { cursor: pointer; color: var(--text-muted); }
 .blyg-help .blyg-note { margin-top: var(--size-4-1); }
+
+/* The card's words with a little formatting (increment 13). */
+.blyg-reader-excerpt .blyg-reader-b { font-weight: var(--font-semibold); }
+.blyg-reader-excerpt .blyg-reader-i { font-style: italic; }
