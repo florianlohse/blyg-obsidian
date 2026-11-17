@@ -950,6 +950,18 @@ export class BlygReaderView extends ItemView {
       if (i > 0) meta.createSpan({ text: " · " });
       draw();
     });
+    // "copy link": the post's address on its own site, to paste anywhere (small and plain, in the line that says where the post is from).
+    if (web) {
+      meta.createSpan({ text: " · " });
+      const copy = meta.createEl("a", { cls: "blyg-reader-link blyg-reader-copylink", text: "copy link", attr: { href: "#", role: "button", title: "Copy this post's address" } });
+      copy.addEventListener("click", (e) => {
+        e.preventDefault();
+        void navigator.clipboard.writeText(web).then(
+          () => this.setStatus("Link copied."),
+          () => this.setStatus("The link could not be copied."),
+        );
+      });
+    }
     meta.createSpan({ cls: "blyg-reader-version", text: `v${this.host.version}`, attr: { title: "Version of the Blyg plugin on this device" } });
   }
 

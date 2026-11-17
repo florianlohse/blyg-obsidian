@@ -28,6 +28,8 @@ export class BlygSettingTab extends PluginSettingTab {
   private issuesSetting: Setting | null = null;
   /** The "Check connection" rows drawn now, and the last result of each check (kept in memory while Obsidian runs, shown again only for the settings it was made with). */
   private checks: Array<{ paint: () => void }> = [];
+  /** The live post previews under the font and contrast settings; repainted whenever one of the reader's settings changes. */
+  private previews: Array<() => void> = [];
   private readonly lastReports = new Map<string, { lines: { level: string; text: string }[]; at: Date }>();
   /**
    * The "Also publish to a GitHub-hosted site" switch (Advanced). Not saved and not in the settings schema: null until the page is first
@@ -63,6 +65,31 @@ export class BlygSettingTab extends PluginSettingTab {
       if (route) delete route.draftsOnly;
     }
     this.changed();
+    if (key.startsWith("readerPane.")) for (const paint of this.previews) paint();
+  }
+
+  /** "Preview" under the font and contrast settings: a few lines drawn with the very classes the reader uses, so the choice can be judged without opening the reader. */
+  private fontPreviewItem(): SettingGroupItem {
+    return {
+      name: "Preview",
+      desc: "How a post looks with the font and the contrast above.",
+      aliases: ["reader", "font", "contrast", "sample"],
+      render: (setting) => {
+        const box = setting.infoEl.createDiv({ cls: "blyg-font-preview" });
+        const paint = (): void => {
+          box.empty();
+          const font = this.plugin.settings.readerPane.font;
+          const contrast = this.plugin.settings.readerPane.contrast;
+          const root = box.createDiv({ cls: `blyg-reader is-font-${font} is-contrast-${contrast}` });
+          const body = root.createDiv({ cls: "blyg-reader-surface" }).createDiv({ cls: "blyg-reader-body" });
+          body.createEl("p", { text: "A post is read here: the quick brown fox jumps over the lazy dog, 0123456789." });
+          const quote = body.createEl("blockquote", { cls: "blyg-transclusion" });
+          quote.createEl("p", { text: "A quote of another blyg's post looks like this." });
+        };
+        this.previews.push(paint);
+        paint();
+      },
+    };
   }
 
   /** Is the GitHub-site part expanded in the Advanced box? */
@@ -78,6 +105,7 @@ export class BlygSettingTab extends PluginSettingTab {
 
   override getSettingDefinitions(): SettingDefinitionItem[] {
     this.checks = [];
+    this.previews = [];
     const s = this.plugin.settings;
     const studioOnly = this.studioOnlyView();
     const text = (name: string, desc: string, key: string, placeholder?: string): SettingGroupItem => ({
@@ -234,6 +262,7 @@ export class BlygSettingTab extends PluginSettingTab {
           aliases: ["reader", "contrast", "reading surface", "dark", "light"],
           control: { type: "dropdown", key: "readerPane.contrast", options: { reduced: "Reduced", normal: "Normal", high: "High" } },
         },
+        this.fontPreviewItem(),
       ],
     });
 

@@ -284,12 +284,14 @@ export async function launch({ data = fixtureData(), withDev = false } = {}) {
     return Boolean(ok);
   };
   s.clickModal = async (text, ms = 10000) => {
+    // `text` is the button's text, or a RegExp (a label that carries a number, like "Quote selection (39 chars)").
+    const want = text instanceof RegExp ? { re: text.source } : { text };
     const ok = await s.becomes(() => page.evaluate((t) => {
-      const b = [...([...activeDocument.querySelectorAll(".modal-container .modal")].at(-1)?.querySelectorAll("button") ?? [])].find((x) => x.textContent?.trim() === t);
+      const b = [...([...activeDocument.querySelectorAll(".modal-container .modal")].at(-1)?.querySelectorAll("button") ?? [])].find((x) => (t.re ? new RegExp(t.re).test(x.textContent?.trim() ?? "") : x.textContent?.trim() === t.text));
       if (!b || b.disabled) return false;
       b.click();
       return true;
-    }, text), ms, `the window button “${text}”`);
+    }, want), ms, `the window button “${text}”`);
     return Boolean(ok);
   };
   /** Flip the switch of the row named `name` in the open window; returns whether the row was found. */

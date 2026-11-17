@@ -98,8 +98,8 @@ becomes a link to its page.
 
 1. Open a thread. Put the cursor where the quote should go.
 2. Panel → **Insert quote** → choose one of your published notes (newest first; the list shows the first words).
-3. A window shows that note's text as readers see it. Either tap **Quote the selection** (first press and hold in the text and drag the
-   handles over the passage) or **Quote the whole item**.
+3. A window shows that note's text as readers see it. Either tap **Quote selection** (first press and hold in the text and drag the
+   handles over the passage) or **Quote whole post**.
 
 Things to know:
 
