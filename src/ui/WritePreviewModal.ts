@@ -1,6 +1,7 @@
 // The window shown before every write that changes something (R2, decided): where it goes, what changes, and a clear
 // choice. Built only with createEl/text: nothing from a note is ever inserted as HTML.
 import { Modal, sanitizeHTMLToDom, Setting, type App, type ButtonComponent } from "obsidian";
+import { showLocalImages } from "./localImages";
 import { diffText, type DiffBlock } from "../core/diff";
 import type { Confirmation, WritePreview } from "../publish/types";
 
@@ -312,14 +313,22 @@ export class WritePreviewModal extends Modal {
   private renderStudioRendering(parent: HTMLElement, collapsed = false): void {
     const studio = this.preview.studio;
     if (!studio || studio.html.trim() === "") return;
+    const rendered = sanitizeHTMLToDom(studio.html);
+    // After the sanitiser: the pictures the note embeds are shown from the vault, in place of the stand-in addresses the Studio cannot serve yet.
+    if (studio.localImages && studio.localImages.length > 0) {
+      showLocalImages(rendered, studio.localImages, (path) => {
+        const file = this.app.vault.getFileByPath(path);
+        return file ? this.app.vault.getResourcePath(file) : null;
+      });
+    }
     if (collapsed) {
       const more = parent.createEl("details", { cls: "blyg-studio-more" });
       more.createEl("summary", { text: "As readers will see it" });
-      more.createDiv({ cls: "blyg-studio-render" }).appendChild(sanitizeHTMLToDom(studio.html));
+      more.createDiv({ cls: "blyg-studio-render" }).appendChild(rendered);
       return;
     }
     parent.createDiv({ cls: "blyg-diff-heading", text: "As readers will see it" });
-    parent.createDiv({ cls: "blyg-studio-render" }).appendChild(sanitizeHTMLToDom(studio.html));
+    parent.createDiv({ cls: "blyg-studio-render" }).appendChild(rendered);
   }
 
   /** Every wikilink in the text and how it was judged, so the verdict is never a black box. */
