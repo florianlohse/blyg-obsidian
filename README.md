@@ -52,6 +52,10 @@ neighbour's item (the quote carries the author's name and the version it was tak
 
 ## A look inside Obsidian
 
+**Read the blygs you follow** in the reader (experimental): the newest posts as cards, with what is unread, what answers you and how long each takes to read:
+
+<p><img src="images/readme/reader-feed.png" width="300" alt="The Blyg reader on a phone: the tabs Reading, Mentions and Sort and filter, the line Updated just now, and three post cards, one of them from Teo Brandt marked unread, one a thread, two marked You"></p>
+
 **Before anything is sent**, a window shows what readers will see and what changes:
 
 <p><img src="images/readme/publish-preview.png" width="300" alt="The publish window on a phone: the target Studio, the text as readers will see it, the new text, and Cancel and Publish buttons"></p>
