@@ -959,18 +959,9 @@ export class BlygReaderView extends ItemView {
       }, { title: "Open the note this post was published from" });
       if (where) this.stepCount(row, where);
     } else {
-      // The read mark and the place in the feed are one control: an empty ring while unread, a green check once read. A post that is not in the feed has no place to show.
-      const label = unread ? "Mark read" : "Read";
-      const pill = row.createEl("button", {
-        cls: `blyg-reader-readpill${unread ? "" : " is-read"}`,
-        attr: { "aria-label": unread ? "Mark read" : "Read. Tap to mark unread again", "aria-pressed": String(!unread), title: unread ? "Mark this post read" : "Read. Tap to mark it unread again" },
-      });
-      pill.disabled = p.withdrawn || !held;
-      const glyph = pill.createSpan({ cls: "blyg-reader-readglyph" });
-      if (!unread) setIcon(glyph, "check");
-      if (where) this.stepCount(pill, where);
-      else pill.createSpan({ text: label });
-      pill.addEventListener("click", () => void this.setRead(p, unread));
+      // The read mark is the feed card's own: a ring while unread, a green check once read. The place in the feed ("3 of 24") sits beside it.
+      this.readCheck(row, p, unread, { disabled: p.withdrawn || !held });
+      if (where) this.stepCount(row, where);
     }
     row.createDiv({ cls: "blyg-reader-spacer" });
     this.replyBtn = this.button(row, "Reply", () => {
@@ -989,6 +980,21 @@ export class BlygReaderView extends ItemView {
       note.createSpan({ text: "Your Studio has not fetched this post yet, so it cannot be replied to or marked read. " });
       this.button(note, "Ask Studio to fetch", () => this.askToFetch(p), { title: "Ask your Studio to fetch this blyg now" });
     }
+  }
+
+  /** The read mark, the same on a card and in an open post: a ring while unread, a green check once read; a tap changes it. */
+  private readCheck(parent: HTMLElement, p: ReadingPost, unread: boolean, opts: { disabled?: boolean } = {}): HTMLButtonElement {
+    const check = parent.createEl("button", {
+      cls: `blyg-reader-check${unread ? "" : " is-read"}`,
+      text: unread ? "○" : "✓",
+      attr: { "aria-label": unread ? "Mark read" : "Mark unread", title: unread ? "Mark read" : "Read. Tap to mark it unread again" },
+    });
+    check.disabled = opts.disabled === true;
+    check.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void this.setRead(p, unread);
+    });
+    return check;
   }
 
   /** "3 of 24": where the open post is in the feed's order. */
@@ -1103,17 +1109,7 @@ export class BlygReaderView extends ItemView {
         meta.createSpan({ cls: "blyg-reader-nowrap", text: piece });
       });
     }
-    if (tracked && !p.withdrawn && p.own !== true) {
-      const check = head.createEl("button", {
-        cls: "blyg-reader-check",
-        text: unread ? "○" : "✓",
-        attr: { "aria-label": unread ? "Mark read" : "Mark unread", title: unread ? "Mark read" : "Read. Tap to mark it unread again" },
-      });
-      check.addEventListener("click", (e) => {
-        e.stopPropagation();
-        void this.setRead(p, unread);
-      });
-    }
+    if (tracked && !p.withdrawn && p.own !== true) this.readCheck(head, p, unread);
     const badges = card.createDiv({ cls: "blyg-reader-badges" });
     if (p.own === true) badges.createSpan({ cls: "blyg-reader-badge is-you", text: "You", attr: { title: "One of your own posts" } });
     const toYou = mention !== null || isReplyToMine(p, this.mineIds);
