@@ -22,7 +22,7 @@ await runScenario({}, async (s) => {
 
   // the panel says nothing is wrong with it
   await s.clickPanel("Send draft…");
-  check(await s.waitModal("Send a draft to your Studio"), "the window opens");
+  check(await s.waitModal("Send private draft?"), "the window opens");
   const sheet = await s.modalText();
   check(/1 image uploaded with this draft: pic\.png/.test(sheet), "the window lists the picture that will be uploaded");
 
@@ -54,7 +54,7 @@ await runScenario({}, async (s) => {
   await s.clearNotices();
   await s.openNote(path);
   await s.clickPanel("Send draft…");
-  const again = await s.waitModal("Send a draft to your Studio", 6000, true);
+  const again = await s.waitModal("Send private draft?", 6000, true);
   const noChange = await s.waitNotice(/nothing to send|No changes|up to date|unchanged/i, 8000);
   check(!again || Boolean(noChange), "sending the same note again finds nothing to send");
 });
