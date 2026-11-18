@@ -8,7 +8,7 @@ will change before anything leaves your vault.
 > signed in to (see *What you need*). It does not work without one, and it cannot create one for you. The reader is
 > experimental, see *Known gaps*.
 
-<p><img src="images/readme/hero.png" width="640" alt="Obsidian on the desktop: a vault with a Blyg folder of notes, an open thread note, and the Blyg panel on the right saying Published (v1) and up to date, with buttons to write, quote, reply and update"></p>
+<p><img src="images/readme/hero.png" width="640" alt="Obsidian on the desktop: a vault with a Blyg folder of notes, an open thread note, and the Blyg panel on the right with the buttons Open reader and Sync with Studio, the status Published (v1) and up to date, and the buttons New fragment, New thread and Reply to item"></p>
 
 ## What it does
 
