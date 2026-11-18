@@ -131,6 +131,12 @@
   overflow-wrap: anywhere;
 }
 
+/* A picture in the Studio's rendering keeps to the box: a photo is far wider than the window, and without this it runs out of the box and is cut off. */
+.blyg-preview .blyg-studio-render img {
+  max-width: 100%;
+  height: auto;
+}
+
 .blyg-preview .blyg-facts {
   display: grid;
   grid-template-columns: max-content 1fr;

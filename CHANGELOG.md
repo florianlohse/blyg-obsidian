@@ -95,7 +95,7 @@ becomes the release notes. Write entries for people who use the plugin, not for 
 ### Fixed
 
 - **Reader on an iPad (tablet layout).** The list of posts was squeezed into a strip a few pixels high: the reader keeps its last line above Obsidian's floating bottom bar, and the tablet layout has that bar's element in the page but does not draw it, which was read as a bar covering the whole pane. A bar that is not drawn, or does not meet the pane, is now ignored. The phone is unchanged.
-- **The publish window shows your pictures.** When a note embeds an image, the "As readers will see it" box in the publish window used to show a broken-image icon with the description, because the picture only gets its address on the Studio when you publish. It now shows the picture from your vault. What is sent and published does not change.
+- **The publish window shows your pictures.** When a note embeds an image, the "As readers will see it" box in the publish window used to show a broken-image icon with the description, because the picture only gets its address on the Studio when you publish. It now shows the picture from your vault. What is sent and published does not change. A large picture is scaled to the width of the box instead of running out of it.
 
 ## [0.11.0] — 2026-11-12
 

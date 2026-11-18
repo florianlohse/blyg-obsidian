@@ -36,6 +36,14 @@ await runScenario({}, async (s) => {
     "the picture in the window to load",
   );
   check(Boolean(shown), "the window shows the picture (it decoded: not a broken image)");
+  // the picture keeps to its box: the rule is applied in the real app, and the picture does not run out of the box on the right
+  const fit = await s.evaluate(() => {
+    const img = activeDocument.querySelector(".blyg-studio-render img");
+    const box = activeDocument.querySelector(".blyg-studio-render");
+    if (!img || !box) return null;
+    return { maxWidth: getComputedStyle(img).maxWidth, imgRight: img.getBoundingClientRect().right, boxRight: box.getBoundingClientRect().right };
+  });
+  check(Boolean(fit) && fit.maxWidth === "100%" && fit.imgRight <= fit.boxRight + 1, `the picture keeps to the preview's box (${fit ? `max-width ${fit.maxWidth}, right edge ${Math.round(fit.imgRight)} of ${Math.round(fit.boxRight)}` : "none"})`);
   check(Boolean(shown) && !/\/media\/pending\//.test(shown.src) && shown.width === 24 && shown.height === 16, `it is the vault's file, 24x16 (${shown ? `${shown.src.slice(0, 40)}…, ${shown.width}x${shown.height}` : "none"})`);
 
   // sending: the picture is uploaded and the Studio holds the text with the picture's own address

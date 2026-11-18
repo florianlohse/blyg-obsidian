@@ -211,6 +211,13 @@ describe("WritePreviewModal", () => {
     expect(rule(".blyg-preview .blyg-diff")).not.toMatch(/overflow-[xy]|overflow:|max-height/);
   });
 
+  it("a picture in the Studio's rendering is held to the width of its box, whatever its own size", () => {
+    const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+    const rule = (selector: string): string => new RegExp(`${selector.replace(/[.]/g, "\\.")}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? "";
+    expect(rule(".blyg-preview .blyg-studio-render img")).toMatch(/max-width:\s*100%/);
+    expect(rule(".blyg-preview .blyg-studio-render img")).toMatch(/height:\s*auto/);
+  });
+
   it("shows where it writes, the commit message and what changes", () => {
     const { texts } = open(preview());
     const all = texts.map((t) => t.text).join("|");
