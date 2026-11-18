@@ -44,6 +44,17 @@ export function postFromPeek(m: InboundMention, peek: StudioPeek): ReadingPost {
 /** What the mention is, in one line: "Name replied to". The item it is about follows on its own line. */
 export const mentionLead = (m: InboundMention): string => `${m.sourceAuthorName ?? hostOf(m.sourceOrigin) ?? "Someone"} ${mentionVerb(m.relation)}`;
 
+/** The badge a mention card carries: what the post did to your item, in a few words ("replied to you"). */
+export function mentionBadge(r: InboundMention["relation"]): string {
+  switch (r) {
+    case "stub": return "replied to you";
+    case "transclusion": return "quoted you";
+    case "fork": return "forked yours";
+    case "source": return "cited you";
+    default: return "mentioned you";
+  }
+}
+
 function mentionVerb(r: InboundMention["relation"]): string {
   switch (r) {
     case "stub": return "replied to your item";
@@ -54,7 +65,7 @@ function mentionVerb(r: InboundMention["relation"]): string {
   }
 }
 
-function hostOf(url: string | null): string | null {
+export function hostOf(url: string | null): string | null {
   if (!url) return null;
   try {
     return new URL(url).host;

@@ -2,7 +2,7 @@
 // Obsidian, open in the browser, mark read). Drawing only; what it asks of the plugin is `ReaderHost`. Foreign markup goes through defang.ts and
 // `sanitizeHTMLToDom` only. A post is always shown as text; the blyg's name above it opens the post's page outside Obsidian.
 //
-// Layout: a header that never scrolls away (tabs and controls, or the post's buttons and its blyg, author and read state, then one status line) above a
+// Layout: a header that never scrolls away (tabs and controls, or for a post two rows: the way out and its small print, then the read mark, Reply and Previous / Next; and a status line only when something happened) above a
 // body that scrolls by itself. Read state changes at once, in place, and is put back if the Studio refuses.
 import { ItemView, sanitizeHTMLToDom, setIcon, type WorkspaceLeaf } from "obsidian";
 import { isUnread, type InboundMention, type ReadingPost } from "../studio/reading";
@@ -14,7 +14,7 @@ import { responseChip, responseIndex, type ResponseEntry } from "./readerRespons
 import { changedCount, chooseWalk, keepOwnPosts, knownOf, mergeFresh, READER_KEEP, type SyncMemory } from "./readerSync";
 import type { StudioListedItem } from "../studio/types";
 import { bottomClearance } from "./readerBottom";
-import { limiter, mentionLead, postOfMention, visibleMentions } from "./readerMentions";
+import { hostOf, limiter, mentionBadge, postOfMention, visibleMentions } from "./readerMentions";
 
 export const BLYG_READER_VIEW = "blyg-reader";
 
@@ -147,6 +147,8 @@ export class BlygReaderView extends ItemView {
   private headerEl: HTMLElement | null = null;
   /** What mentions have shown so far (the mentioning post, the item it was about): asked for once, a few at a time. */
   private readonly mentionInfo = new Map<string, { post: ReadingPost | null; own: string | null; done: boolean }>();
+  /** The cards of the mentions tab, by the key of their post, so a read mark changed anywhere shows on them too. */
+  private readonly mentionCards = new Map<string, () => void>();
   private readonly mentionSlot = limiter(4);
   private readonly mentionAsked = new Map<string, Promise<void>>();
   private bodyEl: HTMLElement | null = null;
@@ -480,6 +482,7 @@ export class BlygReaderView extends ItemView {
   private refreshPost(p: ReadingPost): void {
     const card = this.cardEls.get(keyOf(p));
     if (card?.isConnected) this.fillCard(card, p);
+    this.mentionCards.get(keyOf(p))?.();
     if (this.shown && keyOf(this.shown) === keyOf(p)) this.drawHeader();
   }
 
@@ -696,16 +699,12 @@ export class BlygReaderView extends ItemView {
     }
   }
 
-  /** The slim bar at the foot of an open post: ‹ Previous, the place in the feed, Next ›. Hold Next to mark the post read and go on. */
-  private drawStepBar(body: HTMLElement, p: ReadingPost): void {
-    const where = this.stepIndex(p);
-    body.toggleClass("has-stepbar", where !== null);
-    if (!where) return;
-    const bar = body.createDiv({ cls: "blyg-reader-stepbar" });
-    const prev = this.button(bar, "Previous", () => this.stepTo(p, -1, false), { cls: "blyg-reader-step", disabled: where.at <= 0, title: "The post before this one in the feed" });
+  /** Previous and Next, in the corner of the thumb row. A tap steps through the feed; holding Next marks the open post read and goes on. */
+  private drawSteps(row: HTMLElement, p: ReadingPost, where: { keys: string[]; at: number }): void {
+    const steps = row.createDiv({ cls: "blyg-reader-steps" });
+    const prev = this.button(steps, "", () => this.stepTo(p, -1, false), { cls: "blyg-reader-step blyg-reader-step-prev", disabled: where.at <= 0, title: "The post before this one in the feed" });
     this.addIcon(prev, "chevron-left");
-    bar.createDiv({ cls: "blyg-reader-stepcount", text: `${where.at + 1} of ${where.keys.length}` });
-    const next = this.button(bar, "Next", () => {
+    const next = this.button(steps, "Next", () => {
       if (this.longPressed) {
         this.longPressed = false;
         return;
@@ -909,18 +908,23 @@ export class BlygReaderView extends ItemView {
     if (activeFilters({ ...this.filter, sort: "newest" }) > 0) this.button(chips, "Clear filter", () => this.clearFilters(), { cls: "blyg-reader-chip-clear", title: "Lift every choice again (the order stays)" });
   }
 
+  /**
+   * The open post's header, two rows. The first is the far row: the way out and the post's small print. The second is the thumb row, right above
+   * the text: the read mark (which also says where you are in the feed), Reply, and Previous / Next in the corner, the part the thumb reaches first.
+   */
   private drawPostHeader(h: HTMLElement, p: ReadingPost): void {
     const web = frameable(p.sourceUrl) ? p.sourceUrl : null;
     const key = keyOf(p);
     const fetched = !this.notFetched.has(key); // false: the Studio follows this blyg but has not fetched this post (S15-H)
     const held = p.subscriptionId !== "" && fetched; // the Studio holds it; otherwise (a mention's post) there is no read mark and nothing to quote from
     const unread = isUnread(p);
+    const where = this.stepIndex(p);
     // Row 1: the way out. It always leads to the reader, except after following a quote: then it leads back to the post you came from.
-    const main = h.createDiv({ cls: "blyg-reader-bar blyg-reader-bar-main" });
+    const top = h.createDiv({ cls: "blyg-reader-bar blyg-reader-bar-main" });
     const toPost = this.trail.length > 0;
-    this.button(main, toPost ? "Back" : "Reader", () => this.closePost(), { cls: "blyg-reader-back", title: toPost ? "Back to the post you came from" : "Back to the reader" });
-    // Row 2: the small print, one line: the blyg (its name is the only link), how long it takes to read (bold, first), when, and the replies chip when something answers it. Read state is the Mark read button's.
-    const meta = h.createDiv({ cls: "blyg-reader-meta blyg-reader-postmeta" });
+    this.button(top, toPost ? "Back" : "Reader", () => this.closePost(), { cls: "blyg-reader-back", title: toPost ? "Back to the post you came from" : "Back to the reader" });
+    // The small print, one line that gives way at its end: the blyg (its name is the only link), how long it takes to read (bold, first), when, and the replies chip when something answers it.
+    const meta = top.createDiv({ cls: "blyg-reader-meta blyg-reader-postmeta" });
     const blygUrl = p.origin ?? (web ? new URL(web).origin : null);
     const name = meta.createSpan({ cls: "blyg-reader-postblyg" });
     // The name opens the post's own page (what the Browser button did); a post with no page of its own opens its blyg.
@@ -931,7 +935,7 @@ export class BlygReaderView extends ItemView {
     if (!p.withdrawn) bits.push(() => rest.createEl("strong", { cls: "blyg-reader-readtime", text: readingTimeLabel(p) }));
     const when = relativeTime(p.created ?? p.observedAt, Date.now());
     if (when) bits.push(() => rest.createSpan({ text: when }));
-    // Only what the button cannot say: the post changed since you read it, or it was withdrawn.
+    // Only what the read mark cannot say: the post changed since you read it, or it was withdrawn.
     if (p.own !== true && (p.withdrawn || (unread && p.readVersion !== null))) bits.push(() => rest.createSpan({ cls: "blyg-reader-unreadmark", text: p.withdrawn ? "withdrawn" : "updated since you read it" }));
     const chip = responseChip(this.respFor(p));
     if (chip) {
@@ -945,26 +949,38 @@ export class BlygReaderView extends ItemView {
       });
     }
     this.joined(rest, bits);
-    // The actions of this post are one centred bar of two buttons of the same width: Mark read (or Open note) and Reply, the main one.
-    const row = h.createDiv({ cls: "blyg-reader-bar blyg-reader-bar-actions" });
-    const tray = row.createDiv({ cls: "blyg-reader-btngroup" });
+
+    // Row 2: the thumb row. Equal room either side of Reply, so Next in the corner is not next to it.
+    const row = h.createDiv({ cls: "blyg-reader-bar blyg-reader-bar-thumb" });
     if (p.own === true) {
       // Your own post: no read mark; the note it came from is one tap away.
-      this.button(tray, "Open note", async () => {
+      this.button(row, "Open note", async () => {
         if (!(await this.host.openOwnItem(p.remoteId))) this.setStatus("No note of this vault holds this post.");
       }, { title: "Open the note this post was published from" });
+      if (where) this.stepCount(row, where);
     } else {
-      this.button(tray, unread ? "○ Mark read" : "✓ Read", () => this.setRead(p, unread), {
-        disabled: p.withdrawn || !held,
-        active: !unread,
-        cls: "blyg-reader-readtoggle",
-        title: unread ? "Mark this post read" : "Read. Tap to mark it unread again",
+      // The read mark and the place in the feed are one control: an empty ring while unread, a green check once read. A post that is not in the feed has no place to show.
+      const label = unread ? "Mark read" : "Read";
+      const pill = row.createEl("button", {
+        cls: `blyg-reader-readpill${unread ? "" : " is-read"}`,
+        attr: { "aria-label": unread ? "Mark read" : "Read. Tap to mark unread again", "aria-pressed": String(!unread), title: unread ? "Mark this post read" : "Read. Tap to mark it unread again" },
       });
+      pill.disabled = p.withdrawn || !held;
+      const glyph = pill.createSpan({ cls: "blyg-reader-readglyph" });
+      if (!unread) setIcon(glyph, "check");
+      if (where) this.stepCount(pill, where);
+      else pill.createSpan({ text: label });
+      pill.addEventListener("click", () => void this.setRead(p, unread));
     }
-    this.replyBtn = this.button(tray, "Reply", () => {
+    row.createDiv({ cls: "blyg-reader-spacer" });
+    this.replyBtn = this.button(row, "Reply", () => {
       const sel = this.replySelection();
       void this.host.replyTo(p, sel.trim() !== "" ? sel : undefined);
     }, { disabled: p.withdrawn || !held, cls: "blyg-reader-replybtn", title: p.own === true ? "Your own post: write the follow-up in your vault" : held ? "Reply in Obsidian: a new thread that answers this post" : fetched ? "Subscribe to this blyg in your Studio to reply to its posts from here." : "Your Studio has not fetched this post yet." });
+    if (where) {
+      row.createDiv({ cls: "blyg-reader-spacer" });
+      this.drawSteps(row, p, where);
+    }
     // Under the bar, while a passage is selected: what Reply will quote (the button itself never changes its words).
     this.replyHint = h.createDiv({ cls: "blyg-reader-replyhint" });
     this.showReplyLabel();
@@ -973,6 +989,13 @@ export class BlygReaderView extends ItemView {
       note.createSpan({ text: "Your Studio has not fetched this post yet, so it cannot be replied to or marked read. " });
       this.button(note, "Ask Studio to fetch", () => this.askToFetch(p), { title: "Ask your Studio to fetch this blyg now" });
     }
+  }
+
+  /** "3 of 24": where the open post is in the feed's order. */
+  private stepCount(parent: HTMLElement, where: { keys: string[]; at: number }): void {
+    const count = parent.createSpan({ cls: "blyg-reader-stepcount" });
+    count.createEl("strong", { text: String(where.at + 1) });
+    count.appendText(` of ${where.keys.length}`);
   }
 
   /** Draw the pieces of a line with " · " between them. */
@@ -1059,11 +1082,13 @@ export class BlygReaderView extends ItemView {
   }
 
   /** One card: what a post is, at a glance. Drawn again in place when its read state changes. */
-  private fillCard(card: HTMLElement, p: ReadingPost): void {
+  private fillCard(card: HTMLElement, p: ReadingPost, mention: InboundMention | null = null): void {
     card.empty();
-    const unread = isUnread(p);
+    // A post the Studio does not read (a mention's post from another blyg) has no read mark: it is neither unread nor read.
+    const tracked = p.subscriptionId !== "";
+    const unread = tracked && isUnread(p);
     card.toggleClass("is-unread", unread);
-    card.toggleClass("is-read", !unread && !p.withdrawn && p.own !== true);
+    card.toggleClass("is-read", tracked && !unread && !p.withdrawn && p.own !== true);
     const head = card.createDiv({ cls: "blyg-reader-cardhead" });
     const title = head.createDiv({ cls: "blyg-reader-cardtitle" });
     const source = p.subscriptionTitle || p.origin || "";
@@ -1078,7 +1103,7 @@ export class BlygReaderView extends ItemView {
         meta.createSpan({ cls: "blyg-reader-nowrap", text: piece });
       });
     }
-    if (!p.withdrawn && p.own !== true) {
+    if (tracked && !p.withdrawn && p.own !== true) {
       const check = head.createEl("button", {
         cls: "blyg-reader-check",
         text: unread ? "○" : "✓",
@@ -1091,20 +1116,22 @@ export class BlygReaderView extends ItemView {
     }
     const badges = card.createDiv({ cls: "blyg-reader-badges" });
     if (p.own === true) badges.createSpan({ cls: "blyg-reader-badge is-you", text: "You", attr: { title: "One of your own posts" } });
-    const toYou = isReplyToMine(p, this.mineIds);
+    const toYou = mention !== null || isReplyToMine(p, this.mineIds);
     card.toggleClass("is-reply-to-you", toYou);
-    if (toYou) badges.createSpan({ cls: "blyg-reader-badge is-toyou", text: "reply to you", attr: { title: "This post answers one of your own items" } });
+    if (mention) badges.createSpan({ cls: "blyg-reader-badge is-toyou", text: mentionBadge(mention.relation), attr: { title: "This post is about one of your own items" } });
+    else if (toYou) badges.createSpan({ cls: "blyg-reader-badge is-toyou", text: "reply to you", attr: { title: "This post answers one of your own items" } });
     else if (p.isReply) badges.createSpan({ cls: "blyg-reader-badge", text: "reply" });
     else if (p.kind === "thread") badges.createSpan({ cls: "blyg-reader-badge", text: "thread" });
     if (p.withdrawn) badges.createSpan({ cls: "blyg-reader-badge", text: "withdrawn" });
     if (unread) badges.createSpan({ cls: "blyg-reader-badge is-new", text: p.readVersion !== null ? "updated" : "unread" });
-    else if (!p.withdrawn && p.own !== true) badges.createSpan({ cls: "blyg-reader-badge is-done", text: "✓ read" });
+    else if (tracked && !p.withdrawn && p.own !== true) badges.createSpan({ cls: "blyg-reader-badge is-done", text: "✓ read" });
     // The replies you can see (same rule as in an open post): green when one of them is yours.
     const chip = this.mine !== null || (this.data?.posts.length ?? 0) > 0 ? responseChip(this.respFor(p)) : null;
     if (chip) this.addIcon(badges.createSpan({ cls: `blyg-reader-badge blyg-reader-resp-badge${chip.mine ? " is-mine" : ""}`, text: chip.text, attr: { title: chip.title } }), "reply");
     if (!p.withdrawn) {
       const c = cardOf(p);
       if (c.quote) card.createDiv({ cls: "blyg-reader-quote", text: c.quote });
+      if (c.source) this.addIcon(card.createDiv({ cls: "blyg-reader-quotesource", text: c.source }), "arrow-up-right");
       if (c.words) {
         // The words with a little formatting (headings and bold in bold, italics in italics): spans of text, never markup.
         const excerpt = card.createDiv({ cls: "blyg-reader-excerpt" });
@@ -1115,32 +1142,58 @@ export class BlygReaderView extends ItemView {
       }
       if (c.images > 0) card.createDiv({ cls: "blyg-reader-meta", text: `${c.images} image${c.images === 1 ? "" : "s"}` });
     }
+    if (mention) this.drawMentionExtras(card, mention);
   }
 
+  /** What only a mention's card has: the item of yours it is about, and Dismiss. */
+  private drawMentionExtras(card: HTMLElement, m: InboundMention): void {
+    const own = this.mentionInfo.get(m.id)?.own;
+    if (own) card.createDiv({ cls: "blyg-reader-meta blyg-reader-ownitem", text: `On: ${own}` });
+    const actions = card.createDiv({ cls: "blyg-reader-mention-actions" });
+    const dismiss = this.button(actions, "Dismiss", () => this.dismissMention(m), { cls: "blyg-reader-quiet blyg-reader-dismiss", title: "Hide this mention. It is hidden in your Studio too." });
+    dismiss.addEventListener("click", (e) => e.stopPropagation());
+  }
+
+  /** A mention is a post of another blyg that is about one of your items: drawn as the same card as in the feed, with what it is about and Dismiss. */
   private drawMentions(col: HTMLElement, mentions: InboundMention[]): void {
+    this.mentionCards.clear();
     const shown = visibleMentions(mentions);
     if (shown.length === 0) col.createDiv({ cls: "blyg-reader-note", text: "No one has mentioned your items yet." });
     for (const m of shown) {
-      const row = col.createDiv({ cls: "blyg-reader-row blyg-reader-mention" });
-      row.createDiv({ cls: "blyg-reader-meta", text: `${mentionLead(m)} · ${relativeTime(m.firstSeen, Date.now())}` });
-      const text = row.createDiv({ cls: "blyg-reader-excerpt" });
-      const own = row.createDiv({ cls: "blyg-reader-meta blyg-reader-ownitem" });
-      const actions = row.createDiv({ cls: "blyg-reader-bar blyg-reader-mention-actions" });
-      this.button(actions, "Dismiss in Studio", () => this.dismissMention(m), { cls: "blyg-reader-quiet blyg-reader-dismiss", title: "Hide this mention. It is hidden in your Studio too." });
-      const fill = (): void => {
-        const info = this.mentionInfo.get(m.id);
-        text.setText(info?.post ? excerptOf(info.post.contentHtml, 220) || "(no text)" : info?.done ? "Its text could not be shown here." : "…");
-        own.setText(info?.own ? `On: ${info.own}` : "");
-        own.toggleClass("is-empty", !info?.own);
-      };
+      const card = col.createDiv({ cls: "blyg-reader-row blyg-reader-card blyg-reader-mention" });
+      const fill = (): void => this.fillMentionCard(card, m);
       fill();
-      void this.loadMention(m).then(fill);
-      row.addEventListener("click", (ev) => {
-        if ((ev.target as HTMLElement).closest(".blyg-reader-mention-actions")) return;
+      void this.loadMention(m).then(() => {
+        const post = this.mentionInfo.get(m.id)?.post;
+        if (post) this.mentionCards.set(keyOf(post), fill);
+        fill();
+      });
+      card.addEventListener("click", () => {
         if ((activeWindow.getSelection()?.toString() ?? "") !== "") return;
         void this.openMention(m);
       });
     }
+  }
+
+  /** The card of one mention: the mentioning post as the feed draws it; until it is there (or when it cannot be shown) a card with the author and what they did. */
+  private fillMentionCard(card: HTMLElement, m: InboundMention): void {
+    const info = this.mentionInfo.get(m.id);
+    if (info?.post) {
+      this.fillCard(card, info.post, m);
+      return;
+    }
+    card.empty();
+    card.removeClass("is-unread");
+    card.removeClass("is-read");
+    card.addClass("is-reply-to-you");
+    const head = card.createDiv({ cls: "blyg-reader-cardhead" });
+    const title = head.createDiv({ cls: "blyg-reader-cardtitle" });
+    title.createSpan({ cls: "blyg-reader-source", text: m.sourceAuthorName ?? hostOf(m.sourceOrigin) ?? "Someone" });
+    const when = relativeTime(m.firstSeen, Date.now());
+    if (when) title.createDiv({ cls: "blyg-reader-meta blyg-reader-cardmeta", text: when });
+    card.createDiv({ cls: "blyg-reader-badges" }).createSpan({ cls: "blyg-reader-badge is-toyou", text: mentionBadge(m.relation), attr: { title: "This post is about one of your own items" } });
+    card.createDiv({ cls: "blyg-reader-excerpt", text: info?.done ? "Its text could not be shown here." : "…" });
+    this.drawMentionExtras(card, m);
   }
 
   /**
@@ -1255,7 +1308,6 @@ export class BlygReaderView extends ItemView {
   }
 
   private drawPostBody(body: HTMLElement, p: ReadingPost): void {
-    this.drawStepBar(body, p);
     const scroll = body.createDiv({ cls: "blyg-reader-scroll blyg-reader-surface" });
     const col = scroll.createDiv({ cls: "blyg-reader-column" });
     this.postColumn = col;

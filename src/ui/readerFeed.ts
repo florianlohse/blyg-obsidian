@@ -6,6 +6,8 @@ import { isUnread, type ReadingPost } from "../studio/reading";
 export interface Card {
   /** The words a thread quotes (from its quote blocks), or null. */
   quote: string | null;
+  /** Where the quote comes from, when the post says so with a line that is only a link (right after the quote, or its last line). Absent when it does not. */
+  source?: string;
   /** The author's own words. */
   words: string;
   /** The same words with the three kinds of formatting a card shows (headings and bold in bold, italics in italics); the same length and cut as `words`. */
@@ -91,10 +93,28 @@ export function formattedRuns(html: string, max = 320): Run[] {
   return out;
 }
 
-/** Split a post's HTML into its outermost quotes (inner HTML of each top-level blockquote, nested ones included) and what is left outside them. A quote may hold a quote: only the matching close ends it. */
-function splitQuotes(html: string): { quotes: string[]; rest: string } {
+// A quote's source line: a block that holds nothing but a link (maybe in italics, maybe with an arrow after it), right after the quote or as its last line.
+// It names where the quote comes from; it is not the author's own words, so a card shows it under the quote and keeps it out of the words.
+const LINK_TEXT = String.raw`((?:(?!<\/a>|<\/?(?:p|div|footer|blockquote)\b)[\s\S])*)`;
+const SOURCE_AFTER = new RegExp(String.raw`^\s*<(p|div|footer)\b[^>]*>\s*(?:<(?:em|i|cite|small|span)\b[^>]*>\s*)*<a\b[^>]*>${LINK_TEXT}<\/a>\s*(?:<\/(?:em|i|cite|small|span)>\s*)*[\s↗⬈➚]*<\/\1>`, "i");
+const SOURCE_TAIL_BLOCK = new RegExp(String.raw`<(p|div|footer)\b[^>]*>\s*(?:<(?:em|i|cite|small|span)\b[^>]*>\s*)*<a\b[^>]*>${LINK_TEXT}<\/a>\s*(?:<\/(?:em|i|cite|small|span)>\s*)*[\s↗⬈➚]*<\/\1>\s*$`, "i");
+const SOURCE_TAIL_LINE = new RegExp(String.raw`(?:<br\s*\/?>|\n)\s*(?:<(?:em|i|cite|small)\b[^>]*>\s*)+<a\b[^>]*>${LINK_TEXT}<\/a>\s*(?:<\/(?:em|i|cite|small)>\s*)+[\s↗⬈➚]*(?:<\/p>)?\s*$`, "i");
+const sourceText = (linkHtml: string): string => plainText(linkHtml).replace(/[\s↗⬈➚]+$/, "").trim();
+
+/** The inner HTML of a quote without a source line at its end, and that line's words (null when there is none, or when the quote is nothing else). */
+function peelSource(inner: string): { body: string; source: string | null } {
+  const found = SOURCE_TAIL_BLOCK.exec(inner) ?? SOURCE_TAIL_LINE.exec(inner);
+  if (!found) return { body: inner, source: null };
+  const body = inner.slice(0, found.index);
+  const text = sourceText(found[2] ?? found[1] ?? "");
+  return plainText(body) === "" || text === "" ? { body: inner, source: null } : { body, source: text };
+}
+
+/** Split a post's HTML into its outermost quotes (inner HTML of each top-level blockquote, nested ones included) and what is left outside them. A quote may hold a quote: only the matching close ends it. The words of each quote's source line come apart too. */
+function splitQuotes(html: string): { quotes: string[]; rest: string; sources: string[] } {
   const tag = /<(\/?)blockquote\b[^>]*>/gi;
   const quotes: string[] = [];
+  const sources: string[] = [];
   let rest = "";
   let depth = 0;
   let from = 0; // start of the text not yet placed
@@ -110,15 +130,24 @@ function splitQuotes(html: string): { quotes: string[]; rest: string } {
     } else if (depth > 0) {
       depth--;
       if (depth === 0) {
-        quotes.push(html.slice(innerStart, m.index));
+        const peeled = peelSource(html.slice(innerStart, m.index));
+        quotes.push(peeled.body);
+        if (peeled.source) sources.push(peeled.source);
         from = m.index + m[0].length;
+        // A line of nothing but a link right after the quote is its source, not the author's words.
+        const after = SOURCE_AFTER.exec(html.slice(from));
+        if (after && plainText(peeled.body) !== "") {
+          const text = sourceText(after[2] ?? "");
+          if (text !== "") sources.push(text);
+          from += after[0].length;
+        }
       }
     }
   }
   // A quote that is never closed runs to the end of the post (nothing of it is the author's own words).
   if (depth > 0) quotes.push(html.slice(innerStart));
   else rest += html.slice(from);
-  return { quotes, rest };
+  return { quotes, rest, sources };
 }
 
 export function cardOf(post: Pick<ReadingPost, "contentHtml">, max = 320): Card {
@@ -127,7 +156,8 @@ export function cardOf(post: Pick<ReadingPost, "contentHtml">, max = 320): Card 
   const quotes = split.quotes.map((q) => plainText(q)).filter((t) => t !== "");
   const own = plainText(split.rest);
   const cut = (t: string, n: number): string => (t.length > n ? `${t.slice(0, n - 1).trimEnd()}…` : t);
-  return { quote: quotes.length ? cut(quotes.join(" … "), 160) : null, words: cut(own, max), runs: formattedRuns(split.rest, max), images: (html.match(/<img\b/gi) ?? []).length };
+  const source = [...new Set(split.sources)].join(" · ");
+  return { quote: quotes.length ? cut(quotes.join(" … "), 160) : null, ...(source !== "" ? { source: cut(source, 120) } : {}), words: cut(own, max), runs: formattedRuns(split.rest, max), images: (html.match(/<img\b/gi) ?? []).length };
 }
 
 /** "just now", "5 min ago", "3 h ago", "yesterday", "4 days ago", else the date. */

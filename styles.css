@@ -550,16 +550,10 @@
 @media (prefers-reduced-motion: reduce) { .blyg-reader-header.is-busy .blyg-reader-refresh .blyg-reader-icon svg { animation: none; } }
 .blyg-reader-version { flex: none; color: var(--text-faint); font-size: var(--font-ui-smaller); white-space: nowrap; margin-left: var(--size-4-2); }
 /* this post's actions share a tray; "Browser" is quieter and sits apart */
-.blyg-reader-btngroup { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0; padding: 0; border-radius: var(--radius-m); border: 1px solid var(--background-modifier-border); background: transparent; overflow: hidden; }
 /* The tray is one segmented control: its buttons are flat and separated by hairlines, so they read as belonging together and below the Back / Next row. */
-.blyg-reader-btngroup .blyg-reader-btn { border-radius: 0; background: transparent; box-shadow: none; border: 0; border-right: 1px solid var(--background-modifier-border); }
-.blyg-reader-btngroup .blyg-reader-btn:last-child { border-right: 0; }
-.blyg-reader-btngroup .blyg-reader-btn.is-active { background: var(--interactive-accent); color: var(--text-on-accent); }
 .blyg-reader-quiet { background: transparent; box-shadow: none; color: var(--text-muted); }
 /* Reply is the post's main action: it stands apart at the far end of the row, accented; its label grows to "Reply to selection (N chars)" while a passage is selected. */
 .blyg-reader .blyg-reader-header .blyg-reader-bar .blyg-reader-replybtn { background: var(--interactive-accent); color: var(--text-on-accent); white-space: nowrap; flex: 0 0 auto; margin-left: auto; }
-.blyg-reader-bar-actions .blyg-reader-btngroup { flex: 0 0 auto; }
-.blyg-reader-header .blyg-reader-bar.blyg-reader-bar-actions { flex-wrap: wrap; }
 .blyg-reader .blyg-reader-header .blyg-reader-bar .blyg-reader-replybtn:disabled { background: var(--background-modifier-border); color: var(--text-faint); }
 .blyg-reader-fetchnote { display: flex; flex-wrap: wrap; align-items: center; gap: var(--size-4-2); margin-top: var(--size-4-1); padding: var(--size-4-2) var(--size-4-3); border-left: 3px solid var(--text-warning); background: var(--background-secondary); color: var(--text-muted); font-size: var(--font-ui-small); }
 /* Buttons take the theme's own shape (a pill in some themes, a rounded box in others): only their SIZE is ours, scaled from one height, so any shape has room for its text. */
@@ -616,7 +610,6 @@
 .blyg-reader.is-font-serif .blyg-reader-body { font-family: ui-serif, "New York", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif; }
 .blyg-reader.is-font-sans .blyg-reader-body { font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
 .blyg-reader.is-font-mono .blyg-reader-body { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-.blyg-reader-mention .blyg-reader-excerpt { margin-top: var(--size-2-2); }
 .blyg-reader-ownitem { margin-top: var(--size-2-2); font-style: italic; }
 .blyg-reader-ownitem.is-empty { display: none; }
 
@@ -658,7 +651,7 @@
 
 /* Header: the way back and on to the next post are large and first. */
 /* a mention's own button row */
-.blyg-reader-mention-actions { margin-top: var(--size-2-2); justify-content: flex-end; }
+.blyg-reader-mention-actions { display: flex; justify-content: flex-end; margin-top: var(--size-2-2); }
 .blyg-reader-bar-main { margin-bottom: var(--size-4-1); padding-bottom: var(--size-4-2); border-bottom: 1px solid var(--background-modifier-border); }
 .blyg-reader-bar-main { --blyg-btn-h: 44px; }
 .blyg-reader-bar-main .blyg-reader-btn { font-size: var(--font-ui-medium); }
@@ -739,18 +732,9 @@
 .blyg-reader .blyg-reader-chips .blyg-reader-chip-clear { margin-left: auto; background: transparent; color: var(--text-accent); box-shadow: none; border: 0; }
 .blyg-reader-bar-main { margin-bottom: 0; padding-bottom: 0; border-bottom: 0; --blyg-btn-h: 36px; }
 .blyg-reader-bar-main .blyg-reader-btn { font-size: var(--font-ui-small); }
-.blyg-reader-postmeta { display: flex; flex-wrap: nowrap; align-items: baseline; gap: 0.4em; margin-top: var(--size-2-1); line-height: 1.35; overflow: hidden; }
-.blyg-reader-postblyg { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.blyg-reader-postrest { flex: 0 0 auto; white-space: nowrap; }
-.blyg-reader-header .blyg-reader-bar.blyg-reader-bar-actions { justify-content: center; margin-top: var(--size-4-2); }
 .blyg-reader .blyg-reader-header .blyg-reader-bar .blyg-reader-replybtn { margin-left: 0; }
 .blyg-reader-replyhint { display: none; text-align: center; color: var(--text-muted); font-size: var(--font-ui-smaller); margin-top: var(--size-2-1); }
 .blyg-reader-replyhint.is-shown { display: block; }
-.blyg-reader-stepbar { flex: none; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: var(--size-4-2); padding: var(--size-4-1) var(--size-4-3); border-top: 1px solid var(--background-modifier-border); background: var(--background-primary); --blyg-btn-h: 32px; }
-.blyg-reader-stepbar .blyg-reader-step { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
-.blyg-reader-stepbar .blyg-reader-step:first-child { justify-self: start; }
-.blyg-reader-stepbar .blyg-reader-step-next { justify-self: end; }
-.blyg-reader-stepcount { color: var(--text-muted); font-size: var(--font-ui-smaller); }
 .blyg-reader-postmeta .blyg-reader-resp { display: inline-flex; align-items: center; gap: 0.25em; vertical-align: bottom; }
 .blyg-reader-postmeta .blyg-reader-resp.is-mine { color: var(--color-green, var(--text-success)); }
 
@@ -763,6 +747,36 @@
 /* Final polish: a closing line and a gap above Obsidian's bottom bar; a bar of equal-width buttons that does not change width when Mark read turns into Read; the reading time in bold. */
 .blyg-reader-bodywrap { border-bottom: 1px solid var(--background-modifier-border); }
 .is-mobile .view-content.blyg-reader { padding-bottom: calc(var(--blyg-bottom-clear, calc(var(--mobile-navbar-height, 0px) + env(safe-area-inset-bottom, 0px))) + var(--size-4-3)); }
-.blyg-reader-bar-actions .blyg-reader-btngroup { display: inline-grid; grid-auto-flow: column; grid-auto-columns: minmax(8.5em, 1fr); }
-.blyg-reader-bar-actions .blyg-reader-btngroup .blyg-reader-btn { white-space: nowrap; }
 .blyg-reader-readtime { color: var(--text-normal); font-weight: var(--font-semibold); }
+
+/* The open post's header: two rows. Row 1 (far from the thumb): the way out and the small print. Row 2 (right above the text): the read mark with the place
+   in the feed, Reply, and Previous / Next in the corner. Reply is the only solid accent; the read state is green, never the accent. */
+.blyg-reader-header .blyg-reader-bar-main { flex-wrap: nowrap; gap: var(--size-4-2); margin: 0; padding: 0; border-bottom: 0; --blyg-btn-h: 36px; }
+.blyg-reader .blyg-reader-bar-main .blyg-reader-back { border-radius: 999px; padding-inline: calc(var(--blyg-btn-h) * 0.35) calc(var(--blyg-btn-h) * 0.45); flex: none; }
+.blyg-reader .blyg-reader-bar-main .blyg-reader-postmeta { display: block; flex: 1 1 0; min-width: 0; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.35; }
+.blyg-reader-postmeta .blyg-reader-postsep { padding-inline: 0.35em; }
+.blyg-reader-postmeta .blyg-reader-postrest { white-space: nowrap; }
+.blyg-reader-header .blyg-reader-bar-thumb { flex-wrap: nowrap; gap: var(--size-4-2); margin-top: var(--size-4-2); --blyg-btn-h: 40px; }
+.blyg-reader-bar-thumb .blyg-reader-spacer { flex: 1 1 var(--size-4-2); min-width: 0; }
+.blyg-reader .blyg-reader-header .blyg-reader-bar-thumb .blyg-reader-replybtn { margin-left: 0; font-weight: var(--font-semibold); padding-inline: calc(var(--blyg-btn-h) * 0.5); }
+.blyg-reader-readpill { flex: none; display: inline-flex; align-items: center; gap: 0.5em; box-sizing: border-box; height: calc(var(--blyg-btn-h) * 0.9); padding: 0 calc(var(--blyg-btn-h) * 0.35) 0 calc(var(--blyg-btn-h) * 0.25); border-radius: 999px; border: 0; background: var(--interactive-normal); box-shadow: none; color: var(--text-muted); font-size: var(--font-ui-small); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.blyg-reader-readpill:disabled { opacity: 0.5; }
+.blyg-reader-readglyph { flex: none; box-sizing: border-box; display: inline-grid; place-items: center; width: 1.2em; height: 1.2em; border-radius: 50%; border: 1.5px solid var(--text-faint); }
+.blyg-reader-readpill:not(.is-read) .blyg-reader-readglyph { border-color: var(--interactive-accent); }
+.blyg-reader-readpill.is-read { color: var(--color-green, var(--text-success)); }
+.blyg-reader-readpill.is-read .blyg-reader-readglyph { background: var(--color-green, var(--text-success)); border-color: transparent; color: var(--background-primary); }
+.blyg-reader-readglyph .svg-icon { width: 0.8em; height: 0.8em; stroke-width: 3px; }
+.blyg-reader-stepcount { color: inherit; white-space: nowrap; }
+.blyg-reader-stepcount strong { font-weight: var(--font-semibold); color: var(--text-normal); }
+.blyg-reader-readpill.is-read .blyg-reader-stepcount strong { color: inherit; }
+.blyg-reader-bar-thumb > .blyg-reader-stepcount { color: var(--text-muted); font-size: var(--font-ui-small); }
+.blyg-reader-steps { flex: none; display: inline-flex; gap: var(--size-4-1); }
+.blyg-reader .blyg-reader-steps .blyg-reader-btn { border-radius: 999px; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
+.blyg-reader .blyg-reader-steps .blyg-reader-step-prev { width: var(--blyg-btn-h); padding: 0; color: var(--text-muted); }
+.blyg-reader .blyg-reader-steps .blyg-reader-step-next { padding-inline: calc(var(--blyg-btn-h) * 0.42) calc(var(--blyg-btn-h) * 0.32); font-weight: var(--font-semibold); background: color-mix(in srgb, var(--interactive-normal), var(--text-normal) 9%); }
+.blyg-reader .blyg-reader-steps .blyg-reader-btn:disabled { opacity: 0.45; }
+
+/* The source line of a quote on a card: under the quote, small, one line. */
+.blyg-reader-quotesource { display: flex; align-items: center; gap: 0.3em; margin: calc(var(--size-2-2) * -1) 0 var(--size-2-2); padding-left: var(--size-4-2); color: var(--text-faint); font-size: var(--font-ui-smaller); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.blyg-reader-quotesource .blyg-reader-icon .svg-icon { width: 1em; height: 1em; }
+

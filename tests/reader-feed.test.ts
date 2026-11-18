@@ -24,6 +24,36 @@ describe("cardOf", () => {
     expect(cardOf({ contentHtml: "<blockquote><p>A</p></blockquote><p>Mine.</p><blockquote><p>B</p></blockquote>" }).words).toBe("Mine.");
     expect(cardOf({ contentHtml: "<p>Mine.</p><blockquote><p>B" }).words).toBe("Mine.");
   });
+  it("a source line right after a quote is the quote's, not the author's words", () => {
+    const html = "<p>Approaches like this are critical.</p><blockquote><p>The good news is that you do not have to be at 125%.</p></blockquote><p><a href=\"https://example.com/p\">Announcing the BDFX project — Example Blyg</a> ↗</p>";
+    const c = cardOf({ contentHtml: html });
+    expect(c.words).toBe("Approaches like this are critical.");
+    expect(c.runs).toEqual([{ text: "Approaches like this are critical." }]);
+    expect(c.quote).toBe("The good news is that you do not have to be at 125%.");
+    expect(c.source).toBe("Announcing the BDFX project — Example Blyg");
+  });
+  it("the same when the arrow is inside the link, the line is in italics, or the line is the quote's last line", () => {
+    const quote = "<p>A quoted sentence.</p>";
+    for (const html of [
+      `<p>Mine.</p><blockquote>${quote}</blockquote><p><em><a href="https://example.com/">Title — Blog ↗</a></em></p>`,
+      `<p>Mine.</p><blockquote>${quote}<p><a href="https://example.com/">Title — Blog</a> ↗</p></blockquote>`,
+      '<p>Mine.</p><blockquote><p>A quoted sentence.\n<em><a href="https://example.com/">Title — Blog</a></em></p></blockquote>',
+    ]) {
+      const c = cardOf({ contentHtml: html });
+      expect(c.words).toBe("Mine.");
+      expect(c.quote).toBe("A quoted sentence.");
+      expect(c.source).toBe("Title — Blog");
+    }
+  });
+  it("a link alone is the author's words when no quote comes before it, and a longer line after a quote stays the words", () => {
+    expect(cardOf({ contentHtml: '<p>Mine.</p><p><a href="https://example.com/">Just a link</a></p>' })).toEqual({ quote: null, words: "Mine. Just a link", runs: [{ text: "Mine. Just a link" }], images: 0 });
+    const c = cardOf({ contentHtml: '<blockquote><p>Q.</p></blockquote><p><a href="https://example.com/">See this</a> and then more of what I think.</p>' });
+    expect(c.words).toBe("See this and then more of what I think.");
+    expect(c.source).toBeUndefined();
+  });
+  it("a quote that is only a link keeps its words", () => {
+    expect(cardOf({ contentHtml: '<blockquote><p><a href="https://example.com/">Only this</a></p></blockquote><p>Mine.</p>' }).quote).toBe("Only this");
+  });
   it("a fragment with an image: its words, and the image counted, not loaded", () => {
     expect(cardOf({ contentHtml: fixture("imported-image") })).toEqual({ quote: null, words: "A post with a picture.", runs: [{ text: "A post with a picture." }], images: 1 });
   });
