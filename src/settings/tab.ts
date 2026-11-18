@@ -171,7 +171,7 @@ export class BlygSettingTab extends PluginSettingTab {
         text("Studio mount (optional)", "For a Studio under a path, enter that path, e.g. /blyg. Leave empty when the Studio has its own host. Public pages are then {host}{mount}/f/{id}/.", "studio.mount", "/blyg"),
         {
           name: "Studio token",
-          desc: "A REST token from the Studio (More → Client access) with owner:read, owner:draft and owner:publish, plus owner:manage to change hoppers. It expires after 30 days. Pick or create an entry in the keychain; the plugin remembers only the entry's name.",
+          desc: "A REST token from the Studio (More → Client access) with every permission ticked: owner:read, owner:draft and owner:publish are needed to publish; owner:manage (hoppers, dismissing mentions, asking the Studio to fetch) and reading:state (read marks in the reader) are for the rest. It expires after 30 days. Pick or create an entry in the keychain; the plugin remembers only the entry's name.",
           aliases: ["secret", "keychain", "bearer", "api"],
           render: (setting) => {
             setting.addComponent((el) =>

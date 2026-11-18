@@ -121,9 +121,9 @@ copy and the community copy together.
 
 ## Set up
 
-1. **Token.** In your Studio open **More → Client access → REST API** and create a token with the permissions
-   `owner:read`, `owner:draft` and `owner:publish`. Add `owner:manage` if you want to change hoppers or dismiss mentions from Obsidian.
-   Copy it (it is shown once).
+1. **Token.** In your Studio open **More → Client access → REST API** and create a token and tick **every permission**.
+   Publishing needs `owner:read`, `owner:draft` and `owner:publish`; `owner:manage` is for changing hoppers, dismissing mentions and asking your Studio to
+   look for new posts, and `reading:state` for read marks in the reader. Copy it (it is shown once).
 2. **Keychain.** In Obsidian open **Settings → Keychain** and add a secret (lowercase letters, digits and dashes in the
    name, for example `blyg-studio`); paste the token as its value. Keychain entries stay on one device: repeat on each
    phone and tablet.
