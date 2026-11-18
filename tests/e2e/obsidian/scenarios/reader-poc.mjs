@@ -46,6 +46,9 @@ await runScenario({ data: fixtureData() }, async (s) => {
   const shot = async (name) => {
     if (process.env.POC_SHOTS) await page.screenshot({ path: `${process.env.POC_SHOTS}/${name}.png` }).catch(() => {});
   };
+  /** The open post's read mark is one pill in the thumb row ("3 of 24" with a ring or a check); its state is in its label and class. */
+  const pillClick = () => page.evaluate(() => { const b = document.querySelector(".blyg-reader-header .blyg-reader-readpill"); if (!b || b.disabled) return false; b.click(); return true; });
+  const pillState = () => page.evaluate(() => { const b = document.querySelector(".blyg-reader-header .blyg-reader-readpill"); return b ? { read: b.classList.contains("is-read"), label: b.getAttribute("aria-label") ?? "", disabled: b.disabled } : null; });
   const text = (sel) => page.evaluate((q) => [...document.querySelectorAll(q)].map((e) => e.textContent?.trim() ?? ""), sel);
   const click = (label) => page.evaluate((l) => {
     const b = [...document.querySelectorAll(".blyg-reader button")].find((x) => x.textContent?.trim() === l);
@@ -132,7 +135,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
     const body = (await text(".blyg-reader-body"))[0] ?? "";
     check(body.length > 0 && (await page.$(".blyg-reader-frame")) === null, `${layout}: tapping a post shows it as text, never in a frame (${body.length} characters)`);
     const buttons = await text(".blyg-reader-header button");
-    check(["Reader", "Reply", "○ Mark read"].every((b) => buttons.includes(b)) && !buttons.includes("Browser") && !buttons.includes("As text") && !buttons.includes("As web page"), `${layout}: the post's buttons are in the header, with no switch to a web page: ${buttons.join(", ")}`);
+    check(["Reader", "Reply", "Next"].every((b) => buttons.includes(b)) && (await pillState())?.label === "Mark read" && !buttons.includes("Browser") && !buttons.includes("As text") && !buttons.includes("As web page"), `${layout}: the post's buttons are in the header (way out, read mark, Reply, Previous / Next), with no switch to a web page: ${buttons.join(", ")}`);
     const links = await page.evaluate(() => [...document.querySelectorAll(".blyg-reader-postmeta a.blyg-reader-link")].map((a) => a.getAttribute("href")));
     check(links.length >= 1 && links[0].startsWith("http://localhost:8788"), `${layout}: the post's blyg is a link to its page (${links.join(", ")})`);
     check((await text(".blyg-reader-postmeta")).some((t) => /^.+·\s*\d+ min read/.test(t)) && !(await text(".blyg-reader-postmeta")).some((t) => /unread|✓ read/.test(t)) && await page.evaluate(() => { const r = document.querySelector(".blyg-reader-postmeta .blyg-reader-readtime"); return !!r && Number(getComputedStyle(r).fontWeight) >= 600; }), `${layout}: the post's one line of small print puts the reading time first and in bold, and does not repeat the read state`);
@@ -179,10 +182,10 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await wait(1500);
     await page.evaluate(() => document.querySelector(".blyg-reader-card")?.click());
     await wait(800);
-    check(await click("○ Mark read"), "refusal: Mark read can be tapped with the app's own token");
+    check(await pillClick(), "refusal: the read mark can be tapped with the app's own token");
     await wait(1500);
     const status = (await text(".blyg-reader-status"))[0] ?? "";
-    check(/reading:state/.test(status) && (await text(".blyg-reader-header button")).includes("○ Mark read"), `refusal: it is explained in words and the mark is put back: "${status.slice(0, 80)}"`);
+    check(/reading:state/.test(status) && (await pillState())?.read === false, `refusal: it is explained in words and the mark is put back: "${status.slice(0, 80)}"`);
     await closeReader();
   }
 
@@ -193,12 +196,12 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await wait(1500);
     await page.evaluate(() => document.querySelector(".blyg-reader-card")?.click());
     await wait(800);
-    const barWidth = () => page.evaluate(() => Math.round(document.querySelector(".blyg-reader-header .blyg-reader-btngroup")?.getBoundingClientRect().width ?? 0));
+    const barWidth = () => page.evaluate(() => Math.round(document.querySelector(".blyg-reader-header .blyg-reader-replybtn")?.getBoundingClientRect().left ?? 0));
     const widthBefore = await barWidth();
-    await page.evaluate(() => { window.__t0 = performance.now(); [...document.querySelectorAll(".blyg-reader-header button")].find((b) => b.textContent?.trim() === "○ Mark read")?.click(); });
-    const instant = await page.evaluate(() => ({ label: [...document.querySelectorAll(".blyg-reader-header button")].map((b) => b.textContent?.trim()), meta: document.querySelector(".blyg-reader-postmeta")?.textContent ?? "", ms: performance.now() - window.__t0 }));
-    check(instant.label.includes("✓ Read") && instant.ms < 100, `read marks: marking read shows at once in the post's header (${Math.round(instant.ms)} ms, "${instant.label.find((l) => /Read/.test(l))}")`);
-    check(widthBefore > 0 && (await barWidth()) === widthBefore, `read marks: the action bar keeps its width when Mark read turns into Read (${widthBefore} px, then ${await barWidth()} px)`);
+    await page.evaluate(() => { window.__t0 = performance.now(); document.querySelector(".blyg-reader-header .blyg-reader-readpill")?.click(); });
+    const instant = await page.evaluate(() => ({ read: document.querySelector(".blyg-reader-header .blyg-reader-readpill")?.classList.contains("is-read") ?? false, label: document.querySelector(".blyg-reader-header .blyg-reader-readpill")?.getAttribute("aria-label") ?? "", meta: document.querySelector(".blyg-reader-postmeta")?.textContent ?? "", ms: performance.now() - window.__t0 }));
+    check(instant.read && /^Read/.test(instant.label) && instant.ms < 100, `read marks: marking read shows at once in the post's header (${Math.round(instant.ms)} ms, "${instant.label}")`);
+    check(widthBefore > 0 && (await barWidth()) === widthBefore, `read marks: Reply stays where it is when the read mark changes (${widthBefore} px from the left, then ${await barWidth()} px)`);
     await wait(1500);
     check(await click("Reader"), "read marks: Reader goes back to the feed");
     await wait(300);
@@ -459,23 +462,23 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await openReader();
     await wait(1000);
     check(await resetReadMarks(), `${layout}: next: every post starts unread`);
-    check((await page.$(".blyg-reader-stepbar")) === null, `${layout}: next: no previous / next bar in the feed`);
+    check((await page.$(".blyg-reader-steps")) === null, `${layout}: next: no previous / next in the feed`);
     await page.evaluate(() => document.querySelector(".blyg-reader-card")?.click());
     await wait(500);
-    check((await page.$(".blyg-reader-header .blyg-reader-step")) === null && (await page.$(".blyg-reader-nextbtn")) === null, `${layout}: next: previous / next are at the foot of the post, not in the header, and there is no "Read & next" button`);
+    check((await page.$(".blyg-reader-header .blyg-reader-steps .blyg-reader-step-next")) !== null && (await page.$(".blyg-reader-stepbar")) === null && (await page.$(".blyg-reader-nextbtn")) === null, `${layout}: next: previous / next are in the header's thumb row, there is no bar of their own, and there is no "Read & next" button`);
     check((await page.$(".blyg-reader-postfoot")) === null, `${layout}: next: no bar below the post's text`);
     // Previous / Next through the feed (a tap steps, a long press on Next marks the post read and steps).
-    const steps = () => page.evaluate(() => { const c = document.querySelector(".blyg-reader-stepcount")?.textContent ?? ""; const m = /^(\d+) of (\d+)$/.exec(c); const nx = document.querySelector(".blyg-reader-step-next"); return { i: m ? Number(m[1]) : 0, n: m ? Number(m[2]) : 0, prevOff: document.querySelector(".blyg-reader-stepbar .blyg-reader-step")?.disabled, nextOff: nx?.disabled, h: nx?.getBoundingClientRect().height ?? 0, inFoot: !!nx && !nx.closest(".blyg-reader-header") }; });
+    const steps = () => page.evaluate(() => { const c = document.querySelector(".blyg-reader-stepcount")?.textContent ?? ""; const m = /^(\d+) of (\d+)$/.exec(c); const nx = document.querySelector(".blyg-reader-step-next"); return { i: m ? Number(m[1]) : 0, n: m ? Number(m[2]) : 0, prevOff: document.querySelector(".blyg-reader-step-prev")?.disabled, nextOff: nx?.disabled, h: nx?.getBoundingClientRect().height ?? 0, inHeader: !!nx && !!nx.closest(".blyg-reader-header") }; });
     const shownId = () => page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader")[0].view.shown?.remoteId);
     const s0 = await steps();
-    check(s0.n >= 3 && s0.i >= 1 && s0.inFoot && s0.h >= 28 && s0.nextOff === false, `${layout}: steps: the bar shows the place in the feed (${s0.i} of ${s0.n}), at the foot, tall enough to tap (${Math.round(s0.h)} px)`);
+    check(s0.n >= 3 && s0.i >= 1 && s0.inHeader && s0.h >= 28 && s0.nextOff === false, `${layout}: steps: the read mark shows the place in the feed (${s0.i} of ${s0.n}), the buttons are in the header, tall enough to tap (${Math.round(s0.h)} px)`);
     const here = await shownId();
     await page.evaluate(() => document.querySelector(".blyg-reader-step-next")?.click());
     await wait(500);
     const s1 = await steps();
     check((await shownId()) !== here && s1.i === s0.i + 1, `${layout}: steps: Next opens the following post (${s1.i} of ${s1.n})`);
     const readBefore = await page.evaluate((id) => window.app.workspace.getLeavesOfType("blyg-reader")[0].view.data.posts.find((p) => p.remoteId === id)?.readVersion, here);
-    await page.evaluate(() => document.querySelector(".blyg-reader-stepbar .blyg-reader-step")?.click());
+    await page.evaluate(() => document.querySelector(".blyg-reader-step-prev")?.click());
     await wait(500);
     check((await shownId()) === here && (await steps()).i === s0.i, `${layout}: steps: Previous comes back to the post`);
     const readAfter = await page.evaluate((id) => window.app.workspace.getLeavesOfType("blyg-reader")[0].view.data.posts.find((p) => p.remoteId === id)?.readVersion, here);
@@ -793,10 +796,10 @@ await runScenario({ data: fixtureData() }, async (s) => {
     check(rows.length === 1 && rows[0].includes("Far Author replied to your item") && rows[0].includes("Reply words here") && rows[0].includes("On: my own words"), `${layout}: mentions: a row says who, what they wrote and what it was about (${JSON.stringify(rows).slice(0, 150)})`);
     await page.evaluate(() => document.querySelector(".blyg-reader-mention")?.click());
     await wait(600);
-    const open = await page.evaluate(() => ({ body: document.querySelector(".blyg-reader-body")?.textContent ?? "", btns: [...document.querySelectorAll(".blyg-reader-header button")].map((b) => [b.textContent?.trim(), b.disabled]), next: document.querySelectorAll(".blyg-reader-stepbar").length }));
+    const open = await page.evaluate(() => ({ body: document.querySelector(".blyg-reader-body")?.textContent ?? "", btns: [...document.querySelectorAll(".blyg-reader-header button")].map((b) => [b.textContent?.trim(), b.disabled]), next: document.querySelectorAll(".blyg-reader-steps").length }));
     check(open.body.includes("Reply words here"), `${layout}: mentions: tapping one opens the post in the reader`);
     check(open.btns.some(([t, d]) => t === "Reply" && d === true) && open.btns.some(([t, d]) => /Mark read/.test(t ?? "") && d === true), `${layout}: mentions: a post of a blyg the Studio does not read has no read mark and no reply here`);
-    check(open.next === 0, `${layout}: mentions: no previous / next bar for a post that is not in the feed`);
+    check(open.next === 0, `${layout}: mentions: no previous / next for a post that is not in the feed`);
     await click("Reader");
     await wait(400);
     check((await page.$(".blyg-reader-mention")) !== null, `${layout}: mentions: back to the list of mentions`);

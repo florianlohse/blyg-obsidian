@@ -2,7 +2,7 @@
 // Obsidian, open in the browser, mark read). Drawing only; what it asks of the plugin is `ReaderHost`. Foreign markup goes through defang.ts and
 // `sanitizeHTMLToDom` only. A post is always shown as text; the blyg's name above it opens the post's page outside Obsidian.
 //
-// Layout: a header that never scrolls away (tabs and controls, or the post's buttons and its blyg, author and read state, then one status line) above a
+// Layout: a header that never scrolls away (tabs and controls, or for a post two rows: the way out and its small print, then the read mark, Reply and Previous / Next; and a status line only when something happened) above a
 // body that scrolls by itself. Read state changes at once, in place, and is put back if the Studio refuses.
 import { ItemView, sanitizeHTMLToDom, setIcon, type WorkspaceLeaf } from "obsidian";
 import { isUnread, type InboundMention, type ReadingPost } from "../studio/reading";
@@ -696,16 +696,12 @@ export class BlygReaderView extends ItemView {
     }
   }
 
-  /** The slim bar at the foot of an open post: ‹ Previous, the place in the feed, Next ›. Hold Next to mark the post read and go on. */
-  private drawStepBar(body: HTMLElement, p: ReadingPost): void {
-    const where = this.stepIndex(p);
-    body.toggleClass("has-stepbar", where !== null);
-    if (!where) return;
-    const bar = body.createDiv({ cls: "blyg-reader-stepbar" });
-    const prev = this.button(bar, "Previous", () => this.stepTo(p, -1, false), { cls: "blyg-reader-step", disabled: where.at <= 0, title: "The post before this one in the feed" });
+  /** Previous and Next, in the corner of the thumb row. A tap steps through the feed; holding Next marks the open post read and goes on. */
+  private drawSteps(row: HTMLElement, p: ReadingPost, where: { keys: string[]; at: number }): void {
+    const steps = row.createDiv({ cls: "blyg-reader-steps" });
+    const prev = this.button(steps, "", () => this.stepTo(p, -1, false), { cls: "blyg-reader-step blyg-reader-step-prev", disabled: where.at <= 0, title: "The post before this one in the feed" });
     this.addIcon(prev, "chevron-left");
-    bar.createDiv({ cls: "blyg-reader-stepcount", text: `${where.at + 1} of ${where.keys.length}` });
-    const next = this.button(bar, "Next", () => {
+    const next = this.button(steps, "Next", () => {
       if (this.longPressed) {
         this.longPressed = false;
         return;
@@ -909,18 +905,23 @@ export class BlygReaderView extends ItemView {
     if (activeFilters({ ...this.filter, sort: "newest" }) > 0) this.button(chips, "Clear filter", () => this.clearFilters(), { cls: "blyg-reader-chip-clear", title: "Lift every choice again (the order stays)" });
   }
 
+  /**
+   * The open post's header, two rows. The first is the far row: the way out and the post's small print. The second is the thumb row, right above
+   * the text: the read mark (which also says where you are in the feed), Reply, and Previous / Next in the corner, the part the thumb reaches first.
+   */
   private drawPostHeader(h: HTMLElement, p: ReadingPost): void {
     const web = frameable(p.sourceUrl) ? p.sourceUrl : null;
     const key = keyOf(p);
     const fetched = !this.notFetched.has(key); // false: the Studio follows this blyg but has not fetched this post (S15-H)
     const held = p.subscriptionId !== "" && fetched; // the Studio holds it; otherwise (a mention's post) there is no read mark and nothing to quote from
     const unread = isUnread(p);
+    const where = this.stepIndex(p);
     // Row 1: the way out. It always leads to the reader, except after following a quote: then it leads back to the post you came from.
-    const main = h.createDiv({ cls: "blyg-reader-bar blyg-reader-bar-main" });
+    const top = h.createDiv({ cls: "blyg-reader-bar blyg-reader-bar-main" });
     const toPost = this.trail.length > 0;
-    this.button(main, toPost ? "Back" : "Reader", () => this.closePost(), { cls: "blyg-reader-back", title: toPost ? "Back to the post you came from" : "Back to the reader" });
-    // Row 2: the small print, one line: the blyg (its name is the only link), how long it takes to read (bold, first), when, and the replies chip when something answers it. Read state is the Mark read button's.
-    const meta = h.createDiv({ cls: "blyg-reader-meta blyg-reader-postmeta" });
+    this.button(top, toPost ? "Back" : "Reader", () => this.closePost(), { cls: "blyg-reader-back", title: toPost ? "Back to the post you came from" : "Back to the reader" });
+    // The small print, one line that gives way at its end: the blyg (its name is the only link), how long it takes to read (bold, first), when, and the replies chip when something answers it.
+    const meta = top.createDiv({ cls: "blyg-reader-meta blyg-reader-postmeta" });
     const blygUrl = p.origin ?? (web ? new URL(web).origin : null);
     const name = meta.createSpan({ cls: "blyg-reader-postblyg" });
     // The name opens the post's own page (what the Browser button did); a post with no page of its own opens its blyg.
@@ -931,7 +932,7 @@ export class BlygReaderView extends ItemView {
     if (!p.withdrawn) bits.push(() => rest.createEl("strong", { cls: "blyg-reader-readtime", text: readingTimeLabel(p) }));
     const when = relativeTime(p.created ?? p.observedAt, Date.now());
     if (when) bits.push(() => rest.createSpan({ text: when }));
-    // Only what the button cannot say: the post changed since you read it, or it was withdrawn.
+    // Only what the read mark cannot say: the post changed since you read it, or it was withdrawn.
     if (p.own !== true && (p.withdrawn || (unread && p.readVersion !== null))) bits.push(() => rest.createSpan({ cls: "blyg-reader-unreadmark", text: p.withdrawn ? "withdrawn" : "updated since you read it" }));
     const chip = responseChip(this.respFor(p));
     if (chip) {
@@ -945,26 +946,38 @@ export class BlygReaderView extends ItemView {
       });
     }
     this.joined(rest, bits);
-    // The actions of this post are one centred bar of two buttons of the same width: Mark read (or Open note) and Reply, the main one.
-    const row = h.createDiv({ cls: "blyg-reader-bar blyg-reader-bar-actions" });
-    const tray = row.createDiv({ cls: "blyg-reader-btngroup" });
+
+    // Row 2: the thumb row. Equal room either side of Reply, so Next in the corner is not next to it.
+    const row = h.createDiv({ cls: "blyg-reader-bar blyg-reader-bar-thumb" });
     if (p.own === true) {
       // Your own post: no read mark; the note it came from is one tap away.
-      this.button(tray, "Open note", async () => {
+      this.button(row, "Open note", async () => {
         if (!(await this.host.openOwnItem(p.remoteId))) this.setStatus("No note of this vault holds this post.");
       }, { title: "Open the note this post was published from" });
+      if (where) this.stepCount(row, where);
     } else {
-      this.button(tray, unread ? "○ Mark read" : "✓ Read", () => this.setRead(p, unread), {
-        disabled: p.withdrawn || !held,
-        active: !unread,
-        cls: "blyg-reader-readtoggle",
-        title: unread ? "Mark this post read" : "Read. Tap to mark it unread again",
+      // The read mark and the place in the feed are one control: an empty ring while unread, a green check once read. A post that is not in the feed has no place to show.
+      const label = unread ? "Mark read" : "Read";
+      const pill = row.createEl("button", {
+        cls: `blyg-reader-readpill${unread ? "" : " is-read"}`,
+        attr: { "aria-label": unread ? "Mark read" : "Read. Tap to mark unread again", "aria-pressed": String(!unread), title: unread ? "Mark this post read" : "Read. Tap to mark it unread again" },
       });
+      pill.disabled = p.withdrawn || !held;
+      const glyph = pill.createSpan({ cls: "blyg-reader-readglyph" });
+      if (!unread) setIcon(glyph, "check");
+      if (where) this.stepCount(pill, where);
+      else pill.createSpan({ text: label });
+      pill.addEventListener("click", () => void this.setRead(p, unread));
     }
-    this.replyBtn = this.button(tray, "Reply", () => {
+    row.createDiv({ cls: "blyg-reader-spacer" });
+    this.replyBtn = this.button(row, "Reply", () => {
       const sel = this.replySelection();
       void this.host.replyTo(p, sel.trim() !== "" ? sel : undefined);
     }, { disabled: p.withdrawn || !held, cls: "blyg-reader-replybtn", title: p.own === true ? "Your own post: write the follow-up in your vault" : held ? "Reply in Obsidian: a new thread that answers this post" : fetched ? "Subscribe to this blyg in your Studio to reply to its posts from here." : "Your Studio has not fetched this post yet." });
+    if (where) {
+      row.createDiv({ cls: "blyg-reader-spacer" });
+      this.drawSteps(row, p, where);
+    }
     // Under the bar, while a passage is selected: what Reply will quote (the button itself never changes its words).
     this.replyHint = h.createDiv({ cls: "blyg-reader-replyhint" });
     this.showReplyLabel();
@@ -973,6 +986,13 @@ export class BlygReaderView extends ItemView {
       note.createSpan({ text: "Your Studio has not fetched this post yet, so it cannot be replied to or marked read. " });
       this.button(note, "Ask Studio to fetch", () => this.askToFetch(p), { title: "Ask your Studio to fetch this blyg now" });
     }
+  }
+
+  /** "3 of 24": where the open post is in the feed's order. */
+  private stepCount(parent: HTMLElement, where: { keys: string[]; at: number }): void {
+    const count = parent.createSpan({ cls: "blyg-reader-stepcount" });
+    count.createEl("strong", { text: String(where.at + 1) });
+    count.appendText(` of ${where.keys.length}`);
   }
 
   /** Draw the pieces of a line with " · " between them. */
@@ -1255,7 +1275,6 @@ export class BlygReaderView extends ItemView {
   }
 
   private drawPostBody(body: HTMLElement, p: ReadingPost): void {
-    this.drawStepBar(body, p);
     const scroll = body.createDiv({ cls: "blyg-reader-scroll blyg-reader-surface" });
     const col = scroll.createDiv({ cls: "blyg-reader-column" });
     this.postColumn = col;
