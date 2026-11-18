@@ -316,7 +316,7 @@ const capitalise = (text: string): string => text.charAt(0).toUpperCase() + text
 /** What a person does to connect a Studio, in order (the panel and the settings' Setup check say the same four steps). */
 export const CONNECT_STEPS: readonly string[] = [
   "1. Enter your Studio's address: Settings → Blyg → Studio.",
-  "2. In your Studio open More → Client access and create a token.",
+  "2. In your Studio open More → Client access and create a REST token with every permission ticked (publishing needs three; the others are for hoppers and the reader).",
   "3. Save the token as an entry in Settings → Keychain on this device, then pick that entry under Studio token.",
   "4. Tap Check connection.",
   "A token lasts 30 days: then repeat steps 2 and 3, and do the same on each device.",

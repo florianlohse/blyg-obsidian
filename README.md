@@ -8,7 +8,7 @@ will change before anything leaves your vault.
 > signed in to (see *What you need*). It does not work without one, and it cannot create one for you. The reader is
 > experimental, see *Known gaps*.
 
-<p><img src="images/readme/hero.png" width="640" alt="Obsidian on the desktop: a vault with a Blyg folder of notes, an open thread note, and the Blyg panel on the right saying Published (v1) and up to date, with buttons to write, quote, reply and update"></p>
+<p><img src="images/readme/hero.png" width="640" alt="Obsidian on the desktop: a vault with a Blyg folder of notes, an open thread note, and the Blyg panel on the right with the buttons Open reader and Sync with Studio, the status Published (v1) and up to date, and the buttons New fragment, New thread and Reply to item"></p>
 
 ## What it does
 
@@ -51,6 +51,14 @@ neighbour's item (the quote carries the author's name and the version it was tak
 | <img src="images/readme/public-fragment.png" width="260" alt="A published fragment on a blyg page on a phone: the blyg title Workshop notes, the author name, one short paragraph of text, its creation date and a permalink"> | <img src="images/readme/public-thread.png" width="260" alt="A published thread on a blyg page on a phone: a quotation from another author with the line from Teo Brandt, snapshot of v1, followed by the thread's own paragraphs"> |
 
 ## A look inside Obsidian
+
+**Read the blygs you follow** in the reader (experimental): the newest posts as cards, with what is unread, what answers you and how long each takes to read:
+
+<p><img src="images/readme/reader-feed.png" width="300" alt="The Blyg reader on a phone: the tabs Reading, Mentions and Sort and filter, the line Updated just now, and three post cards, one of them from Teo Brandt marked unread, one a thread, two marked You"></p>
+
+Open a post to read it as text. Reply starts a new thread that quotes it (or just the passage you selected), and Next takes you on:
+
+<p><img src="images/readme/reader-post.png" width="300" alt="An open post in the Blyg reader on a phone: the way back, the author Teo Brandt, one minute to read, the read mark with the place 2 of 25, a Reply button, Previous and Next, and the post's text on a calm grey ground"></p>
 
 **Before anything is sent**, a window shows what readers will see and what changes:
 
@@ -101,7 +109,8 @@ blygs you follow live in the plugin's own storage, not in your notes.
 1. **Obsidian 1.13.0 or newer** (the plugin stores secrets in Obsidian's keychain and uses the 1.13 settings screen).
 2. **A Blygger Studio** that you own and have signed in to. Blygger Studio is the reference server of the Blygger
    protocol (open source: [blygger/blygger-studio](https://github.com/blygger/blygger-studio)). The plugin needs
-   **Studio 0.51.0 or newer** (API contract 5). It is tested with Studio 0.51.0 to 0.53.0 (API contract 5.2 to 5.4); a newer
+   **Studio 0.51.0 or newer** (API contract 5). Every change to the plugin is tested against Studio 0.51.0 (the oldest it
+   supports) and against the newest Studio release, last seen on 18 November 2026 with Studio 0.62.0; a newer
    minor version is accepted with a quiet note, an older Studio is refused before anything is sent.
 3. **An access token from that Studio** (see *Token*).
 
@@ -121,9 +130,9 @@ copy and the community copy together.
 
 ## Set up
 
-1. **Token.** In your Studio open **More → Client access → REST API** and create a token with the permissions
-   `owner:read`, `owner:draft` and `owner:publish`. Add `owner:manage` if you want to change hoppers or dismiss mentions from Obsidian.
-   Copy it (it is shown once).
+1. **Token.** In your Studio open **More → Client access → REST API** and create a token and tick **every permission**.
+   Publishing needs `owner:read`, `owner:draft` and `owner:publish`; `owner:manage` is for changing hoppers, dismissing mentions and asking your Studio to
+   look for new posts, and `reading:state` for read marks in the reader. Copy it (it is shown once).
 2. **Keychain.** In Obsidian open **Settings → Keychain** and add a secret (lowercase letters, digits and dashes in the
    name, for example `blyg-studio`); paste the token as its value. Keychain entries stay on one device: repeat on each
    phone and tablet.
