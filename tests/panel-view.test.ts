@@ -54,12 +54,14 @@ import { computePanelState, type PanelDeploy, type PanelState } from "../src/app
 import { BlygPanelView, type PanelHost } from "../src/ui/BlygPanelView";
 import { defaultSettings } from "../src/settings/schema";
 import { MACRO_ROUTES } from "./world";
+import { STUDIO_HOST, STUDIO_ORIGIN } from "./studio/fake-studio";
+import { STUDIO_ROUTES } from "./studio/world";
 
 const settle = async (): Promise<void> => {
   for (let i = 0; i < 20; i++) await Promise.resolve();
 };
 
-type El = { cls: Set<string>; text: string; href: string; disabled: boolean; tag: string; click(): void; all(): El[] };
+type El = { cls: Set<string>; text: string; href: string; disabled: boolean; open?: boolean; handlers: (() => void)[]; children: El[]; tag: string; click(): void; all(): El[] };
 
 const ID = "7c9wk2mhq0v3xj8tn5rzfd41bg";
 const settings = () => ({ ...defaultSettings(), routes: MACRO_ROUTES });
@@ -94,11 +96,9 @@ async function mount(state: PanelState, deploy: PanelDeploy | null = null, over:
     takeHoppers: () => (calls.push("takeHoppers"), Promise.resolve()),
     replyToItem: () => (calls.push("replyToItem"), Promise.resolve()),
     makeReply: () => (calls.push("makeReply"), Promise.resolve()),
-    quoteInNewThread: () => (calls.push("quoteInNewThread"), Promise.resolve()),
-    continueThread: () => (calls.push("continueThread"), Promise.resolve()),
     makeThread: () => (calls.push("makeThread"), Promise.resolve()),
-    insertQuote: () => (calls.push("insertQuote"), Promise.resolve()),
-    insertLink: () => (calls.push("insertLink"), Promise.resolve()),
+    insertItem: () => (calls.push("insertItem"), Promise.resolve()),
+    openReader: () => (calls.push("openReader"), Promise.resolve()),
     ...over,
   };
   const view = new BlygPanelView({} as never, host);
@@ -111,10 +111,10 @@ async function mount(state: PanelState, deploy: PanelDeploy | null = null, over:
 describe("BlygPanelView", () => {
   it("offers Use the Studio's copy only when the state says so, and runs it", async () => {
     const shown = await mount({ ...stateOf({}), showPull: true, canPull: true });
-    shown.button("Replace this note with the online text")?.click();
+    shown.button("Replace note from Studio")?.click();
     await vi.waitFor(() => expect(shown.calls).toContain("pull"));
     const hidden = await mount(stateOf({}));
-    expect(hidden.button("Replace this note with the online text")).toBeUndefined();
+    expect(hidden.button("Replace note from Studio")).toBeUndefined();
   });
 
   it("names the plugin version at the foot, whatever the note", async () => {
@@ -160,13 +160,13 @@ describe("BlygPanelView", () => {
   it("the main button says Publish before and Update after; Publish again after a withdrawal; the call to action only when there is something to send", async () => {
     const label = async (fm: Record<string, unknown>, hash = "sha256:a") => {
       const m = await mount(stateOf(fm, hash));
-      const b = m.els.find((e) => e.tag === "button" && ["Publish", "Update", "Publish again"].includes(e.text));
+      const b = m.els.find((e) => e.tag === "button" && ["Publish…", "Publish update…", "Publish again…"].includes(e.text));
       return [b?.text, b?.cls.has("mod-cta")];
     };
-    expect(await label({})).toEqual(["Publish", true]);
-    expect(await label({ blyg_id: ID, id: ID, version: 3, hash: "sha256:a" })).toEqual(["Update", false]);
-    expect(await label({ blyg_id: ID, id: ID, version: 3, hash: "sha256:old" })).toEqual(["Update", true]);
-    expect(await label({ blyg_id: ID, id: ID, version: 3, hash: "sha256:a", withdrawn: true })).toEqual(["Publish again", true]);
+    expect(await label({})).toEqual(["Publish…", true]);
+    expect(await label({ blyg_id: ID, id: ID, version: 3, hash: "sha256:a" })).toEqual([undefined, undefined]); // calm: nothing to send, no button
+    expect(await label({ blyg_id: ID, id: ID, version: 3, hash: "sha256:old" })).toEqual(["Publish update…", true]);
+    expect(await label({ blyg_id: ID, id: ID, version: 3, hash: "sha256:a", withdrawn: true })).toEqual(["Publish again…", true]);
   });
 
   it("when everything is fine the status gets a green check and the green edge; otherwise neither", async () => {
@@ -241,22 +241,22 @@ describe("BlygPanelView", () => {
     expect(texts).not.toContain("Link");
   });
 
-  it("a published, unchanged note: id and version shown, all three buttons live", async () => {
+  it("a published, unchanged note: id and version shown, no publish button, Open on web beside the status, Withdraw live", async () => {
     const { texts, button } = await mount(stateOf({ id: ID, blyg_id: ID, version: 3, hash: "sha256:a" }));
     expect(texts).toContain(ID);
     expect(texts).toContain("3");
-    expect([button("Update")?.disabled, button("Withdraw")?.disabled, button("Open on web")?.disabled]).toEqual([false, false, false]);
+    expect([button("Publish update…")?.disabled, button("Withdraw")?.disabled, button("Open on web")?.disabled]).toEqual([undefined, false, false]);
   });
 
   it("an unpublished note: only Publish is live", async () => {
     const { button } = await mount(stateOf({}));
-    expect([button("Publish")?.disabled, button("Withdraw")?.disabled, button("Open on web")?.disabled]).toEqual([false, true, true]);
+    expect([button("Publish…")?.disabled, button("Withdraw")?.disabled, button("Open on web")?.disabled]).toEqual([false, true, undefined]);
   });
 
   it("essays and pages have no Withdraw button, and no Open on web button unless their route has an address", async () => {
     const s = computePanelState({ settings: settings(), note: { path: "website/essays/E.md", name: "E.md", extension: "md" }, frontmatter: {}, localHash: "sha256:a" });
     const { button } = await mount(s);
-    expect(button("Publish")?.disabled).toBe(false);
+    expect(button("Publish…")?.disabled).toBe(false);
     expect(button("Withdraw")).toBeUndefined();
     expect(button("Open on web")).toBeUndefined();
   });
@@ -283,15 +283,15 @@ describe("BlygPanelView", () => {
   it("a note outside the routes: just the information, no publishing buttons at all", async () => {
     const s = computePanelState({ settings: settings(), note: { path: "Daily/D.md", name: "D.md", extension: "md" }, frontmatter: {}, localHash: null });
     const { button } = await mount(s);
-    expect([button("Publish"), button("Update"), button("Withdraw"), button("Open on web")]).toEqual([undefined, undefined, undefined, undefined]);
+    expect([button("Publish…"), button("Publish update…"), button("Withdraw"), button("Open on web")]).toEqual([undefined, undefined, undefined, undefined]);
   });
 
   it("Publish runs the plugin's publish; a second tap while it runs is ignored", async () => {
     let release: () => void = () => {};
     const gate = new Promise<void>((r) => (release = r));
     const { button, calls } = await mount(stateOf({}), null, { publish: () => (calls.push("publish"), gate) });
-    button("Publish")?.click();
-    button("Publish")?.click();
+    button("Publish…")?.click();
+    button("Publish…")?.click();
     await settle();
     expect(calls).toEqual(["publish"]);
     release();
@@ -316,9 +316,9 @@ describe("BlygPanelView", () => {
     const studioSettings = { ...settings(), studio: { baseUrl: "https://studio.test", mount: "", tokenSecretName: "t", importFolder: "" }, routes: [{ vaultPrefix: "studio/", mode: "studio" as const, label: "Blyg item" }] };
     const st = computePanelState({ settings: studioSettings, note: { path: "elsewhere/N.md", name: "N.md", extension: "md" }, frontmatter: {}, localHash: "sha256:a" });
     const { button, calls } = await mount(st);
-    button("Import from Studio")?.click();
+    button("Sync with Studio…")?.click();
     await vi.waitFor(() => expect(calls).toContain("importFromStudio"));
-    expect((await mount(stateOf({}))).button("Import from Studio")).toBeUndefined();
+    expect((await mount(stateOf({}))).button("Sync with Studio…")).toBeUndefined();
   });
 
   it("a note with another blyg's record gets a Repost to Studio button only in a setup that uses GitHub (M1 0.9.0: R11)", async () => {
@@ -392,15 +392,62 @@ describe("BlygPanelView", () => {
     expect(down.texts).not.toContain("Mentions");
   });
 
-  it("says why Insert quote is grey on a fragment, and what to do", async () => {
-    const fragment = await mount(stateOf({}));
-    expect(fragment.button("Insert quote")?.disabled).toBe(true);
-    expect(fragment.texts.some((t) => /Insert quote works in threads only.*tap Make thread/.test(t))).toBe(true);
-    const published = await mount(stateOf({ blyg_id: ID, id: ID, version: 1, hash: "sha256:a" }));
-    expect(published.texts.some((t) => /published fragment.*never changes.*Quote in thread/.test(t))).toBe(true);
-    const thread = await mount(stateOf({ kind: "thread" }));
-    expect(thread.button("Insert quote")?.disabled).toBe(false);
-    expect(thread.texts.some((t) => /Insert quote works in threads only/.test(t))).toBe(false);
+  it("Insert quote/link is live in a thread and in a fragment (a fragment can only link), and the old grey-button hint is gone", async () => {
+    for (const fm of [{}, { kind: "thread" }, { blyg_id: ID, id: ID, version: 1, hash: "sha256:a" }]) {
+      const m = await mount(stateOf(fm));
+      expect(m.button("Insert quote/link")?.disabled).toBe(false);
+      expect(m.texts.some((t) => /works in threads only/.test(t))).toBe(false);
+      expect(m.button("Insert quote")).toBeUndefined();
+      expect(m.button("Insert link")).toBeUndefined();
+    }
+  });
+
+  it("the next step is inside the status card, then Start writing, then the folded sections and Details", async () => {
+    const { els } = await mount(stateOf({ id: ID, blyg_id: ID, version: 3, hash: "sha256:old" }));
+    const at = (pred: (e: El) => boolean): number => els.findIndex(pred);
+    const status = at((e) => e.cls.has("blyg-pane-status"));
+    const decision = at((e) => e.tag === "button" && e.text === "Publish update…");
+    const write = at((e) => e.text === "Start writing");
+    const facts = at((e) => e.tag === "dl");
+    const withdraw = at((e) => e.tag === "button" && e.text === "Withdraw");
+    expect(status).toBeGreaterThanOrEqual(0);
+    expect(decision).toBeGreaterThan(status);
+    expect(write).toBeGreaterThan(decision);
+    expect(facts).toBeGreaterThan(write);
+    expect(withdraw).toBeGreaterThan(write); // the rarer actions stay below, folded
+    expect(withdraw).toBeGreaterThan(facts); // Withdraw is at the foot of Details, after the facts
+  });
+
+  it("a note outside the publish folders draws no next-step button", async () => {
+    const s = computePanelState({ settings: settings(), note: { path: "Daily/2026-10-26.md", name: "2026-10-26.md", extension: "md" }, frontmatter: {}, localHash: "sha256:a" });
+    const { els } = await mount(s);
+    expect(els.some((e) => e.cls.has("blyg-pane-decision"))).toBe(false);
+  });
+
+  it("with no Studio set up: the four steps, the local writing buttons, and nothing that needs a Studio", async () => {
+    const st = defaultSettings();
+    st.routes = [...STUDIO_ROUTES];
+    st.studio = { baseUrl: "", mount: "", tokenSecretName: "", importFolder: "" };
+    const state = computePanelState({ settings: st, note: { path: "studio/Note.md", name: "Note.md", extension: "md" }, frontmatter: {}, localHash: "sha256:a" });
+    expect(state.status).toBe("studio-missing");
+    const { els, texts, button } = await mount(state);
+    expect(texts).toContain("Connect your Studio.");
+    expect(texts.some((t) => /^2\. In your Studio open More → Client access/.test(t))).toBe(true);
+    expect(texts.some((t) => /30 days.*each device/.test(t))).toBe(true);
+    expect(button("New fragment")?.disabled).toBe(false); // writing locally still works
+    expect(button("New thread")?.disabled).toBe(false);
+    for (const gone of ["Publish…", "Send draft…", "Withdraw", "Hoppers…", "Hoppers...", "Open on web", "Insert quote/link", "Sync with Studio…", "Reply to item…", "Open reader"]) expect(button(gone), gone).toBeUndefined();
+    expect(els.some((e) => e.cls.has("blyg-pane-decision"))).toBe(false);
+  });
+
+  it("a draft in the Studio is not called a published fragment", async () => {
+    const st = defaultSettings();
+    st.studio = { baseUrl: STUDIO_HOST, mount: "", tokenSecretName: "studio-token", importFolder: "" };
+    st.routes = [...STUDIO_ROUTES];
+    const state = computePanelState({ settings: st, note: { path: "studio/Note.md", name: "Note.md", extension: "md" }, frontmatter: { id: ID, origin: STUDIO_ORIGIN, version: 0, sent: "sha256:now" }, localHash: "sha256:now", thread: { quotes: 0, passages: 0, links: 0, problems: [] } });
+    expect(state.status).toBe("draft");
+    const { texts } = await mount(state);
+    expect(texts.some((t) => /published fragment/.test(t))).toBe(false);
   });
 
   it("deploy: nothing before a commit; a quiet line on success; the full explanation on failure", async () => {
@@ -445,11 +492,9 @@ describe("BlygPanelView", () => {
       takeHoppers: () => Promise.resolve(),
       replyToItem: () => Promise.resolve(),
       makeReply: () => Promise.resolve(),
-      quoteInNewThread: () => Promise.resolve(),
-      continueThread: () => Promise.resolve(),
       makeThread: () => Promise.resolve(),
-      insertQuote: () => Promise.resolve(),
-      insertLink: () => Promise.resolve(),
+      insertItem: () => Promise.resolve(),
+      openReader: () => Promise.resolve(),
     });
     const a = view.refresh();
     const b = view.refresh();
@@ -464,35 +509,35 @@ describe("BlygPanelView", () => {
 });
 
 describe("the writing buttons", () => {
-  const WRITE = ["New thread", "New fragment", "Quote in thread", "Continue thread", "Make thread", "Insert quote", "Insert link"];
+  const WRITE = ["New thread", "New fragment", "Insert quote/link", "Make thread"];
   const noteState = (path: string, fm: Record<string, unknown>, ext = "md") =>
     computePanelState({ settings: settings(), note: { path, name: path.split("/").pop() ?? path, extension: ext }, frontmatter: fm, localHash: "sha256:a" });
 
   it("with no note open: only New thread and New fragment are drawn, and no Publish row", async () => {
     const { button, els } = await mount(computePanelState({ settings: settings(), note: null, frontmatter: {}, localHash: null }));
     expect(WRITE.map((t) => [t, button(t)?.disabled])).toEqual([
-      ["New thread", false], ["New fragment", false], ["Quote in thread", undefined], ["Continue thread", undefined], ["Make thread", undefined], ["Insert quote", undefined], ["Insert link", undefined],
+      ["New thread", false], ["New fragment", false], ["Insert quote/link", undefined], ["Make thread", undefined],
     ]);
-    expect(["Publish", "Update", "Withdraw", "Open on web"].map((t) => button(t))).toEqual([undefined, undefined, undefined, undefined]);
-    expect(els.some((e) => e.cls.has("blyg-pane-buttons") && e.text === "Publish")).toBe(false);
+    expect(["Publish…", "Publish update…", "Withdraw", "Open on web"].map((t) => button(t))).toEqual([undefined, undefined, undefined, undefined]);
+    expect(els.some((e) => e.cls.has("blyg-pane-buttons") && e.text === "Publish…")).toBe(false);
   });
 
   it("outside the publish folders: the info and the two New buttons, nothing that cannot work", async () => {
     const { button, texts } = await mount(noteState("Daily/2026-10-10.md", {}));
     expect(texts).toContain("Not in a publish folder.");
-    expect(WRITE.map((t) => button(t)?.disabled)).toEqual([false, false, undefined, undefined, undefined, undefined, undefined]);
-    expect(["Publish", "Update", "Withdraw", "Open on web"].map((t) => button(t))).toEqual([undefined, undefined, undefined, undefined]);
+    expect(WRITE.map((t) => button(t)?.disabled)).toEqual([false, false, undefined, undefined]);
+    expect(["Publish…", "Publish update…", "Withdraw", "Open on web"].map((t) => button(t))).toEqual([undefined, undefined, undefined, undefined]);
   });
 
   it("an essay open: Publish stays (it applies), the Blyg-note buttons are not drawn", async () => {
     const { button } = await mount(noteState("website/essays/E.md", {}));
-    expect(WRITE.map((t) => button(t)?.disabled)).toEqual([false, false, undefined, undefined, undefined, undefined, undefined]);
-    expect(button("Publish")).toBeDefined();
+    expect(WRITE.map((t) => button(t)?.disabled)).toEqual([false, false, undefined, undefined]);
+    expect(button("Publish…")).toBeDefined();
   });
 
-  it("an unpublished fragment open: it can be quoted, linked into and made a thread; Continue and Insert quote stay, grayed out", async () => {
+  it("an unpublished fragment open: items can be inserted (as links) and it can be made a thread", async () => {
     const { button } = await mount(noteState("website/blyg/N.md", {}));
-    expect(WRITE.map((t) => button(t)?.disabled)).toEqual([false, false, false, true, false, true, false]);
+    expect(WRITE.map((t) => button(t)?.disabled)).toEqual([false, false, false, false]);
   });
 
   it("a published fragment can no longer be made a thread (the kind never changes): the button stays, grayed out", async () => {
@@ -502,7 +547,7 @@ describe("the writing buttons", () => {
 
   it("a thread open: everything is live", async () => {
     const { button } = await mount(noteState("website/blyg/N.md", { kind: "thread" }));
-    expect(WRITE.map((t) => button(t)?.disabled)).toEqual([false, false, false, false, true, false, false]);
+    expect(WRITE.map((t) => button(t)?.disabled)).toEqual([false, false, false, true]);
   });
 
   it("with no Blyg folder in the settings even New thread is off", async () => {
@@ -520,8 +565,7 @@ describe("the writing buttons", () => {
 
   it("each button runs its own action", async () => {
     const actions: Record<string, string> = {
-      "New thread": "newThread", "New fragment": "newNote", "Quote in thread": "quoteInNewThread",
-      "Continue thread": "continueThread", "Insert quote": "insertQuote", "Insert link": "insertLink",
+      "New thread": "newThread", "New fragment": "newNote", "Insert quote/link": "insertItem",
     };
     for (const [label, call] of Object.entries(actions)) {
       const { button, calls } = await mount(noteState("website/blyg/N.md", { kind: "thread" }));
@@ -529,5 +573,82 @@ describe("the writing buttons", () => {
       await settle();
       expect(calls, label).toContain(call);
     }
+  });
+});
+
+describe("the grouped panel (increment 5)", () => {
+  const sections = (els: El[]) => els.filter((e) => e.tag === "details");
+  const titleOf = (d: El) => d.children.find((c) => c.tag === "summary")?.text;
+  const studioState = () => {
+    const st = defaultSettings();
+    st.studio = { baseUrl: STUDIO_HOST, mount: "", tokenSecretName: "studio-token", importFolder: "" };
+    st.routes = [...STUDIO_ROUTES];
+    return computePanelState({ settings: st, note: { path: "studio/Note.md", name: "Note.md", extension: "md" }, frontmatter: { kind: "thread" }, localHash: "sha256:a" });
+  };
+
+  it("names the note and its kind in one line under nothing else", async () => {
+    const { els } = await mount(stateOf({ kind: "thread" }));
+    expect(els.find((e) => e.cls.has("blyg-pane-identity"))?.text).toBe("N · Thread");
+  });
+
+  it("Hoppers… is in Work on this note, Withdraw in Details", async () => {
+    const m = await mount(stateOf({ kind: "thread" }));
+    const inSection = (title: string, text: string): boolean => (sections(m.els).find((d) => titleOf(d) === title)?.all() ?? []).some((e) => e.tag === "button" && e.text === text);
+    expect(inSection("Details", "Withdraw")).toBe(true);
+    expect(inSection("Work on this note", "Withdraw")).toBe(false);
+  });
+
+  it("draws the folded sections, closed at first: Work on this note and Details", async () => {
+    const { els } = await mount(stateOf({ kind: "thread" }));
+    const found = sections(els);
+    expect(found.map(titleOf)).toEqual(["Work on this note", "Details"]);
+    expect(found.every((d) => !d.open)).toBe(true);
+  });
+
+  it("Start writing offers New fragment and New thread, and with a Studio also Reply to item… and, on top, the reader", async () => {
+    const plain = await mount(stateOf({}));
+    expect(plain.button("Reply to item…")).toBeUndefined();
+    expect(plain.button("Open reader")).toBeUndefined();
+    const studio = await mount(studioState());
+    expect(studio.button("Sync with Studio…")).toBeDefined();
+    studio.button("Reply to item…")?.click();
+    await vi.waitFor(() => expect(studio.calls).toContain("replyToItem"));
+    studio.button("Open reader")?.click();
+    await vi.waitFor(() => expect(studio.calls).toContain("openReader"));
+  });
+
+  it("a section the person opened stays open when the panel is drawn again", async () => {
+    const m = await mount(stateOf({ kind: "thread" }));
+    const manage = sections(m.els).find((d) => titleOf(d) === "Details");
+    if (!manage) throw new Error("no Details section");
+    manage.open = true;
+    manage.handlers.forEach((h) => h());
+    await m.view.refresh();
+    const again = sections((m.view.contentEl as unknown as El).all());
+    expect(again.map((d) => [titleOf(d), d.open])).toEqual([["Work on this note", false], ["Details", true]]);
+  });
+
+  it("with no note open there is no Work on this note; Details stays", async () => {
+    const { els } = await mount(computePanelState({ settings: settings(), note: null, frontmatter: {}, localHash: null }));
+    expect(sections(els).map(titleOf)).toEqual(["Details"]);
+  });
+});
+
+describe("the fragment counter in the status card", () => {
+  const withCount = (chars: number, cap = 1000): PanelState => ({ ...stateOf({}), fragment: { chars, cap } });
+  const countOf = async (s: PanelState) => (await mount(s)).els.find((e) => e.cls.has("blyg-pane-count"));
+  it("says how long the text is against the limit, quietly", async () => {
+    const c = await countOf(withCount(412));
+    expect(c?.text).toBe("412 / 1000 characters");
+    expect(c?.cls.has("is-near") || c?.cls.has("is-over")).toBe(false);
+  });
+  it("warns near the limit and over it, and says by how much", async () => {
+    expect((await countOf(withCount(910)))?.cls.has("is-near")).toBe(true);
+    const over = await countOf(withCount(1034));
+    expect(over?.cls.has("is-over")).toBe(true);
+    expect(over?.text).toBe("1034 / 1000 characters: 34 too many");
+  });
+  it("is not drawn without a count (threads, notes outside the folders)", async () => {
+    expect(await countOf(stateOf({ kind: "thread" }))).toBeUndefined();
   });
 });

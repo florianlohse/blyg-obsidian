@@ -130,7 +130,7 @@ describe("panel state: the Blyg route", () => {
     });
     expect([s.status, s.ok, s.headline]).toEqual(["production-note", false, "Published on production (v2)."]);
     expect(s.notes[0]).toContain("only works if that branch already has this item");
-    expect([s.canPublish, s.publishLabel, s.emphasizePublish]).toEqual([true, "Update", false]);
+    expect([s.canPublish, s.publishLabel, s.emphasizePublish]).toEqual([true, "Publish update…", false]);
   });
 
   it("in test mode every status says 'on preview'; on production none mentions it", () => {
@@ -208,12 +208,12 @@ describe("panel wording: one line per state, and why a link is missing", () => {
 
   it("the notes tell the user what to do next, per state and per route", () => {
     const note1 = (s: ReturnType<typeof state>) => s.notes[0] ?? "";
-    expect(note1(state())).toBe("Tap Publish to send it as version 1.");
-    expect(note1(state({ fm: { id: ID, version: 1, hash: "sha256:aaa" } }))).toContain("tap Update");
-    expect(note1(state({ fm: { id: ID, version: 1, hash: "sha256:old" } }))).toContain("review the changes");
+    expect(note1(state())).toBe("Tap Publish… to send it as version 1.");
+    expect(note1(state({ fm: { id: ID, version: 1, hash: "sha256:aaa" } }))).toBe("Edit the note to change it.");
+    expect(note1(state({ fm: { id: ID, version: 1, hash: "sha256:old" } }))).toContain("Publish update… to see the changes");
     expect(note1(state({ fm: { id: ID, version: 4, hash: "sha256:aaa", withdrawn: true } }))).toContain("as v5");
     expect(note1(essayIn(undefined, { plainRecord: null }))).toContain("compare it with the site");
-    expect(note1(essayIn(undefined))).toContain("tap Update");
+    expect(note1(essayIn(undefined))).toBe("Edit it to change it.");
     expect(essayIn(undefined).headline).toBe("Essay: published and up to date.");
     expect(state({ fm: { id: ID, version: 3, hash: "sha256:aaa" } }).headline).toBe("Published (v3) and up to date.");
   });
@@ -254,10 +254,10 @@ describe("panel state: plain routes", () => {
 
   it("the main button follows the state: Publish, Update once published, Publish again after a withdrawal", () => {
     const btn = (s: ReturnType<typeof state>) => [s.publishLabel, s.emphasizePublish, s.ok];
-    expect(btn(state())).toEqual(["Publish", true, false]);
-    expect(btn(state({ fm: { id: ID, version: 1, hash: "sha256:aaa" } }))).toEqual(["Update", false, true]);
-    expect(btn(state({ fm: { id: ID, version: 1, hash: "sha256:old" } }))).toEqual(["Update", true, false]);
-    expect(btn(state({ fm: { id: ID, version: 1, hash: "sha256:aaa", withdrawn: true } }))).toEqual(["Publish again", true, false]);
+    expect(btn(state())).toEqual(["Publish…", true, false]);
+    expect(btn(state({ fm: { id: ID, version: 1, hash: "sha256:aaa" } }))).toEqual(["Publish update…", false, true]);
+    expect(btn(state({ fm: { id: ID, version: 1, hash: "sha256:old" } }))).toEqual(["Publish update…", true, false]);
+    expect(btn(state({ fm: { id: ID, version: 1, hash: "sha256:aaa", withdrawn: true } }))).toEqual(["Publish again…", true, false]);
   });
 
   const essayRoute = (webUrl?: string) => ({
@@ -280,9 +280,9 @@ describe("panel state: plain routes", () => {
     const same = essay({ plainRecord: rec });
     expect([same.status, same.published]).toEqual(["plain-in-sync", { at: rec.at }]);
     expect(same.headline).toContain("Essay: published");
-    expect([same.publishLabel, same.emphasizePublish, same.ok]).toEqual(["Update", false, true]);
+    expect([same.publishLabel, same.emphasizePublish, same.ok]).toEqual(["Publish update…", false, true]);
     const unknown = essay();
-    expect([unknown.publishLabel, unknown.emphasizePublish, unknown.ok]).toEqual(["Publish", true, false]);
+    expect([unknown.publishLabel, unknown.emphasizePublish, unknown.ok]).toEqual(["Publish…", true, false]);
     const changed = essay({ plainRecord: rec, localHash: "sha256:b" });
     expect([changed.status, changed.published]).toEqual(["plain-changed", { at: rec.at }]);
   });
@@ -367,6 +367,21 @@ describe("loadPanelState", () => {
     frontmatterValue: (_n, key) => fm[key],
     resolveLink: () => null,
     updateFrontmatter: () => Promise.resolve(),
+  });
+
+  it("a fragment's length is the text a publish would send: properties and %% comments are not counted; the limit is the setting, never above the contract's", async () => {
+    const fm = {};
+    const s = await loadPanelState({ settings: settings(), vault: fakeVault(fm, "---\ntags: [a]\n---\n\nHello %%a private remark%% world\n") }, BLYG);
+    expect(s.fragment).toEqual({ chars: "Hello  world".length, cap: 1000 });
+    const lowered = await loadPanelState({ settings: settings({}, { fragmentCharCap: 280 }), vault: fakeVault(fm, "Hello") }, BLYG);
+    expect(lowered.fragment).toEqual({ chars: 5, cap: 280 });
+    const raised = await loadPanelState({ settings: settings({}, { fragmentCharCap: 5000 }), vault: fakeVault(fm, "Hello") }, BLYG);
+    expect(raised.fragment?.cap).toBe(1000);
+  });
+
+  it("a thread has no count, and neither does a note outside the publish folders", async () => {
+    expect((await loadPanelState({ settings: settings(), vault: fakeVault({ blyg_kind: "thread" }, "A thread, long enough.") }, BLYG)).fragment).toBeUndefined();
+    expect((await loadPanelState({ settings: settings(), vault: fakeVault({}, "Elsewhere") }, note("Daily/2026-11-17.md"))).fragment).toBeUndefined();
   });
 
   it("compares the stamped hash with the text as it is now", async () => {

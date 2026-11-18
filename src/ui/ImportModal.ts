@@ -78,10 +78,10 @@ class ImportModal extends Modal {
     if (this.info.hidden > 0 && !this.info.hiddenShown) {
       new Setting(contentEl)
         .setName(`${this.info.hidden} item${this.info.hidden === 1 ? " is" : "s are"} hidden (you chose not to import ${this.info.hidden === 1 ? "it" : "them"})`)
-        .addButton((b) => b.setButtonText("Show").onClick(() => this.finish("show-hidden")));
+        .addButton((b) => b.setButtonText("Show hidden items").onClick(() => this.finish("show-hidden")));
     }
     new Setting(contentEl)
-      .setName("Don't offer the unticked ones again")
+      .setName("Hide unticked items from future imports")
       .setDesc("For notes you deleted on purpose. Ticking an item later brings it back.")
       .addToggle((t) => t.setValue(false).onChange((on) => (this.ignoreRest = on)));
     new Setting(contentEl)

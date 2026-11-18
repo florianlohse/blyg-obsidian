@@ -1,4 +1,4 @@
-import { debounce, MarkdownView, moment, normalizePath, Notice, Plugin, type Editor, type TAbstractFile, type TFile } from "obsidian";
+import { debounce, MarkdownView, moment, normalizePath, Notice, Plugin, type Editor, type TAbstractFile, type TFile, type WorkspaceLeaf } from "obsidian";
 import { activeBranch, activeChannel, describeTarget } from "./app/publishSettings";
 import { buildImportDeps, runStudioLookup, runStudioReplyTarget, runStudioHoppers, runTakeHoppers, runDeleteDraft, runFetchQuotable, runPublish, runPull, runRepost, runStudioFacts, runStudioQuotable, runStudioSearch, runStudioWarnings, runWithdraw, type AppEnv } from "./app/run";
 import { watchCommit } from "./app/deploy";
@@ -9,7 +9,7 @@ import { createDataWatch } from "./app/dataWatch";
 import { createDeployMemory } from "./app/deployMemory";
 import { TM } from "./app/threadMessages";
 import { expandTemplate, newItemText, templatePath, type ItemKind, type TemplateProblem } from "./app/itemTemplate";
-import { blockToInsert, embedReplacement, extractedItemBody, extractionVerdict, newItemName, pickerCandidates, quoteBlock, quoteBlockOf, renamedForThread, threadConversion, type PickerEntry, type QuoteChoice } from "./app/threadCommands";
+import { blockToInsert, embedReplacement, extractedItemBody, extractionVerdict, newItemName, pickerCandidates, quoteBlock, quoteBlockOf, renamedForThread, passageFromSelection, replyBody, threadConversion, type PickerEntry, type QuoteChoice } from "./app/threadCommands";
 import { localKind } from "./core/blyg";
 import { isBlygId } from "./core/ids";
 import { newItemRoute, routeFor } from "./core/routes";
@@ -33,16 +33,28 @@ import { obsidianKeychain, obsidianNotifier, systemClock, webRandom, windowTimer
 import { obsidianTransport } from "./platform/obsidianTransport";
 import { createSiteReader } from "./platform/siteReader";
 import { noteRefOf, obsidianBinaryVault, obsidianNoteEdit, obsidianVault, obsidianYaml } from "./platform/obsidianVault";
+import type { NoteRef } from "./platform/ports";
 import { redactingLogger } from "./platform/redact";
 import type { Outcome } from "./publish/types";
 import { migrateSettings } from "./settings/migrate";
-import { devGuardProblem, isDevBuildId, isDevStudioLock, realPluginId, setDevStudioLock } from "./studio/devLock";
+import { devGuardProblem, isDevBuildId, isDevStudioLock, realPluginId, setDevStudioLock, setLiveStudioAllowed } from "./studio/devLock";
 import { defaultSettings, type BlygSettings } from "./settings/schema";
 import { isStudioOnly } from "./settings/studioOnly";
 import { BlygSettingTab } from "./settings/tab";
 import { BLYG_PANEL_VIEW, BlygPanelView, type PanelHost } from "./ui/BlygPanelView";
 import { promptForItem, promptForQuote } from "./ui/QuotePicker";
 import { promptForStudioItem } from "./ui/StudioPicker";
+import { isEmptySettingsData, readMirror } from "./settings/mirror";
+import type { StudioListedItem } from "./studio/types";
+import { replyPreviewExtension } from "./editor/replyPreviewExtension";
+import { previewOfPost, resolvePreview, type PreviewResult } from "./studio/previewResolver";
+import { drawPreview, type PreviewDeps } from "./ui/replyPreview";
+import { limiter, postFromPeek, postOfMention } from "./ui/readerMentions";
+import { parseReaderCache, readerCacheOf } from "./ui/readerCache";
+import { backoffDelay, READER_PAGE, READER_PAGES, reachedKnown } from "./ui/readerSync";
+import { BLYG_READER_VIEW, BlygReaderView, excerptOf, type ReaderHost, type ReadResult } from "./ui/ReaderView";
+import { buildStudio } from "./app/run";
+import type { InboundMention, ReadingPost } from "./studio/reading";
 import { confirmWithModal } from "./ui/WritePreviewModal";
 import { chooseImports } from "./ui/ImportModal";
 import { chooseHoppers } from "./ui/HopperModal";
@@ -57,6 +69,9 @@ import { M } from "./publish/messages";
 
 /** How often the panel looks at data.json's modified time while it is on screen: a stat call, no reading, no network. */
 const DATA_LOOK_MS = 15_000;
+
+/** A connection report is several lines: it stays up long enough to read them all (a failure longer than a success). */
+const reportDuration = (report: { ok: boolean; lines: unknown[] }): number => Math.max(report.ok ? 8000 : 12000, report.lines.length * (report.ok ? 2500 : 3500));
 
 export default class BlygPlugin extends Plugin {
   override settings: BlygSettings = defaultSettings();
@@ -99,7 +114,20 @@ export default class BlygPlugin extends Plugin {
     this.addSettingTab(this.settingTab);
 
     this.registerView(BLYG_PANEL_VIEW, (leaf) => new BlygPanelView(leaf, this.panelHost()));
-    this.addRibbonIcon("send", "Open panel", () => void this.openPanel());
+    // The mobile menu (the bottom-right menu) lists the ribbon: two plainly named entries. The lint rule against the plugin's name covers command names only.
+    this.addRibbonIcon("send", "Open Blyg panel", () => void this.openPanel());
+    this.registerReplyPreview();
+    this.addRibbonIcon("book-open", "Open Blyg reader", () => void this.openReader());
+    this.registerView(BLYG_READER_VIEW, (leaf) => new BlygReaderView(leaf, this.readerHost()));
+    this.addCommand({ id: "open-reader", name: "Open reader", callback: () => void this.openReader() });
+    this.addCommand({ id: "open-reader-sidebar", name: "Open reader in the sidebar", callback: () => void this.openReader("sidebar") });
+    this.addCommand({
+      id: "clear-reader-cache",
+      name: "Clear the reader's saved list",
+      callback: () => {
+        void this.app.vault.adapter.remove(this.readerCachePath()).then(() => new Notice("The reader's saved list is cleared."), () => new Notice("There was no saved list."));
+      },
+    });
     this.registerPanelRefresh();
 
     this.addCommand({
@@ -136,12 +164,12 @@ export default class BlygPlugin extends Plugin {
     });
     this.addCommand({
       id: "reply-to-item",
-      name: "Reply to an item",
+      name: "Reply to item…",
       callback: () => void this.replyToItem(),
     });
     this.addCommand({
       id: "make-thread-a-reply",
-      name: "Make this thread a reply",
+      name: "Mark this thread as a reply to…",
       callback: () => void this.makeActiveThreadAReply(),
     });
     this.addCommand({
@@ -156,7 +184,7 @@ export default class BlygPlugin extends Plugin {
     });
     this.addCommand({
       id: "import-from-studio",
-      name: "Studio: import new items",
+      name: "Studio: sync with Studio (new items)",
       callback: () => void this.importFromStudio(),
     });
     this.addCommand({
@@ -209,7 +237,7 @@ export default class BlygPlugin extends Plugin {
       name: "Studio: check connection",
       callback: () => {
         void this.runStudioConnectionCheck().then((report) => {
-          obsidianNotifier.notice(formatReport(report), report.ok ? 6000 : 12000);
+          obsidianNotifier.notice(formatReport(report), reportDuration(report));
         });
       },
     });
@@ -219,7 +247,7 @@ export default class BlygPlugin extends Plugin {
       checkCallback: (checking) =>
         this.githubCommand(checking, () => {
           void this.runConnectionCheck().then((report) => {
-            obsidianNotifier.notice(formatReport(report), report.ok ? 6000 : 12000);
+            obsidianNotifier.notice(formatReport(report), reportDuration(report));
           });
         }),
     });
@@ -252,9 +280,24 @@ export default class BlygPlugin extends Plugin {
     return false;
   }
 
+  /** The key of this plugin's device-local copy of the settings (see settings/mirror.ts). */
+  private get mirrorKey(): string {
+    return `${this.manifest.id}-settings-copy`;
+  }
+
   async loadSettings(): Promise<void> {
-    const loaded = migrateSettings((await this.loadData()) as unknown, isDevStudioLock() ? "dev" : "release");
+    const flavour = isDevStudioLock() ? "dev" : "release";
+    const raw = (await this.loadData()) as unknown;
+    const copy = isEmptySettingsData(raw) ? readMirror(this.app.loadLocalStorage(this.mirrorKey)) : null;
+    const loaded = migrateSettings(copy ?? raw, flavour);
     this.settings = loaded.settings;
+    if (copy !== null && !loaded.fromNewerVersion) {
+      new Notice("Blyg: the settings file was missing or empty, so the settings were restored from this device's copy.", 15000);
+      await this.saveSettings();
+    } else if (!loaded.fromNewerVersion) {
+      this.keepSettingsCopy();
+    }
+    setLiveStudioAllowed(this.settings.dev.allowLiveStudio);
     this.settingsLocked = loaded.fromNewerVersion;
     if (this.settingsLocked) {
       new Notice(
@@ -264,8 +307,19 @@ export default class BlygPlugin extends Plugin {
     }
   }
 
+  /** Write this device's copy of the settings (settings/mirror.ts); a failure is of no matter, the settings file is what counts. */
+  private keepSettingsCopy(): void {
+    try {
+      this.app.saveLocalStorage(this.mirrorKey, JSON.stringify(this.settings));
+    } catch {
+      /* the app's local storage may be unavailable */
+    }
+  }
+
   async saveSettings(): Promise<void> {
+    setLiveStudioAllowed(this.settings.dev.allowLiveStudio);
     if (this.settingsLocked) return;
+    this.keepSettingsCopy();
     // Merged into what is on disk, so the other keys of data.json (the published records, which Obsidian Sync may have updated since
     // this device loaded) are kept.
     await this.updateData((data) => void Object.assign(data, this.settings));
@@ -512,14 +566,14 @@ export default class BlygPlugin extends Plugin {
       new Notice(TM.replyNeedsStudio, 8000);
       return;
     }
-    const picked = await this.chooseStudioItem(this.app.workspace.getActiveFile(), "Choose the item to reply to, or paste its address…");
+    const picked = await this.chooseStudioItem(this.app.workspace.getActiveFile(), "Search words or paste a post link…");
     if (!picked) return;
     const target = await runStudioReplyTarget(this.env(), picked);
     if (!target.ok) {
       new Notice(target.message, 10000);
       return;
     }
-    const quote = picked.quotable === false ? "" : `![[${writtenRef(picked, picked.path ? this.linkTextOf({ path: picked.path }, "") : "")}]]\n\n`;
+    const quote = picked.quotable === false ? "" : replyBody(writtenRef(picked, picked.path ? this.linkTextOf({ path: picked.path }, "") : ""));
     await this.createNote("thread", quote, target.target);
   }
 
@@ -542,7 +596,7 @@ export default class BlygPlugin extends Plugin {
       new Notice(TM.replyPublished, 10000);
       return;
     }
-    const picked = await this.chooseStudioItem(file, "Choose the item this thread answers, or paste its address…");
+    const picked = await this.chooseStudioItem(file, "Search words or paste a post link…");
     if (!picked) return;
     const target = await runStudioReplyTarget(this.env(), picked);
     if (!target.ok) {
@@ -691,26 +745,26 @@ export default class BlygPlugin extends Plugin {
       replyToItem: () => this.replyToItem(),
       makeReply: () => this.makeActiveThreadAReply(),
       takeHoppers: () => this.write(runTakeHoppers),
-      quoteInNewThread: () => this.quoteInNewThread(),
-      continueThread: () => Promise.resolve(this.continueThread()),
       makeThread: () => this.makeThread(),
-      insertQuote: () => {
+      insertItem: () => {
         const editor = this.activeEditor();
-        return editor ? this.insertQuote(editor) : Promise.resolve(void new Notice(TM.openAThread, 6000));
+        return editor ? this.insertItem(editor) : Promise.resolve(void new Notice(TM.openANote, 6000));
       },
-      insertLink: () => {
-        const editor = this.activeEditor();
-        return editor ? this.insertItemLink(editor) : Promise.resolve(void new Notice(TM.openANote, 6000));
-      },
+      openReader: () => this.openReader(),
     };
   }
 
   private panelState(): Promise<PanelState> {
     const file = this.app.workspace.getActiveFile();
+    // The text of the note open in an editor is read from the editor, not from disk: Obsidian saves a few seconds after typing, and the fragment counter must follow what is typed.
+    const base = obsidianVault(this.app);
+    const view = file ? this.activeMarkdownView() : null;
+    const editor = view && view.file?.path === file?.path ? view.editor : null;
+    const vault = file && editor ? { ...base, read: (note: NoteRef) => (note.path === file.path ? Promise.resolve(editor.getValue()) : base.read(note)) } : base;
     return loadPanelState(
       {
         settings: this.settings,
-        vault: obsidianVault(this.app),
+        vault,
         images: obsidianBinaryVault(this.app),
         imageDigests: this.imageDigests,
         published: this.published(),
@@ -746,6 +800,11 @@ export default class BlygPlugin extends Plugin {
     // Typing saves to disk every few seconds and each save re-reads the note: wait for a pause.
     const later = debounce(() => this.refreshPanels(), 600, true);
     this.registerEvent(this.app.workspace.on("file-open", () => this.refreshPanels()));
+    // The fragment counter follows typing: a short pause after the last key, only for the open note.
+    const afterTyping = debounce(() => this.refreshPanels(), 800, true);
+    this.registerEvent(this.app.workspace.on("editor-change", (_editor, info) => {
+      if (info.file && info.file.path === this.app.workspace.getActiveFile()?.path) afterTyping();
+    }));
     this.registerEvent(
       this.app.workspace.on("active-leaf-change", (leaf) => {
         // Tapping into the sidebar itself changes nothing about the note.
@@ -778,8 +837,10 @@ export default class BlygPlugin extends Plugin {
           if (this.panelVisible()) for (const id of this.studioFacts.expired()) this.studioFacts.request(id, () => this.refreshPanels());
         }, DATA_LOOK_MS),
       );
-      this.registerDomEvent(document, "visibilitychange", () => {
-        if (document.visibilityState !== "visible") return;
+      // The main window's own document (the workspace's), not "whichever window is active": coming back to the app fires the event there.
+      const mainDoc = this.app.workspace.containerEl.ownerDocument;
+      this.registerDomEvent(mainDoc, "visibilitychange", () => {
+        if (mainDoc.visibilityState !== "visible") return;
         // Back from another app (the Studio's own editor, say): whatever it said before may be out of date.
         this.studioFacts.invalidate();
         watch.returned();
@@ -807,6 +868,394 @@ export default class BlygPlugin extends Plugin {
       editor.setCursor(endOf(plan.from, plan.text));
       return true;
     });
+  }
+
+  /** PROOF OF CONCEPT (S15): the reader pane opens in the main area; what it asks of the plugin is answered here, through the same Studio plumbing as publishing. */
+  /**
+   * The reader in a tab of its own (the default) or in the sidebar, beside the note you write. A reader already open where you ask for it is brought forward;
+   * one open in the other place stays, and a second one is made: each keeps its own place in the feed.
+   */
+  private async openReader(where: "tab" | "sidebar" = "tab"): Promise<void> {
+    const { workspace } = this.app;
+    const inSidebar = (leaf: WorkspaceLeaf): boolean => (leaf.getRoot() as unknown) === (workspace.rightSplit as unknown);
+    const existing = workspace.getLeavesOfType(BLYG_READER_VIEW).find((leaf) => inSidebar(leaf) === (where === "sidebar"));
+    if (existing) return void (await workspace.revealLeaf(existing));
+    const leaf = where === "sidebar" ? workspace.getRightLeaf(false) : workspace.getLeaf("tab");
+    if (!leaf) return;
+    await leaf.setViewState({ type: BLYG_READER_VIEW, active: true });
+    await workspace.revealLeaf(leaf);
+  }
+
+  // ---- how the reader treats the Studio: leave it alone when it fails (Burrow's rule), and keep the list between sessions ----------------------------------
+
+  private readerTrouble = { failures: 0, until: 0 };
+
+  /** In words, why the reader is not asking the Studio now, or null. */
+  private readerBackedOff(): string | null {
+    const wait = this.readerTrouble.until - Date.now();
+    return wait > 0 ? `The Studio is not answering; the reader tries again in about ${Math.max(1, Math.ceil(wait / 60_000))} min (Refresh asks now).` : null;
+  }
+  private readerFailed(): void {
+    this.readerTrouble.failures++;
+    this.readerTrouble.until = Date.now() + backoffDelay(this.readerTrouble.failures);
+  }
+  private readerWorked(): void {
+    this.readerTrouble = { failures: 0, until: 0 };
+  }
+
+  private readerCachePath(): string {
+    return normalizePath(`${this.manifest.dir ?? `${this.app.vault.configDir}/plugins/${this.manifest.id}`}/reader-cache.json`);
+  }
+  private readerCacheTimer: number | null = null;
+
+  /**
+   * The list from the last session, so the feed shows at once and is brought up to date behind it. It lives in the plugin's own folder (inside the vault's
+   * configuration folder, never in a note), is only used for the Studio it came from, and only while it is fresh (two weeks); the posts' Markdown is left out.
+   */
+  private async readReaderCache(): Promise<{ posts: ReadingPost[]; mentions: InboundMention[]; savedAt: number; studioOrigin: string } | null> {
+    try {
+      const path = this.readerCachePath();
+      const adapter = this.app.vault.adapter;
+      if (!(await adapter.exists(path))) return null;
+      const raw = JSON.parse(await adapter.read(path)) as unknown;
+      const built = buildStudio(this.env());
+      if (!built.ok) return null;
+      const got = parseReaderCache(raw, built.studio.address.origin, Date.now());
+      return got;
+    } catch {
+      return null;
+    }
+  }
+  private writeReaderCache(data: { posts: ReadingPost[]; mentions: InboundMention[] }): void {
+    if (this.readerCacheTimer !== null) window.clearTimeout(this.readerCacheTimer);
+    this.readerCacheTimer = window.setTimeout(() => {
+      this.readerCacheTimer = null;
+      const built = buildStudio(this.env());
+      if (!built.ok) return;
+      const text = JSON.stringify(readerCacheOf(data.posts, data.mentions, built.studio.address.origin, Date.now()));
+      void this.app.vault.adapter.write(this.readerCachePath(), text).catch((err: unknown) => this.logger().warn(`reader cache not written: ${err instanceof Error ? err.message : String(err)}`));
+    }, 3000);
+  }
+
+  /** The owner's own items, kept for a few minutes for the replies chip of the reader. */
+  private readerMine: { at: number; items: StudioListedItem[] } | null = null;
+
+  /** What a note's `![[id | label]]` points at, asked of the Studio once and kept for a few minutes in memory (never in the vault). A found item is kept by its id alone. */
+  private readonly previewCache = new Map<string, { at: number; value: PreviewResult }>();
+  private readonly previewSlot = limiter(3);
+
+  /**
+   * Posts the reader has loaded this session, by id, plus (once) the saved list from the last session: a reply to a post you read needs no request to show
+   * that post. Capped; kept only in memory.
+   */
+  private readonly knownPosts = new Map<string, ReadingPost>();
+  private savedPostsRead = false;
+  private rememberPosts(posts: ReadingPost[]): void {
+    for (const p of posts) this.knownPosts.set(p.remoteId, p);
+    if (this.knownPosts.size > 600) for (const k of [...this.knownPosts.keys()].slice(0, this.knownPosts.size - 600)) this.knownPosts.delete(k);
+  }
+  private async knownPost(id: string): Promise<ReadingPost | null> {
+    const have = this.knownPosts.get(id);
+    if (have) return have;
+    if (!this.savedPostsRead) {
+      this.savedPostsRead = true;
+      const saved = await this.readReaderCache();
+      if (saved) for (const p of saved.posts) if (!this.knownPosts.has(p.remoteId)) this.knownPosts.set(p.remoteId, p);
+    }
+    return this.knownPosts.get(id) ?? null;
+  }
+
+  private previewDeps(): PreviewDeps {
+    return {
+      resolve: (id, hintOrigin) => {
+        const missKey = `${id}|${hintOrigin ?? ""}`;
+        const kept = this.previewCache.get(id) ?? this.previewCache.get(missKey);
+        if (kept && Date.now() - kept.at < (kept.value.kind === "ready" ? 10 * 60_000 : 30_000)) return Promise.resolve(kept.value);
+        return this.previewSlot(async (): Promise<PreviewResult> => {
+          const held = await this.knownPost(id);
+          if (held) {
+            const value: PreviewResult = { kind: "ready", item: previewOfPost(held) };
+            this.previewCache.set(id, { at: Date.now(), value });
+            return value;
+          }
+          const built = buildStudio(this.env());
+          const value: PreviewResult = built.ok ? await resolvePreview(built.studio.client, id, hintOrigin).catch((): PreviewResult => ({ kind: "unavailable", message: "The Studio could not be asked." })) : { kind: "unavailable", message: "The Studio is not set up on this device." };
+          this.previewCache.set(value.kind === "ready" ? id : missKey, { at: Date.now(), value });
+          return value;
+        });
+      },
+      imageMode: () => this.settings.readerPane.images,
+      studioOrigin: () => {
+        const built = buildStudio(this.env());
+        return built.ok ? built.studio.address.origin : null;
+      },
+    };
+  }
+
+  /** The reply preview (view-only): in the editor's Live Preview and in Reading view, a quote directive shows the text of the item it points at. */
+  private registerReplyPreview(): void {
+    const deps = this.previewDeps();
+    const hintFor = (path: string | null, id: string): string | null => {
+      const file = path === null ? null : this.app.vault.getFileByPath(path);
+      const stub = file ? (this.app.metadataCache.getFileCache(file)?.frontmatter?.blyg_stub_of as unknown) : null;
+      return typeof stub === "object" && stub !== null && (stub as { id?: unknown }).id === id && typeof (stub as { origin?: unknown }).origin === "string" ? (stub as { origin: string }).origin : null;
+    };
+    this.registerEditorExtension(replyPreviewExtension(deps, hintFor));
+    // Ask for the item a reply note answers as soon as the note is opened, so its text is there by the time the line is drawn.
+    this.registerEvent(this.app.workspace.on("file-open", (file) => {
+      if (!file || !this.app.workspace.layoutReady) return; // not while Obsidian is still restoring its layout: the line asks for itself when it is drawn
+      const stub = this.app.metadataCache.getFileCache(file)?.frontmatter?.blyg_stub_of as unknown;
+      const id = typeof stub === "object" && stub !== null ? (stub as { id?: unknown }).id : null;
+      if (typeof id === "string" && id !== "") void deps.resolve(id, hintFor(file.path, id)).catch(() => undefined);
+    }));
+    this.registerMarkdownPostProcessor((el, ctx) => {
+      for (const embed of Array.from(el.querySelectorAll(".internal-embed"))) {
+        const m = /^([0-9a-hjkmnp-tv-z]{26})(?:\s*\|(.*))?$/.exec((embed.getAttribute("src") ?? "").trim());
+        if (!m) continue;
+        const card = createDiv({ cls: "blyg-reply-preview-widget" });
+        drawPreview(card, deps, m[1] ?? "", (m[2] ?? "").trim(), hintFor(ctx.sourcePath, m[1] ?? ""));
+        embed.replaceWith(card);
+      }
+    });
+  }
+
+  /** When the reader last asked the Studio to fetch the blygs it reads (this session only). */
+  private readerCheckedAt = 0;
+
+  private readerHost(): ReaderHost {
+    return {
+      version: this.manifest.version,
+      imageMode: () => this.settings.readerPane.images,
+      font: () => this.settings.readerPane.font,
+      setFont: async (font) => {
+        this.settings.readerPane.font = font;
+        await this.saveSettings();
+      },
+      contrast: () => this.settings.readerPane.contrast,
+      setContrast: async (contrast) => {
+        this.settings.readerPane.contrast = contrast;
+        await this.saveSettings();
+      },
+      filter: () => ({ ...this.settings.readerPane.filter }),
+      setFilter: async (filter) => {
+        this.settings.readerPane.filter = { ...filter };
+        await this.saveSettings();
+      },
+      checkForNew: async (force) => {
+        // A pause between checks: every check makes the Studio fetch every blyg it reads, so opening the reader again and again must not hammer them.
+        // (The reader asks only when the person pressed Refresh: the Studio fetches the blygs itself every half hour.)
+        const pause = 60_000;
+        if (Date.now() - this.readerCheckedAt < pause) return { asked: false };
+        const waiting = force ? null : this.readerBackedOff();
+        if (waiting) return { asked: false, reason: waiting };
+        const built = buildStudio(this.env());
+        if (!built.ok) return { asked: false, reason: built.message === M.studioNotConfigured ? "Connect your Studio to read followed blygs: Settings → Blyg." : built.message };
+        try {
+          const got = await built.studio.client.pollSubscriptions();
+          if (got.kind === "ok") {
+            this.readerCheckedAt = Date.now();
+            this.readerWorked();
+            return { asked: true, polling: got.value.polling };
+          }
+          if (got.kind === "forbidden") return { asked: false, reason: "Your token cannot ask the Studio to check for new posts (it needs the permission “owner:manage”). The list shows what the Studio already has." };
+          if (got.kind === "error") this.readerFailed();
+          return { asked: false, reason: "The Studio could not be asked to check for new posts. The list shows what it already has." };
+        } catch {
+          this.readerFailed();
+          return { asked: false, reason: "The Studio could not be reached to check for new posts." };
+        }
+      },
+      changeMarks: async () => {
+        if (this.readerBackedOff()) return null;
+        const built = buildStudio(this.env());
+        if (!built.ok) return null;
+        try {
+          const got = await built.studio.client.changes();
+          if (got.kind !== "ok") {
+            if (got.kind === "error") this.readerFailed();
+            return null;
+          }
+          this.readerWorked();
+          return { epoch: got.value.epoch, reading: got.value.domains.reading ?? 0, subscriptions: got.value.domains.subscriptions ?? 0 };
+        } catch {
+          this.readerFailed();
+          return null;
+        }
+      },
+      load: async (onProgress, opts) => {
+        const waiting = opts?.force ? null : this.readerBackedOff();
+        if (waiting) return { ok: false, message: waiting };
+        const built = buildStudio(this.env());
+        if (!built.ok) return { ok: false, message: built.message === M.studioNotConfigured ? "Connect your Studio to read followed blygs: Settings → Blyg." : built.message };
+        try {
+          const { client } = built.studio;
+          const known = opts?.known ?? null;
+          const wantMentions = opts?.mentions !== false;
+          // The owner's own posts (increment 8b) come from the Studio's merged list, with a whole read only: a quick look keeps the ones held.
+          const wantOwn = opts?.own === true && known === null;
+          const [reading, mentions, own] = await Promise.all([
+            client.listReading(READER_PAGES, onProgress, { pageSize: READER_PAGE, ...(known ? { stopAfter: (rows: ReadingPost[]) => reachedKnown(rows, known) } : {}) }),
+            wantMentions ? client.listInboundMentions() : Promise.resolve(null),
+            wantOwn ? client.listOwnReading() : Promise.resolve(null),
+          ]);
+          if (reading.kind !== "ok") {
+            if (reading.kind === "error") this.readerFailed();
+            return { ok: false, message: "message" in reading ? reading.message : "The Studio could not list what you read." };
+          }
+          this.readerWorked();
+          // The window is the newest posts only: older unread posts are not reachable yet ("load older" is planned).
+          const bad = reading.value.unreadable + (mentions !== null && mentions.kind === "ok" ? mentions.value.unreadable : 0);
+          const note = [bad > 0 ? `${bad} could not be read.` : "", mentions !== null && mentions.kind !== "ok" ? "Mentions are not available." : ""].filter(Boolean).join(" ");
+          this.rememberPosts(reading.value.posts);
+          return {
+            ok: true,
+            data: { posts: own !== null && own.kind === "ok" ? [...reading.value.posts, ...own.value.posts] : reading.value.posts, mentions: mentions !== null && mentions.kind === "ok" ? mentions.value.mentions : [], mentionsFetched: mentions !== null && mentions.kind === "ok", note, studioOrigin: built.studio.address.origin, incremental: reading.value.stopped },
+          };
+        } catch (err) {
+          this.readerFailed();
+          this.logger().warn(`reader load failed: ${err instanceof Error ? err.message : String(err)}`);
+          return { ok: false, message: "The Studio could not be reached." };
+        }
+      },
+      readCache: () => this.readReaderCache(),
+      writeCache: (data) => this.writeReaderCache(data),
+      openWeb: (url) => window.open(url, "_blank"),
+      replyTo: async (post: ReadingPost, selection?: string) => {
+        this.rememberPosts([post]); // the note this starts shows this post's words at once
+        const pick: StudioPick = { source: "studio", id: post.remoteId, kind: post.kind, title: excerptOf(post.contentHtml, 60), detail: post.subscriptionTitle, subscriptionId: post.subscriptionId, label: post.subscriptionTitle, origin: post.origin, version: post.version, quotable: true };
+        const target = await runStudioReplyTarget(this.env(), pick);
+        if (!target.ok) return void new Notice(target.message, 10000);
+        const ref = writtenRef(pick, "");
+        // Text selected in the post: the reply quotes exactly that passage (a partial quote, protocol 10.2). The passage is cut from the item's own text, so it matches
+        // what the Studio checks; when the selection cannot be found there, the quote window opens and the passage is chosen in it.
+        if (selection !== undefined && selection.trim() !== "") {
+          new Notice(TM.reading, 3000);
+          const quotable = await runStudioQuotable(this.env(), pick);
+          if (!quotable.ok) return void this.show(quotable.outcome);
+          let choice: QuoteChoice | "link" | null = null;
+          const found = passageFromSelection(quotable.text, selection);
+          if (found !== null) choice = { kind: "passage", selected: found };
+          else {
+            new Notice(TM.selectionNotFound, 8000);
+            choice = await promptForQuote(this.app, quotable);
+          }
+          if (choice === null) return;
+          if (choice === "link") {
+            await this.createNote("thread", replyBody(ref), target.target);
+            return;
+          }
+          const block = quoteBlockOf(ref, choice);
+          if (!block.ok) return void new Notice(block.reason === "cannot" ? TM.cannotQuote : TM.selectFirst, 8000);
+          await this.createNote("thread", `${block.text}\n\n`, target.target);
+          return;
+        }
+        await this.createNote("thread", replyBody(ref), target.target);
+      },
+      isImported: async (post) => {
+        if (post.subscriptionId === "") return false;
+        const built = buildStudio(this.env());
+        if (!built.ok) return null;
+        try {
+          const got = await built.studio.client.getImported(post.subscriptionId, post.remoteId);
+          if (got.kind === "ok") return true;
+          return got.kind === "not-found" ? false : null;
+        } catch {
+          return null;
+        }
+      },
+      resyncBlyg: async (post) => {
+        const built = buildStudio(this.env());
+        if (!built.ok) return { ok: false, message: built.message };
+        try {
+          const done = await built.studio.client.resyncSubscription(post.subscriptionId);
+          if (done.kind === "ok") return { ok: true };
+          if (done.kind === "forbidden") return { ok: false, message: "Your token cannot ask the Studio to fetch a blyg. It needs the permission “owner:manage”: make a new token with every permission." };
+          return { ok: false, message: "message" in done ? done.message : "The Studio could not be asked to fetch this blyg." };
+        } catch {
+          return { ok: false, message: "The Studio could not be reached." };
+        }
+      },
+      mentionPost: async (m, posts) => {
+        const known = postOfMention(posts, m);
+        if (known) return known;
+        if (!m.sourceOrigin || !m.sourceId) return null;
+        const built = buildStudio(this.env());
+        if (!built.ok) return null;
+        const got = await built.studio.client.peekItem(m.sourceOrigin, m.sourceId);
+        return got.kind === "ok" ? postFromPeek(m, got.value) : null;
+      },
+      myItems: async () => {
+        if (this.readerMine && Date.now() - this.readerMine.at < 5 * 60_000) return this.readerMine.items;
+        const built = buildStudio(this.env());
+        if (!built.ok) return [];
+        const got = await built.studio.client.listItems();
+        const items = got.kind === "ok" ? got.value.items : [];
+        if (got.kind === "ok") this.readerMine = { at: Date.now(), items };
+        return items;
+      },
+      openOwnItem: async (itemId) => {
+        const file = this.app.vault.getMarkdownFiles().find((f) => this.app.metadataCache.getFileCache(f)?.frontmatter?.blyg_id === itemId);
+        if (!file) return false;
+        await this.app.workspace.getLeaf("tab").openFile(file);
+        return true;
+      },
+      openQuotedItem: async (origin, itemId) => {
+        const built = buildStudio(this.env());
+        if (!built.ok) return false;
+        const got = await built.studio.client.peekItem(origin, itemId);
+        if (got.kind !== "ok" || !/^https?:\/\//i.test(got.value.url)) return false;
+        window.open(got.value.url, "_blank");
+        return true;
+      },
+      isOwnItem: async (itemId) => {
+        const built = buildStudio(this.env());
+        if (!built.ok) return false;
+        return (await built.studio.client.getItem(itemId)).kind === "ok";
+      },
+      ownExcerpt: async (itemId) => {
+        // The owner's items were listed already (the reader asks for them when it opens), working copy included: no request per mention.
+        const listed = this.readerMine?.items.find((i) => i.id === itemId);
+        if (listed && listed.contentMd.trim() !== "") return excerptOf(`<p>${listed.contentMd.replace(/[<>&]/g, " ")}</p>`, 90) || null;
+        const built = buildStudio(this.env());
+        if (!built.ok) return null;
+        const got = await built.studio.client.getItem(itemId);
+        if (got.kind !== "ok") return null;
+        const text = got.value.published?.contentHtml ? excerptOf(got.value.published.contentHtml, 90) : excerptOf(`<p>${got.value.contentMd.replace(/[<>&]/g, " ")}</p>`, 90);
+        return text || null;
+      },
+      hideMention: (m) => this.readerHideMention(m),
+      markRead: (post) => this.readerMark(post, true),
+      markUnread: (post) => this.readerMark(post, false),
+    };
+  }
+
+  /** Hide an inbound mention in the Studio. The answer is a result the reader can act on (the mention comes back on a refusal). */
+  private async readerHideMention(m: InboundMention): Promise<ReadResult> {
+    try {
+      const built = buildStudio(this.env());
+      if (!built.ok) return { ok: false, message: built.message };
+      const done = await built.studio.client.hideMention(m.id, true);
+      if (done.kind === "ok") return { ok: true };
+      if (done.kind === "forbidden") return { ok: false, message: "Your token cannot dismiss mentions. It needs the permission “owner:manage”: make a new token with every permission." };
+      return { ok: false, message: "message" in done ? done.message : "Could not dismiss the mention." };
+    } catch {
+      return { ok: false, message: "The Studio could not be reached, so the mention was not dismissed." };
+    }
+  }
+
+  /** Mark a post read or unread in the Studio; the answer is a result the reader can act on (it shows the change first and puts it back on a refusal). */
+  private async readerMark(post: ReadingPost, read: boolean): Promise<ReadResult> {
+    try {
+      const built = buildStudio(this.env());
+      if (!built.ok) return { ok: false, message: built.message };
+      const { client } = built.studio;
+      const done = read ? await client.markRead(post.subscriptionId, post.remoteId, post.version) : await client.markUnread(post.subscriptionId, post.remoteId);
+      if (done.kind === "ok") return { ok: true };
+      if (done.kind === "forbidden") return { ok: false, message: "Your token cannot mark posts read. It needs the permission “reading:state”: make a new token with every permission." };
+      return { ok: false, message: "message" in done ? done.message : "Could not change the read mark." };
+    } catch {
+      return { ok: false, message: "The Studio could not be reached, so the read mark was not changed." };
+    }
   }
 
   private async openPanel(): Promise<void> {
@@ -980,37 +1429,6 @@ export default class BlygPlugin extends Plugin {
     return f ? this.app.metadataCache.fileToLinktext(f, from, true) : file.path.replace(/\.md$/, "");
   }
 
-  /** "Quote in thread": a new thread that starts with a quote of the open Blyg note, ready to write. */
-  private async quoteInNewThread(): Promise<void> {
-    const file = this.app.workspace.getActiveFile();
-    const mode = file ? routeFor(this.settings.routes, file.path)?.mode : undefined;
-    if (!file || file.extension !== "md" || (mode !== "blyg" && mode !== "studio")) {
-      new Notice(TM.quotesNeedBlygFolder, 6000);
-      return;
-    }
-    await this.createNote("thread", `![[${this.linkTextOf(file, file.path)}]]\n\n`);
-  }
-
-  /**
-   * "Continue thread": the open thread, cursor at its end after a blank line, to keep writing. Publishing it again makes a new version
-   * of the same thread: that is how the protocol continues a thread (one item that grows, spec §5.2).
-   */
-  private continueThread(): void {
-    const editor = this.activeEditor();
-    const file = this.app.workspace.getActiveFile();
-    const kind = file ? obsidianVault(this.app).frontmatterValue(noteRefOf(file), "blyg_kind") : undefined;
-    if (!editor || kind !== "thread") {
-      new Notice(TM.openAThread, 6000);
-      return;
-    }
-    const last = editor.lastLine();
-    if (editor.getLine(last).trim() !== "") editor.replaceRange("\n\n", { line: last, ch: editor.getLine(last).length });
-    else if (last > 0 && editor.getLine(last - 1).trim() !== "") editor.replaceRange("\n", { line: last, ch: 0 });
-    const end = editor.lastLine();
-    editor.setCursor({ line: end, ch: editor.getLine(end).length });
-    editor.focus();
-  }
-
   /** The editor view the user was in: from the side panel the sidebar is the active view, so fall back to the most recent editor. */
   private activeMarkdownView(): MarkdownView | null {
     const recent = this.app.workspace.getMostRecentLeaf()?.view;
@@ -1066,6 +1484,17 @@ export default class BlygPlugin extends Plugin {
       )
     ).filter((e): e is PickerEntry => e !== null);
     return pickerCandidates(entries, { activePath, channel: activeChannel(this.settings) });
+  }
+
+  /**
+   * "Insert quote/link" (the panel): in a thread, pick an item and then quote it (the whole item or a passage) or only link to it; in a fragment,
+   * which cannot quote, pick an item and link to it. The palette keeps "Insert quote" and "Insert link to item" as they were.
+   */
+  private async insertItem(editor: Editor): Promise<void> {
+    const file = this.app.workspace.getActiveFile();
+    const kind = file ? obsidianVault(this.app).frontmatterValue(noteRefOf(file), "blyg_kind") : undefined;
+    if (kind === "thread") await this.insertQuote(editor);
+    else await this.insertItemLink(editor);
   }
 
   /** A plain link `[[id]]` to one of your published notes, at the cursor. The publish checks it and freezes its label. */
@@ -1130,6 +1559,11 @@ export default class BlygPlugin extends Plugin {
     }
     const choice = await promptForQuote(this.app, quotable);
     if (!choice) return;
+    if (choice === "link") {
+      editor.replaceSelection(`[[${this.linkTextOf(picked, file.path)}]]`);
+      new Notice(TM.linkInserted, 5000);
+      return;
+    }
     const block = quoteBlock(this.linkTextOf(picked, file.path), choice);
     if (!block.ok) {
       new Notice(block.reason === "cannot" ? TM.cannotQuote : TM.selectFirst, 8000);
@@ -1220,7 +1654,7 @@ export default class BlygPlugin extends Plugin {
 
   /** "Insert link" in a Studio folder: `[[Name]]` for a note of the vault, `[[id | label]]` for any other item the Studio knows. */
   private async insertStudioLink(editor: Editor, file: TFile): Promise<void> {
-    const picked = await this.chooseStudioItem(file, "Choose an item to link to, or paste its address…");
+    const picked = await this.chooseStudioItem(file, "Search words or paste a post link…");
     if (!picked) return;
     if (picked.quotable === false) {
       new Notice(M.stubCannotQuote, 10000);
@@ -1232,7 +1666,7 @@ export default class BlygPlugin extends Plugin {
 
   /** "Insert quote" in a Studio folder: the whole item or a passage of what readers see, from your own items or a blyg you read. */
   private async insertStudioQuote(editor: Editor, file: TFile): Promise<void> {
-    const picked = await this.chooseStudioItem(file, "Choose an item to quote, or paste its address…");
+    const picked = await this.chooseStudioItem(file, "Search words or paste a post link…");
     if (!picked) return;
     if (picked.quotable === false) {
       new Notice(M.stubCannotQuote, 10000);
@@ -1246,6 +1680,11 @@ export default class BlygPlugin extends Plugin {
     }
     const choice = await promptForQuote(this.app, quotable);
     if (!choice) return;
+    if (choice === "link") {
+      editor.replaceSelection(`[[${writtenRef(picked, picked.path ? this.linkTextOf({ path: picked.path }, file.path) : "")}]]`);
+      new Notice(TM.studioLinkInserted, 5000);
+      return;
+    }
     const block = quoteBlockOf(writtenRef(picked, picked.path ? this.linkTextOf({ path: picked.path }, file.path) : ""), choice);
     if (!block.ok) {
       new Notice(block.reason === "cannot" ? TM.cannotQuote : TM.selectFirst, 8000);

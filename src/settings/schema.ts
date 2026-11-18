@@ -101,6 +101,24 @@ export interface BlygSettings {
     format: string;
     stripTracking: boolean;
   };
+  /**
+   * The reader pane (roadmap S15, proof of concept). Optional in data.json like `webQuote`. `images`: a post you read can carry images from the author's
+   * own server or from any server the author chose, and loading one tells that server you read the post. `click` (the default): each image is a
+   * button and loads when tapped; `always`: images load as the post is drawn.
+   */
+  readerPane: {
+    images: "click" | "always";
+    /** How a post opens: `web` shows the author's own page inside Obsidian (sandboxed, no scripts; it loads like a visit to that page), `text` draws the
+     *  post's text in Obsidian (images follow `images`). A page that refuses to be shown inside another app falls back to `text`. */
+    /** The font of a post's content (not the interface). See ui/readerFonts.ts. */
+    font: "default" | "serif" | "sans" | "mono";
+    /** The contrast of the reading surface in the text view: reduced, normal or high. */
+    contrast: "reduced" | "normal" | "high";
+    /** The feed's order and choices, kept across restarts (ui/readerFeed.ts). `source` is a subscription id of the Studio, null for all blygs. */
+    filter: { sort: "newest" | "oldest" | "shortest" | "longest"; source: string | null; unreadOnly: boolean; length: "any" | "short" | "medium" | "long"; repliesToMe: boolean };
+  };
+  /** Development build only (ignored by the release plugin). `allowLiveStudio`: lift the test-Studio lock (studio/devLock.ts) on the owner's say. */
+  dev: { allowLiveStudio: boolean };
 }
 
 /** `dev` is the development build (manifest id ends in -dev): a fresh install starts with the test route `Studio test/`, so it never claims the real plugin's default folder `blyg/`. */
@@ -140,5 +158,7 @@ export function defaultSettings(flavour: "release" | "dev" = "release"): BlygSet
     respond: { draftsPrefix: "blyg/" },
     mentions: { repoPath: "data/mentions.json" },
     webQuote: { ...DEFAULT_WEB_QUOTE },
+    readerPane: { images: "click", font: "default", contrast: "normal", filter: { sort: "newest", source: null, unreadOnly: false, length: "any", repliesToMe: false } },
+    dev: { allowLiveStudio: false },
   };
 }

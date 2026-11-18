@@ -27,7 +27,7 @@ describe("newItemText with a template", () => {
     expect(ok(newItemText({ kind: "fragment", template: "Intro\n\n", body: "Moved.\n" }))).toBe("Intro\n\nMoved.\n");
   });
   it("a thread template without properties gets the thread property in front", () => {
-    expect(ok(newItemText({ kind: "thread", template: "# Heading\n\n", body: "" }))).toBe("---\nblyg_kind: thread\n---\n\n# Heading\n\n");
+    expect(ok(newItemText({ kind: "thread", template: "# Heading\n\n", body: "" }))).toBe("---\nblyg_kind: thread\n---\n# Heading\n\n");
   });
   it("a thread template with properties gets the thread property added to them, the author's lines untouched", () => {
     expect(ok(newItemText({ kind: "thread", template: "---\ntags: [idea]\ncreated: 2026-10-18\n---\n\nBody\n", body: "![[Q]]\n\n" }))).toBe(

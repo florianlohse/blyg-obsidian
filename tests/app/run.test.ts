@@ -1,3 +1,4 @@
+import { M } from "../../src/publish/messages";
 import { describe, expect, it } from "vitest";
 import { activeBranch, activeChannel, describeTarget, preflight, toPublishSettings } from "../../src/app/publishSettings";
 import type { PublishedStore } from "../../src/app/publishedStore";
@@ -52,10 +53,10 @@ describe("settings → publish settings", () => {
     expect(preflight(userSettings())).toBeNull();
     const githubUser = defaultSettings();
     githubUser.routes = [{ vaultPrefix: "blyg/", mode: "blyg", label: "Blyg item" }];
-    expect(preflight(githubUser)).toMatch(/Owner: Required\. · Repository: Required\./);
+    expect(preflight(githubUser)).toMatch(/Owner: Required · Repository: Required\. Open Settings/);
     const s = userSettings();
     s.blyg.fragmentCharCap = 5000;
-    expect(preflight(s)).toMatch(/Fragment character cap/);
+    expect(preflight(s)).toMatch(/Fragment character limit/);
     const warnOnly = userSettings();
     warnOnly.blyg.itemsDir = "content/items"; // only a warning
     expect(preflight(warnOnly)).toBeNull();
@@ -105,7 +106,10 @@ describe("the publish and withdraw commands", () => {
   it("refuses with no active note, bad settings, or no token — before any network call", async () => {
     const w = makeWorld({ vault: { [NOTE]: "Hello\n" } });
     expect((await runPublish(envFor(w, {}, userSettings(), null))).notices[0]).toMatch(/No active note/);
-    expect((await runPublish(envFor(w, {}, defaultSettings()))).notices[0]).toMatch(/settings need attention/);
+    expect((await runPublish(envFor(w, {}, defaultSettings()))).notices).toEqual([M.studioNotConfigured]); // nothing connected yet: one sentence that says what to do
+    const githubUser = defaultSettings();
+    githubUser.routes = [{ vaultPrefix: "blyg/", mode: "blyg", label: "Blyg item" }];
+    expect((await runPublish(envFor(w, {}, githubUser))).notices[0]).toMatch(/settings need attention/);
     expect((await runPublish(envFor(w, {}, userSettings({ tokenSecretName: "" })))).notices[0]).toMatch(/No GitHub token chosen/);
     expect((await runPublish(envFor(w, { keychain: fakeKeychain({}) }))).notices[0]).toMatch(/keychain entry “gh-token” is empty/);
     expect((await runPublish(envFor(w, { keychain: fakeKeychain({ "gh-token": TOKEN }, false) }))).notices[0]).toMatch(/no keychain/);

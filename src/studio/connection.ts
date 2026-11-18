@@ -99,8 +99,11 @@ export async function checkStudioConnection(
       if (missing.length > 0) lines.push({ level: "error", text: `The token lacks ${missing.join(", ")}. Publishing needs ${NEEDED_SCOPES.join(", ")}.` });
       else lines.push({ level: "ok", text: "The token has the permissions publishing needs." });
       // Hoppers (S13) need owner:manage; without it everything else works, so this is a note, not a fault.
-      if (scopes.includes("owner:manage")) lines.push({ level: "ok", text: "The token may change hoppers (owner:manage)." });
-      else lines.push({ level: "warn", text: "The token cannot change hoppers: that needs owner:manage. Publishing works without it." });
+      if (scopes.includes("owner:manage")) lines.push({ level: "ok", text: "The token may change hoppers, dismiss mentions and ask the Studio to check for new posts (owner:manage)." });
+      else lines.push({ level: "warn", text: "Without owner:manage the token cannot change hoppers, dismiss mentions or ask the Studio to check for new posts. Publishing works without it." });
+      // The reader's read marks (reading:state): without it the reader works but cannot mark a post read or unread.
+      if (scopes.includes("reading:state")) lines.push({ level: "ok", text: "The token may mark posts read or unread in the reader (reading:state)." });
+      else lines.push({ level: "warn", text: "Without reading:state the token cannot mark posts read or unread in the reader. Publishing and reading work without it." });
     }
 
     const counted = await client.countItems();

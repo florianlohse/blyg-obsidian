@@ -33,7 +33,7 @@ await runScenario({ data }, async (s) => {
 
     await s.openNote("Home.md");
     await s.clearNotices();
-    check(await s.clickPanel("Import from Studio"), `${layout}: the panel offers “Import from Studio”`);
+    check(await s.clickPanel("Sync with Studio…"), `${layout}: the panel offers “Sync with Studio…”`);
     check(await s.waitModal("Import new items"), `${layout}: the import window opens`);
     const rows = await s.importRows();
     const mine = rows.filter((r) => r.title.includes(stamp));
@@ -44,8 +44,8 @@ await runScenario({ data }, async (s) => {
     // only this run's three: the Studio still holds items of earlier runs that have no note in this vault
     await s.tickOnly([`Web fragment ${stamp}`, `Web thread ${stamp}`, `Web draft ${stamp}`]);
     check((await s.importButtonLabel()) === "Import 3", `${layout}: the button counts the ticked rows (“${await s.importButtonLabel()}”)`);
-    // “Don't offer the unticked ones again”
-    await s.toggleInModal("Don't offer the unticked ones again");
+    // “Hide unticked items from future imports”
+    await s.toggleInModal("Hide unticked items from future imports");
     await s.clearNotices();
     await s.clickModal("Import 3");
     const done = await s.waitNotice(/Imported 3 items from the Studio into/);
@@ -74,7 +74,7 @@ await runScenario({ data }, async (s) => {
     // the unticked one is not offered again
     await s.openNote("Home.md");
     await s.clearNotices();
-    await s.clickPanel("Import from Studio");
+    await s.clickPanel("Sync with Studio…");
     const next = await s.becomes(async () => ((await s.modalTitle()) === "Import new items" ? "window" : (await s.notices()).some((t) => /nothing to import|Nothing was imported/.test(t)) ? "notice" : false), 20000, "the second import");
     if (next === "window") {
       check(!(await s.importRows()).some((r) => r.title.includes(`Web skip ${stamp}`)), `${layout}: the item left unticked is not offered again`);

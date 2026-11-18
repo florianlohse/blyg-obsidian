@@ -33,8 +33,9 @@ export const TM = {
   cannotQuote:
     "That passage has a web address next to characters that Markdown would change, so it cannot be quoted exactly. Select a different part.",
   selectFirst: "Select some text first.",
+  selectionNotFound: "That selection could not be found in the post's text (it may cross a picture or a table). Choose the passage in this window.",
   quoteInserted: "Quote inserted.",
-  passageInserted: "Passage inserted. Tap Publish to freeze it with the thread.",
+  passageInserted: "Passage inserted. It is frozen with the thread when the thread is published.",
   extractPlain:
     "Essays and pages are copied to the site as they are, so an embed left there would show as plain text. Extract from a thread, or from a note outside your publish folders.",
   extractFragment:
@@ -44,5 +45,5 @@ export const TM = {
   extractTooLong: (n: number, cap: number) => `The moved text is ${n} characters, longer than a fragment may be (${cap}). It was moved anyway: make it a thread instead (open it and tap “Make thread” in the panel).`,
   extractDone: (name: string, chars: number) => `Moved ${chars} characters into “${name}”; this note now embeds it. Undo with the editor's undo if that was a mistake.`,
   extractPublishFirst: "The new item must be published before this thread can be.",
-  selectInBox: "Select some text in the box first, then tap “Quote the selection”.",
+  selectInBox: "Select some text in the box first, then tap “Quote selection”.",
 } as const;

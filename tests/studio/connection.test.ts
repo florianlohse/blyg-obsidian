@@ -19,8 +19,8 @@ describe("studio connection check", () => {
     const report = await run(studio);
     expect(report.ok).toBe(true);
     // the default test token has no owner:manage: a note (hoppers, S13), not a fault
-    expect(levels(report)).toEqual(["ok", "ok", "ok", "ok", "warn", "ok"]);
-    expect(formatReport(report)).toMatch(/cannot change hoppers: that needs owner:manage/);
+    expect(levels(report)).toEqual(["ok", "ok", "ok", "ok", "warn", "warn", "ok"]);
+    expect(formatReport(report)).toMatch(/Without owner:manage the token cannot change hoppers, dismiss mentions or ask the Studio to check for new posts/);
     expect(formatReport(report)).toMatch(/Studio 0\.51\.0, contract 5\.2\.0: the API this plugin speaks/);
     expect(formatReport(report)).toMatch(/valid for 70 more days/);
     expect(formatReport(report)).toMatch(/holds 1 item\./);
@@ -30,10 +30,19 @@ describe("studio connection check", () => {
 
   it("says when the token may change hoppers (owner:manage)", async () => {
     const studio = new FakeStudio();
-    studio.token = makeToken({ expSeconds: FAR_FUTURE, scope: "owner:read owner:draft owner:publish owner:manage" });
+    studio.token = makeToken({ expSeconds: FAR_FUTURE, scope: "owner:read owner:draft owner:publish owner:manage reading:state" });
     const report = await run(studio);
     expect(report.lines.every((l) => l.level === "ok")).toBe(true);
-    expect(formatReport(report)).toMatch(/may change hoppers/);
+    expect(formatReport(report)).toMatch(/may change hoppers, dismiss mentions and ask the Studio to check for new posts/);
+    expect(formatReport(report)).toMatch(/may mark posts read or unread in the reader \(reading:state\)/);
+  });
+
+  it("says what a token without reading:state cannot do (affected action, not a fault)", async () => {
+    const studio = new FakeStudio();
+    studio.token = makeToken({ expSeconds: FAR_FUTURE, scope: "owner:read owner:draft owner:publish owner:manage" });
+    const report = await run(studio);
+    expect(report.ok).toBe(true);
+    expect(formatReport(report)).toMatch(/Without reading:state the token cannot mark posts read or unread in the reader\. Publishing and reading work without it/);
   });
 
   it("warns, but still passes, for a newer minor of contract 5 and for a program that is not a Blygger Studio", async () => {

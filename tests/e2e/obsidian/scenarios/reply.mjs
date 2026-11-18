@@ -17,7 +17,9 @@ await runScenario({ data }, async (s) => {
   const rev = (await s.studioItem(ownId)).json?.revision;
   const pub = await s.studio(`/items/${encodeURIComponent(ownId)}/publish`, { method: "POST", body: JSON.stringify({ expectedRevision: rev }) });
   check(made.status === 201 && pub.status === 200, `an item to answer is published in the Studio (HTTP ${made.status}, ${pub.status})`);
-  const imported = (await s.studio("/search?source=imported&limit=5")).json?.items?.[0];
+  // The item the picker search below finds ("remote fragment"), looked up by the same words: not "the first imported item", which is whatever the
+  // Studio imported last (another scenario in the same run, reader-poc, publishes newer posts on the second Studio).
+  const imported = (await s.studio("/search?source=imported&q=remote%20fragment&limit=5")).json?.items?.find((i) => /remote fragment/i.test(i.excerpt ?? ""));
   if (!imported) console.log("skip the reply to a blyg you read: the Studio holds no imported item (WITH_REMOTE=1 scripts/local-studio.sh start)");
 
   /** The note the plugin just made is the active one: wait for it and return its path. */
@@ -30,7 +32,7 @@ await runScenario({ data }, async (s) => {
     check(await s.openNote(seed), `${layout}: the panel follows a note in the Studio folder`);
 
     // Reply to item, by a pasted address (S10 §1/§2): a new thread that starts with the quote, and the Stub row
-    check(await s.clickPanel("Reply to item"), `${layout}: the panel offers “Reply to item”`);
+    check(await s.clickPanel("Reply to item…"), `${layout}: the panel offers “Reply to item…”`);
     check(Boolean(await s.becomes(() => s.pickerOpen(), 10000, "the picker")), `${layout}: the picker opens`);
     await s.clearNotices();
     await s.typeInPicker(`${STUDIO}/f/${ownId}/`);
@@ -43,7 +45,12 @@ await runScenario({ data }, async (s) => {
       const fm = await s.becomes(async () => (await s.frontmatter(reply))?.blyg_stub_of, 15000, "blyg_stub_of");
       check(Boolean(fm) && fm.id === ownId && fm.version === 1 && typeof fm.origin === "string", `${layout}: blyg_stub_of holds origin, id and version of the item (${JSON.stringify(fm)})`);
       check((await s.frontmatter(reply))?.blyg_kind === "thread", `${layout}: the note is a thread`);
-      check((await s.editorText(reply)).includes(`![[${ownId}`), `${layout}: it starts with a quote of the item`);
+      check((await s.editorText(reply)).includes(`![[${ownId}`), `${layout}: it holds a quote of the item`);
+      // The quote comes first, right under the properties (no blank line between them), and the cursor is below it, after one blank line.
+      const place = await s.page.evaluate((p) => { const ed = window.app.workspace.getLeavesOfType("markdown").find((l) => l.view.file?.path === p)?.view.editor; const lines = ed.getValue().split("\n"); return { cursor: ed.getCursor().line, last: ed.lastLine(), quote: lines.findIndex((l) => l.startsWith("![[")), lines }; }, reply);
+      const fenceEnd = place.lines.findIndex((l, i) => i > 0 && l === "---");
+      check(place.quote === fenceEnd + 1, `${layout}: the quote starts right under the properties, no blank line between (quote line ${place.quote}, properties end at ${fenceEnd})`);
+      check(place.cursor === place.last && place.cursor - place.quote === 2 && place.lines[place.quote + 1] === "", `${layout}: the cursor starts below the quote, after one blank line (cursor line ${place.cursor}, quote line ${place.quote})`);
       await s.openNote(reply);
       check(Boolean(await s.becomes(async () => /^a reply to /.test((await s.panelFacts()).Stub ?? ""), 15000, "the Stub row")), `${layout}: the panel's Stub row says “a reply to …” (${(await s.panelFacts()).Stub ?? "no row"})`);
     }
@@ -51,7 +58,7 @@ await runScenario({ data }, async (s) => {
     // Reply to an item of a blyg you read (R5)
     if (imported) {
       await s.openNote(seed);
-      check(await s.clickPanel("Reply to item"), `${layout}: Reply to item again`);
+      check(await s.clickPanel("Reply to item…"), `${layout}: Reply to item… again`);
       await s.becomes(() => s.pickerOpen(), 10000, "the picker");
       await s.typeInPicker("remote fragment");
       check(await s.pickerHas("Blog B"), `${layout}: the words find the item of the blyg you read`);
@@ -69,7 +76,7 @@ await runScenario({ data }, async (s) => {
     await s.createNote(thread, "---\nblyg_kind: thread\n---\nMy own words first.\n");
     check(await s.openNote(thread), `${layout}: the panel follows a thread`);
     check(!(await s.panelFacts()).Stub, `${layout}: a plain thread shows no Stub row`);
-    check(await s.clickPanel("Make reply"), `${layout}: the panel offers “Make reply”`);
+    check(await s.clickPanel("Mark as reply to…"), `${layout}: the panel offers “Mark as reply to…”`);
     await s.becomes(() => s.pickerOpen(), 10000, "the picker");
     await s.clearNotices();
     await s.typeInPicker(`Reply target ${stamp}`);
@@ -82,7 +89,7 @@ await runScenario({ data }, async (s) => {
     await s.refreshPanel(thread);
     check(Boolean(await s.becomes(async () => /^a reply to /.test((await s.panelFacts()).Stub ?? ""), 15000, "the Stub row")), `${layout}: the panel's Stub row says “a reply to …”`);
     await s.openNote(seed);
-    check(!(await s.panelButtons()).some((b) => b.text === "Make reply"), `${layout}: a fragment has no “Make reply” button`);
+    check(!(await s.panelButtons()).some((b) => b.text === "Mark as reply to…"), `${layout}: a fragment has no “Mark as reply to…” button`);
   }
 
   await round("desktop");

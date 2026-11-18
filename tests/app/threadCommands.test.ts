@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockToInsert, embedReplacement, extractedItemBody, extractionVerdict, newItemName, newThreadName, NEW_NOTE_TEXT, NEW_THREAD_TEXT, pickerCandidates, quoteBlock, quoteBoxRows, renamedForThread, threadConversion, type PickerEntry } from "../../src/app/threadCommands";
+import { blockToInsert, replyBody, embedReplacement, extractedItemBody, extractionVerdict, newItemName, newThreadName, NEW_NOTE_TEXT, NEW_THREAD_TEXT, pickerCandidates, quoteBlock, quoteBoxRows, renamedForThread, threadConversion, type PickerEntry } from "../../src/app/threadCommands";
 import { renderQuoteSelection } from "../../src/core/quote";
 import { scanThread } from "../../src/core/thread";
 
@@ -8,7 +8,7 @@ const B = "1vgtgz0gq5b2c9k7d3m8r4n6xy";
 
 describe("a new thread note", () => {
   it("is a note whose first property makes it a thread, with an empty body", () => {
-    expect(NEW_THREAD_TEXT).toBe("---\nblyg_kind: thread\n---\n\n");
+    expect(NEW_THREAD_TEXT).toBe("---\nblyg_kind: thread\n---\n");
   });
   it("is named by the local time, and numbered when that name is taken", () => {
     const now = new Date(2026, 9, 10, 9, 5, 30);
@@ -143,5 +143,30 @@ describe("extracting a selection into a new item (Florian, 2026-10-16)", () => {
     expect(embedReplacement({ before: "Intro sentence. ", after: "" }, "X")).toBe("\n\n![[X]]");
     expect(embedReplacement({ before: "", after: " and the rest" }, "X")).toBe("![[X]]\n\n");
     expect(embedReplacement({ before: "a", after: "b" }, "folder/X")).toBe("\n\n![[folder/X]]\n\n");
+  });
+});
+
+describe("a reply's first lines", () => {
+  it("starts with the quote of the item it answers, then one blank line for your words", () => {
+    expect(replyBody("id | label")).toBe("![[id | label]]\n\n");
+    const text = `---\nblyg_kind: thread\n---\n${replyBody("x")}`;
+    expect(text).toBe("---\nblyg_kind: thread\n---\n![[x]]\n\n");
+  });
+});
+
+import { passageFromSelection } from "../../src/app/threadCommands";
+
+describe("passageFromSelection (reply to a selected passage)", () => {
+  const text = "The first block, a little long.\nThe second block\nholds more words.";
+  it("takes a selection that is in the item's text as it is", () => {
+    expect(passageFromSelection(text, "first block, a little")).toBe("first block, a little");
+  });
+  it("finds it again when the page's whitespace differs (double newlines, runs of spaces) and cuts the passage from the item's own text", () => {
+    expect(passageFromSelection(text, "a little long.\n\nThe  second block")).toBe("a little long.\nThe second block");
+    expect(passageFromSelection("One  two\tthree", "two three")).toBe("two three");
+  });
+  it("says null for text that is not in the item, or nothing", () => {
+    expect(passageFromSelection(text, "never written")).toBeNull();
+    expect(passageFromSelection(text, "  \n ")).toBeNull();
   });
 });

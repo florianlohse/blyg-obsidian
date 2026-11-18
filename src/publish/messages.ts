@@ -137,7 +137,7 @@ export const M = {
   // ---- Studio (S2) ----
   studioCancelled: "Cancelled — nothing was published and the Studio was not changed.",
   githubNotSetUp: "Not published — this folder publishes to a GitHub site, and GitHub is not set up. Open Settings → Blyg → GitHub, or move the note to a Studio folder.",
-  studioNotConfigured: "Not published — no usable Studio is set up. Open Settings → Blyg → Studio: address and token.",
+  studioNotConfigured: "Connect your Studio first: Settings → Blyg → Studio (address and token).",
   studioLinks: (names: string[]) =>
     `Not published — the note has links the Studio would show as plain text: ${names.join(", ")}. Only notes published in the Studio can be linked: publish the note first, or take the link out.`,
   studioNotInStudio: (name: string, origin: string | null) =>
@@ -246,7 +246,7 @@ export const M = {
   studioRepostNotNeeded: (id: string) => `This note already belongs to the Studio (${id}). Nothing to repost: use Publish or Update.`,
   studioRepostNothing: "This note has no record of another blyg, so there is nothing to repost. Use Publish.",
   studioRepostNotStudio: (path: string) => `Refusing to repost “${path}” — it is not in a Studio folder.`,
-  studioWithdrawn: (version: number, url: string) => `Withdrawn in the Studio: version ${version}. The address stays up as “withdrawn”. ${url}`,
+  studioWithdrawn: (version: number, url: string) => `Withdrawn · v${version}. The address stays up as “withdrawn”: ${url}`,
   studioNothingToWithdraw: (id: string) => `${id} was never published in the Studio, so there is nothing to withdraw. Delete the draft in the Studio if you do not want it.`,
   studioWithdrawCancelled: "Cancelled — nothing was withdrawn.",
   studioWithdrawStampFailed: (id: string, version: number) =>

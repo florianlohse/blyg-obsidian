@@ -23,11 +23,11 @@ await runScenario({ data }, async (s) => {
     check(await s.openNote(path), `${layout}: the panel follows the new note`);
 
     // publish for real (to the local Studio)
-    check(await s.clickPanel("Publish"), `${layout}: the panel offers “Publish”`);
-    check(await s.waitModal(/^Publish a new /), `${layout}: the window is titled “Publish a new … to your Studio”`);
+    check(await s.clickPanel("Publish…"), `${layout}: the panel offers “Publish…”`);
+    check(await s.waitModal(/^Publish (fragment|thread)\?$/), `${layout}: the window is titled “Publish fragment?”`);
     check(/goes live at once/.test(await s.modalText()), `${layout}: the window says it goes live at once`);
     await s.clearNotices();
-    await s.clickModal("Publish");
+    await s.clickModal("Publish fragment");
     check(Boolean(await s.waitNotice(/Published to the Studio: new item/)), `${layout}: the notice says a new item was published`);
     const id = await s.stamped(path);
     check(Boolean(id), `${layout}: the note is stamped with blyg_id (${id || "none"})`);
@@ -40,8 +40,8 @@ await runScenario({ data }, async (s) => {
     await append(path, "Added in the note.");
     await s.becomes(async () => (await s.panelHeadline()) !== "", 5000, "the panel");
     await wait(1000);
-    check(await s.clickPanel("Update"), `${layout}: the panel offers “Update”`);
-    check(await s.waitModal("The Studio’s copy was changed there"), `${layout}: the window says the Studio's copy was changed there`);
+    check(await s.clickPanel("Publish update…"), `${layout}: the panel offers “Publish update…”`);
+    check(await s.waitModal("Compare copies"), `${layout}: the comparison window opens`);
     const conflict = await s.modalText();
     check(conflict.includes("Typed") && conflict.includes("Added"), `${layout}: the window shows both texts`);
     if (process.env.E2E_DEBUG) console.error("CONFLICT WINDOW", JSON.stringify(conflict));
@@ -52,13 +52,13 @@ await runScenario({ data }, async (s) => {
     check(kept.json?.contentMd === "Typed in the Studio.", `${layout}: the Studio still holds what was typed there`);
     check((await body(path)).includes("Added in the note."), `${layout}: the note still holds its own text`);
 
-    check(await s.clickPanel("Update"), `${layout}: Update again`);
-    check(await s.waitModal("The Studio’s copy was changed there"), `${layout}: the window opens again`);
+    check(await s.clickPanel("Publish update…"), `${layout}: Publish update… again`);
+    check(await s.waitModal("Compare copies"), `${layout}: the window opens again`);
     await s.clearNotices();
-    await s.clickModal("Replace the online copy with this note");
+    await s.clickModal("Replace Studio copy from note");
     // agreeing is followed by the ordinary confirmation window (with the change-note field): the second yes
-    check(await s.waitModal(/^Publish a new version/), `${layout}: agreeing is followed by the publish window`);
-    await s.clickModal("Publish");
+    check(await s.waitModal("Publish update?"), `${layout}: agreeing is followed by the publish window`);
+    await s.clickModal("Publish update");
     check(Boolean(await s.waitNotice(/Published to the Studio: version 2/)), `${layout}: agreeing publishes version 2`);
     const v2 = await s.studioItem(id);
     check(String(v2.json?.contentMd).includes("Added in the note.") && v2.json?.version === 2, `${layout}: the Studio now holds the note's text as version 2`);
@@ -67,8 +67,8 @@ await runScenario({ data }, async (s) => {
     check((await s.editInStudio(id, "Rewritten in the Studio, for the pull.")) === 200, `${layout}: the text is changed in the Studio again`);
     // the panel reads the Studio when it draws: make it draw again
     await s.refreshPanel(path);
-    check(await s.clickPanel("Replace this note with the online text"), `${layout}: the panel offers “Replace this note with the online text”`);
-    check(await s.waitModal("Replace this note with the online text"), `${layout}: the pull window opens`);
+    check(await s.clickPanel("Replace note from Studio"), `${layout}: the panel offers “Replace note from Studio”`);
+    check(await s.waitModal("Replace vault note?"), `${layout}: the pull window opens`);
     const pullSheet = await s.modalText();
     check(pullSheet.includes("Rewritten") && pullSheet.includes("Changes: +"), `${layout}: it shows the online text as changes to the note`);
     if (process.env.E2E_DEBUG) console.error("PULL WINDOW", JSON.stringify(pullSheet));
@@ -76,29 +76,29 @@ await runScenario({ data }, async (s) => {
     await s.clickModal("Cancel");
     check(Boolean(await s.waitNotice("Cancelled — the note was left as it is")), `${layout}: Cancel leaves the note as it is`);
     check((await body(path)).includes("Added in the note."), `${layout}: ... and it does`);
-    check(await s.clickPanel("Replace this note with the online text"), `${layout}: pull again`);
-    check(await s.waitModal("Replace this note with the online text"), `${layout}: the window opens again`);
+    check(await s.clickPanel("Replace note from Studio"), `${layout}: pull again`);
+    check(await s.waitModal("Replace vault note?"), `${layout}: the window opens again`);
     await s.clearNotices();
-    await s.clickModal("Replace this note with the online text");
+    await s.clickModal("Replace vault note");
     check(Boolean(await s.waitNotice(/The note now holds the Studio's copy/)), `${layout}: the notice says the note holds the Studio's copy`);
     check((await body(path)) === "Rewritten in the Studio, for the pull.", `${layout}: the note's text is the Studio's (${JSON.stringify((await body(path)).slice(0, 60))})`);
 
     // R9: withdraw, then bring it back
     check(await s.clickPanel("Withdraw"), `${layout}: the panel offers “Withdraw”`);
-    check(await s.waitModal("Withdraw this item from your Studio"), `${layout}: the withdraw window opens`);
+    check(await s.waitModal("Withdraw item?"), `${layout}: the withdraw window opens`);
     check(/A withdrawal cannot be deleted/.test(await s.modalText()), `${layout}: it says a withdrawal cannot be deleted`);
     await s.typeInModal("retracted in the e2e run");
     await s.clearNotices();
-    await s.clickModal("Withdraw");
-    check(Boolean(await s.waitNotice(/Withdrawn in the Studio: version 3/)), `${layout}: the notice says version 3 is withdrawn`);
+    await s.clickModal("Withdraw item");
+    check(Boolean(await s.waitNotice(/Withdrawn · v3/)), `${layout}: the notice says version 3 is withdrawn`);
     const gone = await s.studioItem(id);
     check(gone.json?.status === "withdrawn", `${layout}: the Studio shows the item as withdrawn (${gone.json?.status})`);
     check(Boolean(await s.stamped(path, "blyg_withdrawn")), `${layout}: the note carries blyg_withdrawn`);
     check(Boolean(await s.becomes(async () => /withdrawn/i.test(await s.panelText()), 15000, "the panel")), `${layout}: the panel says it is withdrawn`);
-    check(await s.clickPanel("Publish again"), `${layout}: the panel offers “Publish again”`);
-    check(await s.waitModal(/^Publish a new version/), `${layout}: the window offers a new version`);
+    check(await s.clickPanel("Publish again…"), `${layout}: the panel offers “Publish again…”`);
+    check(await s.waitModal("Publish update?"), `${layout}: the window offers a new version`);
     await s.clearNotices();
-    await s.clickModal("Publish");
+    await s.clickModal("Publish update");
     check(Boolean(await s.waitNotice(/Published to the Studio: version 4/)), `${layout}: publishing again makes version 4`);
     const back = await s.studioItem(id);
     check(back.json?.status === "public" && back.json?.version === 4, `${layout}: the Studio has it public again, version 4`);
@@ -109,12 +109,12 @@ await runScenario({ data }, async (s) => {
     check(await s.openNote(thread), `${layout}: the panel follows the thread`);
     const refused = await s.becomes(async () => /directly under a quote/.test(await s.panelText()), 15000, "the refusal in the panel");
     check(Boolean(refused), `${layout}: the panel says a line directly under a partial quote is refused`);
-    check((await s.panelButtons()).find((b) => b.text === "Publish")?.disabled === true, `${layout}: ... and Publish is held back`);
+    check((await s.panelButtons()).find((b) => b.text === "Publish…")?.disabled === true, `${layout}: ... and Publish… is held back`);
     check(!(await s.modalOpen()) && !(await s.frontmatter(thread))?.blyg_id, `${layout}: ... nothing was sent (no window, no blyg_id)`);
     await s.writeNote(thread, `---\nblyg_kind: thread\n---\nOpening.\n\n![[${id}]]\n> Rewritten in the Studio\n\nand a line of my own, after a blank line\n`);
     await s.refreshPanel(thread);
-    check(await s.clickPanel("Publish"), `${layout}: with the blank line Publish is enabled`);
-    check(await s.waitModal(/^Publish a new /), `${layout}: ... and the window opens`);
+    check(await s.clickPanel("Publish…"), `${layout}: with the blank line Publish is enabled`);
+    check(await s.waitModal(/^Publish (fragment|thread)\?$/), `${layout}: ... and the window opens`);
     check(/Quotes in this thread/.test(await s.modalText()), `${layout}: ... and lists the quote`);
     await s.clickModal("Cancel");
     await s.modalClosed();

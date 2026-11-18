@@ -36,18 +36,18 @@ describe("panel for a drafts-only Studio folder and for drafts", () => {
 
   it("a new note says Send draft, says nothing goes live, and has no Withdraw", () => {
     const s = stateAt(DRAFT_NOTE, {});
-    expect(s).toMatchObject({ status: "not-published", publishLabel: "Send draft", canPublish: true, showWithdraw: false, canWithdraw: false, draftsOnly: true, showDelete: false });
+    expect(s).toMatchObject({ status: "not-published", publishLabel: "Send draft…", canPublish: true, showWithdraw: false, canWithdraw: false, draftsOnly: true, showDelete: false });
     expect(s.headline).toBe("Not sent yet.");
     expect(s.notes.join(" ")).toMatch(/Nothing goes live/);
   });
 
   it("a sent draft (version 0): a draft status, no web address, Delete draft offered, Publish is the way to make it version 1 in a normal folder", () => {
     const here = stateAt(DRAFT_NOTE, draft());
-    expect(here).toMatchObject({ status: "draft", publishLabel: "Send draft", showDelete: true, canDelete: true, canOpenWeb: false, ok: false });
+    expect(here).toMatchObject({ status: "draft", publishLabel: "Send draft…", showDelete: true, canDelete: true, canOpenWeb: false, ok: false });
     expect(here.webUrl).toBeUndefined();
     expect(here.headline).toBe("Draft in the Studio (not published).");
     const normal = stateAt(NOTE, draft());
-    expect(normal).toMatchObject({ status: "draft", publishLabel: "Publish", emphasizePublish: true, showDelete: true, showWithdraw: true, draftsOnly: false });
+    expect(normal).toMatchObject({ status: "draft", publishLabel: "Publish…", emphasizePublish: true, showDelete: true, showWithdraw: true, draftsOnly: false });
     expect(normal.notes.join(" ")).toMatch(/version 1/);
   });
 
@@ -57,25 +57,25 @@ describe("panel for a drafts-only Studio folder and for drafts", () => {
 
   it("a published note in a drafts-only folder can send drafts but never withdraw, and Delete draft is not offered", () => {
     const s = stateAt(DRAFT_NOTE, record({ sent: "sha256:older" }));
-    expect(s).toMatchObject({ status: "local-changes", publishLabel: "Send draft", showWithdraw: false, canWithdraw: false, showDelete: false, draftsOnly: true });
+    expect(s).toMatchObject({ status: "local-changes", publishLabel: "Send draft…", showWithdraw: false, canWithdraw: false, showDelete: false, draftsOnly: true });
     expect(s.notes.join(" ")).toMatch(/published version stays/);
     expect(stateAt(DRAFT_NOTE, record()).notes.join(" ")).toMatch(/only drafts are sent/);
   });
 
   it("a normal Studio folder is unchanged: Publish, Withdraw, no Delete draft for published items", () => {
-    expect(state({})).toMatchObject({ draftsOnly: false, showDelete: false, publishLabel: "Publish", showWithdraw: true });
+    expect(state({})).toMatchObject({ draftsOnly: false, showDelete: false, publishLabel: "Publish…", showWithdraw: true });
     expect(state(record())).toMatchObject({ showDelete: false, draftsOnly: false });
   });
 });
 
 describe("panel for a Studio note (from the note's own record, no network)", () => {
   it("not published yet: Publish is offered", () => {
-    expect(state({})).toMatchObject({ status: "not-published", canPublish: true, canWithdraw: false, showWithdraw: true, route: { mode: "studio" }, ok: false, publishLabel: "Publish" });
+    expect(state({})).toMatchObject({ status: "not-published", canPublish: true, canWithdraw: false, showWithdraw: true, route: { mode: "studio" }, ok: false, publishLabel: "Publish…" });
   });
 
   it("published and unchanged: green, with a link to the item's page in the Studio", () => {
     const s = state(record());
-    expect(s).toMatchObject({ status: "in-sync", ok: true, publishLabel: "Update", emphasizePublish: false, webUrl: `${STUDIO_ORIGIN}f/${ID}/`, canOpenWeb: true, showOpenWeb: true });
+    expect(s).toMatchObject({ status: "in-sync", ok: true, publishLabel: "Publish update…", emphasizePublish: false, webUrl: `${STUDIO_ORIGIN}f/${ID}/`, canOpenWeb: true, showOpenWeb: true });
     expect(s.headline).toBe("Published (v3) and up to date.");
     expect(s.item).toMatchObject({ id: ID, version: 3 });
   });
@@ -90,7 +90,7 @@ describe("panel for a Studio note (from the note's own record, no network)", () 
   });
 
   it("withdrawn: Publish again", () => {
-    expect(state(record({ withdrawn: true }))).toMatchObject({ status: "withdrawn", publishLabel: "Publish again", canPublish: true });
+    expect(state(record({ withdrawn: true }))).toMatchObject({ status: "withdrawn", publishLabel: "Publish again…", canPublish: true });
   });
 
   it("an id from the old blyg, or from another Studio, cannot be published here", () => {
@@ -108,7 +108,8 @@ describe("panel for a Studio note (from the note's own record, no network)", () 
     expect(state({ kind: "thread" })).toMatchObject({ status: "not-published", canPublish: true, kind: "thread" });
     expect(state(record({ id: "../x" })).status).toBe("invalid-id");
     expect(state({ kind: "essay" }).status).toBe("invalid-kind");
-    expect(state({}, { s: settings({ baseUrl: "", mount: "", tokenSecretName: "", importFolder: "" }) })).toMatchObject({ status: "studio-missing", canPublish: false });
+    expect(state({}, { s: settings({ baseUrl: "", mount: "", tokenSecretName: "", importFolder: "" }) })).toMatchObject({ status: "studio-missing", canPublish: false, headline: "Connect your Studio." });
+    expect(state({}, { s: settings({ baseUrl: "", mount: "", tokenSecretName: "", importFolder: "" }) }).hoppers).toBeUndefined(); // hoppers are the Studio's
   });
 
   it("a thread shows what it quotes, and which quotes come from other blygs", () => {
@@ -209,7 +210,7 @@ describe("what the Studio itself said (cached answers; the panel never waits for
 
   it("work done in the Studio's editor is said before the user taps, and Update is the way to look at it", () => {
     const s = live(record(), { facts: facts(item({ workingHash: "sha256:typed-there" })) });
-    expect(s).toMatchObject({ status: "edited-there", ok: false, canPublish: true, canWithdraw: true, publishLabel: "Update", emphasizePublish: true });
+    expect(s).toMatchObject({ status: "edited-there", ok: false, canPublish: true, canWithdraw: true, publishLabel: "Publish update…", emphasizePublish: true });
     expect(s.headline).toMatch(/Published \(v3\); its working copy in the Studio was changed there/);
     expect(s).toMatchObject({ showPull: true, canPull: true });
     expect(live(record(), { facts: facts(item({ workingHash: "sha256:now" })) })).toMatchObject({ showPull: false, canPull: false });
@@ -220,7 +221,7 @@ describe("what the Studio itself said (cached answers; the panel never waits for
 
   it("withdrawn in the Studio while the note does not know: says so with the Studio's version, and offers Publish again", () => {
     const s = live(record(), { facts: facts(item({ status: "withdrawn", version: 4 })) });
-    expect(s).toMatchObject({ status: "withdrawn", canPublish: true, publishLabel: "Publish again", item: { version: 4 } });
+    expect(s).toMatchObject({ status: "withdrawn", canPublish: true, publishLabel: "Publish again…", item: { version: 4 } });
     expect(s.headline).toBe("Withdrawn in the Studio (v4).");
   });
 

@@ -23,22 +23,34 @@ Threads have no length limit (the plugin only warns above 50,000 characters).
 A thread is **one item that grows**: it has its own id, versions and changelog like any note. To continue your own thread, you edit
 it and publish again; that is a new version of the same thread (the protocol's own words: "a serial republished for years").
 
-## The side panel's Write buttons
+## The side panel's writing buttons
 
-Open the panel (paper-plane icon, or command "Blyg: Open panel"). Under the status line:
+Open the panel (paper-plane icon "Open Blyg panel", or command "Blyg: Open panel"). The panel is organised by what you want to do.
+
+**Top** (with a Studio): **Open reader** and **Sync with Studio…**, the two things that belong to the whole Studio, not to the open note.
+
+**The status card** says where the open note stands. The one button you may need is inside it, and only when there is something to do: **Publish…** (not sent yet), **Publish update…** (you changed the note, or it was changed in the Studio), **Publish again…** (withdrawn), **Send draft…** (a "Drafts only" folder). Each opens a preview window first; only that window's own button sends. A published, unchanged note has no button: the green line is all there is. **Open on web** and, when the note's hoppers differ from the Studio's, **Use the Studio's hoppers** sit here too.
+
+**Start writing**
 
 | Button | Does | Live when |
 |---|---|---|
-| **New thread** | a new thread note in your Blyg folder, cursor ready | always |
 | **New fragment** | a new fragment in your Blyg folder, cursor ready | always |
-| **Quote in thread** | a new thread that starts with a quote of the open note, cursor ready | a Blyg note is open |
-| **Continue thread** | puts the cursor at the end of the open thread, after a blank line | a thread is open |
-| **Make thread** | turns the open fragment into a thread (property `blyg_kind: thread`); an automatic name "Fragment …" becomes "Thread …" (a name you chose stays) | a fragment that has **never been published** (a published item's kind never changes) |
-| **Insert quote** | choose one of your published notes and quote it (whole or a passage) at the cursor | a thread is open |
-| **Insert link** | a link to one of your published notes at the cursor | a Blyg note is open |
+| **New thread** | a new thread note in your Blyg folder, cursor ready | always |
+| **Reply to item…** | a new thread that answers an item you pick or paste (yours, or one of a blyg you read): it starts with a quote of it and declares the answer (the "stub", `blyg_stub_of`) | a Studio is set up |
 
-Outside your Blyg folders the panel shows only the status information and the two New buttons; the buttons that act on a Blyg note appear
-only when one is open, and are grayed out (clearly faint) where they do not apply, e.g. Continue thread on a fragment. (The same actions are in the command palette: "Blyg: New
+**Work on this note** (folded; only for a note in a Blyg folder)
+
+| Button | Does | Live when |
+|---|---|---|
+| **Insert quote/link** | pick an item. In a thread you then choose to quote it (the whole item, or a passage you select) or to link to it only; in a fragment (which cannot quote) it inserts a link | a Blyg note is open |
+| **Make thread** | turns the open fragment into a thread (property `blyg_kind: thread`); an automatic name "Fragment …" becomes "Thread …" (a name you chose stays) | a fragment that has **never been sent to the Studio** |
+| **Mark as reply to…** | declares an unpublished thread to be a reply to an item you pick or paste | an unpublished Studio thread |
+
+**Hoppers…** (choose the hoppers the note asks for) is in **Work on this note**. **Details** (folded) holds the facts about the note (id, version, quotes, hoppers, mentions, dates, link) and, at its foot, **Withdraw** / **Delete draft**.
+
+Outside your Blyg folders the panel shows only the status information, Start writing and Details; the buttons that act on a Blyg note appear
+only when one is open. (The same actions are in the command palette: "Blyg: New
 thread", "New fragment", "Insert quote", "Insert link to item", "Make this note a thread".)
 
 ### Templates for new items
@@ -86,8 +98,8 @@ becomes a link to its page.
 
 1. Open a thread. Put the cursor where the quote should go.
 2. Panel → **Insert quote** → choose one of your published notes (newest first; the list shows the first words).
-3. A window shows that note's text as readers see it. Either tap **Quote the selection** (first press and hold in the text and drag the
-   handles over the passage) or **Quote the whole item**.
+3. A window shows that note's text as readers see it. Either tap **Quote selection** (first press and hold in the text and drag the
+   handles over the passage) or **Quote whole post**.
 
 Things to know:
 
@@ -107,11 +119,11 @@ to a **Blyg note** is an item link.
 
 ## Publishing
 
-Before you tap Publish, the **panel already tells you** what the plugin would refuse, in one line: an empty note, a fragment over its limit ("Too long for
+Before you tap Publish…, the **panel already tells you** what the plugin would refuse, in one line: an empty note, a fragment over its limit ("Too long for
 a fragment: 1,254 characters, the limit is 1,000. Shorten it, or make it a thread."), links the site cannot honour, an embed the site cannot show, a
-quoted item that is not published yet, a fragment that quotes. Publish is then switched off until it is fixed.
+quoted item that is not published yet, a fragment that quotes. The panel's main button is then switched off until it is fixed.
 
-Panel → **Publish** (or **Update**). The window lists *Quotes in this thread* (whole or passage, which note, which version, new / moved /
+Panel → **Publish…** (or **Publish update…**). The window lists *Quotes in this thread* (whole or passage, which note, which version, new / moved /
 unchanged) and *Links to other items*, then the text changes. **Commit** writes it. The panel then watches the deploy.
 
 **When a quoted note changes:** the thread keeps the old copy until you tap **Update**. Then the window says "moves from v1 to v2",

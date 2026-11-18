@@ -18,6 +18,11 @@ describe("readToken", () => {
     expect(readToken(fakeKeychain({ blank: "  " }), "blank")).toMatchObject({ ok: false, reason: "secret-missing" });
   });
 
+  it("a keychain that answers with nothing at all (undefined while an entry is replaced) is an empty entry, not a crash", () => {
+    const odd = { available: () => true, get: () => undefined as unknown as string | null, set: () => undefined, list: () => [] } as never;
+    expect(readToken(odd, "my-entry")).toMatchObject({ ok: false, reason: "secret-missing" });
+  });
+
   it("never puts a token into a failure message", () => {
     const r = readToken(fakeKeychain({ other: TOKEN }), "missing");
     expect(JSON.stringify(r)).not.toContain(TOKEN);

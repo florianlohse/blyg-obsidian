@@ -5,7 +5,7 @@
 import { readStubProperty, STUB_KEY, stubLabel } from "../studio/stub";
 import { HOPPERS_KEY, readHopperNames } from "../studio/hoppers";
 import type { DeployResult } from "../github/deployStatus";
-import { itemPagePath } from "../contract";
+import { CONTRACT_MAX_FRAGMENT_CAP, itemPagePath } from "../contract";
 import { checkFragmentBody, localKind, type BlygKind } from "../core/blyg";
 import { stripObsidianComments } from "../core/comments";
 import { stripFrontmatter } from "../core/frontmatter";
@@ -225,7 +225,7 @@ export interface PanelState {
   /** Everything is as it should be (published and unchanged): the panel shows a green check. */
   ok: boolean;
   /** What the main button says: "Publish", "Update" once the note has been published, "Publish again" after a withdrawal. */
-  publishLabel: "Publish" | "Update" | "Publish again" | "Send draft";
+  publishLabel: "Publish…" | "Publish update…" | "Publish again…" | "Send draft…";
   /** The main button is the call to action (there is something to send); false when it would only say "No changes". */
   emphasizePublish: boolean;
   /** Studio notes: what the Studio itself reported (mentions, warnings, whether it could be reached). Absent for other routes. */
@@ -237,6 +237,11 @@ export interface PanelState {
    * not known), and whether the two differ. Changing hoppers needs no published item; "Use the Studio's hoppers" does.
    */
   hoppers?: { note: string[] | null; studio: string[] | null; differ: boolean; canTake: boolean };
+  /**
+   * Fragments in a Blyg or Studio folder: how long the text is that a publish would send (properties and `%%` comments left out, the same count as the limit
+   * check) and the limit that applies (the setting, never more than the contract allows). Absent for threads and for notes outside a publish folder.
+   */
+  fragment?: { chars: number; cap: number };
   /** Which buttons make sense. Publish and withdraw still ask the services, which refuse whatever must be refused. */
   canPublish: boolean;
   canWithdraw: boolean;
@@ -276,6 +281,8 @@ export interface PanelInput {
   plainRecord?: PublishedRecord | null;
   /** Blyg notes: from `summarizeThreadText`. */
   thread?: ThreadSummary;
+  /** Blyg and Studio notes: the length of the text a publish would send (see `PanelState.fragment`). */
+  chars?: number;
   /** Studio notes: what the Studio last said (a cached answer, never fetched here) and the warnings that hold for the whole Studio. */
   studio?: { facts?: StudioFacts; warnings: string[]; notes?: string[] };
 }
@@ -306,6 +313,15 @@ export async function localPlainHash(rawNote: string): Promise<string | null> {
 
 const capitalise = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);
 
+/** What a person does to connect a Studio, in order (the panel and the settings' Setup check say the same four steps). */
+export const CONNECT_STEPS: readonly string[] = [
+  "1. Enter your Studio's address: Settings → Blyg → Studio.",
+  "2. In your Studio open More → Client access and create a token.",
+  "3. Save the token as an entry in Settings → Keychain on this device, then pick that entry under Studio token.",
+  "4. Tap Check connection.",
+  "A token lasts 30 days: then repeat steps 2 and 3, and do the same on each device.",
+];
+
 /** The state of the panel for one note: what is true, what to say, which buttons to draw. */
 export function computePanelState(input: PanelInput): PanelState {
   const core = computeCore(input);
@@ -319,14 +335,15 @@ export function computePanelState(input: PanelInput): PanelState {
     ...core,
     ...(core.status === "other-blyg" && !githubInUse(input.settings) ? { notes: ["This item belongs to another blyg, not to the Studio set up now. Publishing it here is not offered."] } : {}),
     ...publishButton(core.status),
-    ...(draftsOnly ? { publishLabel: "Send draft" as const, canWithdraw: false } : {}),
+    ...(openBlyg && core.kind === "fragment" && input.chars !== undefined ? { fragment: { chars: input.chars, cap: Math.min(input.settings.blyg.fragmentCharCap, CONTRACT_MAX_FRAGMENT_CAP) } } : {}),
+    ...(draftsOnly ? { publishLabel: "Send draft…" as const, canWithdraw: false } : {}),
     draftsOnly,
     showDelete: core.status === "draft",
     canDelete: core.status === "draft",
     ok: core.status === "in-sync" || core.status === "plain-in-sync",
     showWithdraw: (blygRoute || core.route?.mode === "studio") && !draftsOnly,
     ...(core.route?.mode === "studio" && input.studio ? { studio: studioInfo(input.studio) } : {}),
-    ...(core.route?.mode === "studio" && input.note?.extension === "md" ? { hoppers: hopperInfo(input) } : {}),
+    ...(core.route?.mode === "studio" && input.note?.extension === "md" && core.status !== "studio-missing" ? { hoppers: hopperInfo(input) } : {}),
     ...(core.route?.mode === "studio" && input.note?.extension === "md" ? stubInfo(input.frontmatter.stubOf, core.kind) : {}),
     // Repost is a corner case of the older GitHub way: offered only to a setup that uses GitHub (settings/studioOnly.ts). Hidden, not removed.
     showRepost: core.status === "other-blyg" && githubInUse(input.settings),
@@ -378,24 +395,24 @@ function studioInfo(studio: NonNullable<PanelInput["studio"]>): NonNullable<Pane
 
 type CoreState = Omit<PanelState, "ok" | "publishLabel" | "emphasizePublish" | "showWithdraw" | "showOpenWeb" | "showRepost" | "canRepost" | "showPull" | "canPull" | "draftsOnly" | "showDelete" | "canDelete" | "write">;
 
-/** The main button's wording follows the state: once something has been published, the button updates it. */
+/** The main button's wording follows the state. It opens the preview window first (the window's own button sends), which the "…" says. It is drawn inside the status card, and not at all while the note is calm (published and unchanged). */
 function publishButton(status: PanelStatus): Pick<PanelState, "publishLabel" | "emphasizePublish"> {
   switch (status) {
     case "in-sync":
     case "plain-in-sync":
-      return { publishLabel: "Update", emphasizePublish: false };
+      return { publishLabel: "Publish update…", emphasizePublish: false };
     case "local-changes":
     case "plain-changed":
     case "edited-there":
-      return { publishLabel: "Update", emphasizePublish: true };
+      return { publishLabel: "Publish update…", emphasizePublish: true };
     case "production-note":
-      return { publishLabel: "Update", emphasizePublish: false };
+      return { publishLabel: "Publish update…", emphasizePublish: false };
     case "withdrawn":
-      return { publishLabel: "Publish again", emphasizePublish: true };
+      return { publishLabel: "Publish again…", emphasizePublish: true };
     case "draft":
-      return { publishLabel: "Publish", emphasizePublish: true };
+      return { publishLabel: "Publish…", emphasizePublish: true };
     default:
-      return { publishLabel: "Publish", emphasizePublish: true };
+      return { publishLabel: "Publish…", emphasizePublish: true };
   }
 }
 
@@ -485,7 +502,7 @@ function computeCore(input: PanelInput): CoreState {
         ...(hint ? { hint } : {}),
         status: "plain-unknown",
         headline: `${capitalise(route.label)}: not checked${on} yet.`,
-        notes: ["Tap Publish to compare it with the site; nothing is written if it is already there."],
+        notes: ["Tap Publish… to compare it with the site; nothing is written if it is already there."],
         canPublish: true,
       };
     }
@@ -498,7 +515,7 @@ function computeCore(input: PanelInput): CoreState {
       status: inSync ? "plain-in-sync" : "plain-changed",
       ...(hint ? { hint } : {}),
       headline: inSync ? `${capitalise(route.label)}: published${on} and up to date.` : `${capitalise(route.label)}: changed since it was published${on}.`,
-      notes: [inSync ? "Edit it, then tap Update to send the changes." : "Tap Update to review the changes before they go out."],
+      notes: [inSync ? "Edit it to change it." : "Tap Publish update… to see the changes before they go out."],
       canPublish: true,
     };
   }
@@ -556,7 +573,7 @@ function computeCore(input: PanelInput): CoreState {
       ...common,
       status: "not-published",
       headline: "Not published yet.",
-      notes: ["Tap Publish to send it as version 1."],
+      notes: ["Tap Publish… to send it as version 1."],
       canPublish: true,
     };
   }
@@ -588,7 +605,7 @@ function computeCore(input: PanelInput): CoreState {
       ...hint,
       status: "withdrawn",
       headline: `Withdrawn${on}${withVersion}.`,
-      notes: [...notes, `Its address stays up as “withdrawn”. Tap Publish again to bring it back${item.version !== null ? ` as v${item.version + 1}` : ""}.`],
+      notes: [...notes, `Its address stays up as “withdrawn”. Tap Publish again… to bring it back${item.version !== null ? ` as v${item.version + 1}` : ""}.`],
       canPublish: true,
     };
   }
@@ -639,7 +656,7 @@ function computeCore(input: PanelInput): CoreState {
     ...hint,
     status: inSync ? "in-sync" : "local-changes",
     headline: inSync ? `Published${on}${withVersion} and up to date.` : `Published${on}${withVersion}, with changes not sent yet.`,
-    notes: [...notes, inSync ? "Edit the note, then tap Update to send the changes." : "Tap Update to review the changes before they go out."],
+    notes: [...notes, inSync ? "Edit the note to change it." : "Tap Publish update… to see the changes before they go out."],
     canPublish: true,
     canWithdraw: true,
   };
@@ -673,7 +690,7 @@ function studioCore(
     return { ...base, ...common, status: "invalid-kind", headline: "The blyg_kind in this note is not valid.", notes: ["Use “thread”, or remove the property for a fragment; publishing is refused until then."] };
   }
   if (!address) {
-    return { ...base, ...common, status: "studio-missing", headline: "No Studio is set up.", notes: ["Enter the Studio's address and token in Settings → Blyg → Studio."] };
+    return { ...base, ...common, status: "studio-missing", headline: "Connect your Studio.", notes: [...CONNECT_STEPS] };
   }
   const rawId = fm.id;
   const hasId = rawId !== undefined && rawId !== null && rawId !== "" && rawId !== false;
@@ -686,8 +703,8 @@ function studioCore(
     }
     if (problems.length > 0) return { ...base, ...common, status: "thread-unreadable", headline: "Can't be published yet.", notes: problems.slice(0, 2) };
     return draftsOnly
-      ? { ...base, ...common, status: "not-published", headline: "Not sent yet.", notes: ["Tap Send draft to see the Studio's preview and send it as a draft. Nothing goes live from this folder."], canPublish: true }
-      : { ...base, ...common, status: "not-published", headline: "Not published yet.", notes: ["Tap Publish to see the Studio's preview and send it as version 1."], canPublish: true };
+      ? { ...base, ...common, status: "not-published", headline: "Not sent yet.", notes: ["Tap Send draft… to see the Studio's preview and send it as a draft. Nothing goes live from this folder."], canPublish: true }
+      : { ...base, ...common, status: "not-published", headline: "Not published yet.", notes: ["Tap Publish… to see the Studio's preview and send it as version 1."], canPublish: true };
   }
   if (!isBlygId(rawId)) {
     return { ...base, ...common, status: "invalid-id", headline: "The blyg_id in this note is not valid.", notes: ["Fix or remove it in the note's properties; publishing is refused until then."] };
@@ -729,7 +746,7 @@ function studioCore(
       ...base, ...common, item: { ...item, version: facts.item.version }, ...web,
       status: "withdrawn",
       headline: `Withdrawn in the Studio (v${facts.item.version}).`,
-      notes: ["It was withdrawn there, not from this note. Tap Publish again to bring it back as the next version."],
+      notes: ["It was withdrawn there, not from this note. Tap Publish again… to bring it back as the next version."],
       canPublish: true,
     };
   }
@@ -739,7 +756,7 @@ function studioCore(
       ...base, ...common, item, ...web,
       status: "withdrawn",
       headline: `Withdrawn${withVersion}.`,
-      notes: [`Its address stays up as “withdrawn”. Tap Publish again to bring it back${item.version !== null ? ` as v${item.version + 1}` : ""}.`],
+      notes: [`Its address stays up as “withdrawn”. Tap Publish again… to bring it back${item.version !== null ? ` as v${item.version + 1}` : ""}.`],
       canPublish: true,
     };
   }
@@ -758,11 +775,11 @@ function studioCore(
       notes: [
         draftsOnly
           ? inSync
-            ? "Publish it in the Studio, or move the note to a normal Studio folder and tap Publish. “Delete draft” removes it."
-            : "Tap Send draft to update it. Nothing goes live from this folder."
+            ? "Publish it in the Studio, or move the note to a normal Studio folder and tap Publish…. “Delete draft” removes it."
+            : "Tap Send draft… to update it. Nothing goes live from this folder."
           : inSync
-            ? "Tap Publish to make it version 1. “Delete draft” removes it from the Studio."
-            : "Tap Publish to see the Studio's preview before it goes out.",
+            ? "Tap Publish… to make it version 1. “Delete draft” removes it from the Studio."
+            : "Tap Publish… to see the Studio's preview before it goes out.",
       ],
       canPublish: true,
     };
@@ -772,7 +789,7 @@ function studioCore(
       ...base, ...common, item, ...web,
       status: "edited-there",
       headline: `Published${withVersion}; its working copy in the Studio was changed there.`,
-      notes: ["Update sends this note to the Studio and replaces the online copy; “Replace this note with the online text” does the opposite. Both show the two texts first and ask; nothing is overwritten unless you agree."],
+      notes: ["“Publish update…” can replace the Studio working copy with this note; “Replace note from Studio” takes the Studio's text into the note instead. Both show the two texts first and ask; nothing is overwritten unless you agree."],
       canPublish: true,
       canWithdraw: true,
     };
@@ -785,10 +802,10 @@ function studioCore(
       draftsOnly
         ? inSync
           ? "In this folder only drafts are sent: nothing goes live from here."
-          : "Tap Send draft to update the working copy in the Studio; the published version stays as it is."
+          : "Tap Send draft… to update the working copy in the Studio; the published version stays as it is."
         : inSync
-          ? "Edit the note, then tap Update to send the changes."
-          : "Tap Update to see the Studio's preview before it goes out.",
+          ? "Edit the note to change it."
+          : "Tap Publish update… to see the Studio's preview before it goes out.",
     ],
     canPublish: true,
     canWithdraw: true,
@@ -902,7 +919,7 @@ export async function loadPanelState(env: PanelEnv, note: NoteRef | null): Promi
       const address = studioAddress(settings.studio);
       const idOfThisStudio = address && isBlygId(frontmatter.id) && typeof frontmatter.origin === "string" && sameOrigin(frontmatter.origin, address.origin) ? frontmatter.id : null;
       const live = env.studioLive?.(note, idOfThisStudio);
-      return computePanelState({ settings, note, frontmatter, localHash: await localStudioHash(contentMd), thread, ...(live ? { studio: live } : {}) });
+      return computePanelState({ settings, note, frontmatter, localHash: await localStudioHash(contentMd), thread, chars: contentMd.length, ...(live ? { studio: live } : {}) });
     }
     if (route?.mode === "blyg" && note.extension === "md") {
       const raw = await vault.read(note);
@@ -911,7 +928,7 @@ export async function loadPanelState(env: PanelEnv, note: NoteRef | null): Promi
       const text = publishedTextOf(raw, { vault, routes: settings.routes, fromPath: note.path });
       if (!text.ok) return computePanelState({ settings, note, frontmatter, localHash: null, thread: { quotes: 0, passages: 0, links: 0, problems: [] } });
       const thread = summarizeContent(text.contentMd, kind, text.embedProblems, localPublishProblems(text.contentMd, kind, { settings, vault, note }));
-      return computePanelState({ settings, note, frontmatter, localHash: needsHash ? await contentHash(text.contentMd) : null, thread });
+      return computePanelState({ settings, note, frontmatter, localHash: needsHash ? await contentHash(text.contentMd) : null, thread, chars: text.contentMd.length });
     }
     return computePanelState({ settings, note, frontmatter, localHash: null });
   } catch {

@@ -38,10 +38,10 @@ export function promptForItem(app: App, items: PickerCandidate[], placeholder = 
 }
 
 /**
- * Show the item's text as a reader sees it. Selecting a passage in the text box and tapping “Quote the selection” returns that
- * passage; “Quote the whole item” returns the whole. Closing the window returns null.
+ * Show the item's text as a reader sees it. Selecting a passage in the text box and tapping “Quote selection” returns that
+ * passage; “Quote whole post” returns the whole. Closing the window returns null.
  */
-export function promptForQuote(app: App, item: Extract<Quotable, { ok: true }>): Promise<QuoteChoice | null> {
+export function promptForQuote(app: App, item: Extract<Quotable, { ok: true }>): Promise<QuoteChoice | "link" | null> {
   return new Promise((resolve) => new QuoteModal(app, item, resolve).open());
 }
 
@@ -51,11 +51,13 @@ class QuoteModal extends Modal {
   private lastSelection = "";
   private status: HTMLElement | null = null;
   private box: HTMLTextAreaElement | null = null;
+  /** "Quote selection" says how many characters it would quote: "Quote selection (39 chars)". */
+  private selectionButton: HTMLButtonElement | null = null;
 
   constructor(
     app: App,
     private readonly item: Extract<Quotable, { ok: true }>,
-    private readonly resolve: (choice: QuoteChoice | null) => void,
+    private readonly resolve: (choice: QuoteChoice | "link" | null) => void,
   ) {
     super(app);
   }
@@ -66,7 +68,7 @@ class QuoteModal extends Modal {
     this.setTitle("Quote from this item");
     contentEl.createDiv({
       cls: "blyg-quote-help",
-      text: `A ${this.item.kind}, version ${this.item.version}, as readers see it. To quote a passage: press and hold in the text, drag the handles over the passage, then tap “Quote the selection”. Or quote all of it.`,
+      text: `A ${this.item.kind}, version ${this.item.version}, as readers see it. To quote a passage: press and hold in the text, drag the handles over the passage, then tap “Quote selection”. Or quote all of it.`,
     });
     const box = contentEl.createEl("textarea", { cls: "blyg-quote-text" });
     box.value = this.item.text;
@@ -79,11 +81,12 @@ class QuoteModal extends Modal {
 
     // Our own button row, not a Setting: a Setting's row never wraps, and three buttons pushed Cancel off the left edge of a phone.
     const row = contentEl.createDiv({ cls: "blyg-quote-buttons" });
-    const button = (text: string, onClick: () => void, cls?: string): void => {
+    const button = (text: string, onClick: () => void, cls?: string): HTMLButtonElement => {
       const el = row.createEl("button", { text, ...(cls ? { cls } : {}) });
       el.addEventListener("click", onClick);
+      return el;
     };
-    button("Quote the selection", () => {
+    const selectionButton = button("Quote selection", () => {
       const selected = this.readSelection();
       if (selected.trim() === "") {
         new Notice(TM.selectInBox, 6000);
@@ -91,7 +94,10 @@ class QuoteModal extends Modal {
       }
       this.finish({ kind: "passage", selected });
     }, "mod-cta");
-    button("Quote the whole item", () => this.finish({ kind: "whole" }));
+    this.selectionButton = selectionButton;
+    button("Quote whole post", () => this.finish({ kind: "whole" }));
+    // Only a pointer to the item, no text of it: the same as "Insert link", reachable from the same window.
+    button("Link only", () => this.finish("link"));
     button("Cancel", () => this.finish(null));
   }
 
@@ -102,10 +108,11 @@ class QuoteModal extends Modal {
     if (now.trim() !== "") this.lastSelection = now;
     const shown = now.trim() !== "" ? now : this.lastSelection;
     this.status?.setText(shown.trim() === "" ? "Nothing selected yet." : `${shown.length} characters selected.`);
+    this.selectionButton?.setText(shown.trim() === "" ? "Quote selection" : `Quote selection (${shown.length} chars)`);
     return shown;
   }
 
-  private finish(choice: QuoteChoice | null): void {
+  private finish(choice: QuoteChoice | "link" | null): void {
     if (this.decided) return;
     this.decided = true;
     this.resolve(choice);

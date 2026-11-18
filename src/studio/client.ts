@@ -7,6 +7,7 @@ import { readWireStub, stubForWire, type StubTarget } from "./stub";
 import type { StudioHttp, StudioResponse } from "./http";
 import type { StudioCapabilities, StudioCommandDone, StudioFailure, StudioHit, StudioImported, StudioHopper, StudioItem, StudioItemKind, StudioListedItem, StudioManifest, StudioMediaDone, StudioPeek, StudioPreview, StudioProblem, StudioResolvedQuote, StudioResult, StudioSubscription } from "./types";
 import { contractVerdict, incompatibleMessage, type ContractVerdict } from "./version";
+import { readInboundMention, readOwnReadingEntry, readReadingPost, type InboundMention, type ReadingPost } from "./reading";
 
 /** What the gate remembers about a Studio's contract (per plugin session, so a publish does not ask every time); "Check connection" asks again. */
 export interface ContractCache {
@@ -78,6 +79,28 @@ export interface StudioClient {
   countMentions(itemId: string): Promise<StudioResult<{ count: number; complete: boolean }>>;
   /** An imported item (its HTML is what a reader of this Studio sees, and what a passage is chosen from). */
   getImported(subscriptionId: string, id: string): Promise<StudioResult<StudioImported>>;
+  /** POC (S15): the posts the owner reads, newest first as the Studio orders them (`GET /reading/imported`, `owner:read`), at most `maxPages` pages of 50. */
+  listReading(
+    maxPages?: number,
+    onPage?: (postsSoFar: ReadingPost[]) => void,
+    opts?: { pageSize?: number; stopAfter?: (pageRows: ReadingPost[]) => boolean },
+  ): Promise<StudioResult<{ posts: ReadingPost[]; complete: boolean; unreadable: number; stopped: boolean }>>;
+  /** POC (S15): inbound mentions of the owner's items (`GET /mentions?direction=inbound`, `owner:read`), verified and not hidden only. */
+  listInboundMentions(maxPages?: number): Promise<StudioResult<{ mentions: InboundMention[]; complete: boolean; unreadable: number }>>;
+  /** POC (S15): mark one version of a post read. Needs the token scope `reading:state`, which the plugin's token does not carry today: a 403 comes back as `forbidden`. */
+  markRead(subscriptionId: string, remoteId: string, version: number): Promise<StudioResult<{ readVersion: number | null }>>;
+  /** S15: mark a post unread again (`DELETE /reading/{sub}/{id}/read`, `reading:state`). */
+  markUnread(subscriptionId: string, remoteId: string): Promise<StudioResult<{ readVersion: number | null }>>;
+  /** S15: hide one inbound mention (`PATCH /mentions/{id}` with `hidden`, `owner:manage`), or show it again. The Studio keeps it hidden for every client, its own pages included. */
+  hideMention(id: string, hidden: boolean): Promise<StudioResult<{ hidden: boolean }>>;
+  /** S15: ask the Studio to fetch every blyg it reads now (`POST /subscriptions/poll`, `owner:manage`). The fetch runs in the background; `polling` is how many. */
+  pollSubscriptions(): Promise<StudioResult<{ polling: number }>>;
+  /** S15-H: ask the Studio to fetch one blyg it reads now (`POST /subscriptions/{id}/resync`, needs `owner:manage`); `changed` is how many items that changed. */
+  resyncSubscription(id: string): Promise<StudioResult<{ changed: number }>>;
+  /** Increment 8b: the owner's own posts among the newest entries of the Studio's merged reading list (`GET /reading`, `owner:read`), at most `maxPages` pages of 50. */
+  listOwnReading(maxPages?: number): Promise<StudioResult<{ posts: ReadingPost[] }>>;
+  /** S15: the Studio's change counters (`GET /changes`, `owner:read`): cheap, to see whether the reading list moved without walking it. */
+  changes(): Promise<StudioResult<{ epoch: string; domains: Record<string, number> }>>;
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -197,13 +220,14 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
    * answers 409 `cursor-expired`: the walk is thrown away and started again from page 1, once (never appended to the old prefix); a second
    * expiry is reported. `complete` is false when the page cap was hit with more to read.
    */
-  async function walk<T>(path: string, query: Record<string, string>, pageSize: number, maxPages: number, readRow: (row: unknown) => T | null): Promise<StudioResult<{ rows: T[]; complete: boolean; unreadable: number }>> {
+  async function walk<T>(path: string, query: Record<string, string>, pageSize: number, maxPages: number, readRow: (row: unknown) => T | null, onPage?: (rowsSoFar: T[]) => void, stopAfter?: (pageRows: T[]) => boolean): Promise<StudioResult<{ rows: T[]; complete: boolean; unreadable: number; stopped?: boolean }>> {
     for (let restart = 0; restart < 2; restart++) {
       const rows: T[] = [];
       let skipped = 0;
       let cursor: string | null = null;
       let expired = false;
       for (let page = 0; page < maxPages; page++) {
+        const before = rows.length;
         const res: StudioResponse = await http.send(token, { area: "api", path, query: { ...query, limit: String(pageSize), ...(cursor !== null ? { cursor } : {}) } });
         if (res.status === 409 && codeOf(res) === "cursor-expired") {
           expired = true;
@@ -218,7 +242,14 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
         }
         const next = nextCursorOf(res.json);
         if (next === undefined) return unreadable(res);
+        try {
+          onPage?.([...rows]); // what has arrived so far, for a progress line and a first look; a listener that throws must not break the walk
+        } catch {
+          /* ignored */
+        }
         if (next === null) return { kind: "ok", value: { rows, complete: true, unreadable: skipped } };
+        // The caller may know that nothing new lies further on (the list is newest first): stop, and say it was a choice, not a cut-off.
+        if (stopAfter?.(rows.slice(before))) return { kind: "ok", value: { rows, complete: false, unreadable: skipped, stopped: true } };
         cursor = next;
       }
       if (!expired) return { kind: "ok", value: { rows, complete: false, unreadable: skipped } };
@@ -333,6 +364,69 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
       return { kind: "ok", value: { count, complete: walked.value.complete } };
     },
 
+    listReading: async (maxPages = 4, onPage?: (postsSoFar: ReadingPost[]) => void, opts?: { pageSize?: number; stopAfter?: (pageRows: ReadingPost[]) => boolean }) => {
+      const walked = await walk("/reading/imported", {}, Math.min(100, opts?.pageSize ?? 50), maxPages, readReadingPost, onPage, opts?.stopAfter);
+      if (walked.kind !== "ok") return walked;
+      return { kind: "ok", value: { posts: walked.value.rows, complete: walked.value.complete, unreadable: walked.value.unreadable, stopped: walked.value.stopped === true } } as const;
+    },
+
+    listInboundMentions: async (maxPages = 2) => {
+      const walked = await walk("/mentions", { direction: "inbound" }, MENTION_PAGE, maxPages, readInboundMention);
+      if (walked.kind !== "ok") return walked;
+      const mentions = walked.value.rows.filter((m) => m.status === "verified" && !m.hidden);
+      return { kind: "ok", value: { mentions, complete: walked.value.complete, unreadable: walked.value.unreadable } } as const;
+    },
+
+    markRead: async (subscriptionId: string, remoteId: string, version: number) => {
+      const res = await http.send(token, { method: "PUT", area: "api", path: `/reading/${encodeURIComponent(subscriptionId)}/${encodeURIComponent(remoteId)}/read`, body: { version } });
+      // No `readAt`: the Studio then applies the read always. A client time would let a read that looks older than the Studio's last "unread" clear be ignored.
+      if (res.status !== 200) return failure(res);
+      const readVersion = isRecord(res.json) && typeof res.json.readVersion === "number" ? res.json.readVersion : null;
+      return { kind: "ok", value: { readVersion } } as const;
+    },
+
+    markUnread: async (subscriptionId: string, remoteId: string) => {
+      const res = await http.send(token, { method: "DELETE", area: "api", path: `/reading/${encodeURIComponent(subscriptionId)}/${encodeURIComponent(remoteId)}/read` });
+      if (res.status !== 200) return failure(res);
+      return { kind: "ok", value: { readVersion: null } } as const;
+    },
+
+    hideMention: async (id: string, hidden: boolean) => {
+      const res = await http.send(token, { method: "PATCH", area: "api", path: `/mentions/${encodeURIComponent(id)}`, body: { hidden } });
+      if (res.status !== 200) return failure(res);
+      return { kind: "ok", value: { hidden: isRecord(res.json) && typeof res.json.hidden === "boolean" ? res.json.hidden : hidden } } as const;
+    },
+
+    pollSubscriptions: async () => {
+      const res = await http.send(token, { method: "POST", area: "api", path: "/subscriptions/poll", body: {} });
+      if (res.status !== 200) return failure(res);
+      if (!isRecord(res.json) || typeof res.json.polling !== "number") return unreadable(res);
+      return { kind: "ok", value: { polling: res.json.polling } } as const;
+    },
+
+    listOwnReading: async (maxPages = 2) => {
+      const walked = await walk("/reading", {}, 50, maxPages, readOwnReadingEntry);
+      if (walked.kind !== "ok") return walked;
+      return { kind: "ok", value: { posts: walked.value.rows } } as const;
+    },
+
+    resyncSubscription: async (id: string) => {
+      const res = await http.send(token, { method: "POST", area: "api", path: `/subscriptions/${encodeURIComponent(id)}/resync`, body: {} });
+      if (res.status !== 200) return failure(res);
+      if (!isRecord(res.json)) return unreadable(res);
+      return { kind: "ok", value: { changed: typeof res.json.changed === "number" ? res.json.changed : 0 } } as const;
+    },
+
+    changes: async () => {
+      const res = await http.send(token, { area: "api", path: "/changes" });
+      if (res.status !== 200) return failure(res);
+      const j = res.json;
+      if (!isRecord(j) || typeof j.epoch !== "string" || !isRecord(j.domains)) return unreadable(res);
+      const domains: Record<string, number> = {};
+      for (const [k, v] of Object.entries(j.domains)) if (typeof v === "number") domains[k] = v;
+      return { kind: "ok", value: { epoch: j.epoch, domains } } as const;
+    },
+
     listItems: async (): Promise<StudioResult<{ items: StudioListedItem[]; complete: boolean; unreadable: number }>> => {
       const walked = await walk("/items", {}, ITEM_PAGE, ITEM_PAGES, readListedItem);
       if (walked.kind !== "ok") return walked;
@@ -418,6 +512,15 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
     withdraw: guard(inner.withdraw),
     countItems: guard(inner.countItems),
     listItems: guard(inner.listItems),
+    listReading: guard(inner.listReading),
+    listInboundMentions: guard(inner.listInboundMentions),
+    markRead: guard(inner.markRead),
+    markUnread: guard(inner.markUnread),
+    hideMention: guard(inner.hideMention),
+    pollSubscriptions: guard(inner.pollSubscriptions),
+    resyncSubscription: guard(inner.resyncSubscription),
+    listOwnReading: guard(inner.listOwnReading),
+    changes: guard(inner.changes),
     classifyLinks: guard(inner.classifyLinks),
     peekItem: guard(inner.peekItem),
     getSubscription: guard(inner.getSubscription),
