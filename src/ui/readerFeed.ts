@@ -194,7 +194,7 @@ export const readingTimeLabel = (post: Pick<ReadingPost, "contentHtml">): string
 export type FeedSort = "newest" | "oldest" | "shortest" | "longest";
 /** Which posts by length: short (under 2 minutes), medium (2 to 5), long (over 5). */
 export type FeedLength = "any" | "short" | "medium" | "long";
-export const LENGTH_LABELS: Record<FeedLength, string> = { any: "Length", short: "< 2 min", medium: "2–5 min", long: "> 5 min" };
+export const LENGTH_LABELS: Record<FeedLength, string> = { any: "Any length", short: "< 2 min", medium: "2–5 min", long: "> 5 min" };
 export const SORT_LABELS: Record<FeedSort, string> = { newest: "Newest", oldest: "Oldest", shortest: "Shortest read", longest: "Longest read" };
 export interface FeedFilter {
   sort: FeedSort;

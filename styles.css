@@ -753,9 +753,10 @@
    in the feed, Reply, and Previous / Next in the corner. Reply is the only solid accent; the read state is green, never the accent. */
 .blyg-reader-header .blyg-reader-bar-main { flex-wrap: nowrap; gap: var(--size-4-2); margin: 0; padding: 0; border-bottom: 0; --blyg-btn-h: 36px; }
 .blyg-reader .blyg-reader-bar-main .blyg-reader-back { border-radius: 999px; padding-inline: calc(var(--blyg-btn-h) * 0.35) calc(var(--blyg-btn-h) * 0.45); flex: none; }
-.blyg-reader .blyg-reader-bar-main .blyg-reader-postmeta { display: block; flex: 1 1 0; min-width: 0; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.35; }
-.blyg-reader-postmeta .blyg-reader-postsep { padding-inline: 0.35em; }
-.blyg-reader-postmeta .blyg-reader-postrest { white-space: nowrap; }
+/* The small print is two rows: the blyg's name, then reading time, age and replies. Each row is cut at its end only when it really cannot fit. */
+.blyg-reader .blyg-reader-bar-main .blyg-reader-postmeta { display: flex; flex-direction: column; flex: 1 1 0; min-width: 0; margin: 0; line-height: 1.35; }
+.blyg-reader-postmeta > .blyg-reader-postblyg, .blyg-reader-postmeta > .blyg-reader-postrest { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.blyg-reader-postmeta > .blyg-reader-postsep { display: none; }
 .blyg-reader-header .blyg-reader-bar-thumb { flex-wrap: nowrap; gap: var(--size-4-2); margin-top: var(--size-4-2); --blyg-btn-h: 40px; }
 .blyg-reader-bar-thumb .blyg-reader-spacer { flex: 1 1 var(--size-4-2); min-width: 0; }
 .blyg-reader .blyg-reader-header .blyg-reader-bar-thumb .blyg-reader-replybtn { margin-left: 0; font-weight: var(--font-semibold); padding-inline: calc(var(--blyg-btn-h) * 0.5); }
