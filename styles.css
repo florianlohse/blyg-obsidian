@@ -593,7 +593,8 @@
 .blyg-reader-cardtitle { flex: 1 1 auto; min-width: 0; }
 .blyg-reader-source { color: var(--text-normal); }
 .blyg-reader-check { flex: none; width: 2.2em; height: 2.2em; padding: 0; border-radius: 50%; line-height: 1; font-size: var(--font-ui-medium); color: var(--text-muted); background: transparent; box-shadow: none; }
-.blyg-reader-card.is-read .blyg-reader-check { color: var(--text-success, var(--text-accent)); }
+.blyg-reader-card.is-read .blyg-reader-check, .blyg-reader-check.is-read { color: var(--text-success, var(--text-accent)); }
+.blyg-reader-check:disabled { opacity: 0.5; }
 .blyg-reader-badges { display: flex; gap: var(--size-4-1); flex-wrap: wrap; margin-bottom: var(--size-2-2); }
 .blyg-reader-badges:empty { display: none; }
 .blyg-reader-badge { font-size: var(--font-ui-smaller); color: var(--text-muted); border: 1px solid var(--background-modifier-border); border-radius: var(--radius-s); padding: 0 var(--size-4-1); }
@@ -760,16 +761,6 @@
 .blyg-reader-header .blyg-reader-bar-thumb { flex-wrap: nowrap; gap: var(--size-4-2); margin-top: var(--size-4-2); --blyg-btn-h: 40px; }
 .blyg-reader-bar-thumb .blyg-reader-spacer { flex: 1 1 var(--size-4-2); min-width: 0; }
 .blyg-reader .blyg-reader-header .blyg-reader-bar-thumb .blyg-reader-replybtn { margin-left: 0; font-weight: var(--font-semibold); padding-inline: calc(var(--blyg-btn-h) * 0.5); }
-.blyg-reader-readpill { flex: none; display: inline-flex; align-items: center; gap: 0.5em; box-sizing: border-box; height: calc(var(--blyg-btn-h) * 0.9); padding: 0 calc(var(--blyg-btn-h) * 0.35) 0 calc(var(--blyg-btn-h) * 0.25); border-radius: 999px; border: 0; background: var(--interactive-normal); box-shadow: none; color: var(--text-muted); font-size: var(--font-ui-small); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.blyg-reader-readpill:disabled { opacity: 0.5; }
-.blyg-reader-readglyph { flex: none; box-sizing: border-box; display: inline-grid; place-items: center; width: 1.2em; height: 1.2em; border-radius: 50%; border: 1.5px solid var(--text-faint); }
-.blyg-reader-readpill:not(.is-read) .blyg-reader-readglyph { border-color: var(--interactive-accent); }
-.blyg-reader-readpill.is-read { color: var(--color-green, var(--text-success)); }
-.blyg-reader-readpill.is-read .blyg-reader-readglyph { background: var(--color-green, var(--text-success)); border-color: transparent; color: var(--background-primary); }
-.blyg-reader-readglyph .svg-icon { width: 0.8em; height: 0.8em; stroke-width: 3px; }
-.blyg-reader-stepcount { color: inherit; white-space: nowrap; }
-.blyg-reader-stepcount strong { font-weight: var(--font-semibold); color: var(--text-normal); }
-.blyg-reader-readpill.is-read .blyg-reader-stepcount strong { color: inherit; }
 .blyg-reader-bar-thumb > .blyg-reader-stepcount { color: var(--text-muted); font-size: var(--font-ui-small); }
 .blyg-reader-steps { flex: none; display: inline-flex; gap: var(--size-4-1); }
 .blyg-reader .blyg-reader-steps .blyg-reader-btn { border-radius: 999px; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
@@ -780,4 +771,4 @@
 /* The source line of a quote on a card: under the quote, small, one line. */
 .blyg-reader-quotesource { display: flex; align-items: center; gap: 0.3em; margin: calc(var(--size-2-2) * -1) 0 var(--size-2-2); padding-left: var(--size-4-2); color: var(--text-faint); font-size: var(--font-ui-smaller); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .blyg-reader-quotesource .blyg-reader-icon .svg-icon { width: 1em; height: 1em; }
-
+.blyg-reader-stepcount { white-space: nowrap; }

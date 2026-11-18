@@ -46,9 +46,9 @@ await runScenario({ data: fixtureData() }, async (s) => {
   const shot = async (name) => {
     if (process.env.POC_SHOTS) await page.screenshot({ path: `${process.env.POC_SHOTS}/${name}.png` }).catch(() => {});
   };
-  /** The open post's read mark is one pill in the thumb row ("3 of 24" with a ring or a check); its state is in its label and class. */
-  const pillClick = () => page.evaluate(() => { const b = document.querySelector(".blyg-reader-header .blyg-reader-readpill"); if (!b || b.disabled) return false; b.click(); return true; });
-  const pillState = () => page.evaluate(() => { const b = document.querySelector(".blyg-reader-header .blyg-reader-readpill"); return b ? { read: b.classList.contains("is-read"), label: b.getAttribute("aria-label") ?? "", disabled: b.disabled } : null; });
+  /** The open post's read mark is the feed card's own round check (a ring, or a green check once read) in the thumb row, with "3 of 24" beside it. */
+  const pillClick = () => page.evaluate(() => { const b = document.querySelector(".blyg-reader-header .blyg-reader-check"); if (!b || b.disabled) return false; b.click(); return true; });
+  const pillState = () => page.evaluate(() => { const b = document.querySelector(".blyg-reader-header .blyg-reader-check"); return b ? { read: b.classList.contains("is-read"), label: b.getAttribute("aria-label") ?? "", disabled: b.disabled } : null; });
   const text = (sel) => page.evaluate((q) => [...document.querySelectorAll(q)].map((e) => e.textContent?.trim() ?? ""), sel);
   const click = (label) => page.evaluate((l) => {
     const b = [...document.querySelectorAll(".blyg-reader button")].find((x) => x.textContent?.trim() === l);
@@ -198,9 +198,9 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await wait(800);
     const barWidth = () => page.evaluate(() => Math.round(document.querySelector(".blyg-reader-header .blyg-reader-replybtn")?.getBoundingClientRect().left ?? 0));
     const widthBefore = await barWidth();
-    await page.evaluate(() => { window.__t0 = performance.now(); document.querySelector(".blyg-reader-header .blyg-reader-readpill")?.click(); });
-    const instant = await page.evaluate(() => ({ read: document.querySelector(".blyg-reader-header .blyg-reader-readpill")?.classList.contains("is-read") ?? false, label: document.querySelector(".blyg-reader-header .blyg-reader-readpill")?.getAttribute("aria-label") ?? "", meta: document.querySelector(".blyg-reader-postmeta")?.textContent ?? "", ms: performance.now() - window.__t0 }));
-    check(instant.read && /^Read/.test(instant.label) && instant.ms < 100, `read marks: marking read shows at once in the post's header (${Math.round(instant.ms)} ms, "${instant.label}")`);
+    await page.evaluate(() => { window.__t0 = performance.now(); document.querySelector(".blyg-reader-header .blyg-reader-check")?.click(); });
+    const instant = await page.evaluate(() => ({ read: document.querySelector(".blyg-reader-header .blyg-reader-check")?.classList.contains("is-read") ?? false, label: document.querySelector(".blyg-reader-header .blyg-reader-check")?.getAttribute("aria-label") ?? "", meta: document.querySelector(".blyg-reader-postmeta")?.textContent ?? "", ms: performance.now() - window.__t0 }));
+    check(instant.read && /^Mark unread/.test(instant.label) && instant.ms < 100, `read marks: marking read shows at once in the post's header (${Math.round(instant.ms)} ms, "${instant.label}")`);
     check(widthBefore > 0 && (await barWidth()) === widthBefore, `read marks: Reply stays where it is when the read mark changes (${widthBefore} px from the left, then ${await barWidth()} px)`);
     await wait(1500);
     check(await click("Reader"), "read marks: Reader goes back to the feed");
@@ -798,7 +798,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await wait(600);
     const open = await page.evaluate(() => ({ body: document.querySelector(".blyg-reader-body")?.textContent ?? "", btns: [...document.querySelectorAll(".blyg-reader-header button")].map((b) => [b.textContent?.trim(), b.disabled]), next: document.querySelectorAll(".blyg-reader-steps").length }));
     check(open.body.includes("Reply words here"), `${layout}: mentions: tapping one opens the post in the reader`);
-    check(open.btns.some(([t, d]) => t === "Reply" && d === true) && open.btns.some(([t, d]) => /Mark read/.test(t ?? "") && d === true), `${layout}: mentions: a post of a blyg the Studio does not read has no read mark and no reply here`);
+    check(open.btns.some(([t, d]) => t === "Reply" && d === true) && open.btns.some(([t, d]) => t === "○" && d === true), `${layout}: mentions: a post of a blyg the Studio does not read has no read mark and no reply here`);
     check(open.next === 0, `${layout}: mentions: no previous / next for a post that is not in the feed`);
     await click("Reader");
     await wait(400);
