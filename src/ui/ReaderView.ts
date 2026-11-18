@@ -14,7 +14,7 @@ import { responseChip, responseIndex, type ResponseEntry } from "./readerRespons
 import { changedCount, chooseWalk, keepOwnPosts, knownOf, mergeFresh, READER_KEEP, type SyncMemory } from "./readerSync";
 import type { StudioListedItem } from "../studio/types";
 import { bottomClearance } from "./readerBottom";
-import { limiter, mentionLead, postOfMention, visibleMentions } from "./readerMentions";
+import { hostOf, limiter, mentionBadge, postOfMention, visibleMentions } from "./readerMentions";
 
 export const BLYG_READER_VIEW = "blyg-reader";
 
@@ -147,6 +147,8 @@ export class BlygReaderView extends ItemView {
   private headerEl: HTMLElement | null = null;
   /** What mentions have shown so far (the mentioning post, the item it was about): asked for once, a few at a time. */
   private readonly mentionInfo = new Map<string, { post: ReadingPost | null; own: string | null; done: boolean }>();
+  /** The cards of the mentions tab, by the key of their post, so a read mark changed anywhere shows on them too. */
+  private readonly mentionCards = new Map<string, () => void>();
   private readonly mentionSlot = limiter(4);
   private readonly mentionAsked = new Map<string, Promise<void>>();
   private bodyEl: HTMLElement | null = null;
@@ -480,6 +482,7 @@ export class BlygReaderView extends ItemView {
   private refreshPost(p: ReadingPost): void {
     const card = this.cardEls.get(keyOf(p));
     if (card?.isConnected) this.fillCard(card, p);
+    this.mentionCards.get(keyOf(p))?.();
     if (this.shown && keyOf(this.shown) === keyOf(p)) this.drawHeader();
   }
 
@@ -1079,11 +1082,13 @@ export class BlygReaderView extends ItemView {
   }
 
   /** One card: what a post is, at a glance. Drawn again in place when its read state changes. */
-  private fillCard(card: HTMLElement, p: ReadingPost): void {
+  private fillCard(card: HTMLElement, p: ReadingPost, mention: InboundMention | null = null): void {
     card.empty();
-    const unread = isUnread(p);
+    // A post the Studio does not read (a mention's post from another blyg) has no read mark: it is neither unread nor read.
+    const tracked = p.subscriptionId !== "";
+    const unread = tracked && isUnread(p);
     card.toggleClass("is-unread", unread);
-    card.toggleClass("is-read", !unread && !p.withdrawn && p.own !== true);
+    card.toggleClass("is-read", tracked && !unread && !p.withdrawn && p.own !== true);
     const head = card.createDiv({ cls: "blyg-reader-cardhead" });
     const title = head.createDiv({ cls: "blyg-reader-cardtitle" });
     const source = p.subscriptionTitle || p.origin || "";
@@ -1098,7 +1103,7 @@ export class BlygReaderView extends ItemView {
         meta.createSpan({ cls: "blyg-reader-nowrap", text: piece });
       });
     }
-    if (!p.withdrawn && p.own !== true) {
+    if (tracked && !p.withdrawn && p.own !== true) {
       const check = head.createEl("button", {
         cls: "blyg-reader-check",
         text: unread ? "○" : "✓",
@@ -1111,20 +1116,22 @@ export class BlygReaderView extends ItemView {
     }
     const badges = card.createDiv({ cls: "blyg-reader-badges" });
     if (p.own === true) badges.createSpan({ cls: "blyg-reader-badge is-you", text: "You", attr: { title: "One of your own posts" } });
-    const toYou = isReplyToMine(p, this.mineIds);
+    const toYou = mention !== null || isReplyToMine(p, this.mineIds);
     card.toggleClass("is-reply-to-you", toYou);
-    if (toYou) badges.createSpan({ cls: "blyg-reader-badge is-toyou", text: "reply to you", attr: { title: "This post answers one of your own items" } });
+    if (mention) badges.createSpan({ cls: "blyg-reader-badge is-toyou", text: mentionBadge(mention.relation), attr: { title: "This post is about one of your own items" } });
+    else if (toYou) badges.createSpan({ cls: "blyg-reader-badge is-toyou", text: "reply to you", attr: { title: "This post answers one of your own items" } });
     else if (p.isReply) badges.createSpan({ cls: "blyg-reader-badge", text: "reply" });
     else if (p.kind === "thread") badges.createSpan({ cls: "blyg-reader-badge", text: "thread" });
     if (p.withdrawn) badges.createSpan({ cls: "blyg-reader-badge", text: "withdrawn" });
     if (unread) badges.createSpan({ cls: "blyg-reader-badge is-new", text: p.readVersion !== null ? "updated" : "unread" });
-    else if (!p.withdrawn && p.own !== true) badges.createSpan({ cls: "blyg-reader-badge is-done", text: "✓ read" });
+    else if (tracked && !p.withdrawn && p.own !== true) badges.createSpan({ cls: "blyg-reader-badge is-done", text: "✓ read" });
     // The replies you can see (same rule as in an open post): green when one of them is yours.
     const chip = this.mine !== null || (this.data?.posts.length ?? 0) > 0 ? responseChip(this.respFor(p)) : null;
     if (chip) this.addIcon(badges.createSpan({ cls: `blyg-reader-badge blyg-reader-resp-badge${chip.mine ? " is-mine" : ""}`, text: chip.text, attr: { title: chip.title } }), "reply");
     if (!p.withdrawn) {
       const c = cardOf(p);
       if (c.quote) card.createDiv({ cls: "blyg-reader-quote", text: c.quote });
+      if (c.source) this.addIcon(card.createDiv({ cls: "blyg-reader-quotesource", text: c.source }), "arrow-up-right");
       if (c.words) {
         // The words with a little formatting (headings and bold in bold, italics in italics): spans of text, never markup.
         const excerpt = card.createDiv({ cls: "blyg-reader-excerpt" });
@@ -1135,32 +1142,58 @@ export class BlygReaderView extends ItemView {
       }
       if (c.images > 0) card.createDiv({ cls: "blyg-reader-meta", text: `${c.images} image${c.images === 1 ? "" : "s"}` });
     }
+    if (mention) this.drawMentionExtras(card, mention);
   }
 
+  /** What only a mention's card has: the item of yours it is about, and Dismiss. */
+  private drawMentionExtras(card: HTMLElement, m: InboundMention): void {
+    const own = this.mentionInfo.get(m.id)?.own;
+    if (own) card.createDiv({ cls: "blyg-reader-meta blyg-reader-ownitem", text: `On: ${own}` });
+    const actions = card.createDiv({ cls: "blyg-reader-mention-actions" });
+    const dismiss = this.button(actions, "Dismiss", () => this.dismissMention(m), { cls: "blyg-reader-quiet blyg-reader-dismiss", title: "Hide this mention. It is hidden in your Studio too." });
+    dismiss.addEventListener("click", (e) => e.stopPropagation());
+  }
+
+  /** A mention is a post of another blyg that is about one of your items: drawn as the same card as in the feed, with what it is about and Dismiss. */
   private drawMentions(col: HTMLElement, mentions: InboundMention[]): void {
+    this.mentionCards.clear();
     const shown = visibleMentions(mentions);
     if (shown.length === 0) col.createDiv({ cls: "blyg-reader-note", text: "No one has mentioned your items yet." });
     for (const m of shown) {
-      const row = col.createDiv({ cls: "blyg-reader-row blyg-reader-mention" });
-      row.createDiv({ cls: "blyg-reader-meta", text: `${mentionLead(m)} · ${relativeTime(m.firstSeen, Date.now())}` });
-      const text = row.createDiv({ cls: "blyg-reader-excerpt" });
-      const own = row.createDiv({ cls: "blyg-reader-meta blyg-reader-ownitem" });
-      const actions = row.createDiv({ cls: "blyg-reader-bar blyg-reader-mention-actions" });
-      this.button(actions, "Dismiss in Studio", () => this.dismissMention(m), { cls: "blyg-reader-quiet blyg-reader-dismiss", title: "Hide this mention. It is hidden in your Studio too." });
-      const fill = (): void => {
-        const info = this.mentionInfo.get(m.id);
-        text.setText(info?.post ? excerptOf(info.post.contentHtml, 220) || "(no text)" : info?.done ? "Its text could not be shown here." : "…");
-        own.setText(info?.own ? `On: ${info.own}` : "");
-        own.toggleClass("is-empty", !info?.own);
-      };
+      const card = col.createDiv({ cls: "blyg-reader-row blyg-reader-card blyg-reader-mention" });
+      const fill = (): void => this.fillMentionCard(card, m);
       fill();
-      void this.loadMention(m).then(fill);
-      row.addEventListener("click", (ev) => {
-        if ((ev.target as HTMLElement).closest(".blyg-reader-mention-actions")) return;
+      void this.loadMention(m).then(() => {
+        const post = this.mentionInfo.get(m.id)?.post;
+        if (post) this.mentionCards.set(keyOf(post), fill);
+        fill();
+      });
+      card.addEventListener("click", () => {
         if ((activeWindow.getSelection()?.toString() ?? "") !== "") return;
         void this.openMention(m);
       });
     }
+  }
+
+  /** The card of one mention: the mentioning post as the feed draws it; until it is there (or when it cannot be shown) a card with the author and what they did. */
+  private fillMentionCard(card: HTMLElement, m: InboundMention): void {
+    const info = this.mentionInfo.get(m.id);
+    if (info?.post) {
+      this.fillCard(card, info.post, m);
+      return;
+    }
+    card.empty();
+    card.removeClass("is-unread");
+    card.removeClass("is-read");
+    card.addClass("is-reply-to-you");
+    const head = card.createDiv({ cls: "blyg-reader-cardhead" });
+    const title = head.createDiv({ cls: "blyg-reader-cardtitle" });
+    title.createSpan({ cls: "blyg-reader-source", text: m.sourceAuthorName ?? hostOf(m.sourceOrigin) ?? "Someone" });
+    const when = relativeTime(m.firstSeen, Date.now());
+    if (when) title.createDiv({ cls: "blyg-reader-meta blyg-reader-cardmeta", text: when });
+    card.createDiv({ cls: "blyg-reader-badges" }).createSpan({ cls: "blyg-reader-badge is-toyou", text: mentionBadge(m.relation), attr: { title: "This post is about one of your own items" } });
+    card.createDiv({ cls: "blyg-reader-excerpt", text: info?.done ? "Its text could not be shown here." : "…" });
+    this.drawMentionExtras(card, m);
   }
 
   /**

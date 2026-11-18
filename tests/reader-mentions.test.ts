@@ -1,7 +1,7 @@
 // S15 chunk 2b: mentions shown like posts.
 import { describe, expect, it } from "vitest";
 import type { InboundMention, ReadingPost } from "../src/studio/reading";
-import { limiter, mentionLead, postFromPeek, postOfMention, sameOrigin, visibleMentions } from "../src/ui/readerMentions";
+import { hostOf, limiter, mentionBadge, mentionLead, postFromPeek, postOfMention, sameOrigin, visibleMentions } from "../src/ui/readerMentions";
 
 const m = (over: Partial<InboundMention> = {}): InboundMention => ({ id: "m1", targetItemId: "t1", relation: "stub", status: "verified", hidden: false, sourceOrigin: "https://B.example/", sourceId: "x1", sourcePage: "https://b.example/x1/", sourceAuthorName: "Bea", firstSeen: "2026-11-10T10:00:00Z", ...over });
 const post = (over: Partial<ReadingPost> = {}): ReadingPost => ({ subscriptionId: "s1", subscriptionTitle: "B", origin: "https://b.example", remoteId: "x1", kind: "fragment", withdrawn: false, version: 1, readVersion: null, observedAt: "", created: null, isReply: false, contentHtml: "<p>hi</p>", contentMd: "hi", authorName: null, authorUrl: null, sourceUrl: null, ...over });
@@ -46,5 +46,20 @@ describe("mentions as posts", () => {
     const done = await Promise.all(Array.from({ length: 7 }, () => run(job)));
     expect(done).toHaveLength(7);
     expect(peak).toBe(2);
+  });
+});
+
+describe("the badge of a mention card", () => {
+  it("says what the post did to your item, in a few words", () => {
+    expect(mentionBadge("stub")).toBe("replied to you");
+    expect(mentionBadge("transclusion")).toBe("quoted you");
+    expect(mentionBadge("fork")).toBe("forked yours");
+    expect(mentionBadge("source")).toBe("cited you");
+    expect(mentionBadge("other" as InboundMention["relation"])).toBe("mentioned you");
+  });
+  it("hostOf gives the host of an address, and null for none or a broken one", () => {
+    expect(hostOf("https://b.example/x")).toBe("b.example");
+    expect(hostOf(null)).toBeNull();
+    expect(hostOf("not an address")).toBeNull();
   });
 });

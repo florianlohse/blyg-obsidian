@@ -793,7 +793,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
     });
     await wait(800);
     const rows = await text(".blyg-reader-mention");
-    check(rows.length === 1 && rows[0].includes("Far Author replied to your item") && rows[0].includes("Reply words here") && rows[0].includes("On: my own words"), `${layout}: mentions: a row says who, what they wrote and what it was about (${JSON.stringify(rows).slice(0, 150)})`);
+    check(rows.length === 1 && rows[0].includes("Far Author") && rows[0].includes("replied to you") && rows[0].includes("Reply words here") && rows[0].includes("On: my own words") && (await page.$(".blyg-reader-mention.blyg-reader-card .blyg-reader-badges")) !== null, `${layout}: mentions: drawn as a card like the feed's: who, what they did, what they wrote and what it was about (${JSON.stringify(rows).slice(0, 150)})`);
     await page.evaluate(() => document.querySelector(".blyg-reader-mention")?.click());
     await wait(600);
     const open = await page.evaluate(() => ({ body: document.querySelector(".blyg-reader-body")?.textContent ?? "", btns: [...document.querySelectorAll(".blyg-reader-header button")].map((b) => [b.textContent?.trim(), b.disabled]), next: document.querySelectorAll(".blyg-reader-steps").length }));
@@ -804,7 +804,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await wait(400);
     check((await page.$(".blyg-reader-mention")) !== null, `${layout}: mentions: back to the list of mentions`);
     // Dismiss: the card goes at once and the Studio is asked (stubbed here, so the shared test data stays as it is); a refusal brings it back and says why.
-    check(!!(await page.$(".blyg-reader-mention .blyg-reader-dismiss")), `${layout}: mentions: a card has a Dismiss button`);
+    check((await text(".blyg-reader-mention .blyg-reader-dismiss"))[0] === "Dismiss", `${layout}: mentions: a card has a Dismiss button, with just that word`);
     await page.evaluate(() => {
       const v = window.app.workspace.getLeavesOfType("blyg-reader")[0].view;
       window.__hid = [];
