@@ -214,6 +214,8 @@ withdrawing an item leaves an end note and never deletes the address.
 
 Open an issue on this repository. Please leave tokens out of anything you paste; the plugin's messages never contain one.
 
+There is also a web page for the plugin, generated from this README and the changelog of each release: <https://florianlohse.com/tools/blyg-obsidian/>.
+
 Pull requests are not accepted for now: this repository is a published copy of the plugin's source, and code changes are made elsewhere. If you have a fix or an idea, describe it in an issue.
 
 ## License
