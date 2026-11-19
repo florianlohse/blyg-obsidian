@@ -30,6 +30,10 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+      # README.md and CHANGELOG.md are read by a generator that makes a web page of each release (scripts/check-readme.mjs). The same rules run in `npm test`;
+      # this step shows a problem as an annotation on the line.
+      - name: README and CHANGELOG are website-ready
+        run: node scripts/check-readme.mjs
       - name: Both build flavours assemble (A1.1)
         run: |
           node scripts/flavour.mjs blyg dist/blyg
