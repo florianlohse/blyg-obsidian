@@ -243,6 +243,33 @@ export class BlygSettingTab extends PluginSettingTab {
 
     items.push({
       type: "group",
+      heading: "Daily digest",
+      items: [
+        {
+          name: "Use an AI model",
+          desc: "Off by default. When on, the Daily's “Write the digest” button can send the day's posts to the AI provider below to get a headline and a short summary per group. A window shows exactly what will be sent, and nothing goes until you tap Send. Without it the Daily is the same list, made on your device.",
+          aliases: ["ai", "llm", "claude", "anthropic", "summary"],
+          control: { type: "toggle", key: "digest.useAi", defaultValue: false },
+        },
+        text("AI endpoint", "The provider's address. Default: the Anthropic API. Only https addresses are used.", "digest.endpoint", "https://api.anthropic.com"),
+        text("AI model", "The model that writes the digest, e.g. claude-sonnet-5-5 (others: claude-haiku-5-5 cheaper, claude-opus-5-5, claude-fable-5-2).", "digest.model", "claude-sonnet-5-5"),
+        {
+          name: "AI key",
+          desc: "Your API key for the provider. Pick or create an entry in the keychain; the plugin remembers only the entry's name.",
+          aliases: ["secret", "keychain", "api"],
+          render: (setting) => {
+            setting.addComponent((el) =>
+              new SecretComponent(this.app, el).setValue(s.digest.keySecretName).onChange((name) => {
+                this.setControlValue("digest.keySecretName", name);
+              }),
+            );
+          },
+        },
+      ],
+    });
+
+    items.push({
+      type: "group",
       heading: "Web quote",
       items: [
         {

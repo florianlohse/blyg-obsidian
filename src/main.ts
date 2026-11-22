@@ -121,7 +121,7 @@ export default class BlygPlugin extends Plugin {
     this.addRibbonIcon("send", "Open Blyg panel", () => void this.openPanel());
     this.registerReplyPreview();
     this.addRibbonIcon("book-open", "Open Blyg reader", () => void this.openReader());
-    this.registerView(BLYG_READER_VIEW, (leaf) => new BlygReaderView(leaf, this.readerHost())); registerDigest(this, { readList: () => this.readReaderCache() });
+    this.registerView(BLYG_READER_VIEW, (leaf) => new BlygReaderView(leaf, this.readerHost())); registerDigest(this, { readList: () => this.readReaderCache(), ai: { settings: () => this.settings.digest, keychain: obsidianKeychain(this.app), transport: obsidianTransport } });
     this.addCommand({ id: "open-reader", name: "Open reader", callback: () => void this.openReader() });
     this.addCommand({ id: "open-reader-sidebar", name: "Open reader in the sidebar", callback: () => void this.openReader("sidebar") });
     registerShareEntry(this, { settings: () => this.settings, build: () => buildStudio(this.env()), openReader: () => this.openReader() });

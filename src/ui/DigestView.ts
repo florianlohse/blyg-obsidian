@@ -2,6 +2,7 @@
 // Posts are other people's words: everything is put on the page with createEl({ text }) (textContent), never as HTML, and nothing is written to the vault.
 import { ItemView, type WorkspaceLeaf } from "obsidian";
 import type { Cluster } from "../digest/cluster";
+import type { Outcome, Written } from "../digest/llm";
 import { buildDaily, type DailyModel } from "../digest/daily";
 import type { InboundMention, ReadingPost } from "../studio/reading";
 
@@ -15,12 +16,17 @@ export interface DigestHost {
   /** Open a post in the reader. */
   openPost(post: ReadingPost): Promise<void>;
   openWeb(url: string): void;
+  /** The optional AI layer (src/digest/llm.ts); absent or `enabled()` false: the Daily is the deterministic list only. */
+  ai?: { enabled(): boolean; cached(clusters: readonly Cluster[]): Promise<Array<Written | null>>; write(clusters: readonly Cluster[]): Promise<Outcome> };
 }
 
 const stamp = (t: number): string => new Date(t).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
 
 export class BlygDailyView extends ItemView {
+  private written: Array<Written | null> = [];
+  private note = "";
+  private busy = false;
   constructor(leaf: WorkspaceLeaf, private readonly host: DigestHost) {
     super(leaf);
   }
@@ -53,16 +59,45 @@ export class BlygDailyView extends ItemView {
     } catch {
       model = null;
     }
+    this.note = "";
+    this.written = model && this.host.ai?.enabled() ? await this.host.ai.cached(model.front).catch(() => []) : [];
+    this.render(model);
+    if (commit) await commit().catch(() => undefined);
+  }
+
+  private render(model: DailyModel | null): void {
+    const root = this.contentEl;
     root.empty();
     const head = root.createDiv({ cls: "blyg-daily-head" });
     head.createEl("h2", { text: "Daily" });
     head.createEl("button", { text: "Refresh", cls: "blyg-daily-btn" }).addEventListener("click", () => void this.refresh());
+    const ai = this.host.ai;
+    if (model && ai?.enabled() && model.front.length > 0) {
+      const btn = head.createEl("button", { text: this.busy ? "Writing…" : "Write the digest", cls: "blyg-daily-btn" });
+      btn.addEventListener("click", () => {
+        if (this.busy) return;
+        this.busy = true;
+        this.render(model);
+        void ai
+          .write(model.front)
+          .then((o) => {
+            this.written = o.written;
+            this.note = o.status === "ok" && !o.note ? "" : (o.note ?? "");
+            if (o.status === "failed") this.note = `${o.note ?? "The digest could not be written."} Showing the list made on your device.`;
+          })
+          .catch(() => (this.note = "The digest could not be written. Showing the list made on your device."))
+          .finally(() => {
+            this.busy = false;
+            this.render(model);
+          });
+      });
+    }
+    if (this.note) root.createDiv({ cls: "blyg-daily-meta", text: this.note });
     if (!model) {
       root.createDiv({ cls: "blyg-daily-empty", text: "There is no saved list to read yet. Open the reader and let it load, then come back." });
       return;
     }
     this.draw(root, model);
-    if (commit) await commit().catch(() => undefined);
   }
 
   private draw(root: HTMLElement, m: DailyModel): void {
@@ -73,7 +108,7 @@ export class BlygDailyView extends ItemView {
     }
     if (m.front.length > 0) {
       const s = this.section(root, "Front page");
-      for (const c of m.front) this.drawCluster(s, c);
+      m.front.forEach((c, i) => this.drawCluster(s, c, this.written[i] ?? null));
       if (m.moreClusters > 0) s.createDiv({ cls: "blyg-daily-meta", text: `and ${plural(m.moreClusters, "more group", "more groups")}` });
     }
     if (m.letters.length > 0) {
@@ -112,10 +147,15 @@ export class BlygDailyView extends ItemView {
     return s;
   }
 
-  private drawCluster(into: HTMLElement, c: Cluster): void {
+  private drawCluster(into: HTMLElement, c: Cluster, ai: Written | null): void {
     const card = into.createDiv({ cls: "blyg-daily-cluster" });
     const blygs = new Set(c.posts.map((p) => p.subscriptionTitle || p.origin || "")).size;
-    const title = card.createEl("button", { cls: "blyg-daily-link blyg-daily-headline", text: c.headline });
+    const title = card.createEl("button", { cls: "blyg-daily-link blyg-daily-headline", text: ai ? ai.headline : c.headline });
+    if (ai) {
+      // Generated text: put on the page as text only (never HTML), and labelled.
+      if (ai.summary) card.createDiv({ cls: "blyg-daily-summary", text: ai.summary });
+      card.createDiv({ cls: "blyg-daily-meta", text: `Written by ${ai.model} from ${plural(ai.posts, "post", "posts")}` });
+    }
     card.createDiv({
       cls: "blyg-daily-meta",
       text: [c.posts.length > 1 ? `${plural(c.posts.length, "post", "posts")} in ${plural(blygs, "blyg", "blygs")}` : (c.posts[0]?.authorName ?? c.posts[0]?.subscriptionTitle ?? ""), c.terms.join(" · ")].filter(Boolean).join(" · "),

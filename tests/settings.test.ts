@@ -332,3 +332,12 @@ describe("typos in a plain route", () => {
     expect(warningsAt(s, "routes[0].webUrl")).toHaveLength(0);
   });
 });
+
+describe("digest settings", () => {
+  it("old data loads with the AI layer off and a literal true is needed to turn it on", () => {
+    const old = migrateSettings({ schemaVersion: 3 }).settings;
+    expect(old.digest).toEqual({ useAi: false, endpoint: "https://api.anthropic.com", model: "claude-sonnet-5-5", keySecretName: "" });
+    expect(migrateSettings({ schemaVersion: 3, digest: { useAi: "yes", model: "  ", apiKey: "sk-x" } }).settings.digest).toEqual(old.digest);
+    expect(JSON.stringify(migrateSettings({ digest: { apiKey: "sk-x" } }).settings)).not.toContain("sk-x");
+  });
+});
