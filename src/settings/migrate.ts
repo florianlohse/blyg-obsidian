@@ -2,6 +2,7 @@ import { readFilter } from "../ui/readerFeed";
 import { isReaderFont } from "../ui/readerFonts";
 import { isReaderContrast } from "../ui/readerLook";
 import { defaultSettings, SCHEMA_VERSION, type BlygSettings, type Route } from "./schema";
+import { cleanFeatureFlags } from "../features/registry";
 
 type Plain = Record<string, unknown>;
 
@@ -113,6 +114,7 @@ export function migrateSettings(raw: unknown, flavour: "release" | "dev" = "rele
     readerPane: { images: rp.images === "always" ? "always" : "click", font: isReaderFont(rp.font) ? rp.font : "default", contrast: isReaderContrast(rp.contrast) ? rp.contrast : "normal", shareInbox: typeof rp.shareInbox === "string" ? rp.shareInbox.trim() : "", filter: readFilter(rp.filter) },
     // Only a literal true turns the AI layer on; a missing or odd value leaves it off.
     digest: { useAi: dg.useAi === true, endpoint: str(dg.endpoint, d.digest.endpoint).trim() || d.digest.endpoint, model: str(dg.model, d.digest.model).trim() || d.digest.model, keySecretName: str(dg.keySecretName, d.digest.keySecretName) },
+    features: cleanFeatureFlags(raw.features),
     // Only a literal true lifts the lock: anything else, or a missing key, keeps the dev build on test Studios.
     dev: { allowLiveStudio: dv.allowLiveStudio === true },
   };

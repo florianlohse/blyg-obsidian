@@ -13,6 +13,7 @@ import {
 import type BlygPlugin from "../main";
 import { CONTRACT_MAX_FRAGMENT_CAP } from "../contract";
 import { getPath, setPath } from "./path";
+import { FEATURES } from "../features/registry";
 import type { Route } from "./schema";
 import { isStudioOnly } from "./studioOnly";
 import { CONNECT_STEPS } from "../app/panelState";
@@ -47,6 +48,7 @@ export class BlygSettingTab extends PluginSettingTab {
   }
 
   override getControlValue(key: string): unknown {
+    if (key.startsWith("features.")) return this.plugin.features.enabled(key.slice("features.".length));
     return getPath(this.plugin.settings, key);
   }
 
@@ -65,6 +67,7 @@ export class BlygSettingTab extends PluginSettingTab {
       if (route) delete route.draftsOnly;
     }
     this.changed();
+    if (key.startsWith("features.")) new Notice("Reload Obsidian for this to take effect. Nothing the feature saved is deleted.", 8000);
     if (key.startsWith("readerPane.")) for (const paint of this.previews) paint();
   }
 
@@ -241,7 +244,17 @@ export class BlygSettingTab extends PluginSettingTab {
       ],
     });
 
+    const experimental = FEATURES.filter((f) => f.stage === "experimental");
     items.push({
+      type: "group",
+      heading: "Experimental features",
+      items: [
+        { name: "Early features", desc: "These are still being built and may change, be slow or misbehave. Each is off in the released plugin until it has been tried. Switching one off hides it completely and keeps what it saved. Reload Obsidian after a change." },
+        ...experimental.map((f): SettingGroupItem => ({ name: f.title, desc: f.description, control: { type: "toggle", key: `features.${f.id}`, defaultValue: false } })),
+      ],
+    });
+
+    if (this.plugin.features.enabled("digest-ai")) items.push({
       type: "group",
       heading: "Daily digest",
       items: [
@@ -307,12 +320,12 @@ export class BlygSettingTab extends PluginSettingTab {
           aliases: ["reader", "typeface", "serif", "reading font"],
           control: { type: "dropdown", key: "readerPane.font", options: { default: "As Obsidian has it", serif: "Serif", sans: "Sans-serif", mono: "Monospace" } },
         },
-        {
+        ...(this.plugin.features.enabled("share-open") ? [{
           name: "Share inbox folder",
           desc: "Leave empty to switch this off. Set a folder, and make the iOS share sheet's Obsidian Location create new notes in it as “URL only” (or with {{url}} in its template). When a new note appears there that names a blyg post, the reader opens that post. Notes already there, and notes you edit later, are never looked at, and no note is changed or deleted. Replying and following stay in the reader.",
           aliases: ["share", "share sheet", "inbox", "ios", "address"],
           control: { type: "text", key: "readerPane.shareInbox", placeholder: "Share inbox" },
-        },
+        } as SettingGroupItem] : []),
         {
           name: "Contrast of the reading surface",
           desc: "How strongly a post stands out from its background in the reader: reduced (softer, for dim rooms), normal, or high.",

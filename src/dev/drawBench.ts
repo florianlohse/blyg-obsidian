@@ -124,8 +124,8 @@ class SizePicker extends FuzzySuggestModal<number> {
 }
 
 /** Adds the timing command in a development build; nothing in any other. */
-export function registerDevCommands(plugin: Plugin, level: () => ReaderContrast = () => "normal"): void {
+export function registerDevCommands(plugin: Plugin, level: () => ReaderContrast = () => "normal", enabled: (id: string) => boolean = () => true): void {
   if (!isDevBuildId(plugin.manifest.id)) return;
-  registerAuthorStyleCommand(plugin, level);
-  plugin.addCommand({ id: "dev-draw-synthetic-posts", name: "Reader: draw synthetic posts (timing)", callback: () => new SizePicker(plugin.app).open() });
+  if (enabled("author-look")) registerAuthorStyleCommand(plugin, level);
+  if (enabled("reader-timing")) plugin.addCommand({ id: "dev-draw-synthetic-posts", name: "Reader: draw synthetic posts (timing)", callback: () => new SizePicker(plugin.app).open() });
 }

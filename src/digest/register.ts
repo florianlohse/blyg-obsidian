@@ -5,6 +5,7 @@ import { BLYG_READER_VIEW, BlygReaderView } from "../ui/ReaderView";
 import { BLYG_DAILY_VIEW, BlygDailyView, type DigestHost } from "../ui/DigestView";
 import type { InboundMention, ReadingPost } from "../studio/reading";
 import { dayWindow } from "./window";
+import { setDigestSwitch } from "../ui/readerExtras";
 import type { ReaderFont } from "../ui/readerFonts";
 import { Notice } from "obsidian";
 import type { Keychain } from "../platform/ports";
@@ -70,9 +71,10 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
     await leaf.setViewState({ type: BLYG_DAILY_VIEW, active: true });
     await workspace.revealLeaf(leaf);
   };
+  setDigestSwitch(true);
   plugin.registerView(BLYG_DAILY_VIEW, (leaf) => new BlygDailyView(leaf, host));
   plugin.addCommand({ id: "open-daily", name: "Open Daily", callback: () => void open() });
-  plugin.addCommand({
+  if (llm) plugin.addCommand({
     id: "show-digest-sent",
     name: "Show what the digest sent",
     callback: () => void loadStore().then((st) => new TextModal(plugin.app, "What the digest sent", "Time, model, host, sizes and post ids. No post text and no key is kept here.", trailText(st), (ok) => new Notice(ok ? "Copied." : "Copy is blocked here; the text is selected.")).open()),
