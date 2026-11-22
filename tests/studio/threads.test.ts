@@ -108,7 +108,7 @@ describe("what is refused before any request", () => {
 
   it("a fragment that quotes, by name or by id", async () => {
     const { w } = await withFragment({ "studio/Quoter.md": "A fragment.\n\n![[Fragment one]]\n" });
-    expect((await tapStudio(w, "studio/Quoter.md")).notices.join(" ")).toMatch(/quotes another item, which only a thread can do/);
+    expect((await tapStudio(w, "studio/Quoter.md")).notices.join(" ")).toMatch(/a fragment can't quote another item: make this a thread/);
     w.local.set("studio/Quoter.md", `A fragment.\n\n![[${REMOTE} | label]]\n`);
     expect((await tapStudio(w, "studio/Quoter.md")).status).toBe("refused");
   });

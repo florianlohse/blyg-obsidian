@@ -47,7 +47,9 @@ export type DraftProblem =
   /** `[[Name]]` that is not an item: the Studio shows literal brackets. */
   | { kind: "links"; names: string[] }
   /** A line directly under a partial quote with no `>` and no blank line before it: Studio 0.50+ reads it as part of the quote (E9). */
-  | { kind: "lazy-quote"; lines: number[] };
+  | { kind: "lazy-quote"; lines: number[] }
+  /** A tangle span `![[+ …]]` or a placeholder `[[+ …]]` (Studio 0.63): the Studio makes new items from them and asks first; the plugin cannot confirm that, so it sends nothing. */
+  | { kind: "tangle"; lines: number[] };
 
 export interface StudioDraft {
   /** The text to send: names turned into ids. When a name could not be turned, the text as written. */
@@ -242,6 +244,9 @@ export function scanStudioQuotes(contentMd: string): { quotes: StudioQuote[]; li
  */
 export function prepareStudioText(contentMd: string, kind: StudioItemKind, ctx: DraftContext): StudioDraft {
   const problems: DraftProblem[] = [];
+  // First, so that the cause is named: the span would otherwise be read as a note name that does not exist.
+  const tangled = tangleLines(contentMd);
+  if (tangled.length > 0) problems.push({ kind: "tangle", lines: tangled });
   const translated = translateStudioNames(contentMd, ctx);
   if (translated.problems.length > 0) problems.push({ kind: "names", messages: translated.problems });
   // Line breaks are kept as the author sees them; the cap below counts the text as it is sent.
@@ -268,6 +273,15 @@ export function prepareStudioText(contentMd: string, kind: StudioItemKind, ctx: 
     .map((l) => `[[${l.target}]]`);
   if (names.length > 0) problems.push({ kind: "links", names });
   return { contentMd: text, quotes, links, problems };
+}
+
+/** Lines (1-based) with a tangle span `![[+ …]]` or a placeholder `[[+ …]]`, outside code (the Studio leaves those inert too). */
+export function tangleLines(contentMd: string): number[] {
+  const lines: number[] = [];
+  maskCode(contentMd).split("\n").forEach((line, i) => {
+    if (/\[\[\+/.test(line)) lines.push(i + 1);
+  });
+  return lines;
 }
 
 const RESERVED_DIRECTIVE_LINE = new RegExp(`^\\s*!\\[\\[${ID}@v\\d+\\]\\]\\s*$`);
@@ -368,6 +382,8 @@ export function refusalFor(problem: DraftProblem): string {
       return M.studioLinks(problem.names.slice(0, 5));
     case "lazy-quote":
       return M.lazyQuote(problem.lines);
+    case "tangle":
+      return M.tangleSpans(problem.lines);
   }
 }
 
@@ -387,6 +403,8 @@ export function panelLines(problems: DraftProblem[]): string[] {
         return p.list.map((e) => `${e}: an embed the Studio would show as literal brackets`);
       case "links":
         return [`Links to notes the Studio does not have: ${p.names.slice(0, 3).join(", ")}${p.names.length > 3 ? ", …" : ""}.`];
+      case "tangle":
+        return p.lines.map((n) => `Line ${n} has a tangle span or placeholder (“[[+ …]]”): the Studio makes those, and asks before it creates the new items.`);
       case "lazy-quote":
         return p.lines.map((n) => `Line ${n} sits directly under a quote with no “>”: newer Studios read it as part of the quote. Add a blank line before it, or put “>” in front.`);
     }

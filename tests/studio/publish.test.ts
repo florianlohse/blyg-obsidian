@@ -187,7 +187,7 @@ describe("refused before any request", () => {
     ["a [[wikilink]] to another note (the Studio would show literal brackets)", "See [[Other note]].\n", /links the Studio would show as plain text: \[\[Other note\]\]/],
     ["an image embed", "![[photo.png]]\n", /image “photo\.png” is not in the vault/],
     ["an unknown blyg_kind", "---\nblyg_kind: essay\n---\nText.\n", /blyg_kind is “essay”/],
-    ["a quote line in a fragment", "x\n\n![[7000000000000000000000000a]]\n", /quotes another item|embed/],
+    ["a quote line in a fragment", "x\n\n![[7000000000000000000000000a]]\n", /can.t quote another item|embed/],
   ];
   for (const [name, text, expected] of cases) {
     it(`${name}`, async () => {
@@ -650,5 +650,31 @@ describe("reposting a note that carries another blyg's record", () => {
       expect(repostNoteText(null, "not a date")).toBe("Reposted from the old blyg");
       expect(repostNoteText(null, "2026-10-01")).toBe("Reposted from the old blyg — first published 2026-10-01");
     });
+  });
+});
+
+describe("refused before anything is sent (E3): tangle spans, placeholders, and a directive line in a fragment", () => {
+  const ID = idOf(7);
+  const cases: Array<[string, string, string, RegExp]> = [
+    ["a tangle span in a fragment", "Intro.\n\n![[+ a passage to make its own item]]\n", "fragment", /line 3 has a tangle span.*made in the Studio.*nothing was sent/i],
+    ["a tangle span in a thread", "---\nblyg_kind: thread\n---\nIntro.\n\n![[+ a passage]]\n", "thread", /line 3 has a tangle span/i],
+    ["a placeholder inside a sentence", "A thought about [[+ the idea]] and more.\n", "fragment", /placeholder.*made in the Studio/i],
+    ["a directive line in a fragment", `Intro.\n\n![[${ID}]]\n`, "fragment", /a fragment can't quote another item: make this a thread, or link it with \[\[id\]\].*nothing was sent/i],
+    ["a directive line with a label in a fragment", `![[${ID} | the label]]\n`, "fragment", /a fragment can't quote another item/i],
+  ];
+  for (const [name, body, , words] of cases) {
+    it(`${name}: refused locally with plain words; no request, the note is untouched`, async () => {
+      const w = makeStudioWorld({ vault: { [NOTE]: body } });
+      const before = w.local.get(NOTE);
+      const out = await tapStudio(w, NOTE);
+      expect(out.status).toBe("refused");
+      expect(out.notices.join(" ")).toMatch(words);
+      expect(w.studio.seen.filter((s) => s.path !== "/blyg.json")).toEqual([]);
+      expect(w.local.get(NOTE)).toBe(before);
+    });
+  }
+  it("spans in code are inert, as in the Studio: a code span and a fenced block publish", async () => {
+    const w = makeStudioWorld({ vault: { [NOTE]: "Write `![[+ x]]` like this.\n\n```\n![[+ y]]\n```\n" } });
+    expect((await tapStudio(w, NOTE)).status).toBe("published");
   });
 });

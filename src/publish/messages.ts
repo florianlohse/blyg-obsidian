@@ -98,7 +98,9 @@ export const M = {
   threadSoftCap: (length: number, cap: number) => `this thread is ${length} characters, over the soft limit of ${cap}.`,
   grammarRefused: (problems: string[]) => `Not published — ${problems.length === 1 ? "a line" : "some lines"} the plugin cannot be sure about: ${problems.join(" · ")}`,
   fragmentQuotes: (line: number) =>
-    `Not published — line ${line} quotes another item, which only a thread can do. Add the property blyg_kind: thread before the first publish (the kind of a published item never changes), or take the line out.`,
+    `Not published — line ${line}: a fragment can't quote another item: make this a thread, or link it with [[id]]. (Add the property blyg_kind: thread before the first publish, the kind of a published item never changes; or take the line out.) Nothing was sent.`,
+  tangleSpans: (lines: number[]) =>
+    `Not published — line ${lines.slice(0, 3).join(", ")}${lines.length > 3 ? ", …" : ""} has a tangle span (“![[+ …]]”) or a placeholder (“[[+ …]]”). Those are made in the Studio, which shows how many new items they create and asks first; this plugin cannot ask that, so nothing was sent. Take the span out here, or publish the note from the Studio.`,
   itemProblems: (problems: string[]) =>
     `Not published — ${problems.length === 1 ? "one problem" : `${problems.length} problems`} with what this note quotes or links to:\n${problems.map((p) => `• ${p}`).join("\n")}`,
   noSuchItem: (what: string, id: string, branch: string) =>
