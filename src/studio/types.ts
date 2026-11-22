@@ -112,6 +112,8 @@ export interface StudioImported {
   /** `tombstone`: the origin withdrew it. */
   state: "current" | "tombstone";
   contentHtml: string;
+  /** The origin's Markdown, when the Studio sends it (the quote lookup parses it). */
+  contentMd?: string;
 }
 
 export interface StudioManifest {

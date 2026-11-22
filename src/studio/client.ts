@@ -369,7 +369,7 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
       if (res.status !== 200) return failure(res);
       const j = res.json;
       if (!isRecord(j) || typeof j.version !== "number" || typeof j.contentHtml !== "string" || (j.kind !== "fragment" && j.kind !== "thread")) return unreadable(res);
-      return { kind: "ok", value: { id, kind: j.kind, version: j.version, state: j.state === "tombstone" ? "tombstone" : "current", contentHtml: j.contentHtml } };
+      return { kind: "ok", value: { id, kind: j.kind, version: j.version, state: j.state === "tombstone" ? "tombstone" : "current", contentHtml: j.contentHtml, ...(typeof j.contentMd === "string" ? { contentMd: j.contentMd } : {}) } };
     },
 
     countMentions: async (itemId: string): Promise<StudioResult<{ count: number; complete: boolean }>> => {
