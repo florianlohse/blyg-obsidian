@@ -785,3 +785,7 @@
 /* The feed as a window (src/ui/readerWindow.ts): the scroll position is kept by the code, so the browser's own scroll anchoring is off here. */
 .blyg-reader-window { overflow-anchor: none; }
 .blyg-reader-olderrow { text-align: center; padding: var(--size-4-3) 0; }
+/* "Blygs I follow" (HK7) */
+.blyg-reader-followbtn { flex: 0 0 auto; }
+.blyg-follow-desc { white-space: pre-line; overflow-wrap: anywhere; }
+.blyg-follow-message { color: var(--text-warning); }

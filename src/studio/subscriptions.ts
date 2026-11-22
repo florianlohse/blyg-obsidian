@@ -27,6 +27,8 @@ export interface StudioFollowProposal {
   /** For `kind: "hopper"`: the whole blyg's title, for offering to follow the whole blyg instead. */
   blygTitle: string | null;
   hopperTitle: string | null;
+  /** The address claims to belong to another site than the one it is served from (`siteMismatch`): the person should look before following. */
+  siteMismatch: boolean;
 }
 
 export type StudioFollowAnswer = { state: "proposal"; proposal: StudioFollowProposal } | { state: "created"; subscription: StudioFollowed };
@@ -65,12 +67,18 @@ export function readProposal(json: unknown): StudioFollowProposal | null {
     title: json.title,
     blygTitle: str(json.blygTitle),
     hopperTitle: isRecord(json.hopper) ? str(json.hopper.title) : null,
+    siteMismatch: isRecord(json.siteMismatch),
   };
 }
 
-/** What the Studio does when a subscription is deleted (Studio 0.51.0 `deleteSubscription`, checked in its source; its docs say "local data only"). */
+/**
+ * What the Studio does when a subscription is deleted, read from its source (`deleteSubscription` in src/importer/store.ts, run in one batch) and
+ * checked against v0.51.0, v0.62.0 and 0.69.0. In all three: the imported posts of that blyg, the owner's hopper memberships of them, thumbs and
+ * signals on them, and read state (a database trigger) go; the owner's own items stay. From 0.62.0 on, shelf entries of those posts and the mentions
+ * imported from that blyg go too; 0.51.0 has no shelf. The confirmation text names only what holds on every version, so it is never an overstatement.
+ */
 export const UNFOLLOW_EFFECT = {
-  removed: ["imported posts of that blyg", "the owner's hopper memberships of those posts", "thumbs and signals on them", "read state"],
+  removed: ["imported posts of that blyg", "the owner's hopper memberships of those posts", "thumbs and signals on them", "read state", "shelf entries (Studio 0.62.0 and later)"],
   kept: ["the owner's own items", "notes already in the vault"],
 } as const;
 
