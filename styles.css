@@ -779,6 +779,9 @@
 .blyg-reader-quotesource .blyg-reader-icon .svg-icon { width: 1em; height: 1em; }
 .blyg-reader-stepcount { white-space: nowrap; }
 
+/* The development build's timing command (src/dev/drawBench.ts): a full-screen window with a scrolling list. */
+.blyg-bench-modal { width: 100vw; max-width: 100vw; height: 100vh; max-height: 100vh; }
+.blyg-bench-list { height: calc(100vh - 8rem); overflow-y: auto; }
 /* "Blygs I follow" (HK7) */
 .blyg-reader-followbtn { flex: 0 0 auto; }
 .blyg-follow-desc { white-space: pre-line; overflow-wrap: anywhere; }

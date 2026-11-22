@@ -51,6 +51,7 @@ import { previewOfPost, resolvePreview, type PreviewResult } from "./studio/prev
 import { drawPreview, type PreviewDeps } from "./ui/replyPreview";
 import { limiter, postFromPeek, postOfMention } from "./ui/readerMentions";
 import { parseReaderCache, readerCacheOf } from "./ui/readerCache";
+import { registerDevCommands } from "./dev/drawBench";
 import { BLYG_READER_VIEW, BlygReaderView, excerptOf, type ReaderHost, type ReadResult } from "./ui/ReaderView";
 import { createReaderService } from "./app/readerService";
 import { createFollowHost, replyPlan } from "./app/followHost";
@@ -129,6 +130,7 @@ export default class BlygPlugin extends Plugin {
       },
     });
     this.registerPanelRefresh();
+    registerDevCommands(this); // the development build only: the timing command of the scale tests
 
     this.addCommand({
       id: "insert-web-quote",
@@ -1031,9 +1033,7 @@ export default class BlygPlugin extends Plugin {
         this.settings.readerPane.filter = { ...filter };
         await this.saveSettings();
       },
-      checkForNew: (force) => this.readerService.checkForNew(force),
-      changeMarks: () => this.readerService.changeMarks(),
-      load: (onProgress, opts) => this.readerService.load(onProgress, opts),
+      ...this.readerService, // the reader's Studio conversation (app/readerService.ts)
       readCache: () => this.readReaderCache(),
       writeCache: (data) => this.writeReaderCache(data),
       openWeb: (url) => window.open(url, "_blank"),
