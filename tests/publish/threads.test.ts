@@ -395,7 +395,7 @@ describe("fragments and item links", () => {
     setBody(w, FB, `Intro\n\n![[${a}]]\n`);
     const out = await tap(w, FB);
     expect(out.status).toBe("refused");
-    expect(out.notices[0]).toMatch(/line 3 quotes another item, which only a thread can do/);
+    expect(out.notices[0]).toMatch(/line 3: a fragment can't quote another item: make this a thread/);
   });
 
   it("a link to something that is not published stops the publish", async () => {
@@ -452,7 +452,7 @@ describe("the kind never changes", () => {
     w.local.set(TH, (w.local.get(TH) ?? "").replace("blyg_kind: thread\n", ""));
     const out = await tap(w, TH);
     expect(out.status).toBe("refused");
-    expect(out.notices[0]).toMatch(/only a thread can do.*kind of a published item never changes/s);
+    expect(out.notices[0]).toMatch(/make this a thread.*kind of a published item never changes/s);
   });
 });
 
@@ -685,7 +685,7 @@ describe("names in the vault, ids on the wire", () => {
     setBody(w, FB, "Intro\n\n![[A]]\n");
     const out = await tap(w, FB);
     expect(out.status).toBe("refused");
-    expect(out.notices[0]).toMatch(/line 3 quotes another item, which only a thread can do/);
+    expect(out.notices[0]).toMatch(/line 3: a fragment can't quote another item: make this a thread/);
   });
 
   it("code still blocks: a translated embed inside a code block is refused, never published as a quote", async () => {
