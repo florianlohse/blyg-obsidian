@@ -19,6 +19,7 @@ import { isStudioOnly } from "./studioOnly";
 import { CONNECT_STEPS } from "../app/panelState";
 import { connectionCheckKey, setupProgress } from "./setup";
 import { describeField, validateSettings } from "./validate";
+import { askConsentGate } from "../digest/consentGate";
 
 /**
  * The settings UI, declared with Obsidian 1.13's declarative settings API (so every field is searchable in
@@ -54,6 +55,17 @@ export class BlygSettingTab extends PluginSettingTab {
 
   override setControlValue(key: string, value: unknown): void {
     const clean = typeof value === "string" ? value.trim() : value;
+    // Switching the AI layer on needs the person's consent first (asked once per provider host): the setting turns on only after Agree.
+    if (key === "digest.useAi" && clean === true) {
+      void askConsentGate().then((agreed) => {
+        if (agreed) {
+          setPath(this.plugin.settings, key, true);
+          this.changed();
+        }
+        this.update();
+      });
+      return;
+    }
     if (!setPath(this.plugin.settings, key, clean)) return;
     // A route switched to "plain" needs a (still empty) destination to be edited.
     const modeMatch = /^routes\.(\d+)\.mode$/.exec(key);
@@ -260,12 +272,23 @@ export class BlygSettingTab extends PluginSettingTab {
       items: [
         {
           name: "Use an AI model",
-          desc: "Off by default. When on, the Daily's “Write the digest” button can send the day's posts to the AI provider below to get a headline and a short summary per group. A window shows exactly what will be sent, and nothing goes until you tap Send. Without it the Daily is the same list, made on your device.",
+          desc: "Off by default. Turning it on asks once for your agreement: the text of posts from blygs you follow is then sent to the provider below to write the digest. A manual “Write the digest” shows one line (groups, posts, tokens, a rough cost) and waits for Send. Afterwards, “Show what the digest sent” lists every run. Without it the Daily is the same list, made on your device.",
           aliases: ["ai", "llm", "claude", "anthropic", "summary"],
           control: { type: "toggle", key: "digest.useAi", defaultValue: false },
         },
         text("AI endpoint", "The provider's address. Default: the Anthropic API. Only https addresses are used.", "digest.endpoint", "https://api.anthropic.com"),
         text("AI model", "The model that writes the digest, e.g. claude-sonnet-5-5 (others: claude-haiku-5-5 cheaper, claude-opus-5-5, claude-fable-5-2).", "digest.model", "claude-sonnet-5-5"),
+        {
+          name: "Daily token ceiling",
+          desc: "The most tokens the digest may use in one day by itself (an automatic run will check this; the “Write the digest” button is never blocked by it, but its tokens count). Default 60000, about two or three full runs. 0 means no ceiling. Token counts are rough.",
+          aliases: ["limit", "budget", "tokens", "cost"],
+          render: (setting) => {
+            setting.addText((t) => t.setValue(String(s.digest.dailyTokenCeiling)).onChange((v) => {
+              const k = Number(v.trim());
+              if (v.trim() !== "" && Number.isFinite(k) && k >= 0) this.setControlValue("digest.dailyTokenCeiling", Math.round(k));
+            }));
+          },
+        },
         {
           name: "AI key",
           desc: "Your API key for the provider. Pick or create an entry in the keychain; the plugin remembers only the entry's name.",

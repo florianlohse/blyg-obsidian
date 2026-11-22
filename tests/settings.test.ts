@@ -336,8 +336,10 @@ describe("typos in a plain route", () => {
 describe("digest settings", () => {
   it("old data loads with the AI layer off and a literal true is needed to turn it on", () => {
     const old = migrateSettings({ schemaVersion: 3 }).settings;
-    expect(old.digest).toEqual({ useAi: false, endpoint: "https://api.anthropic.com", model: "claude-sonnet-5-5", keySecretName: "" });
+    expect(old.digest).toEqual({ useAi: false, endpoint: "https://api.anthropic.com", model: "claude-sonnet-5-5", keySecretName: "", dailyTokenCeiling: 60000 });
     expect(migrateSettings({ schemaVersion: 3, digest: { useAi: "yes", model: "  ", apiKey: "sk-x" } }).settings.digest).toEqual(old.digest);
+    expect(migrateSettings({ digest: { dailyTokenCeiling: -5 } }).settings.digest.dailyTokenCeiling).toBe(60000);
+    expect(migrateSettings({ digest: { dailyTokenCeiling: 1234.6 } }).settings.digest.dailyTokenCeiling).toBe(1235);
     expect(JSON.stringify(migrateSettings({ digest: { apiKey: "sk-x" } }).settings)).not.toContain("sk-x");
   });
 });
