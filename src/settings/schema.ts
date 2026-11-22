@@ -119,6 +119,11 @@ export interface BlygSettings {
     /** The feed's order and choices, kept across restarts (ui/readerFeed.ts). `source` is a subscription id of the Studio, null for all blygs. */
     filter: { sort: "newest" | "oldest" | "shortest" | "longest"; source: string | null; unreadOnly: boolean; length: "any" | "short" | "medium" | "long"; repliesToMe: boolean };
   };
+  /**
+   * The Daily's optional AI layer (src/digest/llm.ts). Off by default; optional in data.json like `webQuote` (no schema change: an older plugin ignores it).
+   * `keySecretName` is the NAME of the keychain entry holding the provider's API key, never the key.
+   */
+  digest: { useAi: boolean; endpoint: string; model: string; keySecretName: string };
   /** Development build only (ignored by the release plugin). `allowLiveStudio`: lift the test-Studio lock (studio/devLock.ts) on the owner's say. */
   dev: { allowLiveStudio: boolean };
 }
@@ -161,6 +166,7 @@ export function defaultSettings(flavour: "release" | "dev" = "release"): BlygSet
     mentions: { repoPath: "data/mentions.json" },
     webQuote: { ...DEFAULT_WEB_QUOTE },
     readerPane: { images: "click", font: "default", contrast: "normal", shareInbox: "", filter: { sort: "newest", source: null, unreadOnly: false, length: "any", repliesToMe: false } },
+    digest: { useAi: false, endpoint: "https://api.anthropic.com", model: "claude-sonnet-5-5", keySecretName: "" },
     dev: { allowLiveStudio: false },
   };
 }

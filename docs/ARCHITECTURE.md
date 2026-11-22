@@ -237,3 +237,7 @@ v3 but the local note could not be updated — fix it by hand before republishin
 esbuild bundle to `main.js` (CommonJS, `obsidian` external), `manifest.json`, `styles.css`. GitHub Actions: lint, test,
 build on push; on tag `x.y.z`, a release with the three files attached. Install path on iOS: see
 `docs/plans/R1.3-scaffold.md` (open decision).
+
+## Daily digest, AI layer
+
+`src/digest/llm.ts` builds one Messages-API request for the Daily's clusters, behind the settings `digest.*` (off by default; key by keychain entry name). `ui/DigestReceiptModal.ts` shows the exact body before every send. Results are cached in `digest-ai.json` in the plugin folder, keyed by (cluster hash, prompt version, model), together with a trail (time, model, host, post ids, sizes). Failures leave the deterministic digest as it is.
