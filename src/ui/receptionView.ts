@@ -3,7 +3,7 @@ import { leadOf, placementNote, type ReceptionRow } from "../marginalia/receptio
 import { relativeTime } from "./readerFeed";
 
 export interface ReceptionActions {
-  /** Open the post that quotes (its page on the web); the reader has no way to be pointed at one post yet. */
+  /** Open the post that quotes, in the reader; its web page only when the reader cannot show it. */
   openPost(row: ReceptionRow): void;
 }
 

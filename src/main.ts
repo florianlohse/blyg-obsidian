@@ -85,7 +85,7 @@ export default class BlygPlugin extends Plugin {
   private lastCommit: { branch: string; sha: string; version?: number; path?: string } | null = null;
   /** What the panel shows about that commit's deploy (waiting, or the verdict). */
   private readonly deploys = createDeployMemory();
-  private readonly marginalia = createMarginalia({ app: this.app, client: () => { const b = buildStudio(this.env()); return b.ok ? b.studio.client : null; }, heldPost: (id) => this.knownPost(id), refreshPanels: () => this.refreshPanels() });
+  private readonly marginalia = createMarginalia({ app: this.app, client: () => { const b = buildStudio(this.env()); return b.ok ? b.studio.client : null; }, heldPost: (id) => this.knownPost(id), refreshPanels: () => this.refreshPanels(), openReader: () => this.openReader() });
   /** What the Studio last said about each item (30 seconds; asked again every 15 s while the panel is on screen, and at once when the app comes back to the foreground), and about the Studio as a whole (token, release): the panel never waits for them. */
   private readonly studioFacts = createLiveCache({
     load: (id: string) => runStudioFacts(this.env(), id),

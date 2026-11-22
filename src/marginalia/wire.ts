@@ -6,6 +6,8 @@ import { marginaliaExtension, type MarginaliaMarker } from "../editor/marginalia
 import { isBlygId } from "../core/ids";
 import type { StudioClient } from "../studio/client";
 import type { ReadingPost } from "../studio/reading";
+import { postFromPeekItem } from "../app/shareOpen";
+import { BLYG_READER_VIEW, BlygReaderView } from "../ui/ReaderView";
 import { sameOrigin } from "../ui/readerMentions";
 import { closePopover, showPopover, type ReceptionActions } from "../ui/receptionView";
 import { MarginaliaLookup, type SourceReader } from "./lookup";
@@ -19,6 +21,8 @@ export interface MarginaliaHost {
   /** A post the reader holds, by its id (with its Markdown while the list is live). */
   heldPost(id: string): Promise<ReadingPost | null>;
   refreshPanels(): void;
+  /** Open (or bring forward) the reader. */
+  openReader(): Promise<void>;
 }
 
 /** What the panel's Reception section draws. */
@@ -55,7 +59,31 @@ export function createMarginalia(host: MarginaliaHost): Marginalia {
     new MarginaliaLookup(read, parseQuotesOf),
   );
   store.subscribe(() => host.refreshPanels());
-  const actions: ReceptionActions = { openPost: (row) => { const url = row.mention.sourcePage; if (url && /^https?:\/\//i.test(url)) window.open(url, "_blank"); } };
+  // "Open post": in the reader (the held copy, else a peek, as the share entry does); the web page only when the reader cannot open it.
+  const openOnWeb = (url: string | null): void => { if (url && /^https?:\/\//i.test(url)) window.open(url, "_blank"); };
+  const actions: ReceptionActions = {
+    openPost: (row) => {
+      const m = row.mention;
+      void (async () => {
+        try {
+          let post = m.sourceId ? await host.heldPost(m.sourceId) : null;
+          if (post && !sameOrigin(post.origin, m.sourceOrigin)) post = null;
+          if (!post && m.sourceOrigin && m.sourceId) {
+            const peek = await host.client()?.peekItem(m.sourceOrigin, m.sourceId);
+            if (peek?.kind === "ok") post = postFromPeekItem(peek.value, m.sourceAuthorName ?? "", Date.now());
+          }
+          if (post) {
+            await host.openReader();
+            const view = host.app.workspace.getLeavesOfType(BLYG_READER_VIEW).map((l) => l.view).find((v): v is BlygReaderView => v instanceof BlygReaderView);
+            if (view) return void view.openPost(post);
+          }
+        } catch {
+          // falls through to the web page
+        }
+        openOnWeb(m.sourcePage);
+      })();
+    },
+  };
   const itemIdOf = (path: string | null): string | null => {
     const file = path === null ? null : host.app.vault.getFileByPath(path);
     const id = file ? (host.app.metadataCache.getFileCache(file)?.frontmatter?.blyg_id as unknown) : null;
