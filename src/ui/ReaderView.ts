@@ -745,7 +745,7 @@ export class BlygReaderView extends ItemView {
    * Open a post from the feed (or the next one): the page state starts afresh, the post starts at its top. `via`: "quote" follows a quote to its source
    * (the post you leave is kept for Back), "back" is that Back; anything else starts a fresh trail.
    */
-  private openPost(p: ReadingPost, via: "feed" | "quote" | "back" | "step" = "feed"): void {
+  openPost(p: ReadingPost, via: "feed" | "quote" | "back" | "step" = "feed"): void {
     if (this.shown === null) this.feedScroll = this.scrollEl?.scrollTop ?? 0;
     if (via === "quote" && this.shown) this.trail.push(this.shown);
     else if (via === "feed" || via === "step") this.trail = [];
