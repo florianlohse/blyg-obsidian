@@ -15,6 +15,7 @@ import { changedCount, chooseWalk, keepOwnPosts, knownOf, mergeFresh, READER_KEE
 import type { StudioListedItem } from "../studio/types";
 import { bottomClearance } from "./readerBottom";
 import { hostOf, limiter, mentionBadge, postOfMention, visibleMentions } from "./readerMentions";
+import { drawFollowedButton, drawFollowNote, type FollowHost } from "./readerFollow";
 
 export const BLYG_READER_VIEW = "blyg-reader";
 
@@ -44,7 +45,7 @@ export interface ChangeMarks {
   subscriptions: number;
 }
 
-export interface ReaderHost {
+export interface ReaderHost extends FollowHost {
   /** The plugin's own version, shown at the foot of the feed so you can tell which build a device runs. */
   version: string;
   /** Load the stream and the mentions, or say in words why not. */
@@ -65,7 +66,6 @@ export interface ReaderHost {
   resyncBlyg(post: ReadingPost): Promise<ReadResult>;
   /** Hide a mention in the Studio (it is hidden there too, for every client). Needs the token permission `owner:manage`; the message says so when it is missing. */
   hideMention(m: InboundMention): Promise<ReadResult>;
-  /** Mark this version read, or unread again. Needs the token permission `reading:state`; the message says so when it is missing. */
   /** The text of what a mention is about, as a post to open: from the list when the Studio reads that blyg, else a peek at it. Null when it cannot be had. */
   mentionPost(m: InboundMention, posts: ReadingPost[]): Promise<ReadingPost | null>;
   /** A short excerpt of the owner's own item that was mentioned; null when it cannot be had. */
@@ -78,7 +78,7 @@ export interface ReaderHost {
   myItems(): Promise<StudioListedItem[]>;
   /** Open the note of one of the owner's items in Obsidian; false when no note of this vault holds it. */
   openOwnItem(itemId: string): Promise<boolean>;
-  markRead(post: ReadingPost): Promise<ReadResult>;
+  markRead(post: ReadingPost): Promise<ReadResult>; // needs the token permission `reading:state`; the message says so when it is missing
   markUnread(post: ReadingPost): Promise<ReadResult>;
   /** The owner's choices (settings): how a post opens, and what happens to images in the text view. */
   imageMode(): ImageMode;
@@ -105,7 +105,6 @@ export function excerptOf(html: string, max = 140): string {
   const text = plainText(html);
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
-
 
 const keyOf = (p: ReadingPost): string => `${p.subscriptionId}/${p.remoteId}`;
 /** Cards built at first, and added each time the end of the feed comes near. */
@@ -869,6 +868,7 @@ export class BlygReaderView extends ItemView {
     this.addIcon(refresh, "refresh-cw");
     refresh.disabled = this.busyCount > 0;
     this.refreshEl = refresh;
+    drawFollowedButton(bar, this.host);
     bar.createSpan({ cls: "blyg-reader-version", text: `v${this.host.version}`, attr: { title: "Version of the Blyg plugin on this device" } });
     if (!canFilter || !this.filtersOpen || !this.data) return;
 
@@ -980,6 +980,7 @@ export class BlygReaderView extends ItemView {
       note.createSpan({ text: "Your Studio has not fetched this post yet, so it cannot be replied to or marked read. " });
       this.button(note, "Ask Studio to fetch", () => this.askToFetch(p), { title: "Ask your Studio to fetch this blyg now" });
     }
+    drawFollowNote(h, p, this.host);
   }
 
   /** The read mark, the same on a card and in an open post: a ring while unread, a green check once read; a tap changes it. */
@@ -1036,10 +1037,7 @@ export class BlygReaderView extends ItemView {
 
   private drawStream(col: HTMLElement, posts: ReadingPost[]): void {
     this.cardEls.clear();
-    if (posts.length === 0) {
-      col.createDiv({ cls: "blyg-reader-note", text: "Nothing to read yet. Subscribe to a blyg in your Studio." });
-      return;
-    }
+    if (posts.length === 0) return void col.createDiv({ cls: "blyg-reader-note", text: "Nothing to read yet. Follow a blyg with the Following button." });
     const shown = arrange(posts, this.filter, this.mineIds);
     if (shown.length === 0) {
       const restricted = this.filter.source !== null || this.filter.unreadOnly || this.filter.length !== "any" || this.filter.repliesToMe;

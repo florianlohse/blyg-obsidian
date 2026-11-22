@@ -1,6 +1,6 @@
 import { debounce, MarkdownView, moment, normalizePath, Notice, Plugin, type Editor, type TAbstractFile, type TFile, type WorkspaceLeaf } from "obsidian";
 import { activeBranch, activeChannel, describeTarget } from "./app/publishSettings";
-import { buildImportDeps, runStudioLookup, runStudioReplyTarget, runStudioHoppers, runTakeHoppers, runDeleteDraft, runFetchQuotable, runPublish, runPull, runRepost, runStudioFacts, runStudioQuotable, runStudioSearch, runStudioWarnings, runWithdraw, type AppEnv } from "./app/run";
+import { buildImportDeps, runStudioLookup, runStudioReplyTarget, runStudioHoppers, runTakeHoppers, runDeleteDraft, runFetchQuotable, runPublish, runPull, runRepost, runStudioFacts, runStudioQuotable, runStudioSearch, runStudioWarnings, runWithdraw, type AppEnv, buildStudio } from "./app/run";
 import { watchCommit } from "./app/deploy";
 import { adoptOldInstall, isPluginEnabled, OLD_PLUGIN_ID } from "./app/adoptOldInstall";
 import { loadPanelState, type PanelState } from "./app/panelState";
@@ -52,8 +52,8 @@ import { drawPreview, type PreviewDeps } from "./ui/replyPreview";
 import { limiter, postFromPeek, postOfMention } from "./ui/readerMentions";
 import { parseReaderCache, readerCacheOf } from "./ui/readerCache";
 import { BLYG_READER_VIEW, BlygReaderView, excerptOf, type ReaderHost, type ReadResult } from "./ui/ReaderView";
-import { buildStudio } from "./app/run";
 import { createReaderService } from "./app/readerService";
+import { createFollowHost } from "./app/followHost";
 import type { InboundMention, ReadingPost } from "./studio/reading";
 import { confirmWithModal } from "./ui/WritePreviewModal";
 import { chooseImports } from "./ui/ImportModal";
@@ -1014,7 +1014,7 @@ export default class BlygPlugin extends Plugin {
 
   private readerHost(): ReaderHost {
     return {
-      version: this.manifest.version,
+      version: this.manifest.version, ...createFollowHost({ app: this.app, build: () => buildStudio(this.env()) }),
       imageMode: () => this.settings.readerPane.images,
       font: () => this.settings.readerPane.font,
       setFont: async (font) => {
