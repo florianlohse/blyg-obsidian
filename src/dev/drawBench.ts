@@ -7,6 +7,8 @@ import { isDevBuildId } from "../studio/devLock";
 import type { ReadingPost } from "../studio/reading";
 import { cardOf, readingTimeLabel, relativeTime } from "../ui/readerFeed";
 import { syntheticPosts } from "./syntheticPosts";
+import { registerAuthorStyleCommand } from "./authorStyle";
+import type { ReaderContrast } from "../ui/readerLook";
 
 /** The list sizes offered: 1000 and 5000 are the ones asked for; the others give a slope. */
 export const BENCH_SIZES = [200, 1000, 3000, 5000, 10000] as const;
@@ -122,7 +124,8 @@ class SizePicker extends FuzzySuggestModal<number> {
 }
 
 /** Adds the timing command in a development build; nothing in any other. */
-export function registerDevCommands(plugin: Plugin): void {
+export function registerDevCommands(plugin: Plugin, level: () => ReaderContrast = () => "normal"): void {
   if (!isDevBuildId(plugin.manifest.id)) return;
+  registerAuthorStyleCommand(plugin, level);
   plugin.addCommand({ id: "dev-draw-synthetic-posts", name: "Reader: draw synthetic posts (timing)", callback: () => new SizePicker(plugin.app).open() });
 }

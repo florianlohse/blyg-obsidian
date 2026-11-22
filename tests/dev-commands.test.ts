@@ -13,7 +13,7 @@ describe("the development build's timing command", () => {
   it("is registered in the development build only", () => {
     const dev = plugin("blyg-dev");
     registerDevCommands(dev.p);
-    expect(dev.commands.map((c) => c.id)).toEqual(["dev-draw-synthetic-posts"]);
+    expect(dev.commands.map((c) => c.id)).toEqual(["dev-author-look", "dev-draw-synthetic-posts"]);
     const release = plugin("blyg");
     registerDevCommands(release.p);
     expect(release.commands).toEqual([]);
