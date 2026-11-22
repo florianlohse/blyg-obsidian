@@ -43,10 +43,20 @@ export interface Marginalia {
 }
 
 export function createMarginalia(host: MarginaliaHost): Marginalia {
+  // The Markdown of a source post: the reader's held copy; else the Studio's imported-item read (a peek says which subscription holds the blyg).
+  // A blyg the Studio does not import, a withdrawn post or a failed read is null: the lookup then says "unknown", never "no quotes".
   const read: SourceReader = async (m) => {
     const post = m.sourceId ? await host.heldPost(m.sourceId) : null;
-    if (!post || !sameOrigin(post.origin, m.sourceOrigin)) return null;
-    return { version: post.version, markdown: post.contentMd.trim() === "" ? null : post.contentMd, withdrawn: post.withdrawn };
+    if (post && sameOrigin(post.origin, m.sourceOrigin) && post.contentMd.trim() !== "") return { version: post.version, markdown: post.contentMd, withdrawn: post.withdrawn };
+    const client = host.client();
+    if (!client || !m.sourceOrigin || !m.sourceId) return null;
+    const peek = await client.peekItem(m.sourceOrigin, m.sourceId);
+    if (peek.kind !== "ok") return null;
+    if (peek.value.kind === "withdrawn") return { version: peek.value.version, markdown: null, withdrawn: true };
+    if (peek.value.subscriptionId === null) return null;
+    const got = await client.getImported(peek.value.subscriptionId, m.sourceId);
+    if (got.kind !== "ok") return null;
+    return { version: got.value.version, markdown: got.value.contentMd?.trim() ? got.value.contentMd : null, withdrawn: got.value.state === "tombstone" };
   };
   const store = new ReceptionStore(
     {

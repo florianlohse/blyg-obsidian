@@ -187,7 +187,7 @@ describe("studio client", () => {
   it("reads an imported item, and says not-found for one it does not hold", async () => {
     const { client, studio } = setup();
     studio.importItem({ remote_id: "095s4h48j67mnbf6hq8vatc2d4", content_md: "Imported words.", version: 3 });
-    expect(await client.getImported("sub1", "095s4h48j67mnbf6hq8vatc2d4")).toEqual({ kind: "ok", value: { id: "095s4h48j67mnbf6hq8vatc2d4", kind: "fragment", version: 3, state: "current", contentHtml: "<p>Imported words.</p>\n" } });
+    expect(await client.getImported("sub1", "095s4h48j67mnbf6hq8vatc2d4")).toEqual({ kind: "ok", value: { id: "095s4h48j67mnbf6hq8vatc2d4", kind: "fragment", version: 3, state: "current", contentHtml: "<p>Imported words.</p>\n", contentMd: "Imported words." } });
     expect(await client.getImported("sub1", "a0000000000000000000000099")).toEqual({ kind: "not-found" });
     studio.forced.set("GET /api/imports/sub1/x", { status: 200, text: '{"version":"3"}' });
     expect(await client.getImported("sub1", "x")).toMatchObject({ kind: "error" });

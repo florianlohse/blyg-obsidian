@@ -51,7 +51,7 @@ describe("buildReception", () => {
     expect(rows.map((r) => r.placement.kind)).toEqual(["whole", "earlier", "unknown"]);
     expect(markersOf(rows).size).toBe(0);
     expect(placementNote(rows[1]!.placement)).toBe("from an earlier version");
-    expect(placementNote(rows[2]!.placement)).toBe("what it quotes could not be read");
+    expect(placementNote(rows[2]!.placement)).toBe("the Studio does not hold this post, so what it quotes cannot be read");
   });
   it("two quotes by one post are two rows; two posts in one paragraph share one marker", () => {
     const rows = buildReception([entry(m({ id: "a" }), [{ kind: "passage", text: "First paragraph about gardens." }, { kind: "passage", text: "Last one." }]), entry(m({ id: "b" }), [{ kind: "passage", text: "first paragraph about gardens" }])], ps);

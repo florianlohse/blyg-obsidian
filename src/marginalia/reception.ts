@@ -149,6 +149,6 @@ export function placementNote(p: Placement): string | null {
     case "paragraph": return null;
     case "whole": return "the whole post";
     case "earlier": return "from an earlier version";
-    case "unknown": return p.reason === "over-cap" ? "not looked up yet" : "what it quotes could not be read";
+    case "unknown": return p.reason === "over-cap" ? "not looked up yet" : p.reason === "unreadable" ? "the Studio does not hold this post, so what it quotes cannot be read" : "what it quotes could not be read";
   }
 }
