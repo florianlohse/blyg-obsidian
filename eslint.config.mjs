@@ -27,7 +27,7 @@ const htmlSinks = [
   },
 ];
 export default defineConfig([
-  globalIgnores(["main.js", "node_modules/**", "coverage/**", "docs/**", "reference/**", "*.json", "scripts/**", "tests/e2e/obsidian/**", "dist/**", "src/studio/api-types.ts"]),
+  globalIgnores(["main.js", "node_modules/**", "coverage/**", "docs/**", "reference/**", "*.json", "scripts/**", "tests/e2e/obsidian/**", "dist/**", "src/studio/api-types.ts", "src/studio/api-types-contract6.ts"]),
   ...obsidianmd.configs.recommended,
   {
     languageOptions: {

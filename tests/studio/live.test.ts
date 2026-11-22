@@ -114,24 +114,25 @@ describe("warnings about the whole Studio", () => {
       return loadStudioWarnings(client, tok, clock);
     };
     // (b) a newer minor is not a warning: it is a muted note
-    expect(await withContract("5.9.0")).toEqual([]);
-    expect(await withContract("5.5.0")).toEqual([]);
-    for (const tested of ["5.2.0", "5.3.0", "5.4.0"]) expect(await withContract(tested), tested).toEqual([]);
+    expect(await withContract("5.15.0")).toEqual([]);
+    expect(await withContract("6.3.0")).toEqual([]);
+    for (const tested of ["5.2.0", "5.3.0", "5.4.0", "5.14.0", "6.0.0", "6.2.0"]) expect(await withContract(tested), tested).toEqual([]);
     expect(await withContract("4.1.0")).toEqual([expect.stringMatching(/older API.*0\.51\.0/)]);
     expect(await withContract(null)).toEqual([expect.stringMatching(/older API/)]);
-    expect(await withContract("6.0.0")).toEqual([expect.stringMatching(/Update the plugin/)]);
+    expect(await withContract("7.0.0")).toEqual([expect.stringMatching(/Update the plugin/)]);
     expect(await warn(tok, "someone-else/1.0")).toEqual([expect.stringMatching(/does not announce a Blygger Studio/)]);
   });
-  it("a newer minor contract is a note, never a warning; same or older minor says nothing; a newer major is refused", async () => {
+  it("a newer minor contract is a note, never a warning; same or older minor says nothing; a major the plugin has not seen is refused", async () => {
     const tok = makeToken({ expSeconds: FAR_FUTURE });
     const notices = async (contractVersion: string) => {
       const { studio, client } = setup();
       studio.contractVersion = contractVersion;
       return loadStudioNotices(client, tok, clock);
     };
-    expect(await notices("5.5.0")).toEqual({ warnings: [], notes: [expect.stringMatching(/Studio API 5\.5\.0 is newer than the 5\.4 this plugin was tested with\. Newer minor versions only add things and are accepted/)] });
-    for (const v of ["5.4.0", "5.3.0", "5.2.0"]) expect(await notices(v), v).toEqual({ warnings: [], notes: [] });
-    const major = await notices("6.0.0");
+    expect(await notices("5.15.0")).toEqual({ warnings: [], notes: [expect.stringMatching(/Studio API 5\.15\.0 is newer than the 5\.14 this plugin was tested with\. Newer minor versions only add things and are accepted/)] });
+    expect(await notices("6.3.0")).toEqual({ warnings: [], notes: [expect.stringMatching(/Studio API 6\.3\.0 is newer than the 6\.2 this/)] });
+    for (const v of ["6.2.0", "6.0.0", "5.14.0", "5.4.0", "5.3.0", "5.2.0"]) expect(await notices(v), v).toEqual({ warnings: [], notes: [] });
+    const major = await notices("7.0.0");
     expect(major.notes).toEqual([]);
     expect(major.warnings).toEqual([expect.stringMatching(/Update the plugin/)]);
   });

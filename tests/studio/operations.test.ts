@@ -1,7 +1,8 @@
 // The operation-level test of S16 (docs/plans/S16-contract-5.md §3.5): for every operation the client calls, each request it builds
-// (body with `additionalProperties: false`, query names, path) is valid against the Studio 0.51.0 OpenAPI file, and each answer the fake Studio
+// (body with `additionalProperties: false`, query names, path) is valid against the Studio's OpenAPI file, and each answer the fake Studio
 // gives is valid against that operation's response schema. This is what would have caught the contract-5 break before any user did.
-// Validation runs on the real client driving the fake over its real http adapter.
+// Validation runs on the real client driving the fake over its real http adapter. Since E1 it runs twice: against the 0.51.0 file with the fake
+// speaking contract 5.2.0, and against the 0.69.0 file with the fake speaking 6.2.0 (no `GET /changes`, `background` on subscriptions).
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import Ajv2020 from "ajv/dist/2020";
@@ -18,57 +19,67 @@ interface Operation {
   requestBody?: { content: { "application/json": { schema: unknown } } };
   responses: Record<string, { content?: { "application/json": { schema: unknown } } }>;
 }
-const spec = JSON.parse(readFileSync(new URL("../fixtures/studio-openapi-0.51.0.json", import.meta.url), "utf8")) as { paths: Record<string, Record<string, Operation>> };
+interface Spec {
+  paths: Record<string, Record<string, Operation>>;
+}
 
-const ajv = new Ajv2020({ strict: false, allErrors: true, validateFormats: true });
-addFormats(ajv);
-ajv.addSchema(spec, "studio");
-const pointer = (parts: string[]): string => `studio#/${parts.map((p) => p.replace(/~/g, "~0").replace(/\//g, "~1")).join("/")}`;
+/** Everything that checks a request or an answer against one vendored OpenAPI file. */
+function checkerFor(file: string) {
+  const spec = JSON.parse(readFileSync(new URL(`../fixtures/${file}`, import.meta.url), "utf8")) as Spec;
 
-/** The operation (path template and method) a request belongs to, by matching its path against the file's templates. */
-function operationOf(seen: Seen): { template: string; op: Operation } | null {
-  const path = seen.path.split("?")[0]?.replace(/^\/api/, "") ?? "";
-  // literal templates win over templated ones ("/items/summary" before "/items/{id}")
-  const templates = Object.keys(spec.paths).sort((a, b) => (a.includes("{") ? 1 : 0) - (b.includes("{") ? 1 : 0) || b.length - a.length);
-  for (const template of templates) {
-    const re = new RegExp(`^${template.replace(/[.*+?^$()|[\]\\]/g, "\\$&").replace(/\{[^}]+\}/g, "[^/]+")}$`);
-    const op = spec.paths[template]?.[seen.method.toLowerCase()];
-    if (re.test(path) && op) return { template, op };
+  const ajv = new Ajv2020({ strict: false, allErrors: true, validateFormats: true });
+  addFormats(ajv);
+  ajv.addSchema(spec, "studio");
+  const pointer = (parts: string[]): string => `studio#/${parts.map((p) => p.replace(/~/g, "~0").replace(/\//g, "~1")).join("/")}`;
+
+  /** The operation (path template and method) a request belongs to, by matching its path against the file's templates. */
+  function operationOf(seen: Seen): { template: string; op: Operation } | null {
+    const path = seen.path.split("?")[0]?.replace(/^\/api/, "") ?? "";
+    // literal templates win over templated ones ("/items/summary" before "/items/{id}")
+    const templates = Object.keys(spec.paths).sort((a, b) => (a.includes("{") ? 1 : 0) - (b.includes("{") ? 1 : 0) || b.length - a.length);
+    for (const template of templates) {
+      const re = new RegExp(`^${template.replace(/[.*+?^$()|[\]\\]/g, "\\$&").replace(/\{[^}]+\}/g, "[^/]+")}$`);
+      const op = spec.paths[template]?.[seen.method.toLowerCase()];
+      if (re.test(path) && op) return { template, op };
+    }
+    return null;
   }
-  return null;
+
+  function validate(ref: string, value: unknown): string[] {
+    const fn = ajv.getSchema(ref);
+    if (!fn) throw new Error(`no schema at ${ref}`);
+    return fn(value) ? [] : (fn.errors ?? []).map((e) => `${e.instancePath || "/"} ${e.message ?? ""} ${JSON.stringify(e.params)}`);
+  }
+
+  function checkSeen(seen: Seen): { key: string; problems: string[] } {
+    const found = operationOf(seen);
+    const key = `${seen.method} ${seen.path.split("?")[0]}`;
+    if (!found) return { key, problems: ["no such operation in the 0.51.0 file"] };
+    const problems: string[] = [];
+    const { template, op } = found;
+    const method = seen.method.toLowerCase();
+    // request body
+    if (op.requestBody) {
+      if (seen.body === undefined) problems.push("the operation needs a body and none was sent");
+      else problems.push(...validate(pointer(["paths", template, method, "requestBody", "content", "application/json", "schema"]), seen.body).map((p) => `request body: ${p}`));
+    } else if (seen.body !== undefined) problems.push("a body was sent to an operation that takes none");
+    // query names
+    const declared = new Set((op.parameters ?? []).map((p) => (p.$ref ? p.$ref : p.name)));
+    for (const name of new URL(seen.path, "https://x.test").searchParams.keys()) if (!declared.has(name)) problems.push(`query parameter ${name} is not declared`);
+    // answer
+    const status = String(seen.status);
+    const schema = op.responses[status]?.content?.["application/json"]?.schema;
+    if (schema === undefined) problems.push(`status ${status} is not a documented JSON answer`);
+    else problems.push(...validate(pointer(["paths", template, method, "responses", status, "content", "application/json", "schema"]), seen.answer).map((p) => `answer ${status}: ${p}`));
+    return { key, problems };
+  }
+
+  return { spec, validate, pointer, operationOf, checkSeen };
 }
 
-function validate(ref: string, value: unknown): string[] {
-  const fn = ajv.getSchema(ref);
-  if (!fn) throw new Error(`no schema at ${ref}`);
-  return fn(value) ? [] : (fn.errors ?? []).map((e) => `${e.instancePath || "/"} ${e.message ?? ""} ${JSON.stringify(e.params)}`);
-}
-
-function checkSeen(seen: Seen): { key: string; problems: string[] } {
-  const found = operationOf(seen);
-  const key = `${seen.method} ${seen.path.split("?")[0]}`;
-  if (!found) return { key, problems: ["no such operation in the 0.51.0 file"] };
-  const problems: string[] = [];
-  const { template, op } = found;
-  const method = seen.method.toLowerCase();
-  // request body
-  if (op.requestBody) {
-    if (seen.body === undefined) problems.push("the operation needs a body and none was sent");
-    else problems.push(...validate(pointer(["paths", template, method, "requestBody", "content", "application/json", "schema"]), seen.body).map((p) => `request body: ${p}`));
-  } else if (seen.body !== undefined) problems.push("a body was sent to an operation that takes none");
-  // query names
-  const declared = new Set((op.parameters ?? []).map((p) => (p.$ref ? p.$ref : p.name)));
-  for (const name of new URL(seen.path, "https://x.test").searchParams.keys()) if (!declared.has(name)) problems.push(`query parameter ${name} is not declared`);
-  // answer
-  const status = String(seen.status);
-  const schema = op.responses[status]?.content?.["application/json"]?.schema;
-  if (schema === undefined) problems.push(`status ${status} is not a documented JSON answer`);
-  else problems.push(...validate(pointer(["paths", template, method, "responses", status, "content", "application/json", "schema"]), seen.answer).map((p) => `answer ${status}: ${p}`));
-  return { key, problems };
-}
-
-function setup() {
+function setup(contractVersion = "5.2.0") {
   const studio = new FakeStudio();
+  studio.contractVersion = contractVersion;
   const address = studioAddress({ baseUrl: STUDIO_HOST, mount: "" });
   if (!address) throw new Error("address");
   const client = createStudioClient({ http: createStudioHttp({ transport: studio.transport, timers: idleTimers, address }), token: STUDIO_TOKEN });
@@ -76,13 +87,25 @@ function setup() {
 }
 
 describe("the fixtures", () => {
+  it("studio-openapi-0.69.0.json is the unmodified release asset of Studio 0.69.0 (contract 6.2.0; its SHA256SUMS line)", () => {
+    const text = readFileSync(new URL("../fixtures/studio-openapi-0.69.0.json", import.meta.url));
+    expect(createHash("sha256").update(text).digest("hex")).toBe("b5d8e504fcb6e44da50138ee875eb21765cae18f147478edb88c13ba1e5aae17");
+    expect(checkerFor("studio-openapi-0.69.0.json").spec.paths["/changes"]).toBeUndefined();
+    expect(checkerFor("studio-openapi-0.51.0.json").spec.paths["/changes"]).toBeDefined();
+  });
   it("studio-openapi-0.49.1.json stays as the documented last contract-4 file (release SHA256SUMS)", () => {
     const text = readFileSync(new URL("../fixtures/studio-openapi-0.49.1.json", import.meta.url));
     expect(createHash("sha256").update(text).digest("hex")).toBe("2ec3063fa9f578a2112293680d431727b5377f0905faa6139b7f0f1b04fb33d1");
   });
 });
 
-describe("every operation the client calls, against the Studio 0.51.0 file", () => {
+const CONTRACTS = [
+  { label: "Studio 0.51.0 file, contract 5.2.0", file: "studio-openapi-0.51.0.json", contractVersion: "5.2.0", changes: true },
+  { label: "Studio 0.69.0 file, contract 6.2.0", file: "studio-openapi-0.69.0.json", contractVersion: "6.2.0", changes: false },
+];
+
+describe.each(CONTRACTS)("every operation the client calls, against the $label", ({ file, contractVersion, changes }) => {
+  const { validate, pointer, operationOf, checkSeen } = checkerFor(file);
   // The client's whole surface, in one scenario against the fake. The list below is what the plugin calls (method, path template).
   const CALLS: Array<[string, string]> = [
     ["GET", "/capabilities"],
@@ -109,10 +132,12 @@ describe("every operation the client calls, against the Studio 0.51.0 file", () 
     ["POST", "/subscriptions"],
     ["PATCH", "/subscriptions/{id}"],
     ["DELETE", "/subscriptions/{id}"],
+    // contract 5 only: the reader's change counters (contract 6 removed them; the client then asks nothing, see below)
+    ...(changes ? [["GET", "/changes"] as [string, string]] : []),
   ];
 
   it("each request validates, each answer validates, and the scenario touches every operation in the list", async () => {
-    const { studio, client } = setup();
+    const { studio, client } = setup(contractVersion);
     studio.manage = true;
     const remote = "095s4h48j67mnbf6hq8vatc2d4";
     studio.importItem({ remote_id: remote, content_md: "Theirs.", origin: "https://blog-b.test/" });
@@ -120,6 +145,9 @@ describe("every operation the client calls, against the Studio 0.51.0 file", () 
     const hopper = studio.addHopper("Reading");
 
     await client.capabilities();
+    // The reader's freshness check: asks `GET /changes` only of a Studio that lists the operation.
+    const counters = await client.changes();
+    expect(counters.kind === "ok" && (counters.value !== null) === changes).toBe(true);
     const frag = await client.createItem({ kind: "fragment", contentMd: "Hello." });
     const id = frag.kind === "ok" ? frag.value.id : "";
     const thread = await client.createItem({ kind: "thread", contentMd: `![[${remote}]]`, stubOf: { origin: "https://blog-b.test/", id: remote, version: 1 } });
@@ -176,7 +204,7 @@ describe("every operation the client calls, against the Studio 0.51.0 file", () 
   });
 
   it("the walks use a cursor and never an offset, and a cursor-expired answer is a documented ApiError", async () => {
-    const { studio, client } = setup();
+    const { studio, client } = setup(contractVersion);
     for (let i = 0; i < 120; i++) studio.seed({ content_md: `n${i}` });
     studio.onNext("GET", /^\/api\/items$/, () => undefined);
     studio.onNext("GET", /^\/api\/items$/, () => void studio.seed({ content_md: "mid-walk" }));

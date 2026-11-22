@@ -75,7 +75,7 @@ export async function checkStudioConnection(
       lines.push({ level: "error", text: describe(caps) });
       return { ok: false, lines };
     }
-    const contract = contractVerdict(caps.value.contractVersion);
+    const contract = contractVerdict(caps.value.contractVersion, caps.value.operations);
     deps.gate?.set(contract);
     if (contract.kind === "ok") {
       lines.push({ level: "ok", text: `${studioName}, contract ${contract.contract}: the API this plugin speaks.` });

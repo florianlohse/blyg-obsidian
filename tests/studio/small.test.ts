@@ -3,6 +3,7 @@ import { studioAddress, studioBaseProblem, studioItemUrl, studioMountProblem } f
 import { expiryVerdict, tokenExpiry, tokenScopes } from "../../src/studio/jwt";
 import { createPendingDrafts, MAX_PENDING, readPending, withPending, type PendingDraft } from "../../src/studio/pending";
 import { readStudioRecord, sameOrigin } from "../../src/studio/record";
+import { OPERATION, offers } from "../../src/studio/capabilities";
 import { CONTRACT_TEXT, contractVerdict, MIN_STUDIO_VERSION, studioVersionVerdict } from "../../src/studio/version";
 import { makeToken } from "./fake-studio";
 
@@ -67,12 +68,25 @@ describe("the manifest's generator", () => {
 });
 
 describe("the contract gate's verdict (contractVersion, not the release number)", () => {
-  it("supports major 5; the tested minors (5.2 to 5.4: Studio 0.51.0 to 0.53.0) give no notice, a higher minor is accepted and flagged", () => {
-    for (const v of ["5.1.0", "5.2.0", "5.3.0", "5.3.1", "5.4.0", "5.4.9"]) expect(contractVerdict(v), v).toEqual({ kind: "ok", contract: v, newerMinor: false });
-    expect(contractVerdict("5.5.0")).toEqual({ kind: "ok", contract: "5.5.0", newerMinor: true });
-    expect(contractVerdict("5.12.0")).toEqual({ kind: "ok", contract: "5.12.0", newerMinor: true });
-    expect(CONTRACT_TEXT).toBe("5.4");
+  it("supports majors 5 and 6; the tested minors (5.x up to 5.14, 6.x up to 6.2) give no notice, a higher minor is accepted and flagged", () => {
+    for (const v of ["5.1.0", "5.2.0", "5.4.9", "5.11.0", "5.14.0", "5.14.3"]) expect(contractVerdict(v), v).toEqual({ kind: "ok", contract: v, major: 5, newerMinor: false, operations: null });
+    for (const v of ["6.0.0", "6.1.0", "6.2.0", "6.2.7"]) expect(contractVerdict(v), v).toEqual({ kind: "ok", contract: v, major: 6, newerMinor: false, operations: null });
+    expect(contractVerdict("5.15.0")).toEqual({ kind: "ok", contract: "5.15.0", major: 5, newerMinor: true, operations: null });
+    expect(contractVerdict("6.3.0")).toEqual({ kind: "ok", contract: "6.3.0", major: 6, newerMinor: true, operations: null });
+    expect(CONTRACT_TEXT).toBe("6.2");
     expect(MIN_STUDIO_VERSION).toBe("0.51.0");
+  });
+  it("carries the operations the Studio listed, which are what tell contract 5 from 6 (not the version)", () => {
+    const five = contractVerdict("5.2.0", ["getCapabilities", "getChanges"]);
+    const six = contractVerdict("6.2.0", ["getCapabilities"]);
+    expect(offers(five, OPERATION.changes)).toBe(true);
+    expect(offers(six, OPERATION.changes)).toBe(false);
+    // a Studio that announces 6.x but lists the operation is believed (the list decides), and a 5.x that lists nothing is not assumed to have it
+    expect(offers(contractVerdict("6.9.0", ["getChanges"]), OPERATION.changes)).toBe(true);
+    expect(offers(contractVerdict("5.14.0", []), OPERATION.changes)).toBe(false);
+    expect(offers(contractVerdict("5.14.0"), OPERATION.changes)).toBe(false);
+    expect(offers(contractVerdict("4.0.0", ["getChanges"]), OPERATION.changes)).toBe(false);
+    expect(offers(undefined, OPERATION.changes)).toBe(false);
   });
   it("a lower major still refuses, whatever its minor", () => {
     expect(contractVerdict("4.99.0")).toEqual({ kind: "studio-older", contract: "4.99.0" });
@@ -81,8 +95,9 @@ describe("the contract gate's verdict (contractVersion, not the release number)"
     expect(contractVerdict("4.9.0")).toEqual({ kind: "studio-older", contract: "4.9.0" });
     for (const bad of [null, "", "5", "5.2", "five", "5.2.0-rc1", "v5.2.0"]) expect(contractVerdict(bad)).toEqual({ kind: "studio-older", contract: null });
   });
-  it("a newer major means the plugin is older", () => {
-    expect(contractVerdict("6.0.0")).toEqual({ kind: "plugin-older", contract: "6.0.0" });
+  it("a major the plugin has not seen (7 and up) means the plugin is older", () => {
+    expect(contractVerdict("7.0.0")).toEqual({ kind: "plugin-older", contract: "7.0.0" });
+    expect(contractVerdict("12.1.0")).toEqual({ kind: "plugin-older", contract: "12.1.0" });
   });
 });
 
