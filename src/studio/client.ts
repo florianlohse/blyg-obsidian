@@ -7,6 +7,7 @@ import { readWireStub, stubForWire, type StubTarget } from "./stub";
 import type { StudioHttp, StudioResponse } from "./http";
 import type { StudioCapabilities, StudioCommandDone, StudioFailure, StudioHit, StudioImported, StudioHopper, StudioItem, StudioItemKind, StudioListedItem, StudioManifest, StudioMediaDone, StudioPeek, StudioPreview, StudioProblem, StudioResolvedQuote, StudioResult, StudioSubscription } from "./types";
 import { contractVerdict, incompatibleMessage, type ContractVerdict } from "./version";
+import { readFollowed, readProposal, type StudioFollowAnswer, type StudioFollowed } from "./subscriptions";
 import { readInboundMention, readOwnReadingEntry, readReadingPost, type InboundMention, type ReadingPost } from "./reading";
 
 /** What the gate remembers about a Studio's contract (per plugin session, so a publish does not ask every time); "Check connection" asks again. */
@@ -62,6 +63,14 @@ export interface StudioClient {
   peekItem(origin: string, id: string): Promise<StudioResult<StudioPeek>>;
   /** A subscription (whose blyg it is, and its title). Needs `owner:read`. */
   getSubscription(id: string): Promise<StudioResult<StudioSubscription>>;
+  /** Every blyg the Studio follows (`GET /subscriptions`, `owner:read`); `complete` is false when the walk stopped at its page cap with more to read. */
+  listSubscriptions(): Promise<StudioResult<{ subscriptions: StudioFollowed[]; complete: boolean }>>;
+  /** Follow a blyg by address (`POST /subscriptions`, `owner:manage`). Without `confirm` the Studio only proposes (`state: "proposal"`, nothing is created); with `confirm: true` it creates the subscription and starts importing. Already followed: `rejected`, status 409. */
+  createSubscription(url: string, opts?: { confirm?: boolean; title?: string; wholeBlyg?: boolean }): Promise<StudioResult<StudioFollowAnswer>>;
+  /** Give a subscription a name of your own, or `null` to hand the name back to its source (`PATCH /subscriptions/{id}`, `owner:manage`). */
+  updateSubscription(id: string, patch: { title: string | null }): Promise<StudioResult<StudioFollowed>>;
+  /** Stop following (`DELETE /subscriptions/{id}`, `owner:manage`). The Studio drops that blyg's imported posts with their hopper memberships, signals and read state; see UNFOLLOW_EFFECT. */
+  deleteSubscription(id: string): Promise<StudioResult<{ ok: true }>>;
   /** The owner's hoppers, oldest first (roadmap S13). Needs `owner:read`. */
   listHoppers(): Promise<StudioResult<StudioHopper[]>>;
   /** The ids of the owner's own items in one hopper (rows of `GET /hoppers/{id}/memberships` under `~own`); `complete` is false when the walk stopped at its page cap with more to read. Needs `owner:read`. */
@@ -152,6 +161,8 @@ const ITEM_PAGE = 100;
 const ITEM_PAGES = 50;
 const HOPPER_PAGE = 100;
 const HOPPER_PAGES = 10;
+const SUBSCRIPTION_PAGE = 100;
+const SUBSCRIPTION_PAGES = 10;
 /** The Studio's name for the owner's own items in a hopper (upstream `OWN_SUBSCRIPTION`). */
 const OWN = "~own";
 const MENTION_PAGES = 5;
@@ -464,6 +475,41 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
       return { kind: "ok", value: { id: j.id, kind: j.kind === "rss" ? "rss" : "blyg", origin: j.origin, title: str(j.title) ?? "" } };
     },
 
+    listSubscriptions: async (): Promise<StudioResult<{ subscriptions: StudioFollowed[]; complete: boolean }>> => {
+      const walked = await walk("/subscriptions", {}, SUBSCRIPTION_PAGE, SUBSCRIPTION_PAGES, readFollowed);
+      if (walked.kind !== "ok") return walked;
+      return { kind: "ok", value: { subscriptions: walked.value.rows, complete: walked.value.complete } };
+    },
+
+    createSubscription: async (url: string, opts?: { confirm?: boolean; title?: string; wholeBlyg?: boolean }): Promise<StudioResult<StudioFollowAnswer>> => {
+      const body: Record<string, unknown> = { url };
+      if (opts?.confirm === true) body.confirm = true;
+      if (opts?.title !== undefined) body.title = opts.title;
+      if (opts?.wholeBlyg === true) body.wholeBlyg = true;
+      const res = await http.send(token, { method: "POST", area: "api", path: "/subscriptions", body });
+      if (res.status === 200) {
+        const proposal = readProposal(res.json);
+        return proposal ? { kind: "ok", value: { state: "proposal", proposal } } : unreadable(res);
+      }
+      if (res.status !== 201) return failure(res);
+      const subscription = readFollowed(res.json);
+      return subscription ? { kind: "ok", value: { state: "created", subscription } } : unreadable(res);
+    },
+
+    updateSubscription: async (id: string, patch: { title: string | null }): Promise<StudioResult<StudioFollowed>> => {
+      const res = await http.send(token, { method: "PATCH", area: "api", path: `/subscriptions/${encodeURIComponent(id)}`, body: { title: patch.title } });
+      if (res.status !== 200) return failure(res);
+      const subscription = readFollowed(res.json);
+      return subscription ? { kind: "ok", value: subscription } : unreadable(res);
+    },
+
+    deleteSubscription: async (id: string): Promise<StudioResult<{ ok: true }>> => {
+      const res = await http.send(token, { method: "DELETE", area: "api", path: `/subscriptions/${encodeURIComponent(id)}` });
+      if (res.status !== 200) return failure(res);
+      if (!isRecord(res.json) || res.json.ok !== true) return unreadable(res);
+      return { kind: "ok", value: { ok: true } };
+    },
+
     listHoppers: async (): Promise<StudioResult<StudioHopper[]>> => {
       const walked = await walk("/hoppers", {}, HOPPER_PAGE, HOPPER_PAGES, (row): StudioHopper | null =>
         isRecord(row) && typeof row.id === "string" && typeof row.name === "string" ? { id: row.id, name: row.name, slug: str(row.slug), public: row.public === true } : null,
@@ -524,6 +570,10 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
     classifyLinks: guard(inner.classifyLinks),
     peekItem: guard(inner.peekItem),
     getSubscription: guard(inner.getSubscription),
+    listSubscriptions: guard(inner.listSubscriptions),
+    createSubscription: guard(inner.createSubscription),
+    updateSubscription: guard(inner.updateSubscription),
+    deleteSubscription: guard(inner.deleteSubscription),
     listHoppers: guard(inner.listHoppers),
     hopperMembers: guard(inner.hopperMembers),
     addToHopper: guard(inner.addToHopper),
