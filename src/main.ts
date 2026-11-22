@@ -132,7 +132,7 @@ export default class BlygPlugin extends Plugin {
       },
     });
     this.registerPanelRefresh();
-    registerDevCommands(this); // the development build only: the timing command of the scale tests
+    registerDevCommands(this, () => this.settings.readerPane.contrast); // the development build only: the timing command of the scale tests
 
     this.addCommand({
       id: "insert-web-quote",

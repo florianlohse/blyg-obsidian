@@ -789,3 +789,14 @@
 .blyg-reader-followbtn { flex: 0 0 auto; }
 .blyg-follow-desc { white-space: pre-line; overflow-wrap: anywhere; }
 .blyg-follow-message { color: var(--text-warning); }
+
+/* HK5 (prototype): an author's look on the reading surface only. The plugin sets validated hex values as --blyg-a-* on the surface element (src/style/apply.ts); nothing here is reached otherwise.
+   Quote cues (bar, label) use plugin-derived values, never the profile's own. Layout, sizes and spacing are not touched. */
+.blyg-reader-surface.is-authored { --blyg-surface: var(--blyg-a-surface); --blyg-ink: var(--blyg-a-ink); --blyg-quote-ink: var(--blyg-a-quote-ink); --blyg-rule: var(--blyg-a-rule); }
+.blyg-reader-surface.is-authored .blyg-reader-body { font-family: var(--blyg-a-font); }
+.blyg-reader-surface.is-authored .blyg-reader-body a, .blyg-reader-surface.is-authored .blyg-reader-body .blyg-quote-source.is-link { color: var(--blyg-a-link); }
+.blyg-reader-surface.is-authored .blyg-reader-note, .blyg-reader-surface.is-authored .blyg-reader-meta { color: var(--blyg-a-soft); }
+.blyg-reader-surface.is-authored .blyg-reader-body blockquote, .blyg-reader-surface.is-authored .blyg-reader-body blockquote.blyg-transclusion { border-left-color: var(--blyg-a-quote-bar); }
+.blyg-reader-surface.is-authored .blyg-reader-body blockquote.blyg-transclusion::before { color: var(--blyg-a-quote-ink); }
+.blyg-reader-surface.is-authored .blyg-reader-body blockquote.blyg-transclusion blockquote { border-left-color: color-mix(in srgb, var(--blyg-a-quote-bar) 65%, transparent); }
+.blyg-reader-surface.is-authored .blyg-reader-body blockquote.blyg-transclusion blockquote blockquote { border-left-color: color-mix(in srgb, var(--blyg-a-quote-bar) 42%, transparent); }
