@@ -16,6 +16,14 @@ const good = PROTOTYPE_PROFILES[0]!.profile;
 const bad = { ...good, light: { ...good.light, text: "#9a9a9a", softText: "#a0a0a0", accent: "#b0b0b0" }, dark: { ...good.dark, text: "#555555" } };
 const combos = CONTRASTS.flatMap((level) => [false, true].map((dark) => ({ level, dark })));
 
+/** The prototype's own CSS block: from its marker comment to the next comment (other work may be appended after it). */
+function authoredBlock(css: string): string {
+  const from = css.indexOf("/* HK5 (prototype)");
+  const rest = css.slice(from + 2);
+  const next = rest.indexOf("/*");
+  return next < 0 ? rest : rest.slice(0, next);
+}
+
 function fakeEl() {
   const props = new Map<string, string>();
   const classes = new Set<string>();
@@ -90,7 +98,7 @@ describe("R3 (b): only reader-owned roles change", () => {
   });
   it("the additive CSS stays inside the reading surface and never touches layout", () => {
     const css = readFileSync("styles.css", "utf8");
-    const block = css.slice(css.indexOf("HK5 (prototype)"));
+    const block = authoredBlock(css);
     const rules = block.split("\n").filter((l) => l.includes("{"));
     expect(rules.length).toBeGreaterThan(0);
     for (const r of rules) {
@@ -157,7 +165,7 @@ describe("R3 (d): quotes stay recognisable", () => {
   });
   it("the CSS draws the quote bar and label from the plugin-derived variables, not the profile's link or rule", () => {
     const css = readFileSync("styles.css", "utf8");
-    const block = css.slice(css.indexOf("HK5 (prototype)"));
+    const block = authoredBlock(css);
     const quoteRules = block.split("\n").filter((l) => /blockquote/.test(l));
     expect(quoteRules.length).toBeGreaterThan(0);
     for (const r of quoteRules) {
