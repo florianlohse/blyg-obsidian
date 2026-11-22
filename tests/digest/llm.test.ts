@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { clusterPosts, type Cluster } from "../../src/digest/cluster";
-import { buildRequest, buildRequests, cachedDigest, emptyStore, estimateLine, estimateRun, MAX_CLUSTERS, MAX_GROUPS, MAX_HEADLINE_CHARS, MAX_REQUEST_CHARS, MAX_SUMMARY_CHARS, planClusters, readResponse, writeDigest, type Estimate, type LlmDeps, type LlmStore } from "../../src/digest/llm";
+import { BODIES_KEPT, clearBodies, buildRequest, buildRequests, cachedDigest, emptyStore, estimateLine, estimateRun, MAX_CLUSTERS, MAX_GROUPS, MAX_HEADLINE_CHARS, MAX_REQUEST_CHARS, MAX_SUMMARY_CHARS, planClusters, readResponse, writeDigest, type Estimate, type LlmDeps, type LlmStore } from "../../src/digest/llm";
 import { buildDaily, FRONT_PAGE_MAX } from "../../src/digest/daily";
+import { trailText } from "../../src/digest/trailText";
 import { addTokens, DEFAULT_DAILY_TOKEN_CEILING, wouldExceedCeiling } from "../../src/digest/budget";
 import { estimateCost } from "../../src/digest/prices";
 import type { RawRequest, RawResponse } from "../../src/platform/http";
@@ -193,13 +194,13 @@ describe("the key never reaches the trail, the cache or a note", () => {
     }
   });
 
-  it("the trail keeps ids and sizes, not text", async () => {
+  it("the trail record keeps ids and sizes; text is only in the stored bodies", async () => {
     const h = harness();
     await writeDigest(h.deps, three());
     const t = h.store().trail[0];
     expect(t).toMatchObject({ status: "sent", model: "test-model", host: "api.example.com", clusters: 3 });
     expect(t?.postIds).toHaveLength(3);
-    expect(JSON.stringify(t)).not.toMatch(/harbour|orchard|glacier/);
+    expect(JSON.stringify({ ...t, bodies: undefined })).not.toMatch(/harbour|orchard|glacier/); // the text is only in the stored bodies, which "Clear stored requests" removes
   });
 });
 
@@ -338,5 +339,21 @@ describe("token tally and ceiling", () => {
     expect(wouldExceedCeiling(t, NOW + 3 * 86400_000, 59_000, 60_000)).toBe(false);
     expect(wouldExceedCeiling(t, NOW, 1e9, 0)).toBe(false);
     expect(wouldExceedCeiling(null, NOW, DEFAULT_DAILY_TOKEN_CEILING + 1, DEFAULT_DAILY_TOKEN_CEILING)).toBe(true);
+  });
+});
+
+describe("stored request bodies", () => {
+  it("keeps the last three runs' bodies, never the key, and clearing removes them", async () => {
+    const h = harness({ respond: answerFor });
+    for (let i = 0; i < 4; i++) await writeDigest(h.deps, clusters(`Run${i}x unique${i}y harbour${i}z tide${i}q story ${i}.`));
+    const withBodies = h.store().trail.filter((t) => t.bodies && t.bodies.length > 0);
+    expect(withBodies).toHaveLength(BODIES_KEPT);
+    expect(withBodies[0]?.bodies?.[0]).toBe(h.sent[3]?.body);
+    expect(JSON.stringify(h.store())).not.toContain(KEY);
+    expect(trailText(h.store())).toContain("request 1 as sent");
+    const s = h.store();
+    clearBodies(s);
+    expect(s.trail.every((t) => t.bodies === undefined)).toBe(true);
+    expect(JSON.stringify(s)).not.toContain("harbour");
   });
 });

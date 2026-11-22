@@ -72,6 +72,16 @@ export interface TrailRecord {
   tokens?: number;
   /** Rough dollars; null = the model has no price in the table. Absent in older records. */
   cost?: number | null;
+  /** The request bodies exactly as sent (never the key: it is only in a header), kept for the last BODIES_KEPT runs so they can be read afterwards. Plugin storage only. */
+  bodies?: string[];
+}
+
+/** How many runs keep the text of what they sent. */
+export const BODIES_KEPT = 3;
+
+/** Remove every stored request body ("Clear stored requests"). */
+export function clearBodies(store: LlmStore): void {
+  for (const t of store.trail) delete t.bodies;
 }
 
 /** What the person agreed to: where the posts go. Plugin storage only. */
@@ -120,6 +130,7 @@ export function parseStore(raw: unknown): LlmStore {
           ...(typeof x.requests === "number" ? { requests: x.requests } : {}),
           ...(typeof x.tokens === "number" ? { tokens: x.tokens } : {}),
           ...(typeof x.cost === "number" || x.cost === null ? { cost: x.cost } : {}),
+          ...(Array.isArray(x.bodies) ? { bodies: x.bodies.filter((b): b is string => typeof b === "string") } : {}),
         });
       }
     }
@@ -415,6 +426,9 @@ export async function writeDigest(deps: LlmDeps, clusters: readonly Cluster[], o
   const key = (deps.getKey() ?? "").trim();
   const trail = (rec: Omit<TrailRecord, "at" | "model" | "host">, host: string): void => {
     store.trail = [{ at: deps.now(), model, host, ...rec }, ...store.trail].slice(0, TRAIL_MAX);
+    store.trail.forEach((t, i) => {
+      if (i >= BODIES_KEPT) delete t.bodies;
+    });
   };
   const fail = async (e: LlmError, host: string, reqs: readonly BuiltRequest[] = []): Promise<Outcome> => {
     const note = redact(e.message, [key]);
@@ -449,8 +463,10 @@ export async function writeDigest(deps: LlmDeps, clusters: readonly Cluster[], o
   let usedTokens = 0;
   let firstError: LlmError | null = null;
   let answered = 0;
+  const sentBodies: string[] = [];
   for (const req of reqs) {
     try {
+      sentBodies.push(req.body);
       let res;
       try {
         res = await deps.transport({ url: req.url, method: "POST", headers: req.headers, body: req.body, contentType: "application/json" });
@@ -479,11 +495,11 @@ export async function writeDigest(deps: LlmDeps, clusters: readonly Cluster[], o
   const cost = usedTokens > 0 ? estimateCost(model, usedTokens * (est.inputTokens / est.tokens), usedTokens * (est.outputTokens / est.tokens)) : est.cost;
   if (answered === 0 && firstError) {
     const note = redact(firstError.message, [key]);
-    trail({ status: "failed", ...stats, note, tokens, cost }, est.host);
+    trail({ status: "failed", ...stats, note, tokens, cost, ...(sentBodies.length ? { bodies: sentBodies } : {}) }, est.host);
     await deps.save(store).catch(() => undefined);
     return { written, status: "failed", note };
   }
-  trail({ status: "sent", ...stats, tokens, cost, ...(firstError ? { note: redact(firstError.message, [key]) } : {}) }, est.host);
+  trail({ status: "sent", ...stats, tokens, cost, bodies: sentBodies, ...(firstError ? { note: redact(firstError.message, [key]) } : {}) }, est.host);
   await deps.save(store).catch(() => undefined);
   const left = est.groups - answered;
   const note = firstError ? `${left} of ${est.groups} groups could not be written: ${redact(firstError.message, [key])}` : left > 0 ? `${left} of ${est.groups} groups came back without a headline.` : undefined;

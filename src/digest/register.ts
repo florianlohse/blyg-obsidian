@@ -9,9 +9,10 @@ import { Notice } from "obsidian";
 import type { Keychain } from "../platform/ports";
 import type { RawTransport } from "../platform/http";
 import type { BlygSettings } from "../settings/schema";
-import { DigestConfirmModal, DigestConsentModal, trailText } from "../ui/DigestModals";
+import { DigestConfirmModal, DigestConsentModal } from "../ui/DigestModals";
+import { trailText } from "./trailText";
 import { setConsentGate } from "./consentGate";
-import { normaliseEndpoint } from "./llm";
+import { clearBodies, normaliseEndpoint } from "./llm";
 import { TextModal } from "../ui/TextModal";
 import { cachedDigest, emptyStore, parseStore, writeDigest, type LlmDeps, type LlmStore } from "./llm";
 
@@ -101,7 +102,17 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
   if (llm) plugin.addCommand({
     id: "show-digest-sent",
     name: "Show what the digest sent",
-    callback: () => void loadStore().then((st) => new TextModal(plugin.app, "What the digest sent", "Time, model, host, sizes, tokens, a rough cost and post ids. No post text and no key is kept here.", trailText(st), (ok) => new Notice(ok ? "Copied." : "Copy is blocked here; the text is selected.")).open()),
+    callback: () => void loadStore().then((st) => new TextModal(plugin.app, "What the digest sent", "Time, model, host, tokens and a rough cost for each run, and the text of the last three requests, kept on this device only. No key is kept here.", trailText(st), (ok) => new Notice(ok ? "Copied." : "Copy is blocked here; the text is selected.")).open()),
+  });
+  plugin.addCommand({
+    id: "clear-digest-requests",
+    name: "Clear stored requests",
+    callback: () =>
+      void loadStore().then(async (st) => {
+        clearBodies(st);
+        await plugin.app.vault.adapter.write(storePath(), JSON.stringify(st));
+        new Notice("The stored digest requests were removed.");
+      }),
   });
   plugin.addRibbonIcon("newspaper", "Open Blyg Daily", () => void open());
 }
