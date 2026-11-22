@@ -215,3 +215,20 @@ describe("load", () => {
     expect((await t.service.load()).ok).toBe(true);
   });
 });
+
+describe("state (the real-Obsidian scenario sets it from outside)", () => {
+  it("a back-off put in from outside is honoured, and clearing it asks again", async () => {
+    const t = setup({ pollSubscriptions: () => ok({ polling: 1 }) });
+    t.service.state.trouble = { failures: 2, until: t.clock.t + 120_000 };
+    expect(((await t.service.checkForNew(false)) as { reason?: string }).reason).toMatch(/about 2 min/);
+    t.service.state.trouble = { failures: 0, until: 0 };
+    expect((await t.service.checkForNew(false)).asked).toBe(true);
+  });
+  it("checkedAt = 0 lifts the pause", async () => {
+    const t = setup({ pollSubscriptions: () => ok({ polling: 1 }) });
+    await t.service.checkForNew(false);
+    expect((await t.service.checkForNew(false)).asked).toBe(false);
+    t.service.state.checkedAt = 0;
+    expect((await t.service.checkForNew(false)).asked).toBe(true);
+  });
+});

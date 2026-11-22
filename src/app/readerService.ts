@@ -18,7 +18,13 @@ export interface ReaderServiceDeps {
   warn: (line: string) => void;
 }
 
-export type ReaderService = Pick<ReaderHost, "checkForNew" | "changeMarks" | "load">;
+/** The service's memory. Exposed so tests (the real-Obsidian reader scenario sets it from outside) can put the reader into a back-off or out of its pause. */
+export interface ReaderServiceState {
+  trouble: { failures: number; until: number };
+  checkedAt: number;
+}
+
+export type ReaderService = Pick<ReaderHost, "checkForNew" | "changeMarks" | "load"> & { state: ReaderServiceState };
 
 /** A pause between checks: every check makes the Studio fetch every blyg it reads, so opening the reader again and again must not hammer them. */
 export const CHECK_PAUSE_MS = 60_000;
@@ -41,6 +47,20 @@ export function createReaderService(deps: ReaderServiceDeps): ReaderService {
   };
 
   return {
+    state: {
+      get trouble() {
+        return trouble;
+      },
+      set trouble(v) {
+        trouble = v;
+      },
+      get checkedAt() {
+        return checkedAt;
+      },
+      set checkedAt(v) {
+        checkedAt = v;
+      },
+    },
     checkForNew: async (force) => {
       // (The reader asks only when the person pressed Refresh: the Studio fetches the blygs itself every half hour.)
       if (deps.now() - checkedAt < CHECK_PAUSE_MS) return { asked: false };
