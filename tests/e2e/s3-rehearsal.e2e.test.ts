@@ -63,7 +63,7 @@ run("S3 rehearsal against a real Studio", () => {
       vault[`studio/${nameOf(n)}.md`] = `---\nblyg_id: ${n.id}\nblyg_version: ${n.version + 1}\nblyg_created: ${n.created}\nblyg_updated: ${n.updated}\n${n.kind === "thread" ? "blyg_kind: thread\n" : ""}blyg_withdrawn: true\n---\n\n${body}\n`;
     }
     const w: StudioWorld = makeStudioWorld({ vault });
-    const address = studioAddress({ baseUrl: URL_ ?? "", mount: "" });
+    const address = studioAddress({ baseUrl: URL_ ?? "", mount: process.env.STUDIO_E2E_MOUNT ?? "" });
     if (!address || !w.deps.studio) throw new Error("e2e setup");
     w.deps.studio = { ...w.deps.studio, client: createStudioClient({ http: createStudioHttp({ transport, timers: idleTimers, address }), token: TOKEN ?? "" }), address };
     w.answerFor = (p) => (p.studio?.repost && p.studio.noteDefault ? { note: p.studio.noteDefault } : true);
@@ -88,7 +88,7 @@ run("S3 rehearsal against a real Studio", () => {
       }
     }
     // Studio's own listing: newest update first, so the last repost leads and the order of posting is kept.
-    const list = await fetch(`${URL_}/api/items?limit=50`, { headers: { Authorization: `Bearer ${TOKEN}` } }).then((r) => r.json() as Promise<{ items: { id: string }[] }>);
+    const list = await fetch(`${URL_}${process.env.STUDIO_E2E_MOUNT ?? ""}/api/items?limit=50`, { headers: { Authorization: `Bearer ${TOKEN}` } }).then((r) => r.json() as Promise<{ items: { id: string }[] }>);
     const newIds = order.map((n) => frontmatterOf(w.local.get(`studio/${nameOf(n)}.md`) ?? "").blyg_id as string);
     const seen = list.items.map((i) => i.id).filter((id) => newIds.includes(id));
     expect(seen).toEqual([...newIds].reverse());

@@ -25,7 +25,7 @@ describe("address", () => {
   });
   it("derives the identity, the API base and item pages", () => {
     const a = studioAddress({ baseUrl: "https://blyg.example.com/", mount: "/blyg" });
-    expect(a).toEqual({ host: "https://blyg.example.com", mount: "/blyg", origin: "https://blyg.example.com/blyg/", apiBase: "https://blyg.example.com/api" });
+    expect(a).toEqual({ host: "https://blyg.example.com", mount: "/blyg", origin: "https://blyg.example.com/blyg/", apiBase: "https://blyg.example.com/blyg/api" });
     if (a) {
       expect(studioItemUrl(a, "fragment", "abc")).toBe("https://blyg.example.com/blyg/f/abc/");
       expect(studioItemUrl(a, "thread", "abc")).toBe("https://blyg.example.com/blyg/t/abc/");

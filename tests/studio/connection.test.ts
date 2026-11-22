@@ -154,4 +154,33 @@ describe("studio connection check", () => {
     expect(r.ok).toBe(false);
     expect(formatReport(r)).toMatch(/Network error: offline/);
   });
+
+  describe("a Studio mounted at a path (E2)", () => {
+    it("is checked at {mount}/api and {mount}/blyg.json", async () => {
+      const studio = new FakeStudio();
+      studio.mount = "/blyg";
+      const report = await run(studio, { mount: "/blyg" });
+      expect(report.ok).toBe(true);
+      expect(studio.seen.every((s) => s.path === "/blyg.json" || s.path.startsWith("/api/"))).toBe(true);
+      expect(studio.seen.length).toBeGreaterThan(2);
+    });
+    it("a Studio without the mount in the settings is not found there (404 says to check the address and the mount)", async () => {
+      const studio = new FakeStudio();
+      studio.mount = "/blyg";
+      const report = await run(studio, { mount: "" });
+      expect(report.ok).toBe(false);
+      expect(formatReport(report)).toMatch(/Check the address and the mount/);
+    });
+    it("a token the Studio rejects says to make a new one, and for a mounted Studio names the pre-0.65.0 token", async () => {
+      const studio = new FakeStudio();
+      studio.mount = "/blyg";
+      const mounted = await run(studio, { mount: "/blyg" }, { "studio-token": "an-old-token" });
+      expect(mounted.ok).toBe(false);
+      expect(formatReport(mounted)).toMatch(/rejected the token[\s\S]*create a REST token[\s\S]*made before your Studio moved its API under the mount \(Studio 0\.65\.0\) no longer works: make a new one/);
+      const plain = new FakeStudio();
+      const unmounted = await run(plain, {}, { "studio-token": "an-old-token" });
+      expect(formatReport(unmounted)).toMatch(/rejected the token/);
+      expect(formatReport(unmounted)).not.toMatch(/0\.65\.0/);
+    });
+  });
 });
