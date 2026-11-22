@@ -52,7 +52,7 @@ import { drawPreview, type PreviewDeps } from "./ui/replyPreview";
 import { limiter, postFromPeek, postOfMention } from "./ui/readerMentions";
 import { parseReaderCache, readerCacheOf } from "./ui/readerCache";
 import { registerDevCommands } from "./dev/drawBench";
-import { BLYG_READER_VIEW, BlygReaderView, excerptOf, type ReaderHost, type ReadResult } from "./ui/ReaderView"; import { registerDigest } from "./digest/register";
+import { BLYG_READER_VIEW, BlygReaderView, excerptOf, type ReaderHost, type ReadResult } from "./ui/ReaderView"; import { registerDigest } from "./digest/register"; import { createMarginalia } from "./marginalia/wire";
 import { createReaderService } from "./app/readerService";
 import { createFollowHost, replyPlan } from "./app/followHost";
 import { registerShareEntry } from "./app/shareEntry";
@@ -84,6 +84,7 @@ export default class BlygPlugin extends Plugin {
   private lastCommit: { branch: string; sha: string; version?: number; path?: string } | null = null;
   /** What the panel shows about that commit's deploy (waiting, or the verdict). */
   private readonly deploys = createDeployMemory();
+  private readonly marginalia = createMarginalia({ app: this.app, client: () => { const b = buildStudio(this.env()); return b.ok ? b.studio.client : null; }, heldPost: (id) => this.knownPost(id), refreshPanels: () => this.refreshPanels(), openReader: () => this.openReader() });
   /** What the Studio last said about each item (30 seconds; asked again every 15 s while the panel is on screen, and at once when the app comes back to the foreground), and about the Studio as a whole (token, release): the panel never waits for them. */
   private readonly studioFacts = createLiveCache({
     load: (id: string) => runStudioFacts(this.env(), id),
@@ -746,7 +747,7 @@ export default class BlygPlugin extends Plugin {
         const editor = this.activeEditor();
         return editor ? this.insertItem(editor) : Promise.resolve(void new Notice(TM.openANote, 6000));
       },
-      openReader: () => this.openReader(),
+      openReader: () => this.openReader(), reception: (path) => this.marginalia.reception(path),
     };
   }
 
@@ -981,21 +982,17 @@ export default class BlygPlugin extends Plugin {
       const stub = file ? (this.app.metadataCache.getFileCache(file)?.frontmatter?.blyg_stub_of as unknown) : null;
       return typeof stub === "object" && stub !== null && (stub as { id?: unknown }).id === id && typeof (stub as { origin?: unknown }).origin === "string" ? (stub as { origin: string }).origin : null;
     };
-    this.registerEditorExtension(replyPreviewExtension(deps, hintFor));
+    this.registerEditorExtension([replyPreviewExtension(deps, hintFor), this.marginalia.extension]);
     // Ask for the item a reply note answers as soon as the note is opened, so its text is there by the time the line is drawn.
     this.registerEvent(this.app.workspace.on("file-open", (file) => {
       if (!file || !this.app.workspace.layoutReady) return; // not while Obsidian is still restoring its layout: the line asks for itself when it is drawn
-      const stub = this.app.metadataCache.getFileCache(file)?.frontmatter?.blyg_stub_of as unknown;
-      const id = typeof stub === "object" && stub !== null ? (stub as { id?: unknown }).id : null;
+      const id = (this.app.metadataCache.getFileCache(file)?.frontmatter?.blyg_stub_of as { id?: unknown } | null | undefined)?.id;
       if (typeof id === "string" && id !== "") void deps.resolve(id, hintFor(file.path, id)).catch(() => undefined);
     }));
     this.registerMarkdownPostProcessor((el, ctx) => {
       for (const embed of Array.from(el.querySelectorAll(".internal-embed"))) {
         const m = /^([0-9a-hjkmnp-tv-z]{26})(?:\s*\|(.*))?$/.exec((embed.getAttribute("src") ?? "").trim());
-        if (!m) continue;
-        const card = createDiv({ cls: "blyg-reply-preview-widget" });
-        drawPreview(card, deps, m[1] ?? "", (m[2] ?? "").trim(), hintFor(ctx.sourcePath, m[1] ?? ""));
-        embed.replaceWith(card);
+        if (m) { const card = createDiv({ cls: "blyg-reply-preview-widget" }); drawPreview(card, deps, m[1] ?? "", (m[2] ?? "").trim(), hintFor(ctx.sourcePath, m[1] ?? "")); embed.replaceWith(card); }
       }
     });
   }
