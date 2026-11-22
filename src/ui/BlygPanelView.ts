@@ -2,6 +2,8 @@
 // src/app/panelState.ts. Built with createEl/text: nothing from a note is ever inserted as HTML.
 import { ItemView, type WorkspaceLeaf } from "obsidian";
 import { deployLine, type PanelDeploy, type PanelState } from "../app/panelState";
+import type { ReceptionPanel } from "../marginalia/wire";
+import { drawReceptionRow } from "./receptionView";
 
 export const BLYG_PANEL_VIEW = "blyg-panel";
 
@@ -45,6 +47,8 @@ export interface PanelHost {
   insertItem(): Promise<void>;
   /** Open the reader (the same as the ribbon icon and the command "Open reader"). */
   openReader(): Promise<void>;
+  /** Marginalia (read-only): who quoted this note's item. Absent or null: nothing to show. */
+  reception?(path: string | null): Promise<ReceptionPanel | null>;
 }
 
 /** A timestamp for people: the device's own time zone; text that is not a date is shown as it is. */
@@ -93,11 +97,12 @@ export class BlygPanelView extends ItemView {
   async refresh(): Promise<void> {
     const ticket = ++this.drawn;
     const state = await this.host.loadState();
+    const reception = (await this.host.reception?.(state.note?.path ?? null).catch(() => null)) ?? null;
     if (ticket !== this.drawn) return;
-    this.draw(state);
+    this.draw(state, reception);
   }
 
-  private draw(state: PanelState): void {
+  private draw(state: PanelState, reception: ReceptionPanel | null = null): void {
     const root = this.contentEl;
     root.empty();
 
@@ -135,6 +140,7 @@ export class BlygPanelView extends ItemView {
     this.drawStartWriting(root, state);
     this.drawWorkOnNote(root, state);
     this.drawDetails(root, state);
+    if (reception) this.drawReception(root, reception);
 
     this.drawDeploy(root, state);
     root.createDiv({ cls: "blyg-pane-version", text: `Blyg ${this.host.version}` });
@@ -216,6 +222,20 @@ export class BlygPanelView extends ItemView {
     this.button(row, "Make thread", w.canMakeThread, () => this.host.makeThread());
     if (w.canMakeReply) this.button(row, "Mark as reply to…", true, () => this.host.makeReply());
     if (state.hoppers && state.status !== "studio-missing") this.button(row, "Hoppers…", true, () => this.host.chooseHoppers());
+  }
+
+  /** Reception: who quoted this note's item, and what. Folded; a lookup that failed says so, it never reads as "nobody". */
+  private drawReception(root: HTMLElement, rec: ReceptionPanel): void {
+    const title = rec.status === "ready" && rec.rows.length > 0 ? `Reception (${rec.rows.length}${rec.incomplete ? "+" : ""})` : "Reception";
+    const box = this.section(root, "reception", title);
+    if (rec.status === "loading") box.createDiv({ cls: "blyg-reception-note", text: "Looking up who quoted this…" });
+    else if (rec.status === "failed") box.createDiv({ cls: "blyg-pane-warn", text: "The Studio could not be asked who quoted this." });
+    else if (rec.rows.length === 0) box.createDiv({ cls: "blyg-reception-note", text: rec.incomplete ? "Nothing found in the part of the list that was read." : "Nobody has quoted this yet." });
+    else {
+      const now = Date.now();
+      for (const row of rec.rows) drawReceptionRow(box, row, rec.actions, now);
+      if (rec.incomplete) box.createDiv({ cls: "blyg-reception-note", text: "The list was cut off: there may be more." });
+    }
   }
 
   /** Details: the facts about the note, folded; most of the time the status line above says all a person needs. */
