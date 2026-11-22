@@ -105,6 +105,10 @@ describe("every operation the client calls, against the Studio 0.51.0 file", () 
     ["GET", "/peek"],
     ["POST", "/peek/links"],
     ["GET", "/subscriptions/{id}"],
+    ["GET", "/subscriptions"],
+    ["POST", "/subscriptions"],
+    ["PATCH", "/subscriptions/{id}"],
+    ["DELETE", "/subscriptions/{id}"],
   ];
 
   it("each request validates, each answer validates, and the scenario touches every operation in the list", async () => {
@@ -139,6 +143,13 @@ describe("every operation the client calls, against the Studio 0.51.0 file", () 
     await client.peekItem("https://blog-b.test/", remote);
     await client.classifyLinks([`https://blog-b.test/f/${remote}/`]);
     await client.getSubscription("sub1");
+    await client.listSubscriptions();
+    await client.createSubscription("https://blog-c.test/");
+    const followed = await client.createSubscription("https://blog-c.test/", { confirm: true, title: "Blog C" });
+    const followedId = followed.kind === "ok" && followed.value.state === "created" ? followed.value.subscription.id : "";
+    await client.updateSubscription(followedId, { title: "Mine" });
+    await client.updateSubscription(followedId, { title: null });
+    await client.deleteSubscription(followedId);
     await client.withdraw(id, "retracted", 3);
     await client.deleteItem(threadId, 2);
     // refusals the client reads: a stale revision and an expired cursor (ApiError schema)
