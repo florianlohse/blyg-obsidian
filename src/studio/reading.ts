@@ -110,6 +110,8 @@ export interface InboundMention {
   sourceOrigin: string | null;
   sourceId: string | null;
   sourcePage: string | null;
+  /** The version of the mentioning item the Studio saw, when it says (a cache key for lookups). */
+  sourceVersion?: number | null;
   sourceAuthorName: string | null;
   firstSeen: string;
 }
@@ -125,7 +127,7 @@ export function readInboundMention(row: unknown): InboundMention | null {
   if (!id || !targetItemId || !status) return null;
   const relation = RELATIONS.find((r) => r === row.relation) ?? null;
   const author = isRecord(row.sourceAuthor) ? str(row.sourceAuthor.name) : null;
-  return { id, targetItemId, relation, status, hidden: row.hidden === true, sourceOrigin: str(row.sourceOrigin), sourceId: str(row.sourceId), sourcePage: str(row.sourcePage), sourceAuthorName: author, firstSeen: str(row.firstSeen) ?? "" };
+  return { id, targetItemId, relation, status, hidden: row.hidden === true, sourceOrigin: str(row.sourceOrigin), sourceId: str(row.sourceId), sourcePage: str(row.sourcePage), sourceVersion: typeof row.sourceVersion === "number" ? row.sourceVersion : null, sourceAuthorName: author, firstSeen: str(row.firstSeen) ?? "" };
 }
 
 /** What a mention says in plain words (the relation, as the Studio reports it). */
