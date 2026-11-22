@@ -9,6 +9,7 @@ import { isUnread, type InboundMention, type ReadingPost } from "../studio/readi
 import { plainText, renderForeign, type ImageMode } from "./defang";
 import { activeFilters, arrange, isReplyToMine, OWN_SOURCE, readFilter, cardOf, DEFAULT_FILTER, frameable, LENGTH_LABELS, postOfQuote, readingTimeLabel, relativeTime, SORT_LABELS, sourcesOf, type FeedFilter, type FeedLength, type FeedSort } from "./readerFeed";
 import { type ReaderFont } from "./readerFonts";
+import { drawViewSwitch, ReturnPoint, whenIdle } from "./readerExtras";
 import { CONTRASTS, type ReaderContrast } from "./readerLook";
 import { responseChip, responseIndex, type ResponseEntry } from "./readerResponses";
 import { changedCount, chooseWalk, keepOlderTail, keepOwnPosts, knownOf, mergeFresh, READER_KEEP, type OlderResult, type SyncMemory } from "./readerSync";
@@ -113,16 +114,6 @@ export function excerptOf(html: string, max = 140): string {
 }
 
 const keyOf = (p: ReadingPost): string => `${p.subscriptionId}/${p.remoteId}`;
-
-/**
- * Run `fn` when the app has nothing else to do (at the latest after a few seconds): the reader's first work must not compete with Obsidian's own start.
- * Not every device has `requestIdleCallback` (Safari, so iOS, does not): there it is a plain wait.
- */
-function whenIdle(fn: () => void): void {
-  const win = activeWindow as Window & { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number };
-  if (typeof win.requestIdleCallback === "function") win.requestIdleCallback(fn, { timeout: 3000 });
-  else win.setTimeout(fn, 1500);
-}
 
 export class BlygReaderView extends ItemView {
   private data: ReaderData | null = null;
@@ -733,6 +724,8 @@ export class BlygReaderView extends ItemView {
 
   /** The posts you came from by following a quote to its source: Back goes to the last of them, and to the list when there is none. */
   private trail: ReadingPost[] = [];
+  /** Set by the digest when it opens a post here: Back, once the trail is used up, returns to the digest. */
+  readonly returnTo = new ReturnPoint();
 
   private closePost(): void {
     const back = this.trail.pop();
@@ -740,6 +733,7 @@ export class BlygReaderView extends ItemView {
       this.openPost(back, "back");
       return;
     }
+    if (this.returnTo.run()) return;
     this.shown = null;
     this.stepKeys = null;
     this.drawHeader();
@@ -879,6 +873,7 @@ export class BlygReaderView extends ItemView {
 
     // Two rows: the three choices side by side, then the two switches as chips and "Clear" at the end.
     const controls = h.createDiv({ cls: "blyg-reader-controls" });
+    drawViewSwitch(controls, this.leaf);
     const select = (label: string, options: Array<[string, string]>, value: string, set: (v: string) => void, isSet: boolean, after: () => void = () => this.drawBody()): void => {
       // A choice that differs from the start value is drawn in the accent colour, like an active chip; the others stay grey.
       const el = controls.createEl("select", { cls: `dropdown blyg-reader-select${isSet ? " is-set" : ""}`, attr: { "aria-label": label, title: label } });
@@ -926,7 +921,7 @@ export class BlygReaderView extends ItemView {
     const where = this.stepIndex(p);
     // Row 1: the way out. It always leads to the reader, except after following a quote: then it leads back to the post you came from.
     const top = h.createDiv({ cls: "blyg-reader-bar blyg-reader-bar-main" });
-    const toPost = this.trail.length > 0;
+    const toPost = this.trail.length > 0 || this.returnTo.active;
     this.button(top, toPost ? "Back" : "Reader", () => this.closePost(), { cls: "blyg-reader-back", title: toPost ? "Back to the post you came from" : "Back to the reader" });
     // The small print, one line that gives way at its end: the blyg (its name is the only link), how long it takes to read (bold, first), when, and the replies chip when something answers it.
     const meta = top.createDiv({ cls: "blyg-reader-meta blyg-reader-postmeta" });

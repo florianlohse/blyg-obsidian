@@ -42,6 +42,8 @@ export interface DailyModel {
   front: Cluster[];
   /** Clusters beyond FRONT_PAGE_MAX. */
   moreClusters: number;
+  /** Those clusters themselves: the page lists their posts under "Other posts". */
+  rest: Cluster[];
   letters: Letter[];
   corrections: Correction[];
   retractions: Retraction[];
@@ -93,6 +95,7 @@ export function buildDaily(posts: readonly ReadingPost[], mentions: readonly Inb
     postCount: live.length,
     front: clusters.slice(0, FRONT_PAGE_MAX),
     moreClusters: Math.max(0, clusters.length - FRONT_PAGE_MAX),
+    rest: clusters.slice(FRONT_PAGE_MAX),
     letters,
     corrections,
     retractions,

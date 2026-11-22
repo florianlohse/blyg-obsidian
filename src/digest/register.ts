@@ -1,10 +1,11 @@
-// Wires the Daily into the plugin: the view, the command, the ribbon icon, and the memory of when it was last opened (one small file in the plugin's own
-// folder, never in the vault). New file so main.ts only grows by one call.
+// Wires the Daily into the plugin: the view, the command, the ribbon icon. The Daily is one digest per local calendar day and remembers nothing between
+// openings. New file so main.ts only grows by one call.
 import { normalizePath, type Plugin } from "obsidian";
 import { BLYG_READER_VIEW, BlygReaderView } from "../ui/ReaderView";
 import { BLYG_DAILY_VIEW, BlygDailyView, type DigestHost } from "../ui/DigestView";
 import type { InboundMention, ReadingPost } from "../studio/reading";
-import { nextWindow, parseDailyState } from "./window";
+import { dayWindow } from "./window";
+import type { ReaderFont } from "../ui/readerFonts";
 import { Notice } from "obsidian";
 import type { Keychain } from "../platform/ports";
 import type { RawTransport } from "../platform/http";
@@ -15,13 +16,14 @@ import { cachedDigest, emptyStore, parseStore, writeDigest, type LlmDeps, type L
 
 export interface DigestDeps {
   /** The reader's saved list (plugin storage), or null. */
+  /** The reader's font setting (the digest follows it). */
+  font: () => ReaderFont;
   readList: () => Promise<{ posts: ReadingPost[]; mentions: InboundMention[]; savedAt: number } | null>;
   /** The optional AI layer. Absent: no AI. */
   ai?: { settings: () => BlygSettings["digest"]; keychain: Keychain; transport: RawTransport };
 }
 
 export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
-  const statePath = (): string => normalizePath(`${plugin.manifest.dir ?? `${plugin.app.vault.configDir}/plugins/${plugin.manifest.id}`}/daily-state.json`);
   const storePath = (): string => normalizePath(`${plugin.manifest.dir ?? `${plugin.app.vault.configDir}/plugins/${plugin.manifest.id}`}/digest-ai.json`);
   const loadStore = async (): Promise<LlmStore> => {
     try {
@@ -49,27 +51,14 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
   const host: DigestHost = {
     ...(llm ? { ai: { enabled: () => ai?.settings().useAi === true, cached: (c) => cachedDigest(llm, c), write: (c) => writeDigest(llm, c) } } : {}),
     loadList: () => deps.readList(),
-    window: async () => {
-      const now = Date.now();
-      let prev = null;
-      try {
-        const adapter = plugin.app.vault.adapter;
-        if (await adapter.exists(statePath())) prev = parseDailyState(JSON.parse(await adapter.read(statePath())) as unknown, now);
-      } catch {
-        prev = null;
-      }
-      const next = nextWindow(prev, now);
-      return { since: next.since, until: now, commit: () => plugin.app.vault.adapter.write(statePath(), JSON.stringify(next.state)) };
-    },
-    openPost: async (post) => {
-      const { workspace } = plugin.app;
-      let leaf = workspace.getLeavesOfType(BLYG_READER_VIEW)[0];
-      if (!leaf) {
-        leaf = workspace.getLeaf("tab");
-        await leaf.setViewState({ type: BLYG_READER_VIEW, active: true });
-      }
-      await workspace.revealLeaf(leaf);
-      if (leaf.view instanceof BlygReaderView) leaf.view.openPost(post);
+    window: () => Promise.resolve(dayWindow(Date.now())),
+    font: () => deps.font(),
+    showFeed: async (leaf) => void (await leaf.setViewState({ type: BLYG_READER_VIEW, active: true })),
+    openPost: async (post, leaf) => {
+      await leaf.setViewState({ type: BLYG_READER_VIEW, active: true });
+      if (!(leaf.view instanceof BlygReaderView)) return;
+      leaf.view.returnTo.set(() => void leaf.setViewState({ type: BLYG_DAILY_VIEW, active: true }));
+      leaf.view.openPost(post);
     },
     openWeb: (url) => window.open(url, "_blank"),
   };
