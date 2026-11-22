@@ -12,6 +12,8 @@ export interface ShareEntryDeps {
   settings: () => BlygSettings;
   build: () => ReturnType<typeof buildStudio>;
   openReader: () => Promise<void>;
+  /** The feature switch, asked each time (features/registry.ts): off, the command and the watcher do nothing. */
+  enabled?: () => boolean;
 }
 
 /** How long a new note is left alone before it is read (a share sheet may write it in two steps), and how often an empty one is tried again. */
@@ -45,6 +47,7 @@ export function registerShareEntry(plugin: Plugin, deps: ShareEntryDeps): void {
     id: "open-address-from-clipboard",
     name: "Open post address from clipboard",
     callback: () => {
+      if (deps.enabled?.() === false) return;
       void (async () => {
         let text = "";
         try {
@@ -70,7 +73,7 @@ export function registerShareEntry(plugin: Plugin, deps: ShareEntryDeps): void {
   app.workspace.onLayoutReady(() => {
     plugin.registerEvent(
       app.vault.on("create", (file) => {
-        if (!(file instanceof TFile) || handled.has(file.path) || !inShareInbox(file.path, deps.settings().readerPane.shareInbox)) return;
+        if (deps.enabled?.() === false || !(file instanceof TFile) || handled.has(file.path) || !inShareInbox(file.path, deps.settings().readerPane.shareInbox)) return;
         handled.add(file.path);
         void look(file);
       }),

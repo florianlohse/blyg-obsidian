@@ -1,3 +1,4 @@
+import { createFeatures } from "../src/features/registry";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // A minimal stand-in for the parts of "obsidian" the settings tab touches at import and construction time.
@@ -36,7 +37,7 @@ function makeTab(settings: BlygSettings, locked = false) {
   const plugin = {
     settings,
     isSettingsLocked: locked,
-    manifest: { version: "9.8.7" },
+    manifest: { version: "9.8.7" }, features: createFeatures(() => settings.features, "blyg"),
     saveSettings: () => {
       saved.push(structuredClone(settings));
       return Promise.resolve();
@@ -64,7 +65,7 @@ describe("settings tab definitions", () => {
   it("only declares keys that exist in the settings (or are optional route fields)", () => {
     const { tab } = makeTab(settings);
     const defs = tab.getSettingDefinitions() as Def[];
-    const optional = /\.(dest|requireTitle|webUrl|draftsOnly)$/;
+    const optional = /\.(dest|requireTitle|webUrl|draftsOnly)$|^features\./;
     for (const d of controls(defs)) {
       const key = d.control?.key as string;
       if (optional.test(key)) continue;

@@ -9,3 +9,7 @@
 ## Device steps
 
 <!-- 0 to 3 steps the maintainer does on a device (which screen, what to expect). Or: none: covered by tests -->
+
+## Feature flag
+
+<!-- `<id>` of the feature in src/features/registry.ts this change belongs to, or `core`. Not checked by CI. -->
