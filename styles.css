@@ -778,3 +778,8 @@
 .blyg-reader-quotesource { display: flex; align-items: center; gap: 0.3em; margin: calc(var(--size-2-2) * -1) 0 var(--size-2-2); padding-left: var(--size-4-2); color: var(--text-faint); font-size: var(--font-ui-smaller); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .blyg-reader-quotesource .blyg-reader-icon .svg-icon { width: 1em; height: 1em; }
 .blyg-reader-stepcount { white-space: nowrap; }
+
+/* "Blygs I follow" (HK7) */
+.blyg-reader-followbtn { flex: 0 0 auto; }
+.blyg-follow-desc { white-space: pre-line; overflow-wrap: anywhere; }
+.blyg-follow-message { color: var(--text-warning); }
