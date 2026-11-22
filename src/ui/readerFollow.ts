@@ -14,6 +14,10 @@ export interface FollowHost {
 /** A post of a blyg this Studio does not read (a mention's post, a quoted source, an address that was opened): not your own, and no subscription holds it. */
 export const isUnfollowedPost = (p: Pick<ReadingPost, "own" | "subscriptionId" | "origin">): boolean => p.own !== true && p.subscriptionId === "" && p.origin !== null && p.origin !== "";
 
+/** What the reader says of Reply on a post of an unfollowed blyg (the Reply button's hint, and the line under it while text is selected). */
+export const unfollowedReplyTitle = followText.replyTitleUnfollowed;
+export const selectionNotQuoted = followText.selectionNotQuoted;
+
 /** The "Following" button of the feed header. */
 export function drawFollowedButton(parent: HTMLElement, host: FollowHost): void {
   parent.createEl("button", { cls: "blyg-reader-btn blyg-reader-followbtn", text: "Following", attr: { title: "The blygs your Studio follows: follow one, rename it, or stop" } }).addEventListener("click", () => host.openFollowed());
@@ -31,7 +35,7 @@ export function drawFollowNote(parent: HTMLElement, p: ReadingPost, host: Follow
     void host.followBlyg(origin).then((out) => {
       switch (out.kind) {
         case "followed":
-          text.setText(followText.following(out.title));
+          text.setText(followText.followingRow);
           button.remove();
           return;
         case "already":

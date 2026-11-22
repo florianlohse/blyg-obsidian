@@ -53,7 +53,7 @@ import { limiter, postFromPeek, postOfMention } from "./ui/readerMentions";
 import { parseReaderCache, readerCacheOf } from "./ui/readerCache";
 import { BLYG_READER_VIEW, BlygReaderView, excerptOf, type ReaderHost, type ReadResult } from "./ui/ReaderView";
 import { createReaderService } from "./app/readerService";
-import { createFollowHost } from "./app/followHost";
+import { createFollowHost, replyPlan } from "./app/followHost";
 import type { InboundMention, ReadingPost } from "./studio/reading";
 import { confirmWithModal } from "./ui/WritePreviewModal";
 import { chooseImports } from "./ui/ImportModal";
@@ -1037,9 +1037,9 @@ export default class BlygPlugin extends Plugin {
       readCache: () => this.readReaderCache(),
       writeCache: (data) => this.writeReaderCache(data),
       openWeb: (url) => window.open(url, "_blank"),
-      replyTo: async (post: ReadingPost, selection?: string) => {
+      replyTo: async (post: ReadingPost, wanted?: string) => {
         this.rememberPosts([post]); // the note this starts shows this post's words at once
-        const pick: StudioPick = { source: "studio", id: post.remoteId, kind: post.kind, title: excerptOf(post.contentHtml, 60), detail: post.subscriptionTitle, subscriptionId: post.subscriptionId, label: post.subscriptionTitle, origin: post.origin, version: post.version, quotable: true };
+        const { pick, selection } = replyPlan(post, wanted, excerptOf(post.contentHtml, 60));
         const target = await runStudioReplyTarget(this.env(), pick);
         if (!target.ok) return void new Notice(target.message, 10000);
         const ref = writtenRef(pick, "");
@@ -1066,7 +1066,7 @@ export default class BlygPlugin extends Plugin {
           await this.createNote("thread", `${block.text}\n\n`, target.target);
           return;
         }
-        await this.createNote("thread", replyBody(ref), target.target);
+        await this.createNote("thread", pick.quotable === false ? "" : replyBody(ref), target.target);
       },
       isImported: async (post) => {
         if (post.subscriptionId === "") return false;
