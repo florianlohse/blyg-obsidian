@@ -83,7 +83,7 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
   };
   plugin.registerView(BLYG_DAILY_VIEW, (leaf) => new BlygDailyView(leaf, host));
   plugin.addCommand({ id: "open-daily", name: "Open Daily", callback: () => void open() });
-  plugin.addCommand({
+  if (llm) plugin.addCommand({
     id: "show-digest-sent",
     name: "Show what the digest sent",
     callback: () => void loadStore().then((st) => new TextModal(plugin.app, "What the digest sent", "Time, model, host, sizes and post ids. No post text and no key is kept here.", trailText(st), (ok) => new Notice(ok ? "Copied." : "Copy is blocked here; the text is selected.")).open()),

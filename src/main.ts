@@ -51,11 +51,10 @@ import { previewOfPost, resolvePreview, type PreviewResult } from "./studio/prev
 import { drawPreview, type PreviewDeps } from "./ui/replyPreview";
 import { limiter, postFromPeek, postOfMention } from "./ui/readerMentions";
 import { parseReaderCache, readerCacheOf } from "./ui/readerCache";
-import { registerDevCommands } from "./dev/drawBench";
-import { BLYG_READER_VIEW, BlygReaderView, excerptOf, type ReaderHost, type ReadResult } from "./ui/ReaderView"; import { registerDigest } from "./digest/register"; import { createMarginalia } from "./marginalia/wire";
+import { registerFeatureEntries } from "./features/register"; import { createFeatures } from "./features/registry";
+import { BLYG_READER_VIEW, BlygReaderView, excerptOf, type ReaderHost, type ReadResult } from "./ui/ReaderView"; import { createMarginalia } from "./marginalia/wire";
 import { createReaderService } from "./app/readerService";
 import { createFollowHost, replyPlan } from "./app/followHost";
-import { registerShareEntry } from "./app/shareEntry";
 import type { InboundMention, ReadingPost } from "./studio/reading";
 import { confirmWithModal } from "./ui/WritePreviewModal";
 import { chooseImports } from "./ui/ImportModal";
@@ -84,6 +83,7 @@ export default class BlygPlugin extends Plugin {
   private lastCommit: { branch: string; sha: string; version?: number; path?: string } | null = null;
   /** What the panel shows about that commit's deploy (waiting, or the verdict). */
   private readonly deploys = createDeployMemory();
+  readonly features = createFeatures(() => this.settings.features, this.manifest.id);
   private readonly marginalia = createMarginalia({ app: this.app, client: () => { const b = buildStudio(this.env()); return b.ok ? b.studio.client : null; }, heldPost: (id) => this.knownPost(id), refreshPanels: () => this.refreshPanels(), openReader: () => this.openReader() });
   /** What the Studio last said about each item (30 seconds; asked again every 15 s while the panel is on screen, and at once when the app comes back to the foreground), and about the Studio as a whole (token, release): the panel never waits for them. */
   private readonly studioFacts = createLiveCache({
@@ -121,10 +121,11 @@ export default class BlygPlugin extends Plugin {
     this.addRibbonIcon("send", "Open Blyg panel", () => void this.openPanel());
     this.registerReplyPreview();
     this.addRibbonIcon("book-open", "Open Blyg reader", () => void this.openReader());
-    this.registerView(BLYG_READER_VIEW, (leaf) => new BlygReaderView(leaf, this.readerHost())); registerDigest(this, { readList: () => this.readReaderCache(), ai: { settings: () => this.settings.digest, keychain: obsidianKeychain(this.app), transport: obsidianTransport } });
+    this.registerView(BLYG_READER_VIEW, (leaf) => new BlygReaderView(leaf, this.readerHost()));
     this.addCommand({ id: "open-reader", name: "Open reader", callback: () => void this.openReader() });
     this.addCommand({ id: "open-reader-sidebar", name: "Open reader in the sidebar", callback: () => void this.openReader("sidebar") });
-    registerShareEntry(this, { settings: () => this.settings, build: () => buildStudio(this.env()), openReader: () => this.openReader() });
+    // The switchable features (the Daily and its AI layer, the share entry, the dev commands) register here, each only when features/registry.ts says it is on.
+    registerFeatureEntries(this, this.features, { digest: { readList: () => this.readReaderCache(), ai: { settings: () => this.settings.digest, keychain: obsidianKeychain(this.app), transport: obsidianTransport } }, share: { settings: () => this.settings, build: () => buildStudio(this.env()), openReader: () => this.openReader() }, contrast: () => this.settings.readerPane.contrast });
     this.addCommand({
       id: "clear-reader-cache",
       name: "Clear the reader's saved list",
@@ -133,7 +134,6 @@ export default class BlygPlugin extends Plugin {
       },
     });
     this.registerPanelRefresh();
-    registerDevCommands(this, () => this.settings.readerPane.contrast); // the development build only: the timing command of the scale tests
 
     this.addCommand({
       id: "insert-web-quote",
@@ -747,7 +747,7 @@ export default class BlygPlugin extends Plugin {
         const editor = this.activeEditor();
         return editor ? this.insertItem(editor) : Promise.resolve(void new Notice(TM.openANote, 6000));
       },
-      openReader: () => this.openReader(), reception: (path) => this.marginalia.reception(path),
+      openReader: () => this.openReader(), reception: (path) => (this.features.enabled("marginalia") ? this.marginalia.reception(path) : Promise.resolve(null)),
     };
   }
 
@@ -982,7 +982,7 @@ export default class BlygPlugin extends Plugin {
       const stub = file ? (this.app.metadataCache.getFileCache(file)?.frontmatter?.blyg_stub_of as unknown) : null;
       return typeof stub === "object" && stub !== null && (stub as { id?: unknown }).id === id && typeof (stub as { origin?: unknown }).origin === "string" ? (stub as { origin: string }).origin : null;
     };
-    this.registerEditorExtension([replyPreviewExtension(deps, hintFor), this.marginalia.extension]);
+    this.registerEditorExtension([replyPreviewExtension(deps, hintFor), ...(this.features.enabled("marginalia") ? [this.marginalia.extension] : [])]);
     // Ask for the item a reply note answers as soon as the note is opened, so its text is there by the time the line is drawn.
     this.registerEvent(this.app.workspace.on("file-open", (file) => {
       if (!file || !this.app.workspace.layoutReady) return; // not while Obsidian is still restoring its layout: the line asks for itself when it is drawn
