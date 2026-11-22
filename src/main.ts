@@ -54,7 +54,8 @@ import { parseReaderCache, readerCacheOf } from "./ui/readerCache";
 import { registerDevCommands } from "./dev/drawBench";
 import { BLYG_READER_VIEW, BlygReaderView, excerptOf, type ReaderHost, type ReadResult } from "./ui/ReaderView";
 import { createReaderService } from "./app/readerService";
-import { createFollowHost } from "./app/followHost";
+import { createFollowHost, replyPlan } from "./app/followHost";
+import { registerShareEntry } from "./app/shareEntry";
 import type { InboundMention, ReadingPost } from "./studio/reading";
 import { confirmWithModal } from "./ui/WritePreviewModal";
 import { chooseImports } from "./ui/ImportModal";
@@ -122,6 +123,7 @@ export default class BlygPlugin extends Plugin {
     this.registerView(BLYG_READER_VIEW, (leaf) => new BlygReaderView(leaf, this.readerHost()));
     this.addCommand({ id: "open-reader", name: "Open reader", callback: () => void this.openReader() });
     this.addCommand({ id: "open-reader-sidebar", name: "Open reader in the sidebar", callback: () => void this.openReader("sidebar") });
+    registerShareEntry(this, { settings: () => this.settings, build: () => buildStudio(this.env()), openReader: () => this.openReader() });
     this.addCommand({
       id: "clear-reader-cache",
       name: "Clear the reader's saved list",
@@ -139,16 +141,8 @@ export default class BlygPlugin extends Plugin {
       name: "Insert web quote (plain Markdown)",
       callback: () => this.insertWebQuote(),
     });
-    this.addCommand({
-      id: "open-panel",
-      name: "Open panel",
-      callback: () => void this.openPanel(),
-    });
-    this.addCommand({
-      id: "publish-active-note",
-      name: "Publish active note",
-      callback: () => void this.publishActiveNote(),
-    });
+    this.addCommand({ id: "open-panel", name: "Open panel", callback: () => void this.openPanel() });
+    this.addCommand({ id: "publish-active-note", name: "Publish active note", callback: () => void this.publishActiveNote() });
     this.addCommand({
       id: "repost-to-studio",
       name: "Studio: repost this note",
@@ -1037,9 +1031,9 @@ export default class BlygPlugin extends Plugin {
       readCache: () => this.readReaderCache(),
       writeCache: (data) => this.writeReaderCache(data),
       openWeb: (url) => window.open(url, "_blank"),
-      replyTo: async (post: ReadingPost, selection?: string) => {
+      replyTo: async (post: ReadingPost, wanted?: string) => {
         this.rememberPosts([post]); // the note this starts shows this post's words at once
-        const pick: StudioPick = { source: "studio", id: post.remoteId, kind: post.kind, title: excerptOf(post.contentHtml, 60), detail: post.subscriptionTitle, subscriptionId: post.subscriptionId, label: post.subscriptionTitle, origin: post.origin, version: post.version, quotable: true };
+        const { pick, selection } = replyPlan(post, wanted, excerptOf(post.contentHtml, 60));
         const target = await runStudioReplyTarget(this.env(), pick);
         if (!target.ok) return void new Notice(target.message, 10000);
         const ref = writtenRef(pick, "");
@@ -1066,7 +1060,7 @@ export default class BlygPlugin extends Plugin {
           await this.createNote("thread", `${block.text}\n\n`, target.target);
           return;
         }
-        await this.createNote("thread", replyBody(ref), target.target);
+        await this.createNote("thread", pick.quotable === false ? "" : replyBody(ref), target.target);
       },
       isImported: async (post) => {
         if (post.subscriptionId === "") return false;

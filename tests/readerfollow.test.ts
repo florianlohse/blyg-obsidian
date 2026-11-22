@@ -49,7 +49,7 @@ describe("the follow row", () => {
     note?.children[1]?.click();
     await flush();
     expect(followed).toHaveBeenCalledWith(BLYG);
-    expect(note?.children[0]?.text).toBe(followText.following("Your Blyg"));
+    expect(note?.children[0]?.text).toBe(followText.followingRow);
     expect(note?.children[1]?.removed).toBe(true);
   });
   it("a post that needs a look opens the full screen with its address; the button stays", async () => {

@@ -12,8 +12,11 @@ export const followText = {
   title: "Blygs I follow",
   empty: "You follow no blygs yet. Paste the address of one below.",
   incomplete: "Only the first blygs are listed.",
-  /** The line on a post of a blyg the Studio does not read (HK7; the reply wording is added with the reply change). */
-  unfollowedNote: "You do not follow this blyg.",
+  /** The line on a post of a blyg the Studio does not read: what Reply then does, and what following changes. */
+  unfollowedNote: "You do not follow this blyg. Reply sends a link without a quote. Follow it to reply with a quote.",
+  replyTitleUnfollowed: "Reply with a link to this post, without a quote. Follow this blyg to quote it.",
+  selectionNotQuoted: "The selected text is not quoted: this blyg is not followed.",
+  followingRow: "Following. The Studio is fetching its posts; quote replies work once they are here.",
   followButton: "Follow this blyg",
   following: (name: string) => `Following ${name}. The Studio is fetching its posts.`,
   already: "You already follow this blyg. Press Refresh if its posts are not here yet.",

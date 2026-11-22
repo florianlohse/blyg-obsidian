@@ -6,6 +6,7 @@ import type { ReaderHost } from "../ui/ReaderView";
 import { backoffDelay, READER_PAGE, READER_PAGES, reachedKnown } from "../ui/readerSync";
 import { createOlderReader } from "./readerOlder";
 import { readerBuildMessage, readerText } from "./readerMessages";
+import { createPolledFreshness } from "./readerFreshness";
 
 /** What the service needs of the Studio build: the client, and the origin its answers came from. */
 export type ReaderStudio = { ok: true; studio: { client: StudioClient; address: { origin: string } } } | { ok: false; message: string };
@@ -33,6 +34,9 @@ export const CHECK_PAUSE_MS = 60_000;
 export function createReaderService(deps: ReaderServiceDeps): ReaderService {
   let trouble = { failures: 0, until: 0 };
   let checkedAt = 0;
+  // A Studio without change counters (contract 6): the marks are made by re-reading (readerFreshness.ts). `polled` is what the last look found.
+  const polled = createPolledFreshness({ now: deps.now, pauseMs: CHECK_PAUSE_MS });
+  let withoutCounters = false;
 
   /** In words, why the reader is not asking the Studio now, or null. */
   const backedOff = (): string | null => {
@@ -73,6 +77,7 @@ export function createReaderService(deps: ReaderServiceDeps): ReaderService {
       const built = deps.build();
       if (!built.ok) return { asked: false, reason: readerBuildMessage(built.message) };
       try {
+        if (withoutCounters) await polled.startCheck(built.studio.client);
         const got = await built.studio.client.pollSubscriptions();
         if (got.kind === "ok") {
           checkedAt = deps.now();
@@ -98,6 +103,15 @@ export function createReaderService(deps: ReaderServiceDeps): ReaderService {
           return null;
         }
         worked();
+        withoutCounters = got.value === null;
+        if (got.value === null) {
+          const made = await polled.marks(built.studio.client);
+          if (made.kind !== "ok") {
+            if (made.kind === "error") failed();
+            return null;
+          }
+          return made.value;
+        }
         return { epoch: got.value.epoch, reading: got.value.domains.reading ?? 0, subscriptions: got.value.domains.subscriptions ?? 0 };
       } catch {
         failed();

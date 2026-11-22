@@ -281,6 +281,12 @@ export class BlygSettingTab extends PluginSettingTab {
           control: { type: "dropdown", key: "readerPane.font", options: { default: "As Obsidian has it", serif: "Serif", sans: "Sans-serif", mono: "Monospace" } },
         },
         {
+          name: "Share inbox folder",
+          desc: "Leave empty to switch this off. Set a folder, and make the iOS share sheet's Obsidian Location create new notes in it as “URL only” (or with {{url}} in its template). When a new note appears there that names a blyg post, the reader opens that post. Notes already there, and notes you edit later, are never looked at, and no note is changed or deleted. Replying and following stay in the reader.",
+          aliases: ["share", "share sheet", "inbox", "ios", "address"],
+          control: { type: "text", key: "readerPane.shareInbox", placeholder: "Share inbox" },
+        },
+        {
           name: "Contrast of the reading surface",
           desc: "How strongly a post stands out from its background in the reader: reduced (softer, for dim rooms), normal, or high.",
           aliases: ["reader", "contrast", "reading surface", "dark", "light"],

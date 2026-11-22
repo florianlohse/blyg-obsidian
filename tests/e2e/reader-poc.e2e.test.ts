@@ -6,6 +6,7 @@ import { studioAddress } from "../../src/studio/address";
 import { createStudioClient } from "../../src/studio/client";
 import { createStudioHttp } from "../../src/studio/http";
 import { isUnread, relationWords } from "../../src/studio/reading";
+import { createPolledFreshness } from "../../src/app/readerFreshness";
 import { idleTimers } from "../helpers";
 
 const URL_ = process.env.STUDIO_E2E_URL;
@@ -45,13 +46,40 @@ run("reader PoC against a real Studio", () => {
     if (got.kind === "ok") say(`mentions: ${got.value.mentions.length}, unreadable=${got.value.unreadable}; ${relationWords("stub")}`);
   });
 
-  it("asks the Studio to fetch the blygs it reads (owner:manage), and reads its change counters", async () => {
+  it("asks the Studio to fetch the blygs it reads (owner:manage); reads its change counters where it has them, and says there are none where it has not (contract 6)", async () => {
     const changes = await client.changes();
     expect(changes.kind).toBe("ok");
-    if (changes.kind === "ok") expect(typeof changes.value.domains.reading).toBe("number");
+    const caps = await client.capabilities();
+    const listed = caps.kind === "ok" && (caps.value.operations ?? []).includes("getChanges");
+    if (changes.kind === "ok") {
+      if (changes.value === null) expect(listed).toBe(false);
+      else expect(typeof changes.value.domains.reading).toBe("number");
+      expect(changes.value !== null).toBe(listed); // the list says what the Studio has, and the Studio agrees
+    }
+    say(`change counters: ${listed ? "listed (contract 5)" : "not listed (contract 6)"}`);
     const polled = await client.pollSubscriptions();
     expect(polled.kind).toBe("ok");
     if (polled.kind === "ok") expect(polled.value.polling).toBeGreaterThanOrEqual(1);
+  });
+
+  it("the reader's replacement for the counters works against the real Studio: a poll moves each blyg's lastPollAt, and the marks count it", async () => {
+    const polled = createPolledFreshness({ now: Date.now, pauseMs: 60_000 });
+    await polled.startCheck(client);
+    // lastPollAt has a resolution of a second: let the baseline be older than the fetch
+    await new Promise((r) => setTimeout(r, 1500));
+    const asked = await client.pollSubscriptions();
+    expect(asked.kind).toBe("ok");
+    const polling = asked.kind === "ok" ? asked.value.polling : 0;
+    let reported = 0;
+    for (let i = 0; i < 20 && reported < polling; i++) {
+      await new Promise((r) => setTimeout(r, 1000));
+      const marks = await polled.marks(client);
+      expect(marks.kind).toBe("ok");
+      if (marks.kind === "ok") reported = marks.value.subscriptions;
+    }
+    say(`polled marks: ${reported}/${polling} blygs seen fetched`);
+    expect(reported).toBeGreaterThanOrEqual(1);
+    expect(reported).toBe(polling);
   });
 
   it("with a token that has reading:state: read, unread, and quick changes in a row end where the last one says", async () => {

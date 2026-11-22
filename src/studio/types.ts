@@ -1,6 +1,6 @@
-// The slice of Blygger Studio's owner API this plugin uses (API contract 5), written by hand against `studio-openapi-0.51.0.json` (the release
-// asset of blygger/blygger-studio, MIT). The hand-written shapes below are what the plugin reads; `src/studio/api-types.ts` is the generated,
-// types-only mirror of the whole file (S16 plan §5, option (a): no runtime dependency, the SDK calls `fetch` and the plugin may not).
+// The slice of Blygger Studio's owner API this plugin uses (API contract 5 and 6, E1), written by hand against `studio-openapi-0.51.0.json` (contract 5.2) and checked against `studio-openapi-0.69.0.json` (6.2; the release
+// assets of blygger/blygger-studio, MIT). The hand-written shapes below are what the plugin reads; `src/studio/api-types.ts` and `api-types-contract6.ts` are the generated,
+// types-only mirrors of the two files (S16 plan §5, option (a): no runtime dependency, the SDK calls `fetch` and the plugin may not).
 // tests/studio/operations.test.ts validates every request the client builds, and every answer the fake Studio gives, against the file's own
 // schemas, so a Studio release that renames a field is caught by updating the file, not by a publish that goes wrong.
 import type { StubTarget } from "./stub";
@@ -126,8 +126,10 @@ export interface StudioManifest {
 
 /** `GET /api/capabilities`: what the Studio says about its own API. */
 export interface StudioCapabilities {
-  /** "5.2.0": major.minor.patch of the owner API's contract. */
+  /** "6.2.0": major.minor.patch of the owner API's contract. */
   contractVersion: string;
+  /** The operation ids the Studio lists as available to this token (`operations`), or null when the answer has no such list. */
+  operations: string[] | null;
 }
 
 /** What `publish` and `withdraw` answer: the new version, and the item's new revision (the next command acts on it). */

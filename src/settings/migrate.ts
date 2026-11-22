@@ -109,7 +109,7 @@ export function migrateSettings(raw: unknown, flavour: "release" | "dev" = "rele
       stripTracking: typeof wq.stripTracking === "boolean" ? wq.stripTracking : d.webQuote.stripTracking,
     },
     // Anything but "always" is the safe default: a typo or a value from a later version never turns images on by accident.
-    readerPane: { images: rp.images === "always" ? "always" : "click", font: isReaderFont(rp.font) ? rp.font : "default", contrast: isReaderContrast(rp.contrast) ? rp.contrast : "normal", filter: readFilter(rp.filter) },
+    readerPane: { images: rp.images === "always" ? "always" : "click", font: isReaderFont(rp.font) ? rp.font : "default", contrast: isReaderContrast(rp.contrast) ? rp.contrast : "normal", shareInbox: typeof rp.shareInbox === "string" ? rp.shareInbox.trim() : "", filter: readFilter(rp.filter) },
     // Only a literal true lifts the lock: anything else, or a missing key, keeps the dev build on test Studios.
     dev: { allowLiveStudio: dv.allowLiveStudio === true },
   };

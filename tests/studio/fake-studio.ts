@@ -97,8 +97,12 @@ export class FakeStudio {
   readonly uploads: Array<{ itemId: string | null; expectedRevision: number | null; alt: string | null; inline: string | null; mime: string; size: number; sha: string; duplicate: boolean }> = [];
   now = "2026-10-22T09:00:00Z";
   generator = "blygger-studio/0.51.0";
-  /** What `GET /api/capabilities` announces; null: the Studio has no such route (a release before 0.49.7). */
+  /** What `GET /api/capabilities` announces; null: the Studio has no such route (a release before 0.49.7). Contract 6 (Studio 0.67.0 and later) has no `GET /changes`, adds `background` to subscriptions. */
   contractVersion: string | null = "5.2.0";
+  /** The change counters `GET /api/changes` answers on contract 5 (the reader's freshness check); contract 6 answers 404, as the real one does. */
+  changeCounters = { epoch: "epoch1", domains: { items: 1, hoppers: 1, signals: 1, settings: 1, feed: 1, mentions: 1, responses: 1, interactions: 1, browse: 1, reading: 1, subscriptions: 1 } as Record<string, number> };
+  /** Overrides the `operations` list `GET /api/capabilities` gives (default: the operations of the announced contract that the plugin calls). */
+  operationsListed: string[] | null = null;
   /** Bumped by every change that a list walk depends on; a cursor made before it is `cursor-expired`. */
   private epoch = 0;
   /** Things to do just before the next matching request is handled (a concurrent edit "in the Studio's editor"); each runs once. */
@@ -321,6 +325,21 @@ export class FakeStudio {
     return this.json(200, { items: rows.slice(offset, offset + limit), page: { limit, nextCursor: next } });
   }
 
+  private major(): number {
+    return Number((this.contractVersion ?? "5").split(".")[0]);
+  }
+
+  /** A subscription as the contract answers it: contract 6 adds `background` (required). */
+  private subscriptionOut<T extends Record<string, unknown>>(row: T): T & { background?: boolean } {
+    return this.major() >= 6 ? { background: false, ...row } : row;
+  }
+
+  /** The operation ids a Studio of this contract lists in `/capabilities` (the ones the plugin branches on; the rest of the real list is not needed here). */
+  private operations(): string[] {
+    const common = ["getCapabilities", "listItems", "getItem", "createItem", "updateItem", "publishItem", "listSubscriptions", "listReading", "listImportedReading"];
+    return this.operationsListed ?? (this.major() >= 6 ? common : [...common, "getChanges"]);
+  }
+
   private handle(req: RawRequest, url: URL, authorization: string | undefined): RawResponse {
     const path = url.pathname;
     if (path === "/blyg.json") {
@@ -330,7 +349,11 @@ export class FakeStudio {
     if (authorization !== `Bearer ${this.token}`) return this.fail(401, "unauthorized", "unauthorized");
     if (path === "/api/capabilities" && req.method === "GET") {
       if (this.contractVersion === null) return this.fail(404, "not-found", "not found");
-      return this.json(200, { contractVersion: this.contractVersion, endpoints: { publicBase: STUDIO_HOST, studio: `${STUDIO_HOST}/studio`, api: `${STUDIO_HOST}/api`, issuer: `${STUDIO_HOST}/studio/auth`, mcp: `${STUDIO_HOST}/studio/mcp`, media: `${STUDIO_HOST}/media` }, operations: [], extensions: [] });
+      return this.json(200, { contractVersion: this.contractVersion, endpoints: { publicBase: STUDIO_HOST, studio: `${STUDIO_HOST}/studio`, api: `${STUDIO_HOST}/api`, issuer: `${STUDIO_HOST}/studio/auth`, mcp: `${STUDIO_HOST}/studio/mcp`, media: `${STUDIO_HOST}/media` }, operations: this.operations(), extensions: [] });
+    }
+    if (path === "/api/changes" && req.method === "GET") {
+      if (!this.operations().includes("getChanges")) return this.fail(404, "not-found", "not found");
+      return this.json(200, this.changeCounters);
     }
     if (path === "/api/media" && req.method === "POST") return this.upload(req);
     const body = req.body ? (JSON.parse(req.body) as Record<string, unknown>) : {};
@@ -394,7 +417,7 @@ export class FakeStudio {
       const own = /^\/api\/subscriptions(?:\/([^/?]+))?(?:\?.*)?$/.exec(path);
       const subId = own?.[1] ? decodeURIComponent(own[1]) : undefined;
       const sub = (id: string) => this.followed.find((f) => f.id === id);
-      if (!subId && req.method === "GET") return this.page(url, this.followed);
+      if (!subId && req.method === "GET") return this.page(url, this.followed.map((f) => this.subscriptionOut(f)));
       if (!subId && req.method === "POST") {
         if (!this.manage) return this.fail(403, "forbidden", "insufficient_scope");
         const wanted = typeof body.url === "string" ? body.url : "";
@@ -405,7 +428,7 @@ export class FakeStudio {
         if (body.confirm !== true) return this.json(200, { needsConfirm: true, kind: "blyg", origin, feedUrl: `${origin}feed.xml`, title });
         const row = { id: `sub${++this.counter}`, kind: "blyg", origin, feedUrl: `${origin}feed.xml`, title, status: "active", lastPollAt: null, failCount: 0, lastIndexSyncAt: null, inBlogroll: false, flags: [], created: this.now, titleFollowsSource: typeof body.title !== "string", hopperFeedUrl: null };
         this.followed.push(row);
-        return this.json(201, row);
+        return this.json(201, this.subscriptionOut(row));
       }
       if (subId && req.method === "PATCH") {
         if (!this.manage) return this.fail(403, "forbidden", "insufficient_scope");
@@ -413,7 +436,7 @@ export class FakeStudio {
         if (!row) return this.fail(404, "not-found", "not found");
         if (typeof body.title === "string") Object.assign(row, { title: body.title, titleFollowsSource: false });
         else if (body.title === null) Object.assign(row, { titleFollowsSource: true });
-        return this.json(200, row);
+        return this.json(200, this.subscriptionOut(row));
       }
       if (subId && req.method === "DELETE") {
         if (!this.manage) return this.fail(403, "forbidden", "insufficient_scope");
@@ -428,7 +451,7 @@ export class FakeStudio {
     if (subm && req.method === "GET") {
       const any = this.imports.find((i) => i.subscription_id === subm[1]);
       if (!any) return this.fail(404, "not-found", "not found");
-      return this.json(200, { id: any.subscription_id, kind: "blyg", origin: any.origin, feedUrl: `${any.origin}feed.xml`, title: any.source_title, status: "active", lastPollAt: null, failCount: 0, lastIndexSyncAt: null, inBlogroll: false, flags: [], created: this.now, titleFollowsSource: true, hopperFeedUrl: null });
+      return this.json(200, this.subscriptionOut({ id: any.subscription_id, kind: "blyg", origin: any.origin, feedUrl: `${any.origin}feed.xml`, title: any.source_title, status: "active", lastPollAt: null, failCount: 0, lastIndexSyncAt: null, inBlogroll: false, flags: [], created: this.now, titleFollowsSource: true, hopperFeedUrl: null }));
     }
     if (path === "/api/preview" && req.method === "POST") {
       const text = typeof body.contentMd === "string" ? body.contentMd : "";

@@ -7,6 +7,7 @@ import { readWireStub, stubForWire, type StubTarget } from "./stub";
 import type { StudioHttp, StudioResponse } from "./http";
 import type { StudioCapabilities, StudioCommandDone, StudioFailure, StudioHit, StudioImported, StudioHopper, StudioItem, StudioItemKind, StudioListedItem, StudioManifest, StudioMediaDone, StudioPeek, StudioPreview, StudioProblem, StudioResolvedQuote, StudioResult, StudioSubscription } from "./types";
 import { contractVerdict, incompatibleMessage, type ContractVerdict } from "./version";
+import { OPERATION, offers } from "./capabilities";
 import { readFollowed, readProposal, type StudioFollowAnswer, type StudioFollowed } from "./subscriptions";
 import { readInboundMention, readOwnReadingEntry, readReadingPost, type InboundMention, type ReadingPost } from "./reading";
 
@@ -109,7 +110,8 @@ export interface StudioClient {
   /** Increment 8b: the owner's own posts among the newest entries of the Studio's merged reading list (`GET /reading`, `owner:read`), at most `maxPages` pages of 50. */
   listOwnReading(maxPages?: number): Promise<StudioResult<{ posts: ReadingPost[] }>>;
   /** S15: the Studio's change counters (`GET /changes`, `owner:read`): cheap, to see whether the reading list moved without walking it. */
-  changes(): Promise<StudioResult<{ epoch: string; domains: Record<string, number> }>>;
+  /** `GET /changes`. `ok` with null: this Studio does not list that operation (contract 6 removed it), so nothing was asked. */
+  changes(): Promise<StudioResult<{ epoch: string; domains: Record<string, number> } | null>>;
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -273,7 +275,8 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
     const res = await http.send(token, { area: "api", path: "/capabilities" });
     if (res.status !== 200) return failure(res);
     if (!isRecord(res.json) || typeof res.json.contractVersion !== "string") return unreadable(res);
-    return { kind: "ok", value: { contractVersion: res.json.contractVersion } };
+    const operations = Array.isArray(res.json.operations) ? res.json.operations.filter((o): o is string => typeof o === "string") : null;
+    return { kind: "ok", value: { contractVersion: res.json.contractVersion, operations } };
   };
 
   /** Null when the Studio speaks a supported contract; otherwise why not. Asks once per session (the cache), and again after "Check connection". */
@@ -281,7 +284,7 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
     let verdict = gateCache.get();
     if (verdict === undefined) {
       const caps = await capabilities();
-      if (caps.kind === "ok") verdict = contractVerdict(caps.value.contractVersion);
+      if (caps.kind === "ok") verdict = contractVerdict(caps.value.contractVersion, caps.value.operations);
       else if (caps.kind === "not-found" || (caps.kind === "rejected" && caps.status === 405)) verdict = { kind: "studio-older", contract: null };
       else return caps;
       gateCache.set(verdict);
@@ -430,7 +433,11 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
     },
 
     changes: async () => {
+      // Whether the Studio has the operation is read from what it lists, not from its version (capabilities.ts). The guard has just filled the cache.
+      if (!offers(gateCache.get(), OPERATION.changes)) return { kind: "ok", value: null } as const;
       const res = await http.send(token, { area: "api", path: "/changes" });
+      // The Studio was updated to contract 6 while the plugin ran: it listed the operation when it was asked, and has dropped it since. Ask again next time.
+      if (res.status === 404) gateCache.set(undefined);
       if (res.status !== 200) return failure(res);
       const j = res.json;
       if (!isRecord(j) || typeof j.epoch !== "string" || !isRecord(j.domains)) return unreadable(res);

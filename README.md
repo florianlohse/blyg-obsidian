@@ -36,6 +36,11 @@ will change before anything leaves your vault.
   filter by blyg, length or unread; the choices are remembered) and the mentions of your items. A post opens as text on its own calm
   reading surface (quotes shown as quotes; contrast and font are settings); one tap or a pull-up at the end
   marks it read and goes to the next. Posts are shown in the reader only and are never written into your notes; to open fast, the reader keeps the newest 200 posts (without their Markdown) in one file in the plugin's own folder, for the Studio they came from, for two weeks ("Clear the reader's saved list" in the command palette removes it).
+- **Open a post from its address (experimental).** Copy the address of a post and run the command **Open post address from clipboard**: the post opens in the
+  reader (to reply or follow from there; replying to a blyg you do not follow sends a link without a quote). On iOS 18 or later you can also share a post to Obsidian
+  from Safari or another app: in Obsidian's share sheet make a **Location** that creates a **New note** in a folder of its own, set to **URL only** (or with `{{url}}` in its template),
+  and enter that folder under **Settings → Blyg → Reader → Share inbox folder**. A new note in that folder that names one blyg post opens it in the reader. Existing notes and notes you edit later are never looked at, and no note is changed or deleted
+  (delete the shared note yourself when you are done). A note with no address, or with more than one, opens nothing and says so.
 - **Keep both sides in step.** Pull the Studio's copy into the note, import items that were written in the Studio,
   withdraw an item, delete a draft, put items into your Studio's hoppers.
 - **Mobile first.** Everything runs on iOS and Android as well as desktop; no desktop-only APIs are used.
@@ -109,9 +114,10 @@ blygs you follow live in the plugin's own storage, not in your notes.
 1. **Obsidian 1.13.0 or newer** (the plugin stores secrets in Obsidian's keychain and uses the 1.13 settings screen).
 2. **A Blygger Studio** that you own and have signed in to. Blygger Studio is the reference server of the Blygger
    protocol (open source: [blygger/blygger-studio](https://github.com/blygger/blygger-studio)). The plugin needs
-   **Studio 0.51.0 or newer** (API contract 5). Every change to the plugin is tested against Studio 0.51.0 (the oldest it
-   supports) and against the newest Studio release, last seen on 18 November 2026 with Studio 0.62.0; a newer
-   minor version is accepted with a quiet note, an older Studio is refused before anything is sent.
+   **Studio 0.51.0 or newer** (API contract 5 or 6). Every change to the plugin is tested against Studio 0.51.0 (contract 5.2, the oldest it
+   supports) and against the newest Studio release, last seen on 22 November 2026 with Studio 0.69.0 (contract 6.2); the contracts in between were
+   checked operation by operation against the two. A newer minor version is accepted with a quiet note; an older Studio, or an API generation the
+   plugin has not seen, is refused before anything is sent.
 3. **An access token from that Studio** (see *Token*).
 
 You do **not** need a GitHub account or a static site. (An older mode that commits to a GitHub-hosted site still exists
@@ -163,7 +169,7 @@ The plugin makes requests only through Obsidian's `requestUrl`, to these hosts:
 |---|---|---|
 | **Your Studio** (the address you set) | Your note's text and metadata when you send it, the image files the note embeds (only when you publish), and reads of your items, hoppers and followed blygs' items for the panel and pickers. | The Studio token, in a header. Never in a URL. |
 | **The Studio's public pages** (same host) | The public manifest, read to find your blyg's address. | None. |
-| **The reader's requests to your Studio** (same host) | The list of posts you read and your mentions, a look at the Studio's change counters every 30 seconds while the reader is open (and every three seconds during a Refresh), the read marks you set, a request that your Studio look for new posts (only when you press Refresh), and the look-up of an item when you tap a quote's source. | The Studio token, in a header. |
+| **The reader's requests to your Studio** (same host) | The list of posts you read and your mentions, a look at the Studio's change counters every 30 seconds while the reader is open (and every three seconds during a Refresh); a Studio from release 0.67.0 on has no change counters, and the reader then re-reads the newest posts at most once a minute while it is open and, during a Refresh, looks at the list of blygs you follow every one and a half seconds to see which have been checked; the read marks you set, a request that your Studio look for new posts (only when you press Refresh), and the look-up of an item when you tap a quote's source. | The Studio token, in a header. |
 | **A blyg's own server** (only for what you open in the reader) | A post's image, when you tap it (or always, if you chose “Always load”), and the page itself if you tap “Browser” (that opens your browser, not the plugin). Image requests carry no token and no cookies, so that blyg's server can see that someone read the post. | None. |
 | `api.github.com` | Only if you use the older GitHub mode. Not used in Studio-only setups. | A GitHub token, only to this host. |
 

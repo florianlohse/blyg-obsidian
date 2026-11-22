@@ -14,6 +14,63 @@ function setup() {
   return { studio, client };
 }
 
+describe("studio client: contract 5 and 6 side by side (E1)", () => {
+  const counters = (studio: FakeStudio) => studio.seen.filter((s) => s.path === "/api/changes");
+
+  it("contract 5, which lists getChanges: reads the change counters", async () => {
+    const { client, studio } = setup();
+    studio.contractVersion = "5.14.0";
+    expect(await client.changes()).toMatchObject({ kind: "ok", value: { epoch: "epoch1", domains: { reading: 1, subscriptions: 1 } } });
+    expect(counters(studio)).toHaveLength(1);
+  });
+
+  it("contract 6, which does not list it: asks nothing, and says there are no counters (null)", async () => {
+    const { client, studio } = setup();
+    studio.contractVersion = "6.2.0";
+    expect(await client.changes()).toEqual({ kind: "ok", value: null });
+    expect(counters(studio)).toEqual([]);
+  });
+
+  it("the list decides, not the version: a 6.x that lists getChanges is asked, a 5.x that does not is not", async () => {
+    const six = setup();
+    six.studio.contractVersion = "6.4.0";
+    six.studio.operationsListed = ["getCapabilities", "getChanges"];
+    six.studio.changeCounters = { epoch: "e9", domains: { reading: 3 } };
+    expect(await six.client.changes()).toMatchObject({ kind: "ok", value: { epoch: "e9" } });
+    const five = setup();
+    five.studio.operationsListed = ["getCapabilities"];
+    expect(await five.client.changes()).toEqual({ kind: "ok", value: null });
+    expect(counters(five.studio)).toEqual([]);
+  });
+
+  it("a Studio updated to contract 6 while the plugin runs: the 404 makes the next call ask what it offers again", async () => {
+    const { client, studio } = setup();
+    studio.contractVersion = "5.14.0";
+    expect(await client.changes()).toMatchObject({ kind: "ok", value: { epoch: "epoch1" } });
+    studio.contractVersion = "6.2.0"; // the Studio was updated: /changes is gone, the capabilities say so
+    expect(await client.changes()).toEqual({ kind: "not-found" });
+    expect(await client.changes()).toEqual({ kind: "ok", value: null });
+    expect(counters(studio)).toHaveLength(2); // the second look at the counters, the 404, was the last
+  });
+
+  it("an unreadable capabilities answer is not a reason to call /changes", async () => {
+    const { client, studio } = setup();
+    studio.forced.set("GET /api/capabilities", { status: 200, text: '{"contractVersion":"6.2.0"}', headers: {} });
+    expect(await client.changes()).toEqual({ kind: "ok", value: null });
+    expect(counters(studio)).toEqual([]);
+  });
+
+  it("both contracts: the same client does its ordinary work", async () => {
+    for (const v of ["5.2.0", "5.14.0", "6.0.0", "6.2.0"]) {
+      const { client, studio } = setup();
+      studio.contractVersion = v;
+      expect(await client.countItems(), v).toEqual({ kind: "ok", value: 0 });
+      const created = await client.createItem({ kind: "fragment", contentMd: "x" });
+      expect(created.kind, v).toBe("ok");
+    }
+  });
+});
+
 describe("studio client", () => {
   it("creates, reads, updates, publishes and withdraws, each command naming the revision it acts on", async () => {
     const { client, studio } = setup();
@@ -299,9 +356,9 @@ describe("the contract gate", () => {
     expect(studio.writes()).toEqual([]);
   });
 
-  it("refuses a newer major with 'update the plugin'", async () => {
+  it("refuses a major the plugin has not seen (7) with 'update the plugin'", async () => {
     const { client, studio } = setup();
-    studio.contractVersion = "6.0.0";
+    studio.contractVersion = "7.0.0";
     const refused = await client.countItems();
     expect(refused).toMatchObject({ kind: "incompatible", which: "plugin-older" });
     expect(refused.kind === "incompatible" && refused.message).toContain("Update the plugin");
@@ -320,7 +377,7 @@ describe("the contract gate", () => {
     const store = new Map<string, ContractVerdict>();
     const a = contractCacheFor(store, "https://a.test/api");
     const b = contractCacheFor(store, "https://b.test/api");
-    a.set({ kind: "ok", contract: "5.2.0", newerMinor: false });
+    a.set({ kind: "ok", contract: "5.2.0", major: 5, newerMinor: false, operations: null });
     expect(b.get()).toBeUndefined();
     a.set(undefined);
     expect(a.get()).toBeUndefined();

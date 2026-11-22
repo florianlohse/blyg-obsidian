@@ -175,6 +175,15 @@ measurements (the maintainer's notes, "refresh scaling investigation", 2026-11-1
 - The Studio has no "changed since" read of the list and moves its `reading` change counter once per imported post and once per read mark. So: **counters first**
   (`GET /api/changes`, every 30 s while the reader is open, every 3 s during a Refresh), the list is read **only when they moved**, at most once a minute, and
   a check reads it **once at the end**, not on every counter move (`ReaderView.checkForNew`, `lookForMoves`).
+- **Contract 6 has no `GET /changes`** (removed in Studio 0.67.0; 5.14 to 6.2 otherwise only adds). The reader does not decide that from the version: it reads
+  `operations` in `GET /capabilities` (`src/studio/capabilities.ts`, `OPERATION.changes` = `getChanges`; verified on a real 0.51.0, which lists it, and a real
+  0.69.0, which does not). Where it is listed nothing changes. Where it is not, `client.changes()` answers `ok` with `null` and `ReaderService.changeMarks`
+  makes marks of its own (`src/app/readerFreshness.ts`, same shape, epoch `re-read`): `reading` moves once per 60 s (`CHECK_PAUSE_MS`), so an open, visible
+  reader re-reads its newest rows at most once a minute; `subscriptions` counts the blygs whose `lastPollAt` (in `GET /subscriptions`) moved since Refresh
+  asked, read only while a check runs (35 s window). Not used: a conditional `GET` (`If-None-Match`, bodyless 304; the Studio supports it since 0.65.0),
+  because whether iOS's `requestUrl` passes the header and a 304 through is not known from a cloud session; it is a device step (E1 PR) and the better
+  replacement once checked. The Studio's API budget (1200 reads and 120 writes a minute, delegated tokens 600 and 60) is far above this: a Refresh reads
+  the subscriptions about 24 times.
 - Pages of 100 (the API's maximum). A walk stops where it reaches what is held (the list is newest first; `readerSync.reachedKnown`) and the new rows are merged in
   (`mergeFresh`); a full read of the window comes at the start, at least once a minute when only read marks seem to have moved, and as a ten-minute safety net while
   anything moved (`chooseWalk`). The mentions are read with the full walks and when their tab opens.

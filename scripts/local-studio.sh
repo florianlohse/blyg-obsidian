@@ -14,7 +14,8 @@
 # Studios listen on localhost only, and the token it prints is valid for this local database only.
 set -euo pipefail
 
-# Default: the pinned release in tests/e2e/studio-pin.env (the one the plugin speaks: Studio 0.51.0, API contract 5.2.0 since M1/S16). Override both to test another
+# Default: the pinned release in tests/e2e/studio-pin.env (the oldest the plugin speaks: Studio 0.51.0, API contract 5.2.0 since M1/S16; contract 6, Studio 0.67.0 and later,
+# is spoken too since E1: STUDIO_VERSION=0.69.0 starts that one). Override both to test another
 # release, e.g. a contract-4 Studio (the plugin refuses to write to those; only useful for the version-gate check):
 #   STUDIO_VERSION=0.49.1 STUDIO_SHA256=07174bee74ce7b15d7668593cf3d14b1cf807c69d4d90fbddb7804b0b092fc3e scripts/local-studio.sh start
 # or only STUDIO_VERSION=<x.y.z>: the checksum is then read from that release's own SHA256SUMS (integrity of the download, not provenance:

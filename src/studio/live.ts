@@ -94,7 +94,7 @@ export async function loadStudioNotices(client: StudioClient, token: string, clo
   try {
     const caps = await client.capabilities();
     if (caps.kind === "ok") {
-      const contract = contractVerdict(caps.value.contractVersion);
+      const contract = contractVerdict(caps.value.contractVersion, caps.value.operations);
       if (contract.kind === "ok") {
         if (contract.newerMinor) notes.push(newerMinorNote(contract.contract));
       } else out.push(incompatibleMessage(contract.kind));

@@ -77,7 +77,7 @@ export function makeStudioWorld(init: { vault?: Record<string, string>; coldGate
     },
   };
   const gate = createContractCache();
-  if (!init.coldGate) gate.set({ kind: "ok", contract: "5.2.0", newerMinor: false });
+  if (!init.coldGate) gate.set({ kind: "ok", contract: "5.2.0", major: 5, newerMinor: false, operations: null });
   world.deps.studio = { client: createStudioClient({ http, token: STUDIO_TOKEN, gate }), address, pending };
   return world;
 }
