@@ -1,6 +1,6 @@
 import { debounce, MarkdownView, moment, normalizePath, Notice, Plugin, type Editor, type TAbstractFile, type TFile, type WorkspaceLeaf } from "obsidian";
 import { activeBranch, activeChannel, describeTarget } from "./app/publishSettings";
-import { buildImportDeps, runStudioLookup, runStudioReplyTarget, runStudioHoppers, runTakeHoppers, runDeleteDraft, runFetchQuotable, runPublish, runPull, runRepost, runStudioFacts, runStudioQuotable, runStudioSearch, runStudioWarnings, runWithdraw, buildStudio, type AppEnv } from "./app/run";
+import { buildImportDeps, runStudioLookup, runStudioReplyTarget, runStudioHoppers, runTakeHoppers, runDeleteDraft, runFetchQuotable, runPublish, runPull, runRepost, runStudioFacts, runStudioQuotable, runStudioSearch, runStudioWarnings, runWithdraw, type AppEnv, buildStudio } from "./app/run";
 import { watchCommit } from "./app/deploy";
 import { adoptOldInstall, isPluginEnabled, OLD_PLUGIN_ID } from "./app/adoptOldInstall";
 import { loadPanelState, type PanelState } from "./app/panelState";
@@ -51,9 +51,12 @@ import { previewOfPost, resolvePreview, type PreviewResult } from "./studio/prev
 import { drawPreview, type PreviewDeps } from "./ui/replyPreview";
 import { limiter, postFromPeek, postOfMention } from "./ui/readerMentions";
 import { parseReaderCache, readerCacheOf } from "./ui/readerCache";
+import { registerDevCommands } from "./dev/drawBench";
 import { BLYG_READER_VIEW, BlygReaderView, excerptOf, type ReaderHost, type ReadResult } from "./ui/ReaderView";
 import { createMarginalia } from "./marginalia/wire";
 import { createReaderService } from "./app/readerService";
+import { createFollowHost, replyPlan } from "./app/followHost";
+import { registerShareEntry } from "./app/shareEntry";
 import type { InboundMention, ReadingPost } from "./studio/reading";
 import { confirmWithModal } from "./ui/WritePreviewModal";
 import { chooseImports } from "./ui/ImportModal";
@@ -122,6 +125,7 @@ export default class BlygPlugin extends Plugin {
     this.registerView(BLYG_READER_VIEW, (leaf) => new BlygReaderView(leaf, this.readerHost()));
     this.addCommand({ id: "open-reader", name: "Open reader", callback: () => void this.openReader() });
     this.addCommand({ id: "open-reader-sidebar", name: "Open reader in the sidebar", callback: () => void this.openReader("sidebar") });
+    registerShareEntry(this, { settings: () => this.settings, build: () => buildStudio(this.env()), openReader: () => this.openReader() });
     this.addCommand({
       id: "clear-reader-cache",
       name: "Clear the reader's saved list",
@@ -130,6 +134,7 @@ export default class BlygPlugin extends Plugin {
       },
     });
     this.registerPanelRefresh();
+    registerDevCommands(this); // the development build only: the timing command of the scale tests
 
     this.addCommand({
       id: "insert-web-quote",
@@ -138,16 +143,8 @@ export default class BlygPlugin extends Plugin {
       name: "Insert web quote (plain Markdown)",
       callback: () => this.insertWebQuote(),
     });
-    this.addCommand({
-      id: "open-panel",
-      name: "Open panel",
-      callback: () => void this.openPanel(),
-    });
-    this.addCommand({
-      id: "publish-active-note",
-      name: "Publish active note",
-      callback: () => void this.publishActiveNote(),
-    });
+    this.addCommand({ id: "open-panel", name: "Open panel", callback: () => void this.openPanel() });
+    this.addCommand({ id: "publish-active-note", name: "Publish active note", callback: () => void this.publishActiveNote() });
     this.addCommand({
       id: "repost-to-studio",
       name: "Studio: repost this note",
@@ -996,10 +993,7 @@ export default class BlygPlugin extends Plugin {
     this.registerMarkdownPostProcessor((el, ctx) => {
       for (const embed of Array.from(el.querySelectorAll(".internal-embed"))) {
         const m = /^([0-9a-hjkmnp-tv-z]{26})(?:\s*\|(.*))?$/.exec((embed.getAttribute("src") ?? "").trim());
-        if (!m) continue;
-        const card = createDiv({ cls: "blyg-reply-preview-widget" });
-        drawPreview(card, deps, m[1] ?? "", (m[2] ?? "").trim(), hintFor(ctx.sourcePath, m[1] ?? ""));
-        embed.replaceWith(card);
+        if (m) { const card = createDiv({ cls: "blyg-reply-preview-widget" }); drawPreview(card, deps, m[1] ?? "", (m[2] ?? "").trim(), hintFor(ctx.sourcePath, m[1] ?? "")); embed.replaceWith(card); }
       }
     });
   }
@@ -1014,7 +1008,7 @@ export default class BlygPlugin extends Plugin {
 
   private readerHost(): ReaderHost {
     return {
-      version: this.manifest.version,
+      version: this.manifest.version, ...createFollowHost({ app: this.app, build: () => buildStudio(this.env()) }),
       imageMode: () => this.settings.readerPane.images,
       font: () => this.settings.readerPane.font,
       setFont: async (font) => {
@@ -1031,15 +1025,13 @@ export default class BlygPlugin extends Plugin {
         this.settings.readerPane.filter = { ...filter };
         await this.saveSettings();
       },
-      checkForNew: (force) => this.readerService.checkForNew(force),
-      changeMarks: () => this.readerService.changeMarks(),
-      load: (onProgress, opts) => this.readerService.load(onProgress, opts),
+      ...this.readerService, // the reader's Studio conversation (app/readerService.ts)
       readCache: () => this.readReaderCache(),
       writeCache: (data) => this.writeReaderCache(data),
       openWeb: (url) => window.open(url, "_blank"),
-      replyTo: async (post: ReadingPost, selection?: string) => {
+      replyTo: async (post: ReadingPost, wanted?: string) => {
         this.rememberPosts([post]); // the note this starts shows this post's words at once
-        const pick: StudioPick = { source: "studio", id: post.remoteId, kind: post.kind, title: excerptOf(post.contentHtml, 60), detail: post.subscriptionTitle, subscriptionId: post.subscriptionId, label: post.subscriptionTitle, origin: post.origin, version: post.version, quotable: true };
+        const { pick, selection } = replyPlan(post, wanted, excerptOf(post.contentHtml, 60));
         const target = await runStudioReplyTarget(this.env(), pick);
         if (!target.ok) return void new Notice(target.message, 10000);
         const ref = writtenRef(pick, "");
@@ -1066,7 +1058,7 @@ export default class BlygPlugin extends Plugin {
           await this.createNote("thread", `${block.text}\n\n`, target.target);
           return;
         }
-        await this.createNote("thread", replyBody(ref), target.target);
+        await this.createNote("thread", pick.quotable === false ? "" : replyBody(ref), target.target);
       },
       isImported: async (post) => {
         if (post.subscriptionId === "") return false;

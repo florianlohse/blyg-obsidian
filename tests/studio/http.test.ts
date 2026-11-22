@@ -23,12 +23,20 @@ function scripted(answers: Array<Partial<RawResponse> | Error>) {
 }
 
 describe("studio http: where the token goes", () => {
-  it("sends it in the Authorization header to {host}/api, and nowhere else", async () => {
+  it("with no mount the API is at the host root; with one it is only at {mount}/api, never at the host root (Studio 0.65.0 removed that alias)", async () => {
+    for (const [mount, want] of [["", "https://blyg.example.com/api/items"], ["/blyg", "https://blyg.example.com/blyg/api/items"], ["/a/b", "https://blyg.example.com/a/b/api/items"]] as const) {
+      const t = scripted([{ text: "{}" }]);
+      await createStudioHttp({ transport: t.transport, timers: idleTimers, address: address(mount) }).send(TOKEN, { area: "api", path: "/items" });
+      expect(t.requests.map((r) => r.url), mount).toEqual([want]);
+    }
+  });
+
+  it("sends it in the Authorization header to {host}{mount}/api, and nowhere else", async () => {
     const t = scripted([{ text: '{"ok":true}' }]);
     const http = createStudioHttp({ transport: t.transport, timers: idleTimers, address: address("/blyg") });
     const res = await http.send(TOKEN, { method: "POST", area: "api", path: "/items", body: { a: 1 } });
     expect(res).toMatchObject({ status: 200, json: { ok: true } });
-    expect(t.requests[0]).toMatchObject({ url: "https://blyg.example.com/api/items", method: "POST", body: '{"a":1}', contentType: "application/json" });
+    expect(t.requests[0]).toMatchObject({ url: "https://blyg.example.com/blyg/api/items", method: "POST", body: '{"a":1}', contentType: "application/json" });
     expect(t.requests[0]?.headers.Authorization).toBe(`Bearer ${TOKEN}`);
     expect(t.requests[0]?.url).not.toContain(TOKEN);
   });

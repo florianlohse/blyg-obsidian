@@ -789,3 +789,13 @@
 .blyg-reception-when, .blyg-reception-note { color: var(--text-muted); font-size: var(--font-ui-smaller); }
 .blyg-reception-excerpt { margin-top: var(--size-2-2); padding-left: var(--size-4-2); border-left: 2px solid var(--background-modifier-border); color: var(--text-muted); font-size: var(--font-ui-small); }
 .blyg-reception-open { margin-top: var(--size-2-2); }
+/* The development build's timing command (src/dev/drawBench.ts): a full-screen window with a scrolling list. */
+.blyg-bench-modal { width: 100vw; max-width: 100vw; height: 100vh; max-height: 100vh; }
+.blyg-bench-list { height: calc(100vh - 8rem); overflow-y: auto; }
+/* The feed as a window (src/ui/readerWindow.ts): the scroll position is kept by the code, so the browser's own scroll anchoring is off here. */
+.blyg-reader-window { overflow-anchor: none; }
+.blyg-reader-olderrow { text-align: center; padding: var(--size-4-3) 0; }
+/* "Blygs I follow" (HK7) */
+.blyg-reader-followbtn { flex: 0 0 auto; }
+.blyg-follow-desc { white-space: pre-line; overflow-wrap: anywhere; }
+.blyg-follow-message { color: var(--text-warning); }

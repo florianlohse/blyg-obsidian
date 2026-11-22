@@ -1,8 +1,9 @@
 // S16.0: the vendored Studio 0.51.0 OpenAPI file is the unmodified release asset, and src/studio/api-types.ts is exactly what it generates.
+// E1: the same for Studio 0.69.0 (contract 6.2.0) and src/studio/api-types-contract6.ts.
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { generate, OUT, SPEC } from "../../scripts/gen-studio-api-types.mjs";
+import { generate, OUT, SPEC, TARGETS } from "../../scripts/gen-studio-api-types.mjs";
 
 const root = new URL("../../", import.meta.url);
 
@@ -20,5 +21,21 @@ describe("Studio 0.51.0 (contract 5.2.0) fixture and generated types", () => {
   it("src/studio/api-types.ts is what the fixture generates (run `npm run gen:studio-types` after changing the fixture)", async () => {
     const want = await generate();
     expect(readFileSync(new URL(OUT, root), "utf8") === want).toBe(true);
+  });
+});
+
+describe("Studio 0.69.0 (contract 6.2.0) fixture and generated types", () => {
+  const six = TARGETS[1];
+  it("is the unmodified release asset (its SHA256SUMS line)", () => {
+    expect(createHash("sha256").update(readFileSync(new URL(six.spec, root))).digest("hex")).toBe("b5d8e504fcb6e44da50138ee875eb21765cae18f147478edb88c13ba1e5aae17");
+  });
+
+  it("declares contract 6.2.0", () => {
+    const spec = JSON.parse(readFileSync(new URL(six.spec, root), "utf8")) as { info: { version: string } };
+    expect(spec.info.version).toBe("6.2.0");
+  });
+
+  it("src/studio/api-types-contract6.ts is what the fixture generates", async () => {
+    expect(readFileSync(new URL(six.out, root), "utf8") === (await generate(TARGETS[1]))).toBe(true);
   });
 });

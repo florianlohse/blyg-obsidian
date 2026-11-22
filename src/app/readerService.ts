@@ -4,7 +4,9 @@ import type { InboundMention, ReadingPost } from "../studio/reading";
 import type { StudioClient } from "../studio/client";
 import type { ReaderHost } from "../ui/ReaderView";
 import { backoffDelay, READER_PAGE, READER_PAGES, reachedKnown } from "../ui/readerSync";
+import { createOlderReader } from "./readerOlder";
 import { readerBuildMessage, readerText } from "./readerMessages";
+import { createPolledFreshness } from "./readerFreshness";
 
 /** What the service needs of the Studio build: the client, and the origin its answers came from. */
 export type ReaderStudio = { ok: true; studio: { client: StudioClient; address: { origin: string } } } | { ok: false; message: string };
@@ -24,7 +26,7 @@ export interface ReaderServiceState {
   checkedAt: number;
 }
 
-export type ReaderService = Pick<ReaderHost, "checkForNew" | "changeMarks" | "load"> & { state: ReaderServiceState };
+export type ReaderService = Pick<ReaderHost, "checkForNew" | "changeMarks" | "load" | "loadOlder"> & { state: ReaderServiceState };
 
 /** A pause between checks: every check makes the Studio fetch every blyg it reads, so opening the reader again and again must not hammer them. */
 export const CHECK_PAUSE_MS = 60_000;
@@ -32,6 +34,9 @@ export const CHECK_PAUSE_MS = 60_000;
 export function createReaderService(deps: ReaderServiceDeps): ReaderService {
   let trouble = { failures: 0, until: 0 };
   let checkedAt = 0;
+  // A Studio without change counters (contract 6): the marks are made by re-reading (readerFreshness.ts). `polled` is what the last look found.
+  const polled = createPolledFreshness({ now: deps.now, pauseMs: CHECK_PAUSE_MS });
+  let withoutCounters = false;
 
   /** In words, why the reader is not asking the Studio now, or null. */
   const backedOff = (): string | null => {
@@ -46,7 +51,10 @@ export function createReaderService(deps: ReaderServiceDeps): ReaderService {
     trouble = { failures: 0, until: 0 };
   };
 
+  const older = createOlderReader({ build: deps.build, rememberPosts: deps.rememberPosts, failed, worked });
+
   return {
+    loadOlder: () => older.loadOlder(),
     state: {
       get trouble() {
         return trouble;
@@ -69,6 +77,7 @@ export function createReaderService(deps: ReaderServiceDeps): ReaderService {
       const built = deps.build();
       if (!built.ok) return { asked: false, reason: readerBuildMessage(built.message) };
       try {
+        if (withoutCounters) await polled.startCheck(built.studio.client);
         const got = await built.studio.client.pollSubscriptions();
         if (got.kind === "ok") {
           checkedAt = deps.now();
@@ -94,6 +103,15 @@ export function createReaderService(deps: ReaderServiceDeps): ReaderService {
           return null;
         }
         worked();
+        withoutCounters = got.value === null;
+        if (got.value === null) {
+          const made = await polled.marks(built.studio.client);
+          if (made.kind !== "ok") {
+            if (made.kind === "error") failed();
+            return null;
+          }
+          return made.value;
+        }
         return { epoch: got.value.epoch, reading: got.value.domains.reading ?? 0, subscriptions: got.value.domains.subscriptions ?? 0 };
       } catch {
         failed();
@@ -121,14 +139,15 @@ export function createReaderService(deps: ReaderServiceDeps): ReaderService {
           return { ok: false, message: "message" in reading ? reading.message : readerText.listFailed };
         }
         worked();
-        // The window is the newest posts only: older unread posts are not reachable yet ("load older" is planned).
+        // The window is the newest posts; older ones come on demand (loadOlder), from where this walk ended.
+        older.noteWalk(built.studio.address.origin, { count: reading.value.posts.length, next: reading.value.next ?? null, complete: reading.value.complete, stopped: reading.value.stopped });
         const bad = reading.value.unreadable + (mentions !== null && mentions.kind === "ok" ? mentions.value.unreadable : 0);
         const note = [bad > 0 ? readerText.unreadable(bad) : "", mentions !== null && mentions.kind !== "ok" ? readerText.mentionsUnavailable : ""].filter(Boolean).join(" ");
         deps.rememberPosts(reading.value.posts);
         const mentionList: InboundMention[] = mentions !== null && mentions.kind === "ok" ? mentions.value.mentions : [];
         return {
           ok: true,
-          data: { posts: own !== null && own.kind === "ok" ? [...reading.value.posts, ...own.value.posts] : reading.value.posts, mentions: mentionList, mentionsFetched: mentions !== null && mentions.kind === "ok", note, studioOrigin: built.studio.address.origin, incremental: reading.value.stopped },
+          data: { posts: own !== null && own.kind === "ok" ? [...reading.value.posts, ...own.value.posts] : reading.value.posts, mentions: mentionList, mentionsFetched: mentions !== null && mentions.kind === "ok", note, studioOrigin: built.studio.address.origin, incremental: reading.value.stopped, moreOlder: older.more() },
         };
       } catch (err) {
         failed();

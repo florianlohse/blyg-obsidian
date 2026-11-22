@@ -58,8 +58,8 @@ interface BlygSettings {
     author?: { name: string; url?: string };  // passed through into snapshots/citations where the contract asks
   };
   studio: {                   // 0.3.0: the Studio that routes of mode "studio" publish to (ADR-002); any Studio
-    baseUrl: string;          // "https://blyg.example.com" — host only; the owner API is {host}/api
-    mount: string;            // "" (own host) or "/blyg"; public pages are {host}{mount}/f/{id}/
+    baseUrl: string;          // "https://blyg.example.com" — host only; the owner API is {host}{mount}/api (Studio 0.65.0 removed the host-root alias of a mounted Studio)
+    mount: string;            // "" (own host) or "/blyg"; public pages are {host}{mount}/f/{id}/, the API {host}{mount}/api
     tokenSecretName: string;  // NAME of the keychain entry holding the REST token; never the token. The token's expiry and permissions are read from the token itself
   };
   routes: Array<{
@@ -175,13 +175,29 @@ measurements (the maintainer's notes, "refresh scaling investigation", 2026-11-1
 - The Studio has no "changed since" read of the list and moves its `reading` change counter once per imported post and once per read mark. So: **counters first**
   (`GET /api/changes`, every 30 s while the reader is open, every 3 s during a Refresh), the list is read **only when they moved**, at most once a minute, and
   a check reads it **once at the end**, not on every counter move (`ReaderView.checkForNew`, `lookForMoves`).
+- **Contract 6 has no `GET /changes`** (removed in Studio 0.67.0; 5.14 to 6.2 otherwise only adds). The reader does not decide that from the version: it reads
+  `operations` in `GET /capabilities` (`src/studio/capabilities.ts`, `OPERATION.changes` = `getChanges`; verified on a real 0.51.0, which lists it, and a real
+  0.69.0, which does not). Where it is listed nothing changes. Where it is not, `client.changes()` answers `ok` with `null` and `ReaderService.changeMarks`
+  makes marks of its own (`src/app/readerFreshness.ts`, same shape, epoch `re-read`): `reading` moves once per 60 s (`CHECK_PAUSE_MS`), so an open, visible
+  reader re-reads its newest rows at most once a minute; `subscriptions` counts the blygs whose `lastPollAt` (in `GET /subscriptions`) moved since Refresh
+  asked, read only while a check runs (35 s window). Not used: a conditional `GET` (`If-None-Match`, bodyless 304; the Studio supports it since 0.65.0),
+  because whether iOS's `requestUrl` passes the header and a 304 through is not known from a cloud session; it is a device step (E1 PR) and the better
+  replacement once checked. The Studio's API budget (1200 reads and 120 writes a minute, delegated tokens 600 and 60) is far above this: a Refresh reads
+  the subscriptions about 24 times.
 - Pages of 100 (the API's maximum). A walk stops where it reaches what is held (the list is newest first; `readerSync.reachedKnown`) and the new rows are merged in
   (`mergeFresh`); a full read of the window comes at the start, at least once a minute when only read marks seem to have moved, and as a ten-minute safety net while
   anything moved (`chooseWalk`). The mentions are read with the full walks and when their tab opens.
 - Asking the Studio to fetch the blygs (`POST /api/subscriptions/poll`) happens only when the person presses Refresh (the Studio fetches them itself every half hour).
 - 5xx and 429 answers back the reader off: 30 s doubling to 30 min (`backoffDelay`), a status line says when it will try again, Refresh asks now.
-- **The window is the newest 200 posts** (2 pages of 100): older unread posts are not reachable. **Planned, not built: "load older" and drawing long lists in parts**
-  (a whole-feed redraw costs about 0.3 s at 1000 posts on a desktop).
+- **The first read is the newest 200 posts** (2 pages of 100). **"Load older posts"** (HK4, `app/readerOlder.ts`) reads further on demand, 200 at a time. The Studio has no
+  "older than" parameter, only a cursor that continues a walk and dies when the list changes (409), so the service keeps where the last walk ended: a press costs 2
+  requests; when the cursor is dead, or a Refresh made the newest window the last walk, the list is read again from the top down to the depth held and on from there.
+  The reader holds at most 5000 posts (`OLDER_MAX`, a judgment call about memory on a phone) and says so; those older than the newest window survive a whole read
+  (`keepOlderTail`). **Policy: older posts live in memory only**; the saved copy below stays the newest 200, so the file does not grow and strangers' text is not stored
+  in more places. They are kept without Markdown, as the saved copy is.
+- **The feed is a window** (`ui/readerWindow.ts`): at most 120 cards are in the page; cards are added below (and above, scrolling back) as you scroll, and the ones
+  that left are replaced by a spacer of their measured height, so drawing cost does not grow with the list and the place on the screen stays. The index arithmetic is
+  unit-tested; the scroll behaviour was checked in a browser with 5000 rows (no drift in either direction) and is to be checked on a device.
 - A saved copy of the window (`reader-cache.json` in the plugin's folder, `readerCache.ts`): strangers' text stays out of the vault's notes; the file is per Studio,
   two weeks old at most, without Markdown, and every field is checked when read back.
 

@@ -7,6 +7,7 @@ import { readWireStub, stubForWire, type StubTarget } from "./stub";
 import type { StudioHttp, StudioResponse } from "./http";
 import type { StudioCapabilities, StudioCommandDone, StudioFailure, StudioHit, StudioImported, StudioHopper, StudioItem, StudioItemKind, StudioListedItem, StudioManifest, StudioMediaDone, StudioPeek, StudioPreview, StudioProblem, StudioResolvedQuote, StudioResult, StudioSubscription } from "./types";
 import { contractVerdict, incompatibleMessage, type ContractVerdict } from "./version";
+import { OPERATION, offers } from "./capabilities";
 import { readFollowed, readProposal, type StudioFollowAnswer, type StudioFollowed } from "./subscriptions";
 import { readInboundMention, readOwnReadingEntry, readReadingPost, type InboundMention, type ReadingPost } from "./reading";
 
@@ -92,8 +93,8 @@ export interface StudioClient {
   listReading(
     maxPages?: number,
     onPage?: (postsSoFar: ReadingPost[]) => void,
-    opts?: { pageSize?: number; stopAfter?: (pageRows: ReadingPost[]) => boolean },
-  ): Promise<StudioResult<{ posts: ReadingPost[]; complete: boolean; unreadable: number; stopped: boolean }>>;
+    opts?: { pageSize?: number; stopAfter?: (pageRows: ReadingPost[]) => boolean; cursor?: string },
+  ): Promise<StudioResult<{ posts: ReadingPost[]; complete: boolean; unreadable: number; stopped: boolean; next: string | null }>>;
   /** POC (S15): inbound mentions of the owner's items (`GET /mentions?direction=inbound`, `owner:read`), verified and not hidden only. */
   listInboundMentions(maxPages?: number): Promise<StudioResult<{ mentions: InboundMention[]; complete: boolean; unreadable: number }>>;
   /** POC (S15): mark one version of a post read. Needs the token scope `reading:state`, which the plugin's token does not carry today: a 403 comes back as `forbidden`. */
@@ -109,7 +110,8 @@ export interface StudioClient {
   /** Increment 8b: the owner's own posts among the newest entries of the Studio's merged reading list (`GET /reading`, `owner:read`), at most `maxPages` pages of 50. */
   listOwnReading(maxPages?: number): Promise<StudioResult<{ posts: ReadingPost[] }>>;
   /** S15: the Studio's change counters (`GET /changes`, `owner:read`): cheap, to see whether the reading list moved without walking it. */
-  changes(): Promise<StudioResult<{ epoch: string; domains: Record<string, number> }>>;
+  /** `GET /changes`. `ok` with null: this Studio does not list that operation (contract 6 removed it), so nothing was asked. */
+  changes(): Promise<StudioResult<{ epoch: string; domains: Record<string, number> } | null>>;
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -231,16 +233,17 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
    * answers 409 `cursor-expired`: the walk is thrown away and started again from page 1, once (never appended to the old prefix); a second
    * expiry is reported. `complete` is false when the page cap was hit with more to read.
    */
-  async function walk<T>(path: string, query: Record<string, string>, pageSize: number, maxPages: number, readRow: (row: unknown) => T | null, onPage?: (rowsSoFar: T[]) => void, stopAfter?: (pageRows: T[]) => boolean): Promise<StudioResult<{ rows: T[]; complete: boolean; unreadable: number; stopped?: boolean }>> {
+  async function walk<T>(path: string, query: Record<string, string>, pageSize: number, maxPages: number, readRow: (row: unknown) => T | null, onPage?: (rowsSoFar: T[]) => void, stopAfter?: (pageRows: T[]) => boolean, from: string | null = null): Promise<StudioResult<{ rows: T[]; complete: boolean; unreadable: number; stopped?: boolean; next?: string | null }>> {
     for (let restart = 0; restart < 2; restart++) {
       const rows: T[] = [];
       let skipped = 0;
-      let cursor: string | null = null;
+      let cursor: string | null = from; // a walk that continues an earlier one ("load older") starts at that cursor
       let expired = false;
       for (let page = 0; page < maxPages; page++) {
         const before = rows.length;
         const res: StudioResponse = await http.send(token, { area: "api", path, query: { ...query, limit: String(pageSize), ...(cursor !== null ? { cursor } : {}) } });
         if (res.status === 409 && codeOf(res) === "cursor-expired") {
+          if (from !== null) return { kind: "error", status: 409, message: "The list changed since it was last read." }; // not restartable: the caller starts again from the top
           expired = true;
           break;
         }
@@ -263,7 +266,7 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
         if (stopAfter?.(rows.slice(before))) return { kind: "ok", value: { rows, complete: false, unreadable: skipped, stopped: true } };
         cursor = next;
       }
-      if (!expired) return { kind: "ok", value: { rows, complete: false, unreadable: skipped } };
+      if (!expired) return { kind: "ok", value: { rows, complete: false, unreadable: skipped, next: cursor } };
     }
     return { kind: "error", status: 409, message: "The list kept changing while it was being read. Try again in a moment." };
   }
@@ -272,7 +275,8 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
     const res = await http.send(token, { area: "api", path: "/capabilities" });
     if (res.status !== 200) return failure(res);
     if (!isRecord(res.json) || typeof res.json.contractVersion !== "string") return unreadable(res);
-    return { kind: "ok", value: { contractVersion: res.json.contractVersion } };
+    const operations = Array.isArray(res.json.operations) ? res.json.operations.filter((o): o is string => typeof o === "string") : null;
+    return { kind: "ok", value: { contractVersion: res.json.contractVersion, operations } };
   };
 
   /** Null when the Studio speaks a supported contract; otherwise why not. Asks once per session (the cache), and again after "Check connection". */
@@ -280,7 +284,7 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
     let verdict = gateCache.get();
     if (verdict === undefined) {
       const caps = await capabilities();
-      if (caps.kind === "ok") verdict = contractVerdict(caps.value.contractVersion);
+      if (caps.kind === "ok") verdict = contractVerdict(caps.value.contractVersion, caps.value.operations);
       else if (caps.kind === "not-found" || (caps.kind === "rejected" && caps.status === 405)) verdict = { kind: "studio-older", contract: null };
       else return caps;
       gateCache.set(verdict);
@@ -375,10 +379,10 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
       return { kind: "ok", value: { count, complete: walked.value.complete } };
     },
 
-    listReading: async (maxPages = 4, onPage?: (postsSoFar: ReadingPost[]) => void, opts?: { pageSize?: number; stopAfter?: (pageRows: ReadingPost[]) => boolean }) => {
-      const walked = await walk("/reading/imported", {}, Math.min(100, opts?.pageSize ?? 50), maxPages, readReadingPost, onPage, opts?.stopAfter);
+    listReading: async (maxPages = 4, onPage?: (postsSoFar: ReadingPost[]) => void, opts?: { pageSize?: number; stopAfter?: (pageRows: ReadingPost[]) => boolean; cursor?: string }) => {
+      const walked = await walk("/reading/imported", {}, Math.min(100, opts?.pageSize ?? 50), maxPages, readReadingPost, onPage, opts?.stopAfter, opts?.cursor ?? null);
       if (walked.kind !== "ok") return walked;
-      return { kind: "ok", value: { posts: walked.value.rows, complete: walked.value.complete, unreadable: walked.value.unreadable, stopped: walked.value.stopped === true } } as const;
+      return { kind: "ok", value: { posts: walked.value.rows, complete: walked.value.complete, unreadable: walked.value.unreadable, stopped: walked.value.stopped === true, next: walked.value.next ?? null } } as const;
     },
 
     listInboundMentions: async (maxPages = 2) => {
@@ -429,7 +433,11 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
     },
 
     changes: async () => {
+      // Whether the Studio has the operation is read from what it lists, not from its version (capabilities.ts). The guard has just filled the cache.
+      if (!offers(gateCache.get(), OPERATION.changes)) return { kind: "ok", value: null } as const;
       const res = await http.send(token, { area: "api", path: "/changes" });
+      // The Studio was updated to contract 6 while the plugin ran: it listed the operation when it was asked, and has dropped it since. Ask again next time.
+      if (res.status === 404) gateCache.set(undefined);
       if (res.status !== 200) return failure(res);
       const j = res.json;
       if (!isRecord(j) || typeof j.epoch !== "string" || !isRecord(j.domains)) return unreadable(res);

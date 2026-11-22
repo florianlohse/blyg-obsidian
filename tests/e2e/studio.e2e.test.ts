@@ -28,6 +28,8 @@ import { makeStudioWorld, tapStudio, tapStudioDeleteDraft, tapStudioPull, tapStu
 
 const URL_ = process.env.STUDIO_E2E_URL;
 const TOKEN = process.env.STUDIO_E2E_TOKEN;
+/** "" or "/blyg": the Studio is mounted at a path (scripts/local-studio.sh with MOUNT=/blyg prints it). */
+const MOUNT = process.env.STUDIO_E2E_MOUNT ?? "";
 const run = URL_ && TOKEN ? describe : describe.skip;
 
 /** The plugin's transport contract, over Node's fetch (the plugin itself uses Obsidian's requestUrl). */
@@ -49,7 +51,7 @@ async function transport(req: RawRequest): Promise<RawResponse> {
 
 function realWorld(vault: Record<string, string>, wrap: (t: typeof transport) => typeof transport = (t) => t): StudioWorld {
   const w = makeStudioWorld({ vault });
-  const address = studioAddress({ baseUrl: URL_ ?? "", mount: "" });
+  const address = studioAddress({ baseUrl: URL_ ?? "", mount: MOUNT });
   if (!address || !w.deps.studio) throw new Error("e2e setup");
   const client = createStudioClient({ http: createStudioHttp({ transport: wrap(transport), timers: idleTimers, address }), token: TOKEN ?? "" });
   w.deps.studio = { ...w.deps.studio, client, address };
@@ -78,10 +80,10 @@ run("against a real Studio", { timeout: 120_000 }, () => {
   it("Check connection passes: tested release, token, permissions", async () => {
     const report = await checkStudioConnection(
       { transport, timers: idleTimers, keychain: fakeKeychain({ t: TOKEN ?? "" }), clock: { now: () => new Date() } },
-      { baseUrl: URL_ ?? "", mount: "", tokenSecretName: "t" },
+      { baseUrl: URL_ ?? "", mount: MOUNT, tokenSecretName: "t" },
     );
     expect(report.lines.filter((l) => l.level === "error")).toEqual([]);
-    expect(report.lines.map((l) => l.text).join("\n")).toMatch(/contract 5\.\d+\.\d+: the API this plugin speaks/);
+    expect(report.lines.map((l) => l.text).join("\n")).toMatch(/contract [56]\.\d+\.\d+: the API this plugin speaks/);
   });
 
   it("publishes, finds nothing to do, updates, and refuses to overwrite work done in the Studio", async () => {
@@ -117,7 +119,7 @@ run("against a real Studio", { timeout: 120_000 }, () => {
   it("Studio-only: a setup with a Studio address and token and nothing about GitHub publishes and withdraws through the app's own wiring", async () => {
     const world = makeWorld({ vault: { "blyg/E2E studio-only.md": `Studio-only words, ${stamp}.\n` }, settings: { routes: [{ vaultPrefix: "blyg/", mode: "studio", label: "Blyg item" }] } });
     const settings = defaultSettings();
-    settings.studio = { baseUrl: URL_ ?? "", mount: "", tokenSecretName: "studio-token", importFolder: "" };
+    settings.studio = { baseUrl: URL_ ?? "", mount: MOUNT, tokenSecretName: "studio-token", importFolder: "" };
     const env: AppEnv = {
       settings,
       activeNote: () => ({ path: "blyg/E2E studio-only.md", name: "E2E studio-only.md", extension: "md" }),
@@ -527,7 +529,7 @@ run("against a real Studio", { timeout: 120_000 }, () => {
   it("hoppers (S13): a note's hoppers are applied after the text, taken out when removed from the note, and a removal made in the Studio stands", async () => {
     // A hopper made "in the Studio" (the plugin itself never creates one, D4).
     const stamp = Date.now().toString(36);
-    const made = await fetch(`${URL_ ?? ""}/api/hoppers`, { method: "POST", headers: { Authorization: `Bearer ${TOKEN ?? ""}`, "content-type": "application/json" }, body: JSON.stringify({ name: `E2E hopper ${stamp}` }) });
+    const made = await fetch(`${URL_ ?? ""}${MOUNT}/api/hoppers`, { method: "POST", headers: { Authorization: `Bearer ${TOKEN ?? ""}`, "content-type": "application/json" }, body: JSON.stringify({ name: `E2E hopper ${stamp}` }) });
     expect(made.status).toBe(201);
     const hopper = (await made.json()) as { id: string; name: string };
     const path = `studio/E2E hopper note ${stamp}.md`;

@@ -45,17 +45,17 @@ describe("studio connection check", () => {
     expect(formatReport(report)).toMatch(/Without reading:state the token cannot mark posts read or unread in the reader\. Publishing and reading work without it/);
   });
 
-  it("warns, but still passes, for a newer minor of contract 5 and for a program that is not a Blygger Studio", async () => {
+  it("warns, but still passes, for a newer minor of a supported contract and for a program that is not a Blygger Studio", async () => {
     const newer = new FakeStudio();
-    newer.contractVersion = "5.9.0";
+    newer.contractVersion = "5.15.0";
     const r1 = await run(newer);
     expect(r1.ok).toBe(true);
-    expect(formatReport(r1)).toMatch(/Studio API 5\.9\.0 is newer than the 5\.4 this plugin was tested with\. Newer minor versions only add things and are accepted/);
+    expect(formatReport(r1)).toMatch(/Studio API 5\.15\.0 is newer than the 5\.14 this plugin was tested with\. Newer minor versions only add things and are accepted/);
     // an info line (muted), not a warning
     expect(r1.lines.find((l) => /newer than/.test(l.text))?.level).toBe("info");
     expect(r1.lines.filter((l) => l.level === "warn").some((l) => /newer than/.test(l.text))).toBe(false);
-    // the tested contracts (Studio 0.51.0 to 0.53.0) say nothing about versions
-    for (const v of ["5.2.0", "5.3.0", "5.4.0"]) {
+    // the tested contracts (Studio 0.51.0 to 0.69.0: 5.2 to 5.14, 6.0 to 6.2) say nothing about versions
+    for (const v of ["5.2.0", "5.4.0", "5.14.0", "6.0.0", "6.2.0"]) {
       const tested = new FakeStudio();
       tested.contractVersion = v;
       const r = await run(tested);
@@ -63,10 +63,10 @@ describe("studio connection check", () => {
       expect(formatReport(r), v).not.toMatch(/newer than/);
     }
     const next = new FakeStudio();
-    next.contractVersion = "5.5.0";
-    expect(formatReport(await run(next))).toMatch(/Studio API 5\.5\.0 is newer than the 5\.4/);
+    next.contractVersion = "6.3.0";
+    expect(formatReport(await run(next))).toMatch(/Studio API 6\.3\.0 is newer than the 6\.2/);
     const major = new FakeStudio();
-    major.contractVersion = "6.0.0";
+    major.contractVersion = "7.0.0";
     const refused = await run(major);
     expect(refused.ok).toBe(false);
     expect(refused.lines.some((l) => l.level === "error")).toBe(true);
@@ -93,9 +93,9 @@ describe("studio connection check", () => {
     expect(formatReport(report)).toMatch(/older API/);
   });
 
-  it("a newer major fails the check and says to update the plugin", async () => {
+  it("a major the plugin has not seen fails the check and says to update the plugin", async () => {
     const future = new FakeStudio();
-    future.contractVersion = "6.0.0";
+    future.contractVersion = "7.0.0";
     const report = await run(future);
     expect(report.ok).toBe(false);
     expect(formatReport(report)).toMatch(/Update the plugin/);
@@ -153,5 +153,34 @@ describe("studio connection check", () => {
     const r = await run(studio);
     expect(r.ok).toBe(false);
     expect(formatReport(r)).toMatch(/Network error: offline/);
+  });
+
+  describe("a Studio mounted at a path (E2)", () => {
+    it("is checked at {mount}/api and {mount}/blyg.json", async () => {
+      const studio = new FakeStudio();
+      studio.mount = "/blyg";
+      const report = await run(studio, { mount: "/blyg" });
+      expect(report.ok).toBe(true);
+      expect(studio.seen.every((s) => s.path === "/blyg.json" || s.path.startsWith("/api/"))).toBe(true);
+      expect(studio.seen.length).toBeGreaterThan(2);
+    });
+    it("a Studio without the mount in the settings is not found there (404 says to check the address and the mount)", async () => {
+      const studio = new FakeStudio();
+      studio.mount = "/blyg";
+      const report = await run(studio, { mount: "" });
+      expect(report.ok).toBe(false);
+      expect(formatReport(report)).toMatch(/Check the address and the mount/);
+    });
+    it("a token the Studio rejects says to make a new one, and for a mounted Studio names the pre-0.65.0 token", async () => {
+      const studio = new FakeStudio();
+      studio.mount = "/blyg";
+      const mounted = await run(studio, { mount: "/blyg" }, { "studio-token": "an-old-token" });
+      expect(mounted.ok).toBe(false);
+      expect(formatReport(mounted)).toMatch(/rejected the token[\s\S]*create a REST token[\s\S]*made before your Studio moved its API under the mount \(Studio 0\.65\.0\) no longer works: make a new one/);
+      const plain = new FakeStudio();
+      const unmounted = await run(plain, {}, { "studio-token": "an-old-token" });
+      expect(formatReport(unmounted)).toMatch(/rejected the token/);
+      expect(formatReport(unmounted)).not.toMatch(/0\.65\.0/);
+    });
   });
 });

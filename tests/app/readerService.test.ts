@@ -124,6 +124,116 @@ describe("changeMarks", () => {
   });
 });
 
+describe("changeMarks on a Studio without change counters (contract 6, E1)", () => {
+  const subs = (...rows: Array<[string, string | null]>) => ok({ subscriptions: rows.map(([id, lastPollAt]) => ({ id, lastPollAt })), complete: true });
+  type Rows = Array<[string, string | null]>;
+  /** A Studio that lists no counters; its blygs' `lastPollAt` is whatever `world.rows` holds when asked. */
+  function noCounters(rows: Rows = [["a", "t0"], ["b", "t0"], ["c", "t0"]]) {
+    const world = { rows };
+    const t = setup({ changes: () => ok(null), pollSubscriptions: () => ok({ polling: 3 }), listSubscriptions: () => subs(...world.rows) });
+    return { ...t, world, listed: () => t.calls.filter((c) => c === "listSubscriptions").length };
+  }
+
+  it("makes marks of its own (the epoch says so), without reading the subscriptions while no check runs", async () => {
+    const t = noCounters();
+    const marks = await t.service.changeMarks();
+    expect(marks).toEqual({ epoch: "re-read", reading: Math.floor(t.clock.t / CHECK_PAUSE_MS), subscriptions: 0 });
+    expect(t.listed()).toBe(0);
+    expect(t.calls).toEqual(["changes"]);
+  });
+
+  it("the reading mark moves once per pause (60 s), so a reader that stays open re-reads at most once a minute, and not more often", async () => {
+    const t = noCounters();
+    t.clock.t = 10 * CHECK_PAUSE_MS + 5;
+    const first = await t.service.changeMarks();
+    t.clock.t += CHECK_PAUSE_MS - 10; // still inside the same minute
+    expect(await t.service.changeMarks()).toEqual(first);
+    t.clock.t += 10;
+    expect(await t.service.changeMarks()).toEqual({ ...first, reading: (first?.reading ?? 0) + 1 });
+  });
+
+  it("Refresh: notes when each blyg was last fetched, then counts the blygs whose time moved (the counter's rise once per fetched blyg)", async () => {
+    const t = noCounters();
+    const before = await t.service.changeMarks();
+    expect(await t.service.checkForNew(true)).toEqual({ asked: true, polling: 3 });
+    expect(t.calls.slice(-2)).toEqual(["listSubscriptions", "pollSubscriptions"]); // the baseline is taken before the Studio is asked
+    expect((await t.service.changeMarks())?.subscriptions).toBe(0); // nothing has been fetched yet
+    t.world.rows = [["a", "t1"], ["b", "t0"], ["c", "t0"]];
+    t.clock.t += 1500;
+    expect((await t.service.changeMarks())?.subscriptions).toBe(1);
+    expect((await t.service.changeMarks())?.subscriptions).toBe(1); // the same blyg is not counted twice
+    t.world.rows = [["a", "t1"], ["b", "t2"], ["c", "t3"]];
+    t.clock.t += 1500;
+    expect((await t.service.changeMarks())?.subscriptions).toBe(3);
+    expect(before?.subscriptions).toBe(0);
+  });
+
+  it("a blyg followed during the check is a starting point, not a fetch; a blyg gone is ignored", async () => {
+    const t = noCounters();
+    await t.service.changeMarks();
+    await t.service.checkForNew(true);
+    t.world.rows = [["a", "t0"], ["b", "t0"], ["d", "t9"]];
+    expect((await t.service.changeMarks())?.subscriptions).toBe(0);
+  });
+
+  it("the count only rises, also across checks, so the reader's difference is never negative", async () => {
+    const t = noCounters();
+    await t.service.changeMarks();
+    await t.service.checkForNew(true);
+    t.world.rows = [["a", "t1"], ["b", "t1"], ["c", "t1"]];
+    expect((await t.service.changeMarks())?.subscriptions).toBe(3);
+    t.clock.t += CHECK_PAUSE_MS + 1;
+    const between = await t.service.changeMarks(); // after the window: no more reading of the subscriptions
+    expect(between?.subscriptions).toBe(3);
+    await t.service.checkForNew(true);
+    expect((await t.service.changeMarks())?.subscriptions).toBe(3);
+    t.world.rows = [["a", "t2"], ["b", "t1"], ["c", "t1"]];
+    expect((await t.service.changeMarks())?.subscriptions).toBe(4);
+  });
+
+  it("stops reading the subscriptions when the check's window has passed", async () => {
+    const t = noCounters();
+    await t.service.changeMarks();
+    await t.service.checkForNew(true);
+    await t.service.changeMarks();
+    const during = t.listed();
+    t.clock.t += 36_000;
+    await t.service.changeMarks();
+    expect(t.listed()).toBe(during);
+  });
+
+  it("a subscriptions list that cannot be read: an error backs off, as for the counters; forbidden does not", async () => {
+    const t = setup({ changes: () => ok(null), pollSubscriptions: () => ok({ polling: 1 }), listSubscriptions: () => serverError });
+    await t.service.changeMarks();
+    await t.service.checkForNew(true); // the baseline failed, the check goes on
+    expect(await t.service.changeMarks()).toBeNull();
+    expect(await t.service.changeMarks()).toBeNull();
+    expect(t.calls.filter((c) => c === "listSubscriptions")).toHaveLength(2); // the baseline and one look; then the back-off
+    const f = setup({ changes: () => ok(null), pollSubscriptions: () => ok({ polling: 1 }), listSubscriptions: () => forbidden });
+    await f.service.changeMarks();
+    await f.service.checkForNew(true);
+    expect(await f.service.changeMarks()).toBeNull();
+    expect(await f.service.changeMarks()).toBeNull();
+    expect(f.calls.filter((c) => c === "listSubscriptions")).toHaveLength(3);
+  });
+
+  it("a Studio with counters keeps them exactly: no subscriptions are read, no baseline is taken", async () => {
+    const t = setup({ changes: () => ok({ epoch: "e1", domains: { reading: 5, subscriptions: 2 } }), pollSubscriptions: () => ok({ polling: 2 }) });
+    expect(await t.service.changeMarks()).toEqual({ epoch: "e1", reading: 5, subscriptions: 2 });
+    await t.service.checkForNew(true);
+    expect(await t.service.changeMarks()).toEqual({ epoch: "e1", reading: 5, subscriptions: 2 });
+    expect(t.calls).toEqual(["changes", "pollSubscriptions", "changes"]);
+  });
+
+  it("a Studio that gains or loses the counters between two looks is followed (the epoch differs, which the reader reads as a reset)", async () => {
+    let counters = true;
+    const t = setup({ changes: () => (counters ? ok({ epoch: "e1", domains: {} }) : ok(null)), pollSubscriptions: () => ok({ polling: 1 }), listSubscriptions: () => subs(["a", "t"]) });
+    expect((await t.service.changeMarks())?.epoch).toBe("e1");
+    counters = false;
+    expect((await t.service.changeMarks())?.epoch).toBe("re-read");
+  });
+});
+
 describe("load", () => {
   const mention = { id: "m1" } as unknown as InboundMention;
   const reading = (posts: ReadingPost[], over: Partial<{ unreadable: number; stopped: boolean }> = {}) => ok({ posts, complete: true, unreadable: 0, stopped: false, ...over });
@@ -132,7 +242,7 @@ describe("load", () => {
   it("returns the posts, the mentions, the Studio's origin, and remembers the posts", async () => {
     const t = setup(base);
     const got = await t.service.load();
-    expect(got).toEqual({ ok: true, data: { posts: [post("a")], mentions: [mention], mentionsFetched: true, note: "", studioOrigin: "https://studio.example.com", incremental: false } });
+    expect(got).toEqual({ ok: true, data: { posts: [post("a")], mentions: [mention], mentionsFetched: true, note: "", studioOrigin: "https://studio.example.com", incremental: false, moreOlder: false } });
     expect(t.remembered).toEqual([[post("a")]]);
     expect(t.calls).not.toContain("listOwnReading");
   });
