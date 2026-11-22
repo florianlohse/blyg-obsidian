@@ -123,7 +123,7 @@ export interface BlygSettings {
    * The Daily's optional AI layer (src/digest/llm.ts). Off by default; optional in data.json like `webQuote` (no schema change: an older plugin ignores it).
    * `keySecretName` is the NAME of the keychain entry holding the provider's API key, never the key.
    */
-  digest: { useAi: boolean; endpoint: string; model: string; keySecretName: string };
+  digest: { useAi: boolean; endpoint: string; model: string; keySecretName: string; dailyTokenCeiling: number };
   /** Feature switches the user has set, by feature id (src/features/registry.ts). A missing id takes the build's default; turning one off keeps the feature's stored data. */
   features: Record<string, boolean>;
   /** Development build only (ignored by the release plugin). `allowLiveStudio`: lift the test-Studio lock (studio/devLock.ts) on the owner's say. */
@@ -168,7 +168,7 @@ export function defaultSettings(flavour: "release" | "dev" = "release"): BlygSet
     mentions: { repoPath: "data/mentions.json" },
     webQuote: { ...DEFAULT_WEB_QUOTE },
     readerPane: { images: "click", font: "default", contrast: "normal", shareInbox: "", filter: { sort: "newest", source: null, unreadOnly: false, length: "any", repliesToMe: false } },
-    digest: { useAi: false, endpoint: "https://api.anthropic.com", model: "claude-sonnet-5-5", keySecretName: "" },
+    digest: { useAi: false, endpoint: "https://api.anthropic.com", model: "claude-sonnet-5-5", keySecretName: "", dailyTokenCeiling: 60000 },
     features: {},
     dev: { allowLiveStudio: false },
   };

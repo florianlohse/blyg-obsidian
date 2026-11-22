@@ -9,7 +9,9 @@ import { Notice } from "obsidian";
 import type { Keychain } from "../platform/ports";
 import type { RawTransport } from "../platform/http";
 import type { BlygSettings } from "../settings/schema";
-import { DigestReceiptModal, trailText } from "../ui/DigestReceiptModal";
+import { DigestConfirmModal, DigestConsentModal, trailText } from "../ui/DigestModals";
+import { setConsentGate } from "./consentGate";
+import { normaliseEndpoint } from "./llm";
 import { TextModal } from "../ui/TextModal";
 import { cachedDigest, emptyStore, parseStore, writeDigest, type LlmDeps, type LlmStore } from "./llm";
 
@@ -40,12 +42,25 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
           const name = ai.settings().keySecretName;
           return name !== "" && ai.keychain.available() ? ai.keychain.get(name) : null;
         },
-        confirm: (receipt) => new Promise<boolean>((resolve) => new DigestReceiptModal(plugin.app, receipt, resolve).open()),
+        confirm: (estimate) => new Promise<boolean>((resolve) => new DigestConfirmModal(plugin.app, estimate, resolve).open()),
+        askConsent: (hostName) => new Promise<boolean>((resolve) => new DigestConsentModal(plugin.app, hostName, resolve).open()),
         load: loadStore,
         save: (store) => plugin.app.vault.adapter.write(storePath(), JSON.stringify(store)),
         now: () => Date.now(),
       }
     : null;
+  // The settings toggle "Use an AI model" asks here before it turns on; the agreement is recorded for the endpoint's host (a different host asks again at the next run).
+  setConsentGate(async () => {
+    if (!llm) return false;
+    const host = normaliseEndpoint(llm.settings().endpoint)?.host;
+    if (!host) return false;
+    const store = await loadStore();
+    if (store.consent?.host === host) return true;
+    if (!(await llm.askConsent(host, llm.settings().model.trim()))) return false;
+    store.consent = { host, model: llm.settings().model.trim(), at: llm.now() };
+    await llm.save(store);
+    return true;
+  });
   const host: DigestHost = {
     ...(llm ? { ai: { enabled: () => ai?.settings().useAi === true, cached: (c) => cachedDigest(llm, c), write: (c) => writeDigest(llm, c) } } : {}),
     loadList: () => deps.readList(),
@@ -86,7 +101,7 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
   if (llm) plugin.addCommand({
     id: "show-digest-sent",
     name: "Show what the digest sent",
-    callback: () => void loadStore().then((st) => new TextModal(plugin.app, "What the digest sent", "Time, model, host, sizes and post ids. No post text and no key is kept here.", trailText(st), (ok) => new Notice(ok ? "Copied." : "Copy is blocked here; the text is selected.")).open()),
+    callback: () => void loadStore().then((st) => new TextModal(plugin.app, "What the digest sent", "Time, model, host, sizes, tokens, a rough cost and post ids. No post text and no key is kept here.", trailText(st), (ok) => new Notice(ok ? "Copied." : "Copy is blocked here; the text is selected.")).open()),
   });
   plugin.addRibbonIcon("newspaper", "Open Blyg Daily", () => void open());
 }
