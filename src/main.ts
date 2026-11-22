@@ -54,6 +54,7 @@ import { parseReaderCache, readerCacheOf } from "./ui/readerCache";
 import { BLYG_READER_VIEW, BlygReaderView, excerptOf, type ReaderHost, type ReadResult } from "./ui/ReaderView";
 import { createReaderService } from "./app/readerService";
 import { createFollowHost, replyPlan } from "./app/followHost";
+import { registerShareEntry } from "./app/shareEntry";
 import type { InboundMention, ReadingPost } from "./studio/reading";
 import { confirmWithModal } from "./ui/WritePreviewModal";
 import { chooseImports } from "./ui/ImportModal";
@@ -121,6 +122,7 @@ export default class BlygPlugin extends Plugin {
     this.registerView(BLYG_READER_VIEW, (leaf) => new BlygReaderView(leaf, this.readerHost()));
     this.addCommand({ id: "open-reader", name: "Open reader", callback: () => void this.openReader() });
     this.addCommand({ id: "open-reader-sidebar", name: "Open reader in the sidebar", callback: () => void this.openReader("sidebar") });
+    registerShareEntry(this, { settings: () => this.settings, build: () => buildStudio(this.env()), openReader: () => this.openReader() });
     this.addCommand({
       id: "clear-reader-cache",
       name: "Clear the reader's saved list",
@@ -137,16 +139,8 @@ export default class BlygPlugin extends Plugin {
       name: "Insert web quote (plain Markdown)",
       callback: () => this.insertWebQuote(),
     });
-    this.addCommand({
-      id: "open-panel",
-      name: "Open panel",
-      callback: () => void this.openPanel(),
-    });
-    this.addCommand({
-      id: "publish-active-note",
-      name: "Publish active note",
-      callback: () => void this.publishActiveNote(),
-    });
+    this.addCommand({ id: "open-panel", name: "Open panel", callback: () => void this.openPanel() });
+    this.addCommand({ id: "publish-active-note", name: "Publish active note", callback: () => void this.publishActiveNote() });
     this.addCommand({
       id: "repost-to-studio",
       name: "Studio: repost this note",

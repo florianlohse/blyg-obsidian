@@ -36,6 +36,11 @@ will change before anything leaves your vault.
   filter by blyg, length or unread; the choices are remembered) and the mentions of your items. A post opens as text on its own calm
   reading surface (quotes shown as quotes; contrast and font are settings); one tap or a pull-up at the end
   marks it read and goes to the next. Posts are shown in the reader only and are never written into your notes; to open fast, the reader keeps the newest 200 posts (without their Markdown) in one file in the plugin's own folder, for the Studio they came from, for two weeks ("Clear the reader's saved list" in the command palette removes it).
+- **Open a post from its address (experimental).** Copy the address of a post and run the command **Open post address from clipboard**: the post opens in the
+  reader (to reply or follow from there; replying to a blyg you do not follow sends a link without a quote). On iOS 18 or later you can also share a post to Obsidian
+  from Safari or another app: in Obsidian's share sheet make a **Location** that creates a **New note** in a folder of its own, set to **URL only** (or with `{{url}}` in its template),
+  and enter that folder under **Settings → Blyg → Reader → Share inbox folder**. A new note in that folder that names one blyg post opens it in the reader. Existing notes and notes you edit later are never looked at, and no note is changed or deleted
+  (delete the shared note yourself when you are done). A note with no address, or with more than one, opens nothing and says so.
 - **Keep both sides in step.** Pull the Studio's copy into the note, import items that were written in the Studio,
   withdraw an item, delete a draft, put items into your Studio's hoppers.
 - **Mobile first.** Everything runs on iOS and Android as well as desktop; no desktop-only APIs are used.
