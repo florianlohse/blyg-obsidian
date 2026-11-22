@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { clusterPosts, firstSentence } from "../../src/digest/cluster";
 import { buildDaily } from "../../src/digest/daily";
 import { ownWords, quotedIdsOf } from "../../src/digest/quotes";
-import { DAY_MS, MAX_WINDOW_MS, nextWindow, parseDailyState, REOPEN_GRACE_MS } from "../../src/digest/window";
+const DAY_MS = 24 * 3600 * 1000;
+import { dayWindow } from "../../src/digest/window";
 import type { InboundMention, ReadingPost } from "../../src/studio/reading";
 
 const NOW = Date.parse("2030-03-10T12:00:00Z");
@@ -37,24 +38,18 @@ function post(over: Partial<ReadingPost> & { text?: string }): ReadingPost {
 const quote = (qid: string, inner = "A quoted line."): string => `<blockquote class="blyg-transclusion blyg-partial" data-blyg-id="${qid}" data-blyg-version="1"><p>${inner}</p></blockquote>`;
 
 describe("window", () => {
-  it("starts at the last opening, never more than 48 hours back", () => {
-    expect(nextWindow(null, NOW).since).toBe(NOW - MAX_WINDOW_MS);
-    const day = nextWindow({ v: 1, lastOpenedAt: NOW - DAY_MS, windowStart: NOW - 3 * DAY_MS }, NOW);
-    expect(day.since).toBe(NOW - DAY_MS);
-    expect(day.state).toEqual({ v: 1, lastOpenedAt: NOW, windowStart: NOW - DAY_MS });
-    expect(nextWindow({ v: 1, lastOpenedAt: NOW - 10 * DAY_MS, windowStart: 0 }, NOW).since).toBe(NOW - MAX_WINDOW_MS);
+  it("is the local calendar day: midnight to now", () => {
+    const w = dayWindow(NOW);
+    const mid = new Date(NOW);
+    expect(w.until).toBe(NOW);
+    expect(w.since).toBe(new Date(mid.getFullYear(), mid.getMonth(), mid.getDate()).getTime());
+    expect(w.since).toBeLessThanOrEqual(NOW);
+    expect(NOW - w.since).toBeLessThan(25 * 3600_000);
   });
-  it("shows the same window again when reopened soon, and does not move the memory", () => {
-    const prev = { v: 1 as const, lastOpenedAt: NOW - REOPEN_GRACE_MS + 1000, windowStart: NOW - 5 * 3600_000 };
-    const again = nextWindow(prev, NOW);
-    expect(again.since).toBe(prev.windowStart);
-    expect(again.state).toBe(prev);
-  });
-  it("trusts nothing read back", () => {
-    expect(parseDailyState({ v: 1, lastOpenedAt: 5, windowStart: 4 }, NOW)).toEqual({ v: 1, lastOpenedAt: 5, windowStart: 4 });
-    for (const bad of [null, [], "x", { v: 2, lastOpenedAt: 1, windowStart: 1 }, { v: 1, lastOpenedAt: "1", windowStart: 1 }, { v: 1, lastOpenedAt: NOW + 9e9, windowStart: 1 }, { v: 1, lastOpenedAt: 5, windowStart: 9 }, { v: 1, lastOpenedAt: NaN, windowStart: 1 }]) {
-      expect(parseDailyState(bad, NOW)).toBeNull();
-    }
+  it("starts a new digest on a new day", () => {
+    const later = NOW + 26 * 3600_000;
+    expect(dayWindow(later).since).toBeGreaterThan(dayWindow(NOW).since);
+    expect(dayWindow(NOW + 1000).since).toBe(dayWindow(NOW).since);
   });
 });
 

@@ -125,7 +125,7 @@ export default class BlygPlugin extends Plugin {
     this.addCommand({ id: "open-reader", name: "Open reader", callback: () => void this.openReader() });
     this.addCommand({ id: "open-reader-sidebar", name: "Open reader in the sidebar", callback: () => void this.openReader("sidebar") });
     // The switchable features (the Daily and its AI layer, the share entry, the dev commands) register here, each only when features/registry.ts says it is on.
-    registerFeatureEntries(this, this.features, { digest: { readList: () => this.readReaderCache(), ai: { settings: () => this.settings.digest, keychain: obsidianKeychain(this.app), transport: obsidianTransport } }, share: { settings: () => this.settings, build: () => buildStudio(this.env()), openReader: () => this.openReader() }, contrast: () => this.settings.readerPane.contrast });
+    registerFeatureEntries(this, this.features, { digest: { font: () => this.settings.readerPane.font, readList: () => this.readReaderCache(), ai: { settings: () => this.settings.digest, keychain: obsidianKeychain(this.app), transport: obsidianTransport } }, share: { settings: () => this.settings, build: () => buildStudio(this.env()), openReader: () => this.openReader() }, contrast: () => this.settings.readerPane.contrast });
     this.addCommand({
       id: "clear-reader-cache",
       name: "Clear the reader's saved list",

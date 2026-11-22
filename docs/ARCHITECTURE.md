@@ -240,4 +240,6 @@ build on push; on tag `x.y.z`, a release with the three files attached. Install 
 
 ## Daily digest, AI layer
 
+The digest is one newspaper page per local calendar day (`digest/window.ts`: local midnight to now, nothing remembered between openings), reached from the reader's Sort & filter (Feed / Digest, `ui/readerExtras.ts`), the command "Open Daily" or the ribbon icon. Entries open in the reader in the same leaf; the reader's Back returns to the digest (`ReturnPoint`). `digest/layout.ts` holds the honest "not grouped" line, the "Other posts" list, previews and the grouping note.
+
 `src/digest/llm.ts` builds one Messages-API request for the Daily's clusters, behind the settings `digest.*` (off by default; key by keychain entry name). `ui/DigestReceiptModal.ts` shows the exact body before every send. Results are cached in `digest-ai.json` in the plugin folder, keyed by (cluster hash, prompt version, model), together with a trail (time, model, host, post ids, sizes). Failures leave the deterministic digest as it is.
