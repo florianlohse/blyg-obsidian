@@ -88,6 +88,8 @@ export class FakeStudio {
   /** False: the token lacks owner:manage, so hopper changes answer 403. */
   manage = true;
   readonly imports: Imported[] = [];
+  /** The subscriptions `/api/subscriptions` lists, creates, renames and deletes (a delete also drops that subscription's imports, as the Studio does). */
+  readonly followed: Array<Record<string, unknown> & { id: string; origin: string }> = [];
   /** Inbound mentions, as the owner's list answers them (newest first by the order added). */
   readonly mentions: Array<{ id: string; target_item_id: string; status: "pending" | "verified" | "failed" | "gone"; relation: string | null; hidden: boolean }> = [];
   readonly seen: Seen[] = [];
@@ -387,6 +389,40 @@ export class FakeStudio {
       const hit = held ? { origin: held.origin, id: held.remote_id, kind: held.kind, version: held.version, contentHtml: `<p>${esc(held.content_md)}</p>\n`, subscriptionId: held.subscription_id } : other ? { origin: other.origin, id: other.id, kind: other.kind, version: other.version, contentHtml: other.content_html, subscriptionId: null } : null;
       if (!hit) return this.fail(404, "not-found", "that blyg does not serve this item");
       return this.json(200, { page: null, url: `${hit.origin}${hit.kind === "thread" ? "t" : "f"}/${hit.id}/`, ...hit });
+    }
+    if (path.startsWith("/api/subscriptions") && !path.startsWith("/api/subscriptions/poll") && !/\/resync$/.test(path)) {
+      const own = /^\/api\/subscriptions(?:\/([^/?]+))?(?:\?.*)?$/.exec(path);
+      const subId = own?.[1] ? decodeURIComponent(own[1]) : undefined;
+      const sub = (id: string) => this.followed.find((f) => f.id === id);
+      if (!subId && req.method === "GET") return this.page(url, this.followed);
+      if (!subId && req.method === "POST") {
+        if (!this.manage) return this.fail(403, "forbidden", "insufficient_scope");
+        const wanted = typeof body.url === "string" ? body.url : "";
+        const origin = wanted.endsWith("/") ? wanted : `${wanted}/`;
+        if (!/^https:\/\//.test(wanted)) return this.fail(422, "invalid-url", "that is not an address the Studio can read");
+        if (this.followed.some((f) => f.origin === origin)) return this.fail(409, "already-subscribed", "already subscribed");
+        const title = typeof body.title === "string" ? body.title : "Proposed blyg";
+        if (body.confirm !== true) return this.json(200, { needsConfirm: true, kind: "blyg", origin, feedUrl: `${origin}feed.xml`, title });
+        const row = { id: `sub${++this.counter}`, kind: "blyg", origin, feedUrl: `${origin}feed.xml`, title, status: "active", lastPollAt: null, failCount: 0, lastIndexSyncAt: null, inBlogroll: false, flags: [], created: this.now, titleFollowsSource: typeof body.title !== "string", hopperFeedUrl: null };
+        this.followed.push(row);
+        return this.json(201, row);
+      }
+      if (subId && req.method === "PATCH") {
+        if (!this.manage) return this.fail(403, "forbidden", "insufficient_scope");
+        const row = sub(subId);
+        if (!row) return this.fail(404, "not-found", "not found");
+        if (typeof body.title === "string") Object.assign(row, { title: body.title, titleFollowsSource: false });
+        else if (body.title === null) Object.assign(row, { titleFollowsSource: true });
+        return this.json(200, row);
+      }
+      if (subId && req.method === "DELETE") {
+        if (!this.manage) return this.fail(403, "forbidden", "insufficient_scope");
+        const at = this.followed.findIndex((f) => f.id === subId);
+        if (at < 0) return this.fail(404, "not-found", "not found");
+        this.followed.splice(at, 1);
+        this.imports.splice(0, this.imports.length, ...this.imports.filter((i) => i.subscription_id !== subId));
+        return this.json(200, { ok: true });
+      }
     }
     const subm = /^\/api\/subscriptions\/([^/]+)$/.exec(path);
     if (subm && req.method === "GET") {
