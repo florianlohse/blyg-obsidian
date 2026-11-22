@@ -779,7 +779,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await closeReader();
   }
 
-  /** Mentions: what they are about is drawn, a mention opens like a post, and a post the Studio does not read has no read mark or reply. */
+  /** Mentions: what they are about is drawn, a mention opens like a post, and a post the Studio does not read has no read mark, a plain reply (no quote) and a Follow row. */
   async function mentions(layout) {
     await openReader();
     await wait(1000);
@@ -796,9 +796,9 @@ await runScenario({ data: fixtureData() }, async (s) => {
     check(rows.length === 1 && rows[0].includes("Far Author") && rows[0].includes("replied to you") && rows[0].includes("Reply words here") && rows[0].includes("On: my own words") && (await page.$(".blyg-reader-mention.blyg-reader-card .blyg-reader-badges")) !== null, `${layout}: mentions: drawn as a card like the feed's: who, what they did, what they wrote and what it was about (${JSON.stringify(rows).slice(0, 150)})`);
     await page.evaluate(() => document.querySelector(".blyg-reader-mention")?.click());
     await wait(600);
-    const open = await page.evaluate(() => ({ body: document.querySelector(".blyg-reader-body")?.textContent ?? "", btns: [...document.querySelectorAll(".blyg-reader-header button")].map((b) => [b.textContent?.trim(), b.disabled]), next: document.querySelectorAll(".blyg-reader-steps").length }));
+    const open = await page.evaluate(() => ({ body: document.querySelector(".blyg-reader-body")?.textContent ?? "", btns: [...document.querySelectorAll(".blyg-reader-header button")].map((b) => [b.textContent?.trim(), b.disabled]), next: document.querySelectorAll(".blyg-reader-steps").length, replyTitle: document.querySelector(".blyg-reader-replybtn")?.getAttribute("title") ?? "", note: document.querySelector(".blyg-reader-follownote")?.textContent ?? "" }));
     check(open.body.includes("Reply words here"), `${layout}: mentions: tapping one opens the post in the reader`);
-    check(open.btns.some(([t, d]) => t === "Reply" && d === true) && open.btns.some(([t, d]) => t === "○" && d === true), `${layout}: mentions: a post of a blyg the Studio does not read has no read mark and no reply here`);
+    check(open.btns.some(([t, d]) => t === "○" && d === true) && open.btns.some(([t, d]) => t === "Reply" && d === false) && /without a quote/.test(open.replyTitle) && /You do not follow this blyg/.test(open.note) && /Follow this blyg/.test(open.note), `${layout}: mentions: a post of a blyg the Studio does not read has no read mark, a Reply that sends a link without a quote, and the row with Follow this blyg`);
     check(open.next === 0, `${layout}: mentions: no previous / next for a post that is not in the feed`);
     await click("Reader");
     await wait(400);

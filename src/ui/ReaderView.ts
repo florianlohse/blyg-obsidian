@@ -15,7 +15,7 @@ import { changedCount, chooseWalk, keepOwnPosts, knownOf, mergeFresh, READER_KEE
 import type { StudioListedItem } from "../studio/types";
 import { bottomClearance } from "./readerBottom";
 import { hostOf, limiter, mentionBadge, postOfMention, visibleMentions } from "./readerMentions";
-import { drawFollowedButton, drawFollowNote, type FollowHost } from "./readerFollow";
+import { drawFollowedButton, drawFollowNote, isUnfollowedPost, selectionNotQuoted, unfollowedReplyTitle, type FollowHost } from "./readerFollow";
 
 export const BLYG_READER_VIEW = "blyg-reader";
 
@@ -832,11 +832,11 @@ export class BlygReaderView extends ItemView {
     const n = this.selected.trim().length;
     const hint = this.replyHint;
     if (hint?.isConnected) {
-      hint.setText(n > 0 ? `Reply quotes the ${n} selected character${n === 1 ? "" : "s"}.` : "");
+      hint.setText(n > 0 ? (this.shown && isUnfollowedPost(this.shown) ? selectionNotQuoted : `Reply quotes the ${n} selected character${n === 1 ? "" : "s"}.`) : "");
       hint.toggleClass("is-shown", n > 0);
     }
     const b = this.replyBtn;
-    if (b?.isConnected) b.setAttr("title", n > 0 ? "Reply in Obsidian: a new thread that quotes exactly the passage you selected" : "Reply in Obsidian: a new thread that answers this post");
+    if (b?.isConnected) b.setAttr("title", this.shown && isUnfollowedPost(this.shown) ? unfollowedReplyTitle : n > 0 ? "Reply in Obsidian: a new thread that quotes exactly the passage you selected" : "Reply in Obsidian: a new thread that answers this post");
   }
 
   private drawFeedHeader(h: HTMLElement): void {
@@ -967,7 +967,7 @@ export class BlygReaderView extends ItemView {
     this.replyBtn = this.button(row, "Reply", () => {
       const sel = this.replySelection();
       void this.host.replyTo(p, sel.trim() !== "" ? sel : undefined);
-    }, { disabled: p.withdrawn || !held, cls: "blyg-reader-replybtn", title: p.own === true ? "Your own post: write the follow-up in your vault" : held ? "Reply in Obsidian: a new thread that answers this post" : fetched ? "Subscribe to this blyg in your Studio to reply to its posts from here." : "Your Studio has not fetched this post yet." });
+    }, { disabled: p.withdrawn || !(held || isUnfollowedPost(p)), cls: "blyg-reader-replybtn", title: p.own === true ? "Your own post: write the follow-up in your vault" : isUnfollowedPost(p) ? unfollowedReplyTitle : held ? "Reply in Obsidian: a new thread that answers this post" : fetched ? "Subscribe to this blyg in your Studio to reply to its posts from here." : "Your Studio has not fetched this post yet." });
     if (where) {
       row.createDiv({ cls: "blyg-reader-spacer" });
       this.drawSteps(row, p, where);
