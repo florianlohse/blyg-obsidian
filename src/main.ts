@@ -52,7 +52,7 @@ import { drawPreview, type PreviewDeps } from "./ui/replyPreview";
 import { limiter, postFromPeek, postOfMention } from "./ui/readerMentions";
 import { parseReaderCache, readerCacheOf } from "./ui/readerCache";
 import { registerDevCommands } from "./dev/drawBench";
-import { BLYG_READER_VIEW, BlygReaderView, excerptOf, type ReaderHost, type ReadResult } from "./ui/ReaderView";
+import { BLYG_READER_VIEW, BlygReaderView, excerptOf, type ReaderHost, type ReadResult } from "./ui/ReaderView"; import { registerDigest } from "./digest/register";
 import { createReaderService } from "./app/readerService";
 import { createFollowHost, replyPlan } from "./app/followHost";
 import { registerShareEntry } from "./app/shareEntry";
@@ -120,7 +120,7 @@ export default class BlygPlugin extends Plugin {
     this.addRibbonIcon("send", "Open Blyg panel", () => void this.openPanel());
     this.registerReplyPreview();
     this.addRibbonIcon("book-open", "Open Blyg reader", () => void this.openReader());
-    this.registerView(BLYG_READER_VIEW, (leaf) => new BlygReaderView(leaf, this.readerHost()));
+    this.registerView(BLYG_READER_VIEW, (leaf) => new BlygReaderView(leaf, this.readerHost())); registerDigest(this, { readList: () => this.readReaderCache() });
     this.addCommand({ id: "open-reader", name: "Open reader", callback: () => void this.openReader() });
     this.addCommand({ id: "open-reader-sidebar", name: "Open reader in the sidebar", callback: () => void this.openReader("sidebar") });
     registerShareEntry(this, { settings: () => this.settings, build: () => buildStudio(this.env()), openReader: () => this.openReader() });
