@@ -180,8 +180,15 @@ measurements (the maintainer's notes, "refresh scaling investigation", 2026-11-1
   anything moved (`chooseWalk`). The mentions are read with the full walks and when their tab opens.
 - Asking the Studio to fetch the blygs (`POST /api/subscriptions/poll`) happens only when the person presses Refresh (the Studio fetches them itself every half hour).
 - 5xx and 429 answers back the reader off: 30 s doubling to 30 min (`backoffDelay`), a status line says when it will try again, Refresh asks now.
-- **The window is the newest 200 posts** (2 pages of 100): older unread posts are not reachable. **Planned, not built: "load older" and drawing long lists in parts**
-  (a whole-feed redraw costs about 0.3 s at 1000 posts on a desktop).
+- **The first read is the newest 200 posts** (2 pages of 100). **"Load older posts"** (HK4, `app/readerOlder.ts`) reads further on demand, 200 at a time. The Studio has no
+  "older than" parameter, only a cursor that continues a walk and dies when the list changes (409), so the service keeps where the last walk ended: a press costs 2
+  requests; when the cursor is dead, or a Refresh made the newest window the last walk, the list is read again from the top down to the depth held and on from there.
+  The reader holds at most 5000 posts (`OLDER_MAX`, a judgment call about memory on a phone) and says so; those older than the newest window survive a whole read
+  (`keepOlderTail`). **Policy: older posts live in memory only**; the saved copy below stays the newest 200, so the file does not grow and strangers' text is not stored
+  in more places. They are kept without Markdown, as the saved copy is.
+- **The feed is a window** (`ui/readerWindow.ts`): at most 120 cards are in the page; cards are added below (and above, scrolling back) as you scroll, and the ones
+  that left are replaced by a spacer of their measured height, so drawing cost does not grow with the list and the place on the screen stays. The index arithmetic is
+  unit-tested; the scroll behaviour was checked in a browser with 5000 rows (no drift in either direction) and is to be checked on a device.
 - A saved copy of the window (`reader-cache.json` in the plugin's folder, `readerCache.ts`): strangers' text stays out of the vault's notes; the file is per Studio,
   two weeks old at most, without Markdown, and every field is checked when read back.
 

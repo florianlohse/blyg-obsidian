@@ -9,10 +9,33 @@ import type { ReadingPost } from "../studio/reading";
 
 /** The API's maximum page of the reading list. */
 export const READER_PAGE = 100;
-/** How many pages one walk reads: 2 x 100 = the newest 200 posts. A larger window ("load older") is planned, not built. */
+/** How many pages one walk reads: 2 x 100 = the newest 200 posts. "Load older" reads further, a few pages at a time (OLDER_PAGES). */
 export const READER_PAGES = 2;
-/** How many posts the reader keeps in memory when newer pages are merged into what it has. */
-export const READER_KEEP = 600;
+/** How many pages one press of "Load older posts" reads: 2 x 100 = 200 more posts. */
+export const OLDER_PAGES = 2;
+/** The most posts the reader holds in memory ("load older" stops there). A judgment call: 5000 posts are roughly 10 to 20 MB of text on a phone, and the list is drawn a window at a time whatever its length. Not saved: the saved list stays the newest 200 (readerCache.ts). */
+export const OLDER_MAX = 5000;
+/** How many posts the reader keeps in memory when newer pages are merged into what it has: all it may hold, so a refresh does not throw away what was loaded. */
+export const READER_KEEP = OLDER_MAX;
+
+/** What "Load older posts" answers: the next posts (they may repeat some held: the fresh row wins), whether there are more, and whether the reader's own limit was the reason there are no more. */
+export type OlderResult = { ok: true; posts: ReadingPost[]; more: boolean; capped: boolean } | { ok: false; message: string };
+
+/**
+ * A whole read that went only as deep as the newest window must not make the older posts loaded before vanish: those held that are older than everything the
+ * read brought stay (the read carries the newest rows, the rest of the list is not read again). With `more` false the list ended inside the window, so what the
+ * read did not bring is gone from the Studio and nothing is kept.
+ */
+export function keepOlderTail(held: ReadingPost[], fresh: ReadingPost[], more: boolean): ReadingPost[] {
+  if (!more) return fresh;
+  const time = (p: ReadingPost): number => Date.parse(p.observedAt) || 0;
+  const tracked = fresh.filter((p) => p.own !== true);
+  if (tracked.length === 0) return fresh;
+  const oldest = Math.min(...tracked.map(time));
+  const have = new Set(fresh.map(keyOf));
+  const tail = held.filter((p) => p.own !== true && !have.has(keyOf(p)) && time(p) < oldest);
+  return tail.length === 0 ? fresh : [...fresh, ...tail];
+}
 /** A walk of the whole window is repeated at least this often when only read marks moved (Burrow: 60 s). */
 export const FULL_GAP_MS = 60_000;
 /** A walk of the whole window happens at least this often while anything moved at all: the safety net (Burrow's starts at 10 min). */

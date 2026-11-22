@@ -132,7 +132,7 @@ describe("load", () => {
   it("returns the posts, the mentions, the Studio's origin, and remembers the posts", async () => {
     const t = setup(base);
     const got = await t.service.load();
-    expect(got).toEqual({ ok: true, data: { posts: [post("a")], mentions: [mention], mentionsFetched: true, note: "", studioOrigin: "https://studio.example.com", incremental: false } });
+    expect(got).toEqual({ ok: true, data: { posts: [post("a")], mentions: [mention], mentionsFetched: true, note: "", studioOrigin: "https://studio.example.com", incremental: false, moreOlder: false } });
     expect(t.remembered).toEqual([[post("a")]]);
     expect(t.calls).not.toContain("listOwnReading");
   });
