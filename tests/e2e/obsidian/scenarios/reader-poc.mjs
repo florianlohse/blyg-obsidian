@@ -335,7 +335,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
       await wait(1000);
     }
     // Refresh waits a minute between asks of the blygs; the test resets the pause, as a person waiting would.
-    await page.evaluate(() => { window.app.plugins.plugins.blyg.readerCheckedAt = 0; });
+    await page.evaluate(() => { window.app.plugins.plugins.blyg.readerService.state.checkedAt = 0; });
     const t0 = Date.now();
     check(await click("Refresh"), "freshness: Refresh can be tapped");
     let saw = "";
@@ -690,7 +690,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
     check(opened.checkForNew === 0 && opened.load >= 1 && opened.readCache === 1, `${layout}: economy: opening the reader asks no blyg to be checked, only reads the list (${JSON.stringify(opened)})`);
     // Refresh: one read of the list at the end, however often the counters moved
     await publishOnBlogB(`${Date.now().toString(36)} economy. A new post.`);
-    await page.evaluate(() => { window.app.plugins.plugins.blyg.readerCheckedAt = 0; window.__calls = { load: 0, checkForNew: 0, changeMarks: 0, readCache: 0 }; });
+    await page.evaluate(() => { window.app.plugins.plugins.blyg.readerService.state.checkedAt = 0; window.__calls = { load: 0, checkForNew: 0, changeMarks: 0, readCache: 0 }; });
     check(await click("Refresh"), `${layout}: economy: Refresh can be tapped`);
     await page.waitForFunction(() => /checked (just now|\d+ min ago)$/.test(document.querySelector(".blyg-reader-status")?.textContent ?? ""), null, { timeout: 45000 }).catch(() => {});
     const refreshed = await page.evaluate(() => ({ ...window.__calls }));
@@ -707,14 +707,14 @@ await runScenario({ data: fixtureData() }, async (s) => {
     check(saved !== null && saved.posts > 0 && saved.mdLeft === 0 && saved.inVaultNotes === 0, `${layout}: economy: the list is saved for the next session in the plugin's own folder, without the posts' Markdown (${JSON.stringify(saved)})`);
     await closeReader();
     // the saved list shows at once, even while the Studio is not answering; and it says so in words
-    await page.evaluate(() => { window.app.plugins.plugins.blyg.readerTrouble = { failures: 2, until: Date.now() + 120000 }; });
+    await page.evaluate(() => { window.app.plugins.plugins.blyg.readerService.state.trouble = { failures: 2, until: Date.now() + 120000 }; });
     await openReader();
     const cached = await page.evaluate(() => ({ cards: document.querySelectorAll(".blyg-reader-card").length, status: document.querySelector(".blyg-reader-status")?.textContent ?? "" }));
     check(cached.cards > 0, `${layout}: economy: the saved list shows at once (${cached.cards} cards)`);
     await wait(1500);
     const backed = await page.evaluate(() => document.querySelector(".blyg-reader-status")?.textContent ?? "");
     check(/not answering; the reader tries again in about \d+ min/.test(backed), `${layout}: economy: a failing Studio is left alone and the status says when the reader tries again ("${backed.slice(0, 90)}")`);
-    await page.evaluate(() => { window.app.plugins.plugins.blyg.readerTrouble = { failures: 0, until: 0 }; });
+    await page.evaluate(() => { window.app.plugins.plugins.blyg.readerService.state.trouble = { failures: 0, until: 0 }; });
     await closeReader();
     await page.evaluate(() => window.app.commands.executeCommandById("blyg:clear-reader-cache"));
     await wait(500);

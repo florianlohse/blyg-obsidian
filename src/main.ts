@@ -52,9 +52,9 @@ import { drawPreview, type PreviewDeps } from "./ui/replyPreview";
 import { limiter, postFromPeek, postOfMention } from "./ui/readerMentions";
 import { parseReaderCache, readerCacheOf } from "./ui/readerCache";
 import { registerDevCommands } from "./dev/drawBench";
-import { backoffDelay, READER_PAGE, READER_PAGES, reachedKnown } from "./ui/readerSync";
 import { BLYG_READER_VIEW, BlygReaderView, excerptOf, type ReaderHost, type ReadResult } from "./ui/ReaderView";
 import { buildStudio } from "./app/run";
+import { createReaderService } from "./app/readerService";
 import type { InboundMention, ReadingPost } from "./studio/reading";
 import { confirmWithModal } from "./ui/WritePreviewModal";
 import { chooseImports } from "./ui/ImportModal";
@@ -890,21 +890,6 @@ export default class BlygPlugin extends Plugin {
 
   // ---- how the reader treats the Studio: leave it alone when it fails (Burrow's rule), and keep the list between sessions ----------------------------------
 
-  private readerTrouble = { failures: 0, until: 0 };
-
-  /** In words, why the reader is not asking the Studio now, or null. */
-  private readerBackedOff(): string | null {
-    const wait = this.readerTrouble.until - Date.now();
-    return wait > 0 ? `The Studio is not answering; the reader tries again in about ${Math.max(1, Math.ceil(wait / 60_000))} min (Refresh asks now).` : null;
-  }
-  private readerFailed(): void {
-    this.readerTrouble.failures++;
-    this.readerTrouble.until = Date.now() + backoffDelay(this.readerTrouble.failures);
-  }
-  private readerWorked(): void {
-    this.readerTrouble = { failures: 0, until: 0 };
-  }
-
   private readerCachePath(): string {
     return normalizePath(`${this.manifest.dir ?? `${this.app.vault.configDir}/plugins/${this.manifest.id}`}/reader-cache.json`);
   }
@@ -1021,8 +1006,13 @@ export default class BlygPlugin extends Plugin {
     });
   }
 
-  /** When the reader last asked the Studio to fetch the blygs it reads (this session only). */
-  private readerCheckedAt = 0;
+  /** The reader's conversation with the Studio (pause, back-off, listing): app/readerService.ts. */
+  private readonly readerService = createReaderService({
+    build: () => buildStudio(this.env()),
+    now: () => Date.now(),
+    rememberPosts: (posts) => this.rememberPosts(posts),
+    warn: (line) => this.logger().warn(line),
+  });
 
   private readerHost(): ReaderHost {
     return {
@@ -1043,82 +1033,7 @@ export default class BlygPlugin extends Plugin {
         this.settings.readerPane.filter = { ...filter };
         await this.saveSettings();
       },
-      checkForNew: async (force) => {
-        // A pause between checks: every check makes the Studio fetch every blyg it reads, so opening the reader again and again must not hammer them.
-        // (The reader asks only when the person pressed Refresh: the Studio fetches the blygs itself every half hour.)
-        const pause = 60_000;
-        if (Date.now() - this.readerCheckedAt < pause) return { asked: false };
-        const waiting = force ? null : this.readerBackedOff();
-        if (waiting) return { asked: false, reason: waiting };
-        const built = buildStudio(this.env());
-        if (!built.ok) return { asked: false, reason: built.message === M.studioNotConfigured ? "Connect your Studio to read followed blygs: Settings → Blyg." : built.message };
-        try {
-          const got = await built.studio.client.pollSubscriptions();
-          if (got.kind === "ok") {
-            this.readerCheckedAt = Date.now();
-            this.readerWorked();
-            return { asked: true, polling: got.value.polling };
-          }
-          if (got.kind === "forbidden") return { asked: false, reason: "Your token cannot ask the Studio to check for new posts (it needs the permission “owner:manage”). The list shows what the Studio already has." };
-          if (got.kind === "error") this.readerFailed();
-          return { asked: false, reason: "The Studio could not be asked to check for new posts. The list shows what it already has." };
-        } catch {
-          this.readerFailed();
-          return { asked: false, reason: "The Studio could not be reached to check for new posts." };
-        }
-      },
-      changeMarks: async () => {
-        if (this.readerBackedOff()) return null;
-        const built = buildStudio(this.env());
-        if (!built.ok) return null;
-        try {
-          const got = await built.studio.client.changes();
-          if (got.kind !== "ok") {
-            if (got.kind === "error") this.readerFailed();
-            return null;
-          }
-          this.readerWorked();
-          return { epoch: got.value.epoch, reading: got.value.domains.reading ?? 0, subscriptions: got.value.domains.subscriptions ?? 0 };
-        } catch {
-          this.readerFailed();
-          return null;
-        }
-      },
-      load: async (onProgress, opts) => {
-        const waiting = opts?.force ? null : this.readerBackedOff();
-        if (waiting) return { ok: false, message: waiting };
-        const built = buildStudio(this.env());
-        if (!built.ok) return { ok: false, message: built.message === M.studioNotConfigured ? "Connect your Studio to read followed blygs: Settings → Blyg." : built.message };
-        try {
-          const { client } = built.studio;
-          const known = opts?.known ?? null;
-          const wantMentions = opts?.mentions !== false;
-          // The owner's own posts (increment 8b) come from the Studio's merged list, with a whole read only: a quick look keeps the ones held.
-          const wantOwn = opts?.own === true && known === null;
-          const [reading, mentions, own] = await Promise.all([
-            client.listReading(READER_PAGES, onProgress, { pageSize: READER_PAGE, ...(known ? { stopAfter: (rows: ReadingPost[]) => reachedKnown(rows, known) } : {}) }),
-            wantMentions ? client.listInboundMentions() : Promise.resolve(null),
-            wantOwn ? client.listOwnReading() : Promise.resolve(null),
-          ]);
-          if (reading.kind !== "ok") {
-            if (reading.kind === "error") this.readerFailed();
-            return { ok: false, message: "message" in reading ? reading.message : "The Studio could not list what you read." };
-          }
-          this.readerWorked();
-          // The window is the newest posts only: older unread posts are not reachable yet ("load older" is planned).
-          const bad = reading.value.unreadable + (mentions !== null && mentions.kind === "ok" ? mentions.value.unreadable : 0);
-          const note = [bad > 0 ? `${bad} could not be read.` : "", mentions !== null && mentions.kind !== "ok" ? "Mentions are not available." : ""].filter(Boolean).join(" ");
-          this.rememberPosts(reading.value.posts);
-          return {
-            ok: true,
-            data: { posts: own !== null && own.kind === "ok" ? [...reading.value.posts, ...own.value.posts] : reading.value.posts, mentions: mentions !== null && mentions.kind === "ok" ? mentions.value.mentions : [], mentionsFetched: mentions !== null && mentions.kind === "ok", note, studioOrigin: built.studio.address.origin, incremental: reading.value.stopped },
-          };
-        } catch (err) {
-          this.readerFailed();
-          this.logger().warn(`reader load failed: ${err instanceof Error ? err.message : String(err)}`);
-          return { ok: false, message: "The Studio could not be reached." };
-        }
-      },
+      ...this.readerService, // the reader's Studio conversation (app/readerService.ts)
       readCache: () => this.readReaderCache(),
       writeCache: (data) => this.writeReaderCache(data),
       openWeb: (url) => window.open(url, "_blank"),
