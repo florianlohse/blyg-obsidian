@@ -12,7 +12,7 @@ const note = "---\nblyg_id: x\n---\n\nFirst paragraph about gardens.\n\nSecond p
 describe("parseQuotesOf", () => {
   it("a directive with > lines is a passage, one without is the whole post; other items are ignored", () => {
     const md = `hi\n\n![[${ID}]]\n> a passage\n> of two lines\n\n![[${ID}]]\n\n![[${"b".repeat(26)}]]\n> not ours\n`;
-    expect(parseQuotesOf(md, ID)).toEqual([{ kind: "passage", text: "a passage\nof two lines" }, { kind: "whole" }]);
+    expect(parseQuotesOf(md, ID)).toEqual([{ kind: "passage", text: "a passage of two lines" }, { kind: "whole" }]);
   });
   it("no directive for the item gives an empty list", () => {
     expect(parseQuotesOf("just text", ID)).toEqual([]);
