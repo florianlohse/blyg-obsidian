@@ -35,6 +35,8 @@ WRANGLER="wrangler@4.151.1"
 PORT=8787
 REMOTE_PORT=8788
 PASSWORD="local-test-password-123"
+# MOUNT=/blyg serves the first Studio under that path (a node mounted at a path: the API is then at {mount}/api); the second Studio (WITH_REMOTE) stays at the root.
+MOUNT="${MOUNT:-}"
 DIR="${2:-${TMPDIR:-/tmp}/blyg-dev-local-studio}"
 REMOTE_DIR="$DIR-remote"
 # wrangler watches the Worker folder and rebuilds on any change in it, so the log, the pid and the cookies live beside it, not in it.
@@ -76,28 +78,28 @@ prepare_one() {
   )
 }
 
-# serve_one DIR STATE PORT: start it and wait until it answers
+# serve_one DIR STATE PORT [MOUNT]: start it and wait until it answers
 serve_one() {
-  local dir="$1" state="$2" port="$3"
+  local dir="$1" state="$2" port="$3" mount="${4:-}"
   mkdir -p "$state"
   (
     cd "$dir"
-    setsid nohup npx --yes "$WRANGLER" dev --port "$port" --var ALLOW_PRIVATE_FETCH:true > "$state/wrangler.log" 2>&1 &
+    setsid nohup npx --yes "$WRANGLER" dev --port "$port" --var ALLOW_PRIVATE_FETCH:true ${mount:+--var "MOUNT:$mount"} > "$state/wrangler.log" 2>&1 &
     echo $! > "$state/wrangler.pid"
   )
-  for _ in $(seq 1 60); do curl -fsS --noproxy '*' "http://localhost:$port/blyg.json" >/dev/null 2>&1 && break; sleep 1; done
-  curl -fsS --noproxy '*' "http://localhost:$port/blyg.json" >/dev/null
+  for _ in $(seq 1 60); do curl -fsS --noproxy '*' "http://localhost:$port$mount/blyg.json" >/dev/null 2>&1 && break; sleep 1; done
+  curl -fsS --noproxy '*' "http://localhost:$port$mount/blyg.json" >/dev/null
 }
 
 # login STATE PORT: the owner cookie in STATE/cookies.txt (only the cookie can mint tokens and manage subscriptions)
 login() {
-  curl -sS --noproxy '*' -c "$1/cookies.txt" -o /dev/null -X POST "http://localhost:$2/studio/login" -H "Origin: http://localhost:$2" --data-urlencode "password=$PASSWORD"
+  curl -sS --noproxy '*' -c "$1/cookies.txt" -o /dev/null -X POST "http://localhost:$2${3:-}/studio/login" -H "Origin: http://localhost:$2" --data-urlencode "password=$PASSWORD"
 }
 
 # mint STATE PORT: a REST token with the owner scopes the plugin uses (owner:manage for hoppers, S13), printed
 mint() {
-  login "$1" "$2"
-  curl -fsS --noproxy '*' -b "$1/cookies.txt" -X POST "http://localhost:$2/api/authorizations" -H "Origin: http://localhost:$2" -H 'content-type: application/json' \
+  login "$1" "$2" "${3:-}"
+  curl -fsS --noproxy '*' -b "$1/cookies.txt" -X POST "http://localhost:$2${3:-}/api/authorizations" -H "Origin: http://localhost:$2" -H 'content-type: application/json' \
     -d '{"name":"blyg-dev e2e","resource":"api","scope":["owner:read","owner:draft","owner:publish","owner:manage"]}' | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("accessToken") or d["access_token"])'
 }
 
@@ -110,9 +112,9 @@ case "${1:-}" in
   start)
     prepare_one "$DIR"
     if [ "${WITH_REMOTE:-}" = "1" ]; then prepare_one "$REMOTE_DIR" "$DIR"; fi   # before the first Studio runs: its database is copied
-    serve_one "$DIR" "$STATE" "$PORT"
+    serve_one "$DIR" "$STATE" "$PORT" "$MOUNT"
     if [ "${WITH_REMOTE:-}" = "1" ]; then serve_one "$REMOTE_DIR" "$REMOTE_STATE" "$REMOTE_PORT"; fi
-    TOKEN="$(mint "$STATE" "$PORT")"
+    TOKEN="$(mint "$STATE" "$PORT" "$MOUNT")"
     if [ "${WITH_REMOTE:-}" = "1" ]; then
       REMOTE_TOKEN="$(mint "$REMOTE_STATE" "$REMOTE_PORT")"
       REMOTE_BODY='{"mode":"blank","kind":"fragment","contentMd":"A remote fragment from a blyg you read. It has a quotable sentence. And another one."}'
@@ -122,12 +124,12 @@ case "${1:-}" in
       curl -fsS --noproxy '*' -o /dev/null -X POST "http://localhost:$REMOTE_PORT/api/items/$REMOTE_ID/publish" -H "Authorization: Bearer $REMOTE_TOKEN" -H 'content-type: application/json' -d "{\"expectedRevision\":$REMOTE_REV}"
       # The first Studio subscribes to the second (owner cookie: a bearer token cannot manage subscriptions) and polls until it has imported it.
       JSON='content-type: application/json'
-      curl -fsS --noproxy '*' -b "$STATE/cookies.txt" -o /dev/null -X POST "http://localhost:$PORT/api/subscriptions" -H "Origin: http://localhost:$PORT" -H "$JSON" \
+      curl -fsS --noproxy '*' -b "$STATE/cookies.txt" -o /dev/null -X POST "http://localhost:$PORT$MOUNT/api/subscriptions" -H "Origin: http://localhost:$PORT" -H "$JSON" \
         -d "{\"url\":\"http://localhost:$REMOTE_PORT/\",\"confirm\":true,\"title\":\"Blog B\"}"
       for _ in $(seq 1 20); do
-        total="$(curl -fsS --noproxy '*' "http://localhost:$PORT/api/search?source=imported&limit=1" -H "Authorization: Bearer $TOKEN" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["items"]))')"
+        total="$(curl -fsS --noproxy '*' "http://localhost:$PORT$MOUNT/api/search?source=imported&limit=1" -H "Authorization: Bearer $TOKEN" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["items"]))')"
         [ "$total" != "0" ] && break
-        curl -sS --noproxy '*' -b "$STATE/cookies.txt" -o /dev/null -X POST "http://localhost:$PORT/api/subscriptions/poll" -H "Origin: http://localhost:$PORT" -H "$JSON" -d '{}' || true
+        curl -sS --noproxy '*' -b "$STATE/cookies.txt" -o /dev/null -X POST "http://localhost:$PORT$MOUNT/api/subscriptions/poll" -H "Origin: http://localhost:$PORT" -H "$JSON" -d '{}' || true
         sleep 3
       done
       [ "${total:-0}" != "0" ] || { echo "the first Studio did not import the remote item" >&2; exit 1; }
@@ -135,6 +137,7 @@ case "${1:-}" in
     fi
     rm -f "$STATE/cookies.txt"
     echo "export STUDIO_E2E_URL=http://localhost:$PORT"
+    [ -z "$MOUNT" ] || echo "export STUDIO_E2E_MOUNT=$MOUNT"
     echo "export STUDIO_E2E_TOKEN=$TOKEN"
     ;;
   *)

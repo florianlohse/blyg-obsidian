@@ -11,6 +11,8 @@ import { idleTimers } from "../helpers";
 
 const URL_ = process.env.STUDIO_E2E_URL;
 const TOKEN = process.env.STUDIO_E2E_TOKEN;
+/** "" or "/blyg": the Studio is mounted at a path (scripts/local-studio.sh with MOUNT=/blyg prints it). */
+const MOUNT = process.env.STUDIO_E2E_MOUNT ?? "";
 const run = URL_ && TOKEN ? describe : describe.skip;
 
 async function transport(req: RawRequest): Promise<RawResponse> {
@@ -21,7 +23,7 @@ async function transport(req: RawRequest): Promise<RawResponse> {
 }
 
 run("reader PoC against a real Studio", () => {
-  const address = studioAddress({ baseUrl: URL_ ?? "http://localhost", mount: "" });
+  const address = studioAddress({ baseUrl: URL_ ?? "http://localhost", mount: MOUNT });
   const say = (line: string): void => void process.stdout.write(`${line}\n`);
   const client = createStudioClient({ http: createStudioHttp({ transport, timers: idleTimers, address: address as NonNullable<typeof address> }), token: TOKEN ?? "" });
 
@@ -85,9 +87,9 @@ run("reader PoC against a real Studio", () => {
   it("with a token that has reading:state: read, unread, and quick changes in a row end where the last one says", async () => {
     // A token with every permission, as the owner makes one in the Studio's web app (a throwaway local Studio: the password is the script's own).
     const base = URL_ ?? "";
-    const login = await fetch(`${base}/studio/login`, { method: "POST", redirect: "manual", headers: { Origin: base, "content-type": "application/x-www-form-urlencoded" }, body: "password=local-test-password-123" });
+    const login = await fetch(`${base}${MOUNT}/studio/login`, { method: "POST", redirect: "manual", headers: { Origin: base, "content-type": "application/x-www-form-urlencoded" }, body: "password=local-test-password-123" });
     const cookie = (login.headers.getSetCookie?.() ?? []).map((c) => c.split(";")[0]).join("; ");
-    const minted = await fetch(`${base}/api/authorizations`, { method: "POST", headers: { Origin: base, cookie, "content-type": "application/json" }, body: JSON.stringify({ name: "reader e2e (all)", resource: "api", scope: ["owner:read", "owner:draft", "owner:publish", "owner:manage", "reading:state"] }) });
+    const minted = await fetch(`${base}${MOUNT}/api/authorizations`, { method: "POST", headers: { Origin: base, cookie, "content-type": "application/json" }, body: JSON.stringify({ name: "reader e2e (all)", resource: "api", scope: ["owner:read", "owner:draft", "owner:publish", "owner:manage", "reading:state"] }) });
     const full = createStudioClient({ http: createStudioHttp({ transport, timers: idleTimers, address: address as NonNullable<typeof address> }), token: ((await minted.json()) as { accessToken: string }).accessToken });
     const list = await full.listReading(1);
     if (list.kind !== "ok" || !list.value.posts[0]) throw new Error("e2e: no post to mark");

@@ -15,10 +15,11 @@ import { contractVerdict, newerMinorNote, incompatibleMessage, studioVersionVerd
 /** What publishing needs: read (the item and the preview's reads), draft (create, edit, preview) and publish (publish, withdraw). */
 export const NEEDED_SCOPES = ["owner:read", "owner:draft", "owner:publish"] as const;
 
-function describe(f: StudioFailure): string {
+function describe(f: StudioFailure, mounted = false): string {
   switch (f.kind) {
     case "unauthorized":
-      return "The Studio rejected the token (wrong, expired or revoked). In the Studio: More → Client access → create a REST token, and paste it into the keychain entry.";
+      // The Studio answers a wrong token and a token issued for the address without the mount (before Studio 0.65.0) alike: a plain 401. So the words cover both.
+      return `The Studio rejected the token (wrong, expired or revoked). In the Studio: More → Client access → create a REST token, and paste it into the keychain entry.${mounted ? " A token made before your Studio moved its API under the mount (Studio 0.65.0) no longer works: make a new one." : ""}`;
     case "forbidden":
       return "The token is not allowed to read items: it needs the permission owner:read.";
     case "not-found":
@@ -72,7 +73,7 @@ export async function checkStudioConnection(
       return { ok: false, lines };
     }
     if (caps.kind !== "ok") {
-      lines.push({ level: "error", text: describe(caps) });
+      lines.push({ level: "error", text: describe(caps, address.mount !== "") });
       return { ok: false, lines };
     }
     const contract = contractVerdict(caps.value.contractVersion, caps.value.operations);
@@ -107,7 +108,7 @@ export async function checkStudioConnection(
     }
 
     const counted = await client.countItems();
-    if (counted.kind !== "ok") lines.push({ level: "error", text: describe(counted) });
+    if (counted.kind !== "ok") lines.push({ level: "error", text: describe(counted, address.mount !== "") });
     else lines.push({ level: "ok", text: `The token works: the Studio holds ${counted.value} item${counted.value === 1 ? "" : "s"}.` });
 
     return { ok: lines.every((l) => l.level !== "error"), lines };

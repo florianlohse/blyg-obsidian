@@ -10,7 +10,10 @@ export interface StudioAddress {
   mount: string;
   /** The blyg's identity as the plugin stamps it into notes: host + mount + "/" ("https://blyg.example.com/"). */
   origin: string;
-  /** Where the owner API lives: always at the host root, whatever the mount. */
+  /**
+   * Where the owner API lives: `{host}{mount}/api`. A Studio mounted at a path serves it only there since Studio 0.65.0 (the host-root `/api` alias is gone; `{mount}/api` exists
+   * since 0.49.7), and its tokens are issued for that address. With no mount this is `{host}/api`, as before.
+   */
   apiBase: string;
 }
 
@@ -44,7 +47,7 @@ export function studioMountProblem(mount: string): string | null {
 export function studioAddress(settings: { baseUrl: string; mount: string }): StudioAddress | null {
   if (studioBaseProblem(settings.baseUrl) !== null || studioMountProblem(settings.mount) !== null) return null;
   const host = new URL(settings.baseUrl).origin;
-  return { host, mount: settings.mount, origin: `${host}${settings.mount}/`, apiBase: `${host}/api` };
+  return { host, mount: settings.mount, origin: `${host}${settings.mount}/`, apiBase: `${host}${settings.mount}/api` };
 }
 
 /** A note's page on the Studio: `f/{id}/` for a fragment, `t/{id}/` for a thread. */

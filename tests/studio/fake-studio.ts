@@ -107,6 +107,8 @@ export class FakeStudio {
   private epoch = 0;
   /** Things to do just before the next matching request is handled (a concurrent edit "in the Studio's editor"); each runs once. */
   private readonly beforeRequest: Array<{ method: string; path: RegExp; run: () => void }> = [];
+  /** "" or "/blyg": the Studio is mounted at a path. */
+  mount = "";
   manifestSite = STUDIO_ORIGIN;
   token = STUDIO_TOKEN;
   /** Problems the preview reports for any text (a bad directive). */
@@ -117,6 +119,12 @@ export class FakeStudio {
 
   readonly transport = (req: RawRequest): Promise<RawResponse> => {
     const url = new URL(req.url);
+    // A mounted Studio (Studio 0.65.0 and later) answers the API and the manifest only below the mount: the host root has no /api (404). Requests are
+    // handled, and recorded, as if the Studio sat at the root, so the tests that do not mount are unchanged.
+    if (this.mount !== "") {
+      if (url.pathname === `${this.mount}/blyg.json` || url.pathname.startsWith(`${this.mount}/api/`)) url.pathname = url.pathname.slice(this.mount.length);
+      else return Promise.resolve(this.fail(404, "not-found", "not found"));
+    }
     const path = url.pathname + url.search;
     const authorization = req.headers.Authorization;
     const seen: Seen = { method: req.method, path, authorization, body: req.body ? (JSON.parse(req.body) as unknown) : req.bodyBytes ? { multipart: req.contentType, bytes: req.bodyBytes.byteLength } : undefined };

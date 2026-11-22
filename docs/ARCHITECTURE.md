@@ -58,8 +58,8 @@ interface BlygSettings {
     author?: { name: string; url?: string };  // passed through into snapshots/citations where the contract asks
   };
   studio: {                   // 0.3.0: the Studio that routes of mode "studio" publish to (ADR-002); any Studio
-    baseUrl: string;          // "https://blyg.example.com" — host only; the owner API is {host}/api
-    mount: string;            // "" (own host) or "/blyg"; public pages are {host}{mount}/f/{id}/
+    baseUrl: string;          // "https://blyg.example.com" — host only; the owner API is {host}{mount}/api (Studio 0.65.0 removed the host-root alias of a mounted Studio)
+    mount: string;            // "" (own host) or "/blyg"; public pages are {host}{mount}/f/{id}/, the API {host}{mount}/api
     tokenSecretName: string;  // NAME of the keychain entry holding the REST token; never the token. The token's expiry and permissions are read from the token itself
   };
   routes: Array<{
