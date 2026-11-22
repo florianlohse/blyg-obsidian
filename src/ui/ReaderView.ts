@@ -11,7 +11,9 @@ import { activeFilters, arrange, isReplyToMine, OWN_SOURCE, readFilter, cardOf, 
 import { type ReaderFont } from "./readerFonts";
 import { CONTRASTS, type ReaderContrast } from "./readerLook";
 import { responseChip, responseIndex, type ResponseEntry } from "./readerResponses";
-import { changedCount, chooseWalk, keepOwnPosts, knownOf, mergeFresh, READER_KEEP, type SyncMemory } from "./readerSync";
+import { changedCount, chooseWalk, keepOlderTail, keepOwnPosts, knownOf, mergeFresh, READER_KEEP, type OlderResult, type SyncMemory } from "./readerSync";
+import { OlderPosts } from "./readerOlderRow";
+import { newWindowMemory, restartWindow, StreamWindow } from "./readerWindow";
 import type { StudioListedItem } from "../studio/types";
 import { bottomClearance } from "./readerBottom";
 import { hostOf, limiter, mentionBadge, postOfMention, visibleMentions } from "./readerMentions";
@@ -30,6 +32,8 @@ export interface ReaderData {
   partial?: boolean;
   /** True when `posts` are only the newest rows, to be merged into the list held (the walk stopped where it reached what was held). */
   incremental?: boolean;
+  /** True when the Studio holds posts older than the ones read ("Load older posts" can read them). */
+  moreOlder?: boolean;
   /** False when this load did not ask for the mentions: keep the ones held. */
   mentionsFetched?: boolean;
   /** Shown from the list saved by the last session, while the Studio is asked. */
@@ -55,6 +59,8 @@ export interface ReaderHost extends FollowHost {
   ): Promise<{ ok: true; data: ReaderData } | { ok: false; message: string }>;
   /** The list kept by the last session (for the Studio now in use), or null. Posts of other people: in the plugin's own folder, never in a note. */
   readCache(): Promise<{ posts: ReadingPost[]; mentions: InboundMention[]; savedAt: number; studioOrigin: string } | null>;
+  /** Read the next older posts ("Load older posts"), or say in words why not. */
+  loadOlder(): Promise<OlderResult>;
   /** Keep this list for the next session (the host waits a moment and writes once). */
   writeCache(data: { posts: ReadingPost[]; mentions: InboundMention[] }): void;
   openWeb(url: string): void;
@@ -107,9 +113,6 @@ export function excerptOf(html: string, max = 140): string {
 }
 
 const keyOf = (p: ReadingPost): string => `${p.subscriptionId}/${p.remoteId}`;
-/** Cards built at first, and added each time the end of the feed comes near. */
-const FEED_FIRST = 30;
-const FEED_STEP = 40;
 
 /**
  * Run `fn` when the app has nothing else to do (at the latest after a few seconds): the reader's first work must not compete with Obsidian's own start.
@@ -165,9 +168,9 @@ export class BlygReaderView extends ItemView {
   private scrollEl: HTMLElement | null = null;
   private feedScroll = 0;
   private readonly cardEls = new Map<string, HTMLElement>();
-  /** How many cards of the feed are built (a first screenful, more as you scroll), and for which order and filters. */
-  private renderLimit = 0;
-  private limitSig = "";
+  /** Which stretch of the feed is built (readerWindow.ts), and the foot that loads older posts (readerOlderRow.ts). */
+  private win = newWindowMemory();
+  private readonly olderPosts = new OlderPosts({ load: () => this.host.loadOlder(), data: () => this.data, replace: (posts) => this.replacePosts(posts), redraw: () => this.drawBody() });
   /**
    * Read changes made here that a reload must not undo: a list fetched just before a mark reached the Studio is stale by the time it arrives. Held
    * while the change is on its way and for ten seconds after it was accepted; dropped at once if the Studio refuses it.
@@ -318,10 +321,12 @@ export class BlygReaderView extends ItemView {
         } else {
           // A quick look that read the whole list asked for no own posts: the held ones stay (a whole read brings them itself).
           if (known !== null && held) posts = keepOwnPosts(held.posts, posts);
+          if (held) posts = keepOlderTail(held.posts, posts, got.data.moreOlder === true); // posts loaded further back stay
           this.sync.lastFullAt = Date.now();
           this.sync.readingMoved = false;
           this.sync.movedWithoutNew = false;
         }
+        this.olderPosts.setMore(got.data.moreOlder);
         this.lastWalkAt = Date.now();
         this.keepLocalReadState(posts);
         const mentions = got.data.mentionsFetched === false && held ? held.mentions : got.data.mentions;
@@ -1035,6 +1040,13 @@ export class BlygReaderView extends ItemView {
     this.feedScroll = 0;
   }
 
+  /** Older posts arrived: they join the list (the steps through the feed start again from the new order). */
+  private replacePosts(posts: ReadingPost[]): void {
+    this.keepLocalReadState(posts);
+    this.stepKeys = null;
+    if (this.data) this.data = { ...this.data, posts };
+  }
+
   private drawStream(col: HTMLElement, posts: ReadingPost[]): void {
     this.cardEls.clear();
     if (posts.length === 0) return void col.createDiv({ cls: "blyg-reader-note", text: "Nothing to read yet. Follow a blyg with the Following button." });
@@ -1044,45 +1056,30 @@ export class BlygReaderView extends ItemView {
       const note = col.createDiv({ cls: "blyg-reader-note", text: restricted ? "No post matches the choices in Sort & filter." : "No post matches." });
       if (restricted) this.button(note, "Clear filters", () => this.clearFilters(), { title: "Show every post again (the order stays)" });
     }
-    // Only a first screenful is built at once, and more as you scroll: building all 200 cards costs tens of milliseconds on a desktop and several times that
-    // on a phone, and Obsidian's start must not pay for it. A change of order or filter starts from the first screenful again.
-    const sig = JSON.stringify(this.filter);
-    if (sig !== this.limitSig) {
-      this.limitSig = sig;
-      this.renderLimit = FEED_FIRST;
-    }
-    const addCard = (p: ReadingPost, into: HTMLElement, before: HTMLElement | null): void => {
-      const card = createDiv({ cls: "blyg-reader-row blyg-reader-card" });
-      into.insertBefore(card, before);
-      this.cardEls.set(keyOf(p), card);
-      this.fillCard(card, p);
-      card.addEventListener("click", () => {
-        // A press that selected some text is a selection, not a tap.
-        if ((activeWindow.getSelection()?.toString() ?? "") !== "") return;
-        this.openPost(p);
-      });
-    };
-    for (const p of shown.slice(0, this.renderLimit)) addCard(p, col, null);
-    if (shown.length > this.renderLimit) {
-      const more = col.createDiv({ cls: "blyg-reader-more" });
-      const moreBtn = this.button(more, `Show more posts (${shown.length - this.renderLimit} more)`, () => grow(), { cls: "blyg-reader-quiet" });
-      const grow = (): void => {
-        const from = this.renderLimit;
-        this.renderLimit = Math.min(shown.length, from + FEED_STEP);
-        for (const p of shown.slice(from, this.renderLimit)) addCard(p, col, more);
-        if (this.renderLimit >= shown.length) {
-          more.remove();
-          return;
-        }
-        moreBtn.setText(`Show more posts (${shown.length - this.renderLimit} more)`);
-      };
-      // Scrolling near the end asks for more by itself; the button is there for a device where that does not happen.
-      const watcher = new IntersectionObserver((entries) => {
-        if (entries.some((e) => e.isIntersecting) && more.isConnected) grow();
-        if (!more.isConnected) watcher.disconnect();
-      }, { root: this.scrollEl, rootMargin: "600px 0px" });
-      watcher.observe(more);
-    }
+    // Only a stretch of the feed is built, and it moves as you scroll (readerWindow.ts): Obsidian's start must not pay for 200 cards, and 5000 loaded posts must not mean 5000 cards.
+    restartWindow(this.win, JSON.stringify(this.filter));
+    new StreamWindow({
+      into: col.createDiv({ cls: "blyg-reader-window" }),
+      scroller: this.scrollEl,
+      keys: shown.map(keyOf),
+      memory: this.win,
+      build: (i, before) => {
+        const p = shown[i] as ReadingPost;
+        const card = createDiv({ cls: "blyg-reader-row blyg-reader-card" });
+        before?.parentElement?.insertBefore(card, before);
+        this.cardEls.set(keyOf(p), card);
+        this.fillCard(card, p);
+        card.addEventListener("click", () => {
+          // A press that selected some text is a selection, not a tap.
+          if ((activeWindow.getSelection()?.toString() ?? "") !== "") return;
+          this.openPost(p);
+        });
+        return card;
+      },
+      dropped: (key) => this.cardEls.delete(key),
+      footer: (into) => this.olderPosts.draw(into),
+      moreLabel: (left) => `Show more posts (${left} more)`,
+    });
   }
 
   /** One card: what a post is, at a glance. Drawn again in place when its read state changes. */

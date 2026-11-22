@@ -35,6 +35,7 @@ increment.
    locally in the session (`wrangler dev`, throwaway secrets, `ALLOW_PRIVATE_FETCH` for localhost only) subscribes to the site
    build that layer 4 makes and must import every item without flags; and Studio's own published output is snapshotted into
    `tests/fixtures/studio/<version>/` for the reader's tests. Feasibility rehearsed 2026-10-14 (Studio 0.46.1).
+4d. **Scale harness** *(HK4)*: `tests/scale/` makes 10,000 invented posts (`src/dev/syntheticPosts.ts`, seeded, placeholder addresses) and times parse, sort and card text against loose budgets; counts the requests of a refresh; replays a 429 with `Retry-After` and a 409 `cursor-expired`; and runs "load older" over the real client against a paging fake Studio (`tests/scale/scaleStudio.ts`). The development build also has the command "Reader: draw synthetic posts (timing)" for timing the drawing on a device.
 4c. **Studio client** *(0.3.0, S2)*: `tests/studio/` runs the plugin's real http adapter, client and publish service against an in-memory
    `FakeStudio` that behaves like the real 0.48.2 on the measured points (publish always makes a new version, the cap is checked only at
    publish, the kind is fixed after the first publish, errors are `{"error"}`); `openapi.test.ts` checks the hand-written client against a

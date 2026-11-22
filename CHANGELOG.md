@@ -8,6 +8,8 @@ becomes the release notes. Write entries for people who use the plugin, not for 
 
 ## [Unreleased]
 
+- **The reader can go further back.** "Load older posts" at the end of the feed reads 200 older posts at a time from your Studio, up to 5000. Long feeds stay quick: only the cards near the screen are drawn.
+
 ## [1.0.0] — 2026-11-18
 
 **Read the blygs you follow, answer them, and publish your own, without leaving your notes.** Blyg connects Obsidian to a Blygger Studio you own, on your desktop, iPad and iPhone.
