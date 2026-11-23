@@ -51,6 +51,10 @@ export interface EditionRec {
   sections?: string[];
   /** When each post was first seen in this edition. */
   seen: Record<string, number>;
+  /** Present once the automatic write has been tried for this edition (it is never tried twice); `note`: why it did not write, plain text. */
+  auto?: { note?: string };
+  /** The tokens (as counted) and rough cost of the runs of this edition, for the footer. cost null: unknown price. */
+  usage?: { tokens: number; cost: number | null };
 }
 
 export interface EditionStore {
@@ -88,7 +92,10 @@ export function parseEditions(raw: unknown): EditionStore {
     const postSections: Record<string, string> = {};
     for (const [k, v] of Object.entries((r.postSections as Record<string, unknown> | undefined) ?? {})) if (typeof v === "string") postSections[k] = v;
     const names = strs(r.sections);
-    out.editions.push({ id, createdAt, n: num(r.n) ?? stories.length + 1, stories, mixed: strs(r.mixed), seen, ...(Object.keys(postSections).length ? { postSections } : {}), ...(names.length ? { sections: names } : {}) });
+    const au = r.auto as { note?: unknown } | undefined;
+    const us = r.usage as { tokens?: unknown; cost?: unknown } | undefined;
+    const tokens = num(us?.tokens);
+    out.editions.push({ id, createdAt, n: num(r.n) ?? stories.length + 1, stories, mixed: strs(r.mixed), seen, ...(au && typeof au === "object" ? { auto: typeof au.note === "string" ? { note: au.note.slice(0, 200) } : {} } : {}), ...(tokens !== null && tokens >= 0 ? { usage: { tokens, cost: num(us?.cost) } } : {}), ...(Object.keys(postSections).length ? { postSections } : {}), ...(names.length ? { sections: names } : {}) });
   }
   out.editions.sort((a, b) => a.id - b.id);
   return pruneEditions(out);

@@ -21,6 +21,9 @@ export interface EditionInfo {
   since: number;
   until: number;
   grouped: Grouped;
+  /** The automatic write's note for this edition (set once it was tried), and what its runs used so far. */
+  auto?: { note?: string };
+  usage?: { tokens: number; cost: number | null };
 }
 
 export class Editions {
@@ -60,7 +63,7 @@ export class Editions {
       const live = livePosts(posts, win.since, win.until);
       const next = assignPosts(r.edition, live, now);
       if (r.created || next !== r.edition) await this.save({ v: 1, editions: [...r.store.editions.filter((e) => e.id !== next.id), next] });
-      return { ...win, grouped: groupOf(next, live) };
+      return { ...win, grouped: groupOf(next, live), ...(next.auto ? { auto: next.auto } : {}), ...(next.usage ? { usage: next.usage } : {}) };
     });
   }
 
@@ -73,6 +76,18 @@ export class Editions {
       if (!cur) return;
       store.editions[i] = fn(cur);
       await this.save(store);
+    });
+  }
+
+  /** The one automatic attempt of the current edition: true (and the edition is marked as tried, saved) only if `allowed` says so and no attempt was made before. */
+  claimAuto(allowed: (e: EditionRec) => boolean): Promise<boolean> {
+    return this.queue(async () => {
+      const store = await this.load();
+      const cur = store.editions.at(-1);
+      if (!cur || cur.auto || !allowed(cur)) return false;
+      store.editions[store.editions.length - 1] = { ...cur, auto: {} };
+      await this.save(store);
+      return true;
     });
   }
 
