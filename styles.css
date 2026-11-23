@@ -962,4 +962,15 @@ button.blyg-story-chevron svg { width: 20px; height: 20px; transition: transform
 /* the first row starts as far from the top as the feed header's first row (its padding is --size-4-2; the masthead's own 4px rule is part of it) */
 .blyg-daily-bar { padding-top: calc(var(--size-4-2) - 4px); }
 .blyg-daily-barrow > .blyg-modeslot { display: flex; align-items: center; justify-content: flex-end; min-height: var(--input-height, 30px); }
-.blyg-daily-barrow > .blyg-daily-menu { align-self: flex-start; }
+.blyg-daily-barrow > .blyg-daily-menu, .blyg-daily-barrow > .blyg-daily-refresh { align-self: flex-start; }
+/* Digest Refresh: an icon in the sticky bar and an explained entry in the menu; busy while it runs. */
+.blyg-daily-bar .blyg-daily-refresh { flex: none; }
+button.blyg-daily-refresh { height: var(--clickable-icon-size, 32px); min-width: var(--clickable-icon-size, 32px); box-shadow: none; background: none; color: var(--text-accent); }
+.blyg-daily-refresh.is-busy svg, .blyg-daily-refreshbtn.is-busy svg { animation: blyg-spin 0.9s linear infinite; }
+.blyg-daily-refresh.is-busy, .blyg-daily-refreshbtn.is-busy { opacity: 0.7; }
+.blyg-daily-refreshbtn { display: inline-flex; align-items: center; gap: var(--size-4-1); }
+.blyg-daily-refreshicon { display: inline-flex; }
+.blyg-daily-entry { margin-top: var(--size-4-2); }
+.blyg-daily-hint { font-size: var(--font-ui-smaller); color: var(--text-muted); margin-top: var(--size-4-1); }
+.blyg-story-newtag { margin-right: var(--size-4-1); font-size: var(--font-ui-smaller); text-transform: uppercase; }
+@media (prefers-reduced-motion: reduce) { .blyg-daily-refresh.is-busy svg, .blyg-daily-refreshbtn.is-busy svg { animation: none; } }

@@ -33,6 +33,8 @@ export const BLYG_DAILY_VIEW = "blyg-daily";
 export interface DigestHost {
   /** The reader's saved list and when it was saved, or null when there is none (the reader has not been opened, or the list is too old). */
   loadList(): Promise<{ posts: ReadingPost[]; mentions: InboundMention[]; savedAt: number } | null>;
+  /** Refresh, the feed's action (src/app/readerRefresh.ts): ask the Studio to fetch, read the list once, keep it. No AI request. Absent: Refresh reads the saved list again. */
+  refresh?(o: { held: { posts: ReadingPost[]; mentions: InboundMention[] } | null; alive: () => boolean; status: (text: string) => void }): Promise<{ ok: true; list: { posts: ReadingPost[]; mentions: InboundMention[] }; note?: string } | { ok: false; message: string; cancelled?: true }>;
   /** The current edition for these posts (src/digest/editionHost.ts): its window, and the stories and Mixed bag it has settled. Absent `id`/`grouped`: group the window afresh. */
   edition(posts: readonly ReadingPost[]): Promise<{ id?: number; since: number; until: number; grouped?: Grouped; auto?: { note?: string }; usage?: { tokens: number; cost: number | null } }>;
   /** The saved past editions, newest first (src/digest/history.ts). Absent: no history. */
@@ -63,6 +65,10 @@ export interface DigestHost {
   };
 }
 
+/** What each button of the menu does and costs (shown under it). */
+const REFRESH_HINT = "Fetches new posts from your blygs, no AI, no cost";
+const WRITE_HINT = "Writes headlines and summaries with your AI model, uses tokens";
+const RESORT_HINT = "Sorts every story and post into sections again, uses tokens";
 const stamp = (t: number): string => new Date(t).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
 const timeOnly = (t: number): string => new Date(t).toLocaleTimeString(undefined, { timeStyle: "short" });
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
@@ -94,6 +100,14 @@ export class BlygDailyView extends ItemView {
   private bar = { open: false };
   /** The contents of the page being drawn: one entry per heading, pushed by section() as the heading is drawn, so the contents can never differ from the page. */
   private toc: TocEntry[] = [];
+  /** The list the page was made from (kept so Refresh merges into it), and the posts drawn last: what a refresh adds is marked "new". */
+  private list: { posts: ReadingPost[]; mentions: InboundMention[] } | null = null;
+  private shown: Set<string> | null = null;
+  private added = new Set<string>();
+  /** Reading the list or a Refresh is going: the Refresh buttons show it and ignore a second tap. `runs` replaces a Refresh that a newer open has overtaken. */
+  private working = false;
+  private runs = 0;
+  private refreshBtns: HTMLElement[] = [];
   constructor(leaf: WorkspaceLeaf, private readonly host: DigestHost) {
     super(leaf);
   }
@@ -113,6 +127,7 @@ export class BlygDailyView extends ItemView {
     await this.refresh();
   }
   override async onClose(): Promise<void> {
+    this.runs++;
     watchMarks(null);
     return Promise.resolve();
   }
@@ -138,26 +153,78 @@ export class BlygDailyView extends ItemView {
     void this.host.openPost(p, this.leaf, story);
   }
 
+  /** Opening the page (and the fallback Refresh): read the saved list and draw it; the automatic write follows when it is due. */
   private async refresh(): Promise<void> {
     const root = this.contentEl;
+    const run = ++this.runs;
     this.saveScroll();
     root.empty();
     root.createDiv({ cls: "blyg-daily-status", text: "Reading your list…" });
+    this.setWorking(true);
     let model: DailyModel | null = null;
     let autoNote = "";
     try {
       const list = await this.host.loadList();
-      if (list) {
-        this.queue()?.apply(list.posts, list.savedAt);
-        this.byId = new Map(list.posts.map((p) => [p.remoteId, p]));
-        const win = await this.host.edition(list.posts);
-        model = buildDaily(list.posts, list.mentions, win.since, win.until, win.grouped, win.id);
-        this.usage = win.usage;
-        autoNote = win.auto?.note ?? "";
-      }
+      if (run !== this.runs) return;
+      if (list) ({ model, autoNote } = await this.makeModel(list, list.savedAt));
     } catch {
       model = null;
+    } finally {
+      if (run === this.runs) this.setWorking(false);
     }
+    if (run !== this.runs) return;
+    await this.finishOpen(model, autoNote);
+  }
+
+  /** The Refresh button, the same action as the feed's: the Studio is asked to fetch, the list is read once, and the new posts join the edition on the page without any AI request. Drawn once, in place. */
+  private async refreshNow(): Promise<void> {
+    if (this.working) return;
+    const run = ++this.runs;
+    this.setWorking(true);
+    this.say("Checking your blygs…");
+    try {
+      if (!this.host.refresh) return void (await this.refreshSaved(run));
+      const got = await this.host.refresh({ held: this.list, alive: () => run === this.runs && this.contentEl.isConnected, status: (t) => this.say(t) });
+      if (run !== this.runs || (!got.ok && got.cancelled)) return;
+      if (!got.ok) return this.say(got.message || "Could not check your blygs.");
+      const { model } = await this.makeModel(got.list, Date.now(), true);
+      if (run !== this.runs) return;
+      const n = this.added.size;
+      this.note = [got.note ?? "", n > 0 ? `${plural(n, "new post", "new posts")}` : "Nothing new"].filter(Boolean).join(" · ");
+      this.written = model && this.host.ai?.enabled() ? await this.host.ai.cached(model.front).catch(() => []) : [];
+      this.sections = model && this.written.length > 0 && this.host.ai?.enabled() ? await (this.host.ai.cachedSections?.(model.front, model.mixed) ?? Promise.resolve(null)).catch(() => null) : null;
+      if (run === this.runs) this.render(model);
+    } catch {
+      if (run === this.runs) this.say("Could not check your blygs.");
+    } finally {
+      if (run === this.runs) this.setWorking(false);
+    }
+  }
+
+  /** Without a Studio conversation (a host that cannot ask): read the saved list again, in place. */
+  private async refreshSaved(run: number): Promise<void> {
+    const list = await this.host.loadList();
+    if (run !== this.runs || !list) return this.say("There is no saved list to read yet.");
+    const { model } = await this.makeModel(list, list.savedAt, true);
+    this.note = this.added.size > 0 ? plural(this.added.size, "new post", "new posts") : "Nothing new";
+    if (run === this.runs) this.render(model);
+  }
+
+  /** The edition's model for this list. `mark`: what the page did not show before is marked new. */
+  private async makeModel(list: { posts: ReadingPost[]; mentions: InboundMention[] }, savedAt: number, mark = false): Promise<{ model: DailyModel; autoNote: string }> {
+    this.queue()?.apply(list.posts, savedAt);
+    this.list = { posts: list.posts, mentions: list.mentions };
+    this.byId = new Map(list.posts.map((p) => [p.remoteId, p]));
+    const win = await this.host.edition(list.posts);
+    const model = buildDaily(list.posts, list.mentions, win.since, win.until, win.grouped, win.id);
+    this.usage = win.usage;
+    const ids = new Set([...model.front.flatMap((c) => c.posts.map((p) => p.remoteId)), ...model.mixed.map((p) => p.remoteId)]);
+    this.added = mark && this.shown ? new Set([...ids].filter((id) => !this.shown?.has(id))) : new Set();
+    this.shown = ids;
+    return { model, autoNote: win.auto?.note ?? "" };
+  }
+
+  private async finishOpen(model: DailyModel | null, autoNote: string): Promise<void> {
     const h = await (this.host.history?.() ?? Promise.resolve(null)).catch(() => null);
     this.past = h?.editions ?? [];
     this.pastCapped = h?.capped === true;
@@ -174,6 +241,23 @@ export class BlygDailyView extends ItemView {
     // The automatic write: the plain digest is on the page already; the text replaces it when it is ready.
     const ai = this.host.ai;
     if (model && ai?.enabled() && !this.busy && this.viewing === null && (await (ai.autoDue?.(model.front) ?? Promise.resolve(false)).catch(() => false))) this.run(model, false, true);
+  }
+
+  /** The Refresh buttons (the bar's icon and the menu's entry): busy while a read or a Refresh runs; in place, so the page does not redraw. */
+  private setWorking(on: boolean): void {
+    this.working = on;
+    this.refreshBtns = this.refreshBtns.filter((b) => b.isConnected !== false);
+    this.refreshBtns.forEach((b) => this.paintRefresh(b));
+  }
+  private paintRefresh(btn: HTMLElement): void {
+    btn.toggleClass("is-busy", this.working);
+    if (this.working) {
+      btn.setAttr("disabled", "true");
+      btn.setAttr("aria-busy", "true");
+    } else {
+      btn.removeAttribute("disabled");
+      btn.removeAttribute("aria-busy");
+    }
   }
 
   /** "Write the digest" (or the automatic write): in the background; the page redraws when the answer is in. */
@@ -218,10 +302,11 @@ export class BlygDailyView extends ItemView {
     this.sectionEls = new Map();
     this.toc = [];
     this.readPainters = [];
+    this.refreshBtns = [];
     publishPlacement(undefined, null); // set again by a page with sections
     root.empty();
     for (const f of ["default", "serif", "sans", "mono"] as const) root.toggleClass(`is-font-${f}`, f === this.host.font());
-    const bar = drawBar(root, { date: mastheadDate(this.viewing ?? model?.edition ?? model?.since ?? Date.now()), kicker: "Your digest", state: this.bar, toggle: () => void this.host.showFeed(this.leaf) });
+    const bar = drawBar(root, { date: mastheadDate(this.viewing ?? model?.edition ?? model?.since ?? Date.now()), kicker: "Your digest", state: this.bar, toggle: () => void this.host.showFeed(this.leaf), refresh: { hint: REFRESH_HINT, click: () => void this.refreshNow(), made: (b) => (this.refreshBtns.push(b), this.paintRefresh(b)) } });
     const today = model?.edition ?? null;
     const pastRec = this.viewing !== null ? this.past.find((e) => e.id === this.viewing) : undefined;
     const ids = [...(today !== null ? [today] : []), ...this.past.map((e) => e.id).filter((id) => id !== today)];
@@ -234,16 +319,30 @@ export class BlygDailyView extends ItemView {
       drawPast(root, pastRec, this.byId, { open: (p) => this.openEntry(p), section: (name, el) => this.sectionEls.set(name, el), go: (name) => this.goTo(name) });
       return;
     }
-    const head = bar.panel.createDiv({ cls: "blyg-daily-head" });
-    head.createEl("button", { text: "Refresh", cls: "blyg-daily-btn" }).addEventListener("click", () => void this.refresh());
+    // The three actions, each with what it does and what it costs, in plain words.
+    const entry = (hint: string, make: (box: HTMLElement) => HTMLElement): HTMLElement => {
+      const box = bar.panel.createDiv({ cls: "blyg-daily-entry" });
+      const btn = make(box);
+      box.createDiv({ cls: "blyg-daily-hint", text: hint });
+      return btn;
+    };
+    const rbtn = entry(REFRESH_HINT, (box) => {
+      const b = box.createEl("button", { cls: "blyg-daily-btn blyg-daily-refreshbtn", attr: { title: REFRESH_HINT } });
+      setIcon(b.createSpan({ cls: "blyg-daily-refreshicon" }), "refresh-cw");
+      b.createSpan({ text: "Refresh" });
+      b.addEventListener("click", () => void this.refreshNow());
+      return b;
+    });
+    this.refreshBtns.push(rbtn);
+    this.paintRefresh(rbtn);
     const ai = this.host.ai;
     if (model && ai?.enabled()) {
-      const btn = head.createEl("button", { cls: "blyg-daily-btn blyg-story-write" });
+      const btn = entry(WRITE_HINT, (box) => box.createEl("button", { cls: "blyg-daily-btn blyg-story-write", attr: { title: WRITE_HINT } }));
       this.writeBtn = btn;
       this.paintWrite(btn);
       btn.addEventListener("click", () => this.run(model, false));
       if (this.sections) {
-        const resort = head.createEl("button", { text: "Re-sort sections", cls: "blyg-daily-btn", attr: { title: "Sort every story and post into sections again, not only the new ones" } });
+        const resort = entry(RESORT_HINT, (box) => box.createEl("button", { text: "Re-sort sections", cls: "blyg-daily-btn", attr: { title: RESORT_HINT } }));
         resort.addEventListener("click", () => this.run(model, true));
       }
     }
@@ -357,8 +456,9 @@ export class BlygDailyView extends ItemView {
 
   /** A single post: its content line in bold (the AI line's topic, else its first sentence), "by <Author>" in italics under it, and a small "Mark read". A tap on the row opens it in the reader; Back returns here. */
   private drawSingle(into: HTMLElement, p: ReadingPost, line?: string): void {
-    const row = into.createDiv({ cls: "blyg-daily-row blyg-story-mixed" });
+    const row = into.createDiv({ cls: `blyg-daily-row blyg-story-mixed${this.added.has(p.remoteId) ? " blyg-is-new" : ""}` });
     const main = row.createDiv({ cls: "blyg-story-main" });
+    if (this.added.has(p.remoteId)) main.createSpan({ cls: "blyg-story-updated blyg-story-newtag", text: "new" });
     const text = contentLine(p, line);
     main.createEl("button", { cls: "blyg-daily-link blyg-story-who blyg-story-line", text: text || byLine(p) }).addEventListener("click", (e) => {
       e?.stopPropagation?.();
@@ -521,7 +621,7 @@ export class BlygDailyView extends ItemView {
       cls: "blyg-daily-meta",
       text: [`${plural(c.posts.length, "post", "posts")} in ${plural(blygs, "blyg", "blygs")}`, authorsLine(c.posts), ai ? "" : keywordsOf(c.terms, names).join(" · ")].filter(Boolean).join(" · "),
     });
-    const fresh = new Set(ai?.fresh ?? []);
+    const fresh = new Set([...(ai?.fresh ?? []), ...c.posts.map((p) => p.remoteId).filter((id) => this.added.has(id))]);
     if (fresh.size > 0) meta.createSpan({ cls: "blyg-story-updated", text: ` +${plural(fresh.size, "new post", "new posts")}` });
     // One button marks the whole story (its unread posts) read.
     this.paintRead(card, card.createDiv({ cls: "blyg-story-markrow" }), c.posts, true);
