@@ -39,11 +39,12 @@ vi.mock("obsidian", () => {
     contentEl = new FakeEl();
     constructor(public leaf: unknown) {}
   }
-  return { ItemView };
+  return { ItemView, setIcon: (el: { attrs?: Record<string, string> }, n: string) => void (el.attrs ??= {}, el.attrs["data-icon"] = n) };
 });
 
 import { MARK_GAP_MS, MarkQueue, resetMarks } from "../../src/digest/markQueue";
 import { byLine, contentLine, topicOf } from "../../src/digest/singleLine";
+import { useReaderMode } from "../../src/ui/readerMode";
 import { clearScrolls } from "../../src/digest/scrollMemory";
 import { BlygDailyView, type DigestHost } from "../../src/ui/DigestView";
 import type { ReadingPost } from "../../src/studio/reading";
@@ -54,7 +55,7 @@ const post = (text: string, author: string | null, over: Partial<ReadingPost> = 
   subscriptionId: "s1", subscriptionTitle: "Example blyg", origin: "https://one.example.com/", remoteId: `m${String(++n).padStart(6, "0")}`.padEnd(26, "x"), kind: "fragment", withdrawn: false, version: 1, readVersion: null,
   observedAt: new Date(NOW - 3600_000 - n * 1000).toISOString(), created: null, isReply: false, stubTarget: null, contentHtml: `<p>${text}</p>`, contentMd: "", authorName: author, authorUrl: null, sourceUrl: null, ...over,
 });
-type El = { text: string; tag: string; cls: Set<string>; click(): void; all(): El[] };
+type El = { text: string; tag: string; cls: Set<string>; attrs: Record<string, string>; click(): void; all(): El[] };
 const has = (e: El, c: string): boolean => e.cls.has(c);
 const flush = async (): Promise<void> => void (await new Promise((r) => setTimeout(r, 0)));
 
@@ -67,18 +68,20 @@ beforeEach(() => {
 describe("the mark queue", () => {
   const make = () => {
     const asked: string[] = [];
+    const unasked: string[] = [];
     const naps: number[] = [];
     const gone: string[] = [];
     let changes = 0;
     let fail: string | null = null;
     const q = new MarkQueue({
       mark: (p) => (asked.push(p.remoteId), Promise.resolve(fail === null ? { ok: true } : { ok: false, message: fail })),
+      unmark: (p) => (unasked.push(p.remoteId), Promise.resolve(fail === null ? { ok: true } : { ok: false, message: fail })),
       sleep: (ms) => (naps.push(ms), Promise.resolve()),
       now: () => 100,
       onChange: () => void changes++,
       onReverted: (_p, m) => void gone.push(m),
     });
-    return { q, asked, naps, gone, changes: () => changes, failWith: (m: string | null) => (fail = m) };
+    return { q, asked, unasked, naps, gone, changes: () => changes, failWith: (m: string | null) => (fail = m) };
   };
   it("shows the new state at once, asks the Studio once per unread post, one after the other with a pause", async () => {
     const t = make();
@@ -88,6 +91,28 @@ describe("the mark queue", () => {
     await done;
     expect(t.asked).toEqual(ps.map((p) => p.remoteId));
     expect(t.naps).toEqual([MARK_GAP_MS, MARK_GAP_MS]); // no burst: a pause between two writes, none before the first
+  });
+  it("marks read posts unread again: only the read ones, one write each with the pause, put back on a refusal, remembered over an older saved copy", async () => {
+    const t = make();
+    const ps = [post("one", "Ann", { readVersion: 1 }), post("two", "Bo"), post("three", "Cy", { readVersion: 1 }), post("own", "Me", { own: true, readVersion: 1 })];
+    const done = t.q.enqueueUnread(ps);
+    expect(ps.map((p) => p.readVersion)).toEqual([null, null, null, 1]); // at once; the owner's own is left alone
+    await done;
+    expect(t.unasked).toEqual([ps[0]!.remoteId, ps[2]!.remoteId]);
+    expect(t.asked).toEqual([]);
+    expect(t.naps).toEqual([MARK_GAP_MS]);
+    await t.q.enqueueUnread(ps);
+    expect(t.unasked).toHaveLength(2); // never twice
+    const stale = [{ ...ps[0]!, readVersion: 1 }];
+    t.q.apply(stale, 50);
+    expect(stale[0]!.readVersion).toBeNull();
+    const u = make();
+    const r = [post("a", "Ann", { readVersion: 1 }), post("b", "Bo", { readVersion: 1 })];
+    u.failWith("no token");
+    await u.q.enqueueUnread(r);
+    expect(r.map((p) => p.readVersion)).toEqual([1, 1]);
+    expect(u.unasked).toEqual([r[0]!.remoteId]); // the refusal stops the rest
+    expect(u.gone).toEqual(["no token"]);
   });
   it("marks only unread posts and never the same post twice", async () => {
     const t = make();
@@ -150,7 +175,7 @@ describe("the digest page", () => {
     const a = post(`Wholly distinct ${t} subject only here, long enough.`, "Ann");
     return [a, post(`Reply on ${t}.`, "Bo", { isReply: true, stubTarget: { id: a.remoteId } as never })];
   };
-  async function mount(posts: ReadingPost[], marked: string[] = [], opened: string[] = [], leaf: unknown = {}) {
+  async function mount(posts: ReadingPost[], marked: string[] = [], opened: string[] = [], leaf: unknown = {}, unmarked: string[] = [], refuse = false) {
     const host: DigestHost = {
       loadList: () => Promise.resolve({ posts, mentions: [], savedAt: NOW }),
       edition: () => Promise.resolve({ id: 7, since: NOW - 6 * 3600_000, until: NOW }),
@@ -159,12 +184,13 @@ describe("the digest page", () => {
       openPost: (p) => Promise.resolve(void opened.push(p.remoteId)),
       openWeb: () => undefined,
       markRead: (p) => (marked.push(p.remoteId), Promise.resolve({ ok: true })),
+      markUnread: (p) => (unmarked.push(p.remoteId), Promise.resolve(refuse ? { ok: false, message: "no" } : { ok: true })),
     };
     const view = new BlygDailyView(leaf as never, host);
     await view.onOpen();
     return { root: (view as unknown as { contentEl: El }).contentEl, view };
   }
-  const buttons = (root: El, label: string): El[] => root.all().filter((e) => e.tag === "button" && e.text === label);
+  const buttons = (root: El, label: string): El[] => root.all().filter((e) => e.tag === "button" && (e.attrs["aria-label"] === label || e.text === label));
 
   it("a single post has a Mark read button that marks it and dims the row; a story has one for all its posts", async () => {
     const [a, b] = story("harbour");
@@ -184,14 +210,45 @@ describe("the digest page", () => {
     expect(buttons(root, "Mark story read")).toHaveLength(0);
     expect(root.all().filter((e) => has(e, "blyg-story") && has(e, "blyg-is-read"))).toHaveLength(1);
   });
-  it("marks nothing when everything is read, and shows no buttons without a host that can mark", async () => {
+  it("marks nothing when everything is read: the symbol shows read, and a tap marks every read post unread again, one write each", async () => {
     const [a, b] = story("orchard");
     a!.readVersion = 1;
     b!.readVersion = 1;
     const marked: string[] = [];
-    const { root } = await mount([a!, b!], marked);
+    const unmarked: string[] = [];
+    const { root } = await mount([a!, b!], marked, [], {}, unmarked);
     expect(buttons(root, "Mark story read")).toHaveLength(0);
     expect(marked).toEqual([]);
+    const sym = buttons(root, "Mark story unread");
+    expect(sym).toHaveLength(1);
+    expect(sym[0]!.attrs["data-icon"]).toBe("check-circle-2");
+    expect(sym[0]!.text).toBe(""); // a symbol, not a word
+    sym[0]!.click();
+    await vi.waitFor(() => expect(unmarked).toEqual([a!.remoteId, b!.remoteId]));
+    expect([a!.readVersion, b!.readVersion]).toEqual([null, null]); // shown at once, kept
+    expect(buttons(root, "Mark story read")).toHaveLength(1);
+    expect(marked).toEqual([]);
+  });
+  it("a read single post is put back to unread by a tap; a refusal puts the read mark back", async () => {
+    const lone = post("A lone read post.", "Cy", { readVersion: 1 });
+    const unmarked: string[] = [];
+    const first = await mount([lone], [], [], {}, unmarked, true);
+    expect(buttons(first.root, "Mark unread")[0]!.attrs["aria-pressed"]).toBe("true");
+    buttons(first.root, "Mark unread")[0]!.click();
+    expect(lone.readVersion).toBeNull(); // at once
+    await vi.waitFor(() => expect(lone.readVersion).toBe(1)); // the Studio refused: put back
+    expect(unmarked).toEqual([lone.remoteId]);
+    expect(first.root.all().filter((e) => has(e, "blyg-story-mixed") && has(e, "blyg-is-read"))).toHaveLength(1);
+  });
+  it("a story with some posts read still offers Mark story read, and unmarking leaves unread posts alone", async () => {
+    const [a, b] = story("tide");
+    a!.readVersion = 1;
+    const unmarked: string[] = [];
+    const { root, view } = await mount([a!, b!], [], [], {}, unmarked);
+    expect(buttons(root, "Mark story unread")).toHaveLength(0);
+    const q = (view as unknown as { queue(): MarkQueue }).queue();
+    await q.enqueueUnread([a!, b!]);
+    expect(unmarked).toEqual([a!.remoteId]); // only the read one
   });
   it("a story with one unread post marks only that one", async () => {
     const [a, b] = story("glacier");
@@ -201,6 +258,33 @@ describe("the digest page", () => {
     buttons(root, "Mark story read")[0]!.click();
     await flush();
     expect(marked).toEqual([b!.remoteId]);
+  });
+  it("a correction leads with the change note (bold) and the headline is secondary; without a note the line is as before", async () => {
+    const withNote = post("Corrected harbour figure here.", "Ann", { version: 2, changeNote: "Fixed the March total" });
+    const plain = post("Another revised piece appears.", "Bo", { version: 2 });
+    const { root } = await mount([withNote, plain]);
+    const notes = root.all().filter((e) => has(e, "blyg-correction-note"));
+    expect(notes.map((e) => e.text)).toEqual(["Fixed the March total"]);
+    expect(root.all().filter((e) => has(e, "blyg-correction-headline")).map((e) => e.text)).toEqual(["Corrected harbour figure here."]);
+    expect(root.all().some((e) => e.text === "Bo · revised to v2")).toBe(true);
+  });
+  it("the sticky bar keeps the title, the dateline, the Feed | Digest toggle (in .blyg-modeslot) and one menu icon; the other controls are folded away until the menu is tapped", async () => {
+    const [a, b] = story("lantern");
+    useReaderMode({ get: () => "digest", set: () => undefined });
+    const { root } = await mount([a!, b!]);
+    useReaderMode(null);
+    const bar = root.all().find((e) => has(e, "blyg-daily-bar"))!;
+    expect(bar.all().some((e) => has(e, "blyg-daily-date"))).toBe(true);
+    expect(bar.all().find((e) => has(e, "blyg-modeslot"))!.all().filter((e) => has(e, "blyg-modebtn")).map((e) => e.text)).toEqual(["Feed", "Digest"]);
+    const menus = bar.all().filter((e) => has(e, "blyg-daily-menu"));
+    expect(menus).toHaveLength(1);
+    expect(menus[0]!.attrs["data-icon"]).toBe("menu");
+    const panel = bar.all().find((e) => has(e, "blyg-daily-panel"))!;
+    expect(panel.cls.has("is-open")).toBe(false);
+    expect(panel.all().some((e) => e.text === "Refresh")).toBe(true); // inside the folded panel
+    expect(bar.all().filter((e) => e.text === "Refresh" && !panel.all().includes(e))).toHaveLength(0);
+    menus[0]!.click();
+    expect(panel.cls.has("is-open")).toBe(true);
   });
   it("a tap anywhere on a post of an unfolded story opens it; Back finds the story still unfolded", async () => {
     const [a, b] = story("market");

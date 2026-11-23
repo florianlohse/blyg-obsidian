@@ -40,7 +40,7 @@ vi.mock("obsidian", () => {
     contentEl = new FakeEl();
     constructor(public leaf: unknown) {}
   }
-  return { ItemView };
+  return { ItemView, setIcon: (el: { attrs?: Record<string, string> }, n: string) => void (el.attrs ??= {}, el.attrs["data-icon"] = n) };
 });
 
 import { clusterPosts, postTime, type Cluster } from "../../src/digest/cluster";
@@ -387,7 +387,7 @@ describe("the page: bylines, lines, reading time, table of contents", () => {
     const toc = all.filter((e) => cls(e, "blyg-toc-name")).map((e) => e.text);
     expect(toc.sort()).toEqual(["Garden", "Town"]); // name, then the post count (a story's posts plus the singles)
     expect(text("blyg-toc-about")).toEqual([]);
-    expect(text("blyg-toc-count").sort()).toEqual(["1", "5"]); // what is drawn under each heading (the lead block holds the other stories)
+    expect(text("blyg-toc-count").sort()).toEqual(["1 item", "5 items"]); // what is drawn under each heading (the lead block holds the other stories)
     const heading = all.find((e) => e.tag === "h3" && e.text === "Town");
     expect(heading).toBeDefined();
     tocLink(all, "Town")?.click();

@@ -1,8 +1,8 @@
 // The Daily as data: what the reader's saved list says about the window. No model, no network, no storage. Pure and deterministic.
 //   Front page: the stories (clusters of two or more posts). Mixed bag: the posts that did not fit a story. Letters: others' words about the owner's own items (mentions). Corrections: posts revised after the first version.
 //   Retractions: posts withdrawn. (From your notes: a later increment.)
-// The reader's data carries no change note for a revised version (checked 2026-11: `ReadingPost` has only `version` and `readVersion`; the Studio's
-// change notes are not on the reading rows), so a correction says "revised to vN" and, when the owner had read an older version, which one.
+// The reader's data carries no change note for a revised version (checked 2026-11: the Studio's reading rows have only `version` and `readVersion`), so `note` is ""
+// unless a row brings `changeNote`; a correction always says "revised to vN" (`revised`) and, when the owner had read an older version, which one.
 import { relationWords, type InboundMention, type ReadingPost } from "../studio/reading";
 import { clusterPosts, firstSentence, postTime, type Cluster } from "./cluster";
 import { ownWords } from "./quotes";
@@ -25,7 +25,10 @@ export interface Letter {
 export interface Correction {
   post: ReadingPost;
   headline: string;
+  /** The author's change note for the latest version, or "" when the data holds none. */
   note: string;
+  /** "revised to v3 (you read v2)": what the reader's data does say. */
+  revised: string;
   when: number;
 }
 
@@ -92,7 +95,8 @@ export function buildDaily(posts: readonly ReadingPost[], mentions: readonly Inb
     .map((p): Correction => ({
       post: p,
       headline: firstSentence(ownWords(p)) || "(no text)",
-      note: p.readVersion !== null && p.readVersion < p.version ? `revised to v${p.version} (you read v${p.readVersion})` : `revised to v${p.version}`,
+      note: p.changeNote ?? "",
+      revised: p.readVersion !== null && p.readVersion < p.version ? `revised to v${p.version} (you read v${p.readVersion})` : `revised to v${p.version}`,
       when: postTime(p),
     }))
     .sort((a, b) => b.when - a.when || (a.post.remoteId < b.post.remoteId ? -1 : 1));

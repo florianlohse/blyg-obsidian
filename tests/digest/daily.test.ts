@@ -125,9 +125,13 @@ describe("buildDaily", () => {
     expect(m.front).toHaveLength(0); // one post is a single post: it is in the Mixed bag, not a story
     expect(m.mixed).toHaveLength(1);
   });
+  it("carries the author's change note when the row has one, and nothing extra when it has none", () => {
+    const m = buildDaily([post({ remoteId: ID.a, version: 2, text: "Corrected figure." , changeNote: "Fixed the March total" }), post({ remoteId: ID.b, version: 2, text: "Another revision." })], [], since, NOW);
+    expect(m.corrections.map((c) => c.note).sort()).toEqual(["", "Fixed the March total"]);
+  });
   it("lists revised posts as corrections: 'revised to vN', and which version you read", () => {
     const m = buildDaily([post({ remoteId: ID.a, version: 3, readVersion: 2, text: "Corrected figure for March." }), post({ remoteId: ID.b, version: 2, text: "A second revision." }), post({ text: "Never revised." })], [], since, NOW);
-    expect(m.corrections.map((c) => c.note).sort()).toEqual(["revised to v2", "revised to v3 (you read v2)"]);
+    expect(m.corrections.map((c) => c.revised).sort()).toEqual(["revised to v2", "revised to v3 (you read v2)"]);
   });
   it("lists withdrawn posts as retractions, not on the front page", () => {
     const m = buildDaily([post({ withdrawn: true, text: "Taken back.", version: 2 }), post({ text: "Still standing." })], [], since, NOW);

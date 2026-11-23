@@ -14,6 +14,8 @@ export interface MarkResult {
 export interface MarkDeps {
   /** The reader's own mark-read path (permission `reading:state`, one request per post). */
   mark(post: ReadingPost): Promise<MarkResult>;
+  /** The reader's own mark-unread path (same permission). Absent: nothing can be marked unread from here. */
+  unmark?(post: ReadingPost): Promise<MarkResult>;
   sleep(ms: number): Promise<void>;
   now(): number;
   /** Called when a mark was put back (the Studio refused it, or the call failed) with the reason; and when the whole queue is idle. */
@@ -25,13 +27,16 @@ export const markKey = (p: Pick<ReadingPost, "subscriptionId" | "remoteId">): st
 const keyOf = markKey;
 
 /** The posts of `posts` a mark would change: unread, not withdrawn, not the owner's own. */
+/** The posts of `posts` that are read and could be marked unread again: not withdrawn, not the owner's own. */
+export const unmarkable = (posts: readonly ReadingPost[]): ReadingPost[] => posts.filter((p) => !isUnread(p) && !p.withdrawn && p.own !== true);
+
 export const markable = (posts: readonly ReadingPost[]): ReadingPost[] => posts.filter((p) => isUnread(p) && !p.withdrawn && p.own !== true);
 
 export class MarkQueue {
   private tail: Promise<void> = Promise.resolve();
   private readonly pending = new Set<string>();
   /** Marks made on this device, with the time: the reader's saved list does not know them until the reader saves again (see `apply`). */
-  private readonly made = new Map<string, { version: number; at: number }>();
+  private readonly made = new Map<string, { version: number; at: number; read: boolean }>();
   constructor(private readonly deps: MarkDeps) {}
 
   /**
@@ -39,17 +44,27 @@ export class MarkQueue {
    * are already waiting, are left alone. Resolves when the batch is done.
    */
   enqueue(posts: readonly ReadingPost[]): Promise<void> {
-    const batch = markable(posts).filter((p) => !this.pending.has(keyOf(p)));
+    return this.run(markable(posts), true);
+  }
+
+  /** Mark these posts unread again: only the ones that are read, one Studio write each, the same pause, put back on a refusal. */
+  enqueueUnread(posts: readonly ReadingPost[]): Promise<void> {
+    return this.deps.unmark ? this.run(unmarkable(posts), false) : this.tail;
+  }
+
+  private run(candidates: readonly ReadingPost[], read: boolean): Promise<void> {
+    const batch = candidates.filter((p) => !this.pending.has(keyOf(p)));
     if (batch.length === 0) return this.tail;
     const before = new Map(batch.map((p) => [keyOf(p), p.readVersion] as const));
     const sent = new Map(batch.map((p) => [keyOf(p), p.version] as const));
     const at = this.deps.now();
     for (const p of batch) {
       this.pending.add(keyOf(p));
-      this.made.set(keyOf(p), { version: p.version, at });
-      p.readVersion = p.version;
+      this.made.set(keyOf(p), { version: p.version, at, read });
+      p.readVersion = read ? p.version : null;
     }
     this.deps.onChange();
+    const call = (p: ReadingPost): Promise<MarkResult> => (read ? this.deps.mark(p) : (this.deps.unmark?.(p) ?? Promise.resolve({ ok: false })));
     const run = this.tail.then(async () => {
       let failed = "";
       const undone: ReadingPost[] = [];
@@ -57,7 +72,7 @@ export class MarkQueue {
         const k = keyOf(p);
         if (failed === "") {
           if (i > 0) await this.deps.sleep(MARK_GAP_MS);
-          const done = await this.deps.mark({ ...p, version: sent.get(k) ?? p.version }).catch((): MarkResult => ({ ok: false, message: "The read mark could not be changed." }));
+          const done = await call({ ...p, version: sent.get(k) ?? p.version }).catch((): MarkResult => ({ ok: false, message: "The read mark could not be changed." }));
           if (!done.ok) failed = done.message ?? "The read mark could not be changed.";
         }
         if (failed !== "") undone.push(p);
@@ -78,7 +93,9 @@ export class MarkQueue {
   apply(posts: readonly ReadingPost[], savedAt: number): void {
     for (const p of posts) {
       const m = this.made.get(markKey(p));
-      if (m && m.at >= savedAt && p.version <= m.version && isUnread(p)) p.readVersion = p.version;
+      if (!m || m.at < savedAt || p.version > m.version) continue;
+      if (m.read && isUnread(p)) p.readVersion = p.version;
+      else if (!m.read && p.readVersion !== null) p.readVersion = null;
     }
   }
 }
@@ -89,8 +106,8 @@ export const realSleep = (ms: number): Promise<void> => new Promise((r) => windo
 /** One queue for the whole plugin session: a batch goes on when the Daily is left for a post (the view is made again on Back) and a post is never marked twice. */
 let shared: MarkQueue | null = null;
 let listener: { change(): void; reverted(message: string): void } | null = null;
-export function sharedMarks(mark: MarkDeps["mark"], sleep: MarkDeps["sleep"], now: () => number = Date.now): MarkQueue {
-  shared ??= new MarkQueue({ mark, sleep, now, onChange: () => listener?.change(), onReverted: (_p, m) => listener?.reverted(m) });
+export function sharedMarks(mark: MarkDeps["mark"], sleep: MarkDeps["sleep"], now: () => number = Date.now, unmark?: MarkDeps["unmark"]): MarkQueue {
+  shared ??= new MarkQueue({ mark, ...(unmark ? { unmark } : {}), sleep, now, onChange: () => listener?.change(), onReverted: (_p, m) => listener?.reverted(m) });
   return shared;
 }
 /** The open Daily view, to repaint when a mark changes; null when it is closed. */

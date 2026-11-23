@@ -6,6 +6,7 @@ import { STUDIO, TOKEN, fixtureData, runScenario, wait } from "../lib.mjs";
 
 // A stand-in Studio: everything is refused (503) except a read mark, which is counted with its time (the digest's "Mark read" must be one request per unread post, spaced out, and none by itself).
 const marks = [];
+const unmarks = []; // DELETE .../read: the digest's read symbol put back
 const others = []; // every other request that reaches the stand-in Studio, with its path
 const stub = http.createServer((req, res) => {
   if (req.method === "PUT" && /\/reading\/[^/]+\/[^/]+\/read$/.test(req.url ?? "")) {
@@ -13,6 +14,12 @@ const stub = http.createServer((req, res) => {
     req.resume();
     res.writeHead(200, { "content-type": "application/json" });
     return res.end(JSON.stringify({ readVersion: 1 }));
+  }
+  if (req.method === "DELETE" && /\/reading\/[^/]+\/[^/]+\/read$/.test(req.url ?? "")) {
+    unmarks.push({ at: Date.now(), path: req.url });
+    req.resume();
+    res.writeHead(200, { "content-type": "application/json" });
+    return res.end(JSON.stringify({ readVersion: null }));
   }
   others.push(`${req.method} ${req.url}`);
   // Anything else goes to the local Studio (its manifest and capabilities, which the client reads before any write); the saved list in this scenario is fixed, so nothing it answers is shown.
@@ -90,10 +97,20 @@ await runScenario({ data }, async (s) => {
   check(look.rows === 2 && look.weight >= 600 && look.italic === "italic" && /^by \w+/.test(look.byText), `a single post: bold content line, "by Author" in italics (${JSON.stringify(look)})`);
   check(!look.minutes && look.time === 0, "a single post shows no reading time");
   const before = marks.length;
+  const sym = await page.evaluate(() => { const b = document.querySelector(".blyg-daily .blyg-story-mixed .blyg-mark"); return { label: b?.getAttribute("aria-label"), text: b?.textContent ?? "x", svg: !!b?.querySelector("svg"), w: b?.getBoundingClientRect().width ?? 0 }; });
+  check(sym.label === "Mark read" && sym.text === "" && sym.svg && sym.w >= 28, `the read mark is a symbol (an icon, no word) with a label in words and a tappable size (${JSON.stringify(sym)})`);
   await page.click(".blyg-daily .blyg-story-mixed .blyg-mark");
   await wait(1500);
-  const afterOne = await page.evaluate(() => ({ dim: document.querySelectorAll(".blyg-daily .blyg-story-mixed.blyg-is-read").length, buttons: document.querySelectorAll(".blyg-daily .blyg-story-mixed .blyg-mark").length, status: document.querySelector(".blyg-daily-markstatus")?.textContent ?? "" }));
-  check(marks.length === before + 1 && afterOne.dim === 1 && afterOne.buttons === 1, `Mark read on a single post: one request, dimmed at once, its button gone (${marks.length - before} request, ${JSON.stringify(afterOne)})`);
+  const afterOne = await page.evaluate(() => ({ dim: document.querySelectorAll(".blyg-daily .blyg-story-mixed.blyg-is-read").length, labels: [...document.querySelectorAll(".blyg-daily .blyg-story-mixed .blyg-mark")].map((b) => b.getAttribute("aria-label")), svgs: [...document.querySelectorAll(".blyg-daily .blyg-story-mixed .blyg-mark")].every((b) => b.querySelector("svg")) }));
+  check(marks.length === before + 1 && afterOne.dim === 1 && afterOne.labels.includes("Mark unread") && afterOne.svgs, `Mark read on a single post: one request, dimmed at once, the symbol now offers Mark unread (${marks.length - before} request, ${JSON.stringify(afterOne)})`);
+  const undoAt = unmarks.length;
+  await page.click('.blyg-daily .blyg-story-mixed .blyg-mark[aria-label="Mark unread"]');
+  await wait(1500);
+  const afterUndo = await page.evaluate(() => ({ dim: document.querySelectorAll(".blyg-daily .blyg-story-mixed.blyg-is-read").length, labels: [...document.querySelectorAll(".blyg-daily .blyg-story-mixed .blyg-mark")].map((b) => b.getAttribute("aria-label")) }));
+  check(unmarks.length === undoAt + 1 && marks.length === before + 1 && afterUndo.dim === 0 && afterUndo.labels.every((l) => l === "Mark read"), `tapping the read symbol marks the post unread again: one request, not dimmed, nothing re-marked (${unmarks.length - undoAt} request, ${JSON.stringify(afterUndo)})`);
+  await page.click('.blyg-daily .blyg-story-mixed .blyg-mark[aria-label="Mark read"]'); // read again: the rest of the scenario starts from one read single post
+  await wait(1500);
+  check(marks.length === before + 2, "marking the same post read again is one more request");
   // an unfolded story: a tap on the preview text (not the name) opens the post; Back returns with the story still unfolded and the page where it was
   await page.click(".blyg-daily .blyg-story-headline");
   await wait(300);
@@ -127,10 +144,43 @@ await runScenario({ data }, async (s) => {
   await wait(2500);
   const gaps = marks.slice(storyAt).map((m, i, a) => (i ? m.at - a[i - 1].at : Infinity)).slice(1);
   check(marks.length === storyAt + 2 && gaps.every((g) => g >= 300), `Mark story read: one request per unread post (${marks.length - storyAt}), spaced out (${gaps.join(", ")} ms)`);
+  const storySym = await page.evaluate(() => document.querySelector(".blyg-daily .blyg-story .blyg-mark")?.getAttribute("aria-label"));
+  check(storySym === "Mark story unread", `a story whose posts are all read shows the read symbol (${storySym})`);
+  const unAt = unmarks.length;
+  await page.click(".blyg-daily .blyg-story .blyg-mark");
+  await wait(2500);
+  const ugaps = unmarks.slice(unAt).map((m, i, a) => (i ? m.at - a[i - 1].at : Infinity)).slice(1);
+  const storyAfter = await page.evaluate(() => ({ label: document.querySelector(".blyg-daily .blyg-story .blyg-mark")?.getAttribute("aria-label"), dim: document.querySelectorAll(".blyg-daily .blyg-story.blyg-is-read").length }));
+  check(unmarks.length === unAt + 2 && ugaps.every((g) => g >= 300) && storyAfter.label === "Mark story read" && storyAfter.dim === 0, `tapping a read story marks every read post unread again: one request per post (${unmarks.length - unAt}), spaced out (${ugaps.join(", ")} ms), shown at once (${JSON.stringify(storyAfter)})`);
+  const quiet0 = marks.length + unmarks.length;
+  await wait(2500);
+  check(marks.length + unmarks.length === quiet0, "no mark is repeated by itself after an undo");
+  await page.click(".blyg-daily .blyg-story .blyg-mark"); // read again so the remaining checks see what they did before
+  await wait(2500);
   const quiet = marks.length;
   await wait(3000);
   check(marks.length === quiet, "nothing is marked again by itself");
   // The Feed | Digest switch: small tabs in both headers; the mode is kept; going to the Feed reads the list at most once (the reader opens from nothing), and going back and forth asks nothing more.
+  const bar = await page.evaluate(() => {
+    const v = document.querySelector(".view-content.blyg-daily");
+    const b = document.querySelector(".blyg-daily .blyg-daily-bar");
+    const slot = b?.querySelector(".blyg-modeslot");
+    const panel = b?.querySelector(".blyg-daily-panel");
+    const r0 = b?.getBoundingClientRect();
+    v.scrollTop = 300;
+    const r1 = b?.getBoundingClientRect();
+    const vr = v.getBoundingClientRect();
+    return { title: b?.querySelector(".blyg-daily-date")?.textContent ?? "", ordinal: /\b\d+(st|nd|rd|th)\b/.test(b?.querySelector(".blyg-daily-date")?.textContent ?? ""), kicker: !!b?.querySelector(".blyg-daily-kicker"), toggle: slot?.querySelectorAll(".blyg-modebtn").length ?? 0, menu: !!b?.querySelector(".blyg-daily-menu svg"), folded: getComputedStyle(panel).display === "none", scrolled: v.scrollTop, stuck: Math.abs((r1?.top ?? -99) - vr.top) <= 2, off: (r1?.top ?? -99) - vr.top, pad: getComputedStyle(v).paddingTop, pos: getComputedStyle(b).position, moved: r0 && r1 ? r0.top !== r1.top || v.scrollTop === 0 : false, sw: v.scrollWidth <= v.clientWidth, h: r1?.height ?? 0 };
+  });
+  check(bar.ordinal && bar.kicker && bar.toggle === 2 && bar.menu && bar.folded, `the bar is folded: dateline with an ordinal, title, the Feed | Digest toggle and one menu icon (${JSON.stringify(bar)})`);
+  check(bar.scrolled > 0 ? bar.stuck : true, `the bar stays on top while the page scrolls (${JSON.stringify({ scrolled: bar.scrolled, off: bar.off, pad: bar.pad, pos: bar.pos, h: bar.h })})`);
+  check(bar.sw, "the folded bar causes no sideways scroll");
+  await page.evaluate(() => { document.querySelector(".view-content.blyg-daily").scrollTop = 0; });
+  await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-menu").click());
+  await wait(300);
+  const unfolded = await page.evaluate(() => { const v = document.querySelector(".view-content.blyg-daily"); const p = document.querySelector(".blyg-daily-panel"); return { shown: getComputedStyle(p).display !== "none", text: p.innerText, sw: v.scrollWidth <= v.clientWidth, expanded: document.querySelector(".blyg-daily-menu")?.getAttribute("aria-expanded") }; });
+  check(unfolded.shown && /Refresh/.test(unfolded.text) && unfolded.sw && unfolded.expanded === "true", `the menu unfolds Refresh and the other controls without sideways scroll (${JSON.stringify(unfolded)})`);
+  await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-menu").click());
   const tabs = await page.evaluate(() => [...document.querySelectorAll(".blyg-daily .blyg-modebtn")].map((b) => `${b.textContent}${b.classList.contains("is-active") ? "*" : ""}`).join(" "));
   check(tabs === "Feed Digest*", `the digest has the Feed | Digest switch, Digest pressed (${tabs})`);
   await page.evaluate(() => [...document.querySelectorAll(".blyg-daily .blyg-modebtn")].find((b) => b.textContent === "Feed").click());

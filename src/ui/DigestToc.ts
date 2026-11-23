@@ -1,4 +1,4 @@
-// The digest's table of contents, set like the contents column of a newspaper: the section's name, a dotted leader, and the number of posts at the right where a page
+// The digest's table of contents, set like the contents column of a newspaper: the section's name, a dotted leader, and the number of items ("3 items") at the right, muted, where a page
 // number would be (the stories' posts and the single posts it holds). The byline stays under the section's heading, not here. A tap scrolls to the section.
 // With more than TOC_OPEN_MAX sections it starts collapsed behind one line ("Sections (9)"). Text only (createEl({ text })), never HTML.
 export const TOC_OPEN_MAX = 8;
@@ -20,10 +20,10 @@ export function drawToc(into: HTMLElement, entries: readonly TocEntry[], go: (na
     list = d.createDiv({ cls: "blyg-toc-list" });
   } else list = box.createDiv({ cls: "blyg-toc-list" });
   for (const e of entries) {
-    const b = list.createEl("button", { cls: "blyg-daily-link blyg-toc-row blyg-toc-link", attr: { title: `${e.count} ${e.count === 1 ? "post" : "posts"}` } });
+    const b = list.createEl("button", { cls: "blyg-daily-link blyg-toc-row blyg-toc-link", attr: { title: `${e.count} ${e.count === 1 ? "post" : "posts"} in ${e.name}` } });
     b.createSpan({ cls: "blyg-toc-name", text: e.name });
     b.createSpan({ cls: "blyg-toc-leader", attr: { "aria-hidden": "true" } });
-    b.createSpan({ cls: "blyg-toc-count", text: String(e.count) });
+    b.createSpan({ cls: "blyg-toc-count", text: `${e.count} ${e.count === 1 ? "item" : "items"}` });
     b.addEventListener("click", () => go(e.name));
   }
 }
