@@ -227,6 +227,13 @@ export class LlmError extends Error {
   }
 }
 
+/** The provider stopped because the answer reached max_tokens: what is there is cut off in the middle. */
+export class CutOffError extends LlmError {
+  constructor() {
+    super("bad", "The answer was cut off.");
+  }
+}
+
 /** "https://host[/path]" without a trailing slash, or null. Only https is accepted. */
 export function normaliseEndpoint(endpoint: string): { base: string; host: string } | null {
   const base = endpoint.trim().replace(/\/+$/, "");
