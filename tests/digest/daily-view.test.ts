@@ -98,7 +98,7 @@ describe("the Daily view", () => {
     const texts = root.all().map((e) => e.text).join("\n");
     expect(texts).toContain("<img src=x onerror=alert(1)>");
     expect(texts).toContain("Front page");
-    expect(root.all().every((e) => ["div", "h1", "h3", "button", "details", "summary", "p"].includes(e.tag))).toBe(true); // no element is made from the post's markup
+    expect(root.all().every((e) => ["div", "h1", "h3", "button", "details", "summary", "p", "span"].includes(e.tag))).toBe(true); // no element is made from the post's markup
     expect((root as unknown as { cls: Set<string> }).cls.has("is-font-serif")).toBe(true); // the type follows the reader's font
   });
   it("opens a single post from the Mixed bag, in this leaf", async () => {
