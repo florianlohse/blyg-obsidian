@@ -3,7 +3,6 @@ import { clusterPosts, firstSentence } from "../../src/digest/cluster";
 import { buildDaily } from "../../src/digest/daily";
 import { ownWords, quotedIdsOf } from "../../src/digest/quotes";
 const DAY_MS = 24 * 3600 * 1000;
-import { dayWindow } from "../../src/digest/window";
 import type { InboundMention, ReadingPost } from "../../src/studio/reading";
 
 const NOW = Date.parse("2030-03-10T12:00:00Z");
@@ -36,22 +35,6 @@ function post(over: Partial<ReadingPost> & { text?: string }): ReadingPost {
   };
 }
 const quote = (qid: string, inner = "A quoted line."): string => `<blockquote class="blyg-transclusion blyg-partial" data-blyg-id="${qid}" data-blyg-version="1"><p>${inner}</p></blockquote>`;
-
-describe("window", () => {
-  it("is the local calendar day: midnight to now", () => {
-    const w = dayWindow(NOW);
-    const mid = new Date(NOW);
-    expect(w.until).toBe(NOW);
-    expect(w.since).toBe(new Date(mid.getFullYear(), mid.getMonth(), mid.getDate()).getTime());
-    expect(w.since).toBeLessThanOrEqual(NOW);
-    expect(NOW - w.since).toBeLessThan(25 * 3600_000);
-  });
-  it("starts a new digest on a new day", () => {
-    const later = NOW + 26 * 3600_000;
-    expect(dayWindow(later).since).toBeGreaterThan(dayWindow(NOW).since);
-    expect(dayWindow(NOW + 1000).since).toBe(dayWindow(NOW).since);
-  });
-});
 
 describe("quotes in posts", () => {
   it("reads the quoted ids from the rendered form, in any attribute order, and skips the post's own id", () => {

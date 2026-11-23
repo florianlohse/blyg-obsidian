@@ -16,6 +16,8 @@ export const MIN_SHARED_TERMS = 3;
 const HEADLINE_MAX = 110;
 
 export interface Cluster {
+  /** The story's id when the story is stable within an edition (src/digest/stable.ts); absent for a plain grouping. */
+  id?: string;
   /** The post the others answer or quote when it is in the list, else the oldest; then the rest, oldest first. */
   posts: ReadingPost[];
   newest: number;
@@ -64,7 +66,7 @@ export function firstSentence(text: string): string {
   return `${(space > HEADLINE_MAX / 2 ? cut.slice(0, space) : cut).replace(/[\s,;:.\-–—]+$/, "")}…`;
 }
 
-interface Doc {
+export interface Doc {
   post: ReadingPost;
   time: number;
   text: string;
@@ -73,12 +75,44 @@ interface Doc {
   norm: number;
 }
 
-/** Group posts. `posts` should be the window's posts: not withdrawn, not the owner's own. */
-export function clusterPosts(posts: readonly ReadingPost[], similarity = SIMILARITY_THRESHOLD): Cluster[] {
+/** The terms and tf-idf weights of a set of posts (the corpus the weights are measured against). */
+export function prepareDocs(posts: readonly ReadingPost[]): Doc[] {
   const docs: Doc[] = posts.map((post) => {
     const text = ownWords(post);
     return { post, time: postTime(post), text, counts: termCounts(tokenize(text)), weights: new Map(), norm: 0 };
   });
+  const df = new Map<string, number>();
+  for (const d of docs) for (const t of d.counts.keys()) df.set(t, (df.get(t) ?? 0) + 1);
+  for (const d of docs) {
+    let sq = 0;
+    for (const [t, c] of d.counts) {
+      const w = (1 + Math.log(c)) * Math.log(1 + docs.length / (df.get(t) ?? 1));
+      d.weights.set(t, w);
+      sq += w * w;
+    }
+    d.norm = Math.sqrt(sq);
+  }
+  return docs;
+}
+
+/** The tf-idf cosine of two posts when the rule (c) allows a comparison (enough terms, enough shared terms), else 0. */
+export function docSimilarity(a: Doc, b: Doc): number {
+  if (a.counts.size < MIN_TERMS || a.norm === 0 || b.counts.size < MIN_TERMS || b.norm === 0) return 0;
+  let dot = 0;
+  let shared = 0;
+  for (const [t, w] of a.weights) {
+    const v = b.weights.get(t);
+    if (v !== undefined) {
+      dot += w * v;
+      shared++;
+    }
+  }
+  return shared < MIN_SHARED_TERMS ? 0 : dot / (a.norm * b.norm);
+}
+
+/** Group posts. `posts` should be the window's posts: not withdrawn, not the owner's own. */
+export function clusterPosts(posts: readonly ReadingPost[], similarity = SIMILARITY_THRESHOLD): Cluster[] {
+  const docs = prepareDocs(posts);
   const sets = new Sets();
   for (let i = 0; i < docs.length; i++) sets.add();
   const itemNode = new Map<string, number>();
@@ -100,36 +134,15 @@ export function clusterPosts(posts: readonly ReadingPost[], similarity = SIMILAR
   // (c): posts still alone, by tf-idf cosine against every other post.
   const size = new Map<number, number>();
   docs.forEach((_, i) => size.set(sets.find(i), (size.get(sets.find(i)) ?? 0) + 1));
-  const df = new Map<string, number>();
-  for (const d of docs) for (const t of d.counts.keys()) df.set(t, (df.get(t) ?? 0) + 1);
-  for (const d of docs) {
-    let sq = 0;
-    for (const [t, c] of d.counts) {
-      const w = (1 + Math.log(c)) * Math.log(1 + docs.length / (df.get(t) ?? 1));
-      d.weights.set(t, w);
-      sq += w * w;
-    }
-    d.norm = Math.sqrt(sq);
-  }
   const alone = docs.map((_, i) => size.get(sets.find(i)) === 1);
   const joins: Array<[number, number]> = [];
   docs.forEach((a, i) => {
-    if (!alone[i] || a.counts.size < MIN_TERMS || a.norm === 0) return;
+    if (!alone[i]) return;
     let best = -1;
     let bestScore = 0;
     docs.forEach((b, j) => {
-      if (i === j || b.counts.size < MIN_TERMS || b.norm === 0) return;
-      let dot = 0;
-      let shared = 0;
-      for (const [t, w] of a.weights) {
-        const v = b.weights.get(t);
-        if (v !== undefined) {
-          dot += w * v;
-          shared++;
-        }
-      }
-      if (shared < MIN_SHARED_TERMS) return;
-      const score = dot / (a.norm * b.norm);
+      if (i === j) return;
+      const score = docSimilarity(a, b);
       if (score > bestScore) {
         bestScore = score;
         best = j;
@@ -146,27 +159,30 @@ export function clusterPosts(posts: readonly ReadingPost[], similarity = SIMILAR
   });
 
   const clusters = [...groups.values()].flatMap((members): Cluster[] => {
-    const ds = members.map((i) => docs[i] as Doc);
-    const targeted = new Set<string>();
-    for (const d of ds) {
-      if (d.post.stubTarget) targeted.add(d.post.stubTarget.id);
-      for (const id of quotedIdsOf(d.post)) targeted.add(id);
-    }
-    const byTime = [...ds].sort((a, b) => a.time - b.time || (a.post.remoteId < b.post.remoteId ? -1 : 1));
-    const lead = byTime.find((d) => targeted.has(d.post.remoteId)) ?? byTime[0];
-    if (!lead) return [];
-    const ordered = [lead, ...byTime.filter((d) => d !== lead)];
-    const score = new Map<string, number>();
-    for (const d of ds) for (const [t, w] of d.weights) score.set(t, (score.get(t) ?? 0) + w);
-    const terms = [...score.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, 4).map(([t]) => t);
-    return [
-      {
-        posts: ordered.map((d) => d.post),
-        newest: Math.max(...ds.map((d) => d.time)),
-        headline: firstSentence(lead.text) || terms.join(" · ") || "(no text)",
-        terms,
-      },
-    ];
+    const c = finishCluster(members.map((i) => docs[i] as Doc));
+    return c ? [c] : [];
   });
   return clusters.sort((a, b) => b.posts.length - a.posts.length || b.newest - a.newest || (a.headline < b.headline ? -1 : a.headline > b.headline ? 1 : 0));
+}
+
+/** One cluster from its member docs: the lead (the post the others answer or quote, else the oldest) first, then the rest oldest first. Null for no members. */
+export function finishCluster(ds: readonly Doc[]): Cluster | null {
+  const targeted = new Set<string>();
+  for (const d of ds) {
+    if (d.post.stubTarget) targeted.add(d.post.stubTarget.id);
+    for (const id of quotedIdsOf(d.post)) targeted.add(id);
+  }
+  const byTime = [...ds].sort((a, b) => a.time - b.time || (a.post.remoteId < b.post.remoteId ? -1 : 1));
+  const lead = byTime.find((d) => targeted.has(d.post.remoteId)) ?? byTime[0];
+  if (!lead) return null;
+  const ordered = [lead, ...byTime.filter((d) => d !== lead)];
+  const score = new Map<string, number>();
+  for (const d of ds) for (const [t, w] of d.weights) score.set(t, (score.get(t) ?? 0) + w);
+  const terms = [...score.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, 4).map(([t]) => t);
+  return {
+    posts: ordered.map((d) => d.post),
+    newest: Math.max(...ds.map((d) => d.time)),
+    headline: firstSentence(lead.text) || terms.join(" · ") || "(no text)",
+    terms,
+  };
 }

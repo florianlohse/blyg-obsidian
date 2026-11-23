@@ -6,6 +6,7 @@
 import { relationWords, type InboundMention, type ReadingPost } from "../studio/reading";
 import { clusterPosts, firstSentence, postTime, type Cluster } from "./cluster";
 import { ownWords } from "./quotes";
+import type { Grouped } from "./stable";
 
 /** How many stories the front page shows; the rest are counted, not listed. */
 export const FRONT_PAGE_MAX = 15;
@@ -35,6 +36,8 @@ export interface Retraction {
 }
 
 export interface DailyModel {
+  /** The edition's id (its cutoff), when the page is an edition: the masthead's day. */
+  edition?: number;
   since: number;
   until: number;
   /** Posts of blygs read that fall in the window (the owner's own and withdrawn ones are not counted). */
@@ -54,13 +57,18 @@ export interface DailyModel {
 
 const inWindow = (t: number, since: number, until: number): boolean => t >= since && t <= until;
 
-export function buildDaily(posts: readonly ReadingPost[], mentions: readonly InboundMention[], since: number, until: number): DailyModel {
+/** The posts of blygs read that fall in the window and are not withdrawn: what a Daily is made of. */
+export const livePosts = (posts: readonly ReadingPost[], since: number, until: number): ReadingPost[] =>
+  posts.filter((p) => !p.own && p.subscriptionId !== "" && !p.withdrawn && inWindow(postTime(p), since, until));
+
+/** `grouped`: the stories and Mixed bag an edition has already settled (src/digest/stable.ts); absent: group the window's posts afresh. */
+export function buildDaily(posts: readonly ReadingPost[], mentions: readonly InboundMention[], since: number, until: number, grouped?: Grouped, edition?: number): DailyModel {
   const read = posts.filter((p) => !p.own && p.subscriptionId !== "");
   const fresh = read.filter((p) => inWindow(postTime(p), since, until));
   const live = fresh.filter((p) => !p.withdrawn);
-  const all = clusterPosts(live);
-  const clusters = all.filter((c) => c.posts.length >= 2);
-  const mixed = all.filter((c) => c.posts.length < 2).flatMap((c) => c.posts);
+  const all = grouped ? [] : clusterPosts(live);
+  const clusters = grouped ? grouped.clusters : all.filter((c) => c.posts.length >= 2);
+  const mixed = grouped ? grouped.mixed : all.filter((c) => c.posts.length < 2).flatMap((c) => c.posts);
 
   const held = new Map<string, ReadingPost>();
   for (const p of read) held.set(p.remoteId, p);
@@ -95,6 +103,7 @@ export function buildDaily(posts: readonly ReadingPost[], mentions: readonly Inb
     .sort((a, b) => b.when - a.when || (a.post.remoteId < b.post.remoteId ? -1 : 1));
 
   return {
+    ...(edition !== undefined ? { edition } : {}),
     since,
     until,
     postCount: live.length,

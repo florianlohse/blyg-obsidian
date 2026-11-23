@@ -19,6 +19,7 @@ import { isStudioOnly } from "./studioOnly";
 import { CONNECT_STEPS } from "../app/panelState";
 import { connectionCheckKey, setupProgress } from "./setup";
 import { describeField, validateSettings } from "./validate";
+import { parseDigestTime } from "../digest/edition";
 import { askConsentGate } from "../digest/consentGate";
 
 /**
@@ -263,6 +264,23 @@ export class BlygSettingTab extends PluginSettingTab {
       items: [
         { name: "Early features", desc: "These are still being built and may change, be slow or misbehave. Each is off in the released plugin until it has been tried. Switching one off hides it completely and keeps what it saved. Reload Obsidian after a change." },
         ...experimental.map((f): SettingGroupItem => ({ name: f.title, desc: f.description, control: { type: "toggle", key: `features.${f.id}`, defaultValue: false } })),
+      ],
+    });
+
+    if (this.plugin.features.enabled("daily")) items.push({
+      type: "group",
+      heading: "Daily",
+      items: [
+        {
+          name: "Digest time",
+          desc: "The time of day (24-hour, on this device's clock, e.g. 07:00) when a new edition of the Daily starts. It is made when you first open the reader or the Daily after that time and covers the 24 hours before it, then keeps growing until the next one. Changing it moves only the next edition.",
+          aliases: ["edition", "daily", "morning", "time"],
+          render: (setting) => {
+            setting.addText((t) => t.setPlaceholder("07:00").setValue(s.digest.time).onChange((v) => {
+              if (/^\s*([01]?\d|2[0-3]):[0-5]\d\s*$/.test(v)) this.setControlValue("digest.time", parseDigestTime(v));
+            }));
+          },
+        },
       ],
     });
 
