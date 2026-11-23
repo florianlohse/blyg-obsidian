@@ -62,6 +62,8 @@ export interface StudioClient {
   classifyLinks(urls: string[]): Promise<StudioResult<Array<{ url: string; target: { origin: string; id: string } | null }>>>;
   /** One item of any blyg, read from its own site without subscribing. Needs `owner:read`. */
   peekItem(origin: string, id: string): Promise<StudioResult<StudioPeek>>;
+  /** The change notes of an imported item: `GET /api/imports/{sub}/{id}/history` (read only, `owner:read`), one `{version, note}` per changelog entry that has a note. */
+  importedNotes(subscriptionId: string, id: string): Promise<StudioResult<{ notes: Array<{ version: number; note: string }> }>>;
   /** A subscription (whose blyg it is, and its title). Needs `owner:read`. */
   getSubscription(id: string): Promise<StudioResult<StudioSubscription>>;
   /** Every blyg the Studio follows (`GET /subscriptions`, `owner:read`); `complete` is false when the walk stopped at its page cap with more to read. */
@@ -372,6 +374,14 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
       return { kind: "ok", value: { id, kind: j.kind, version: j.version, state: j.state === "tombstone" ? "tombstone" : "current", contentHtml: j.contentHtml, ...(typeof j.contentMd === "string" ? { contentMd: j.contentMd } : {}) } };
     },
 
+    importedNotes: async (subscriptionId: string, id: string): Promise<StudioResult<{ notes: Array<{ version: number; note: string }> }>> => {
+      const res = await http.send(token, { area: "api", path: `/imports/${encodeURIComponent(subscriptionId)}/${encodeURIComponent(id)}/history` });
+      if (res.status !== 200) return failure(res);
+      if (!isRecord(res.json) || !Array.isArray(res.json.changelog)) return unreadable(res);
+      const notes = (res.json.changelog as unknown[]).flatMap((e) => (isRecord(e) && typeof e.version === "number" && typeof e.note === "string" && e.note.trim() !== "" ? [{ version: e.version, note: e.note }] : []));
+      return { kind: "ok", value: { notes } };
+    },
+
     countMentions: async (itemId: string): Promise<StudioResult<{ count: number; complete: boolean }>> => {
       const walked = await walk("/mentions", { direction: "inbound", targetItemId: itemId }, MENTION_PAGE, MENTION_PAGES, (row) => (isRecord(row) ? row : null));
       if (walked.kind !== "ok") return walked;
@@ -577,6 +587,7 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
     changes: guard(inner.changes),
     classifyLinks: guard(inner.classifyLinks),
     peekItem: guard(inner.peekItem),
+    importedNotes: guard(inner.importedNotes),
     getSubscription: guard(inner.getSubscription),
     listSubscriptions: guard(inner.listSubscriptions),
     createSubscription: guard(inner.createSubscription),

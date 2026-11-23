@@ -23,6 +23,7 @@ import { cachedSections as cachedSectionsOf, clearBodies, normaliseEndpoint } fr
 import { TextModal } from "../ui/TextModal";
 import { emptyStore, parseStore, writeDigest, type LlmDeps, type LlmStore } from "./llm";
 import { History, buildPast } from "./history";
+import { ChangeNotes, type NoteDeps } from "./changeNotes";
 import { addUsage, autoDue, ceilingRefusal } from "./autoWrite";
 
 export interface DigestDeps {
@@ -38,6 +39,8 @@ export interface DigestDeps {
   markRead?: (post: ReadingPost) => Promise<{ ok: boolean; message?: string }>;
   /** The reader's own mark-unread path (same permission): the digest's read symbol puts a mark back. */
   markUnread?: (post: ReadingPost) => Promise<{ ok: boolean; message?: string }>;
+  /** Reads one revised post's change notes from the Studio (`importedNotes`); absent: corrections show no note. */
+  notes?: NoteDeps["fetch"];
   /** The optional AI layer. Absent: no AI. */
   ai?: { settings: () => BlygSettings["digest"]; keychain: Keychain; transport: RawTransport };
 }
@@ -64,6 +67,10 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
     read: async () => ((await plugin.app.vault.adapter.exists(historyPath())) ? (JSON.parse(await plugin.app.vault.adapter.read(historyPath())) as unknown) : null),
     write: (text) => plugin.app.vault.adapter.write(historyPath(), text),
   });
+  const notesPath = (): string => normalizePath(`${plugin.manifest.dir ?? `${plugin.app.vault.configDir}/plugins/${plugin.manifest.id}`}/digest-notes.json`);
+  const changeNotes = deps.notes
+    ? new ChangeNotes({ fetch: deps.notes, load: async () => ((await plugin.app.vault.adapter.exists(notesPath())) ? (JSON.parse(await plugin.app.vault.adapter.read(notesPath())) as unknown) : null), save: (t) => plugin.app.vault.adapter.write(notesPath(), t) })
+    : null;
   const llmSettings = (): BlygSettings["digest"] => (ai ? ai.settings() : { useAi: false, endpoint: "", model: "", keySecretName: "", dailyTokenCeiling: 0, autoWrite: false, time: "07:00" });
   const ai = deps.ai;
   const llm: LlmDeps | null = ai
@@ -125,6 +132,7 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
       : {}),
     history: () => history.list(),
     loadList: () => deps.readList(),
+    ...(changeNotes ? { changeNote: (p: ReadingPost) => changeNotes.get(p) } : {}),
     ...(deps.markRead ? { markRead: deps.markRead } : {}),
     ...(deps.markUnread ? { markUnread: deps.markUnread } : {}),
     edition: (posts) => editions.open(posts),

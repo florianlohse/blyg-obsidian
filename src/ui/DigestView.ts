@@ -4,7 +4,8 @@ import { ItemView, setIcon, type WorkspaceLeaf } from "obsidian";
 import type { Cluster } from "../digest/cluster";
 import type { Outcome, Written } from "../digest/llm";
 import { leadCount, OTHER_NAME, type Section } from "../digest/sections";
-import { buildDaily, type DailyModel } from "../digest/daily";
+import { buildDaily, type Correction, type DailyModel } from "../digest/daily";
+import { NOTES_PER_DRAW } from "../digest/changeNotes";
 import type { Grouped } from "../digest/stable";
 import { nothingToWriteNote } from "../digest/writeNote";
 import { GROUPING_NOTE, previewOf, summarizeRest } from "../digest/layout";
@@ -41,6 +42,8 @@ export interface DigestHost {
   /** Show the reader's feed in this leaf. */
   showFeed(leaf: WorkspaceLeaf): Promise<void>;
   openWeb(url: string): void;
+  /** The change note of a revised post (src/digest/changeNotes.ts: read lazily, once per item and version); "" when there is none. Absent: no lookup. */
+  changeNote?(post: ReadingPost): Promise<string>;
   /** Mark one post read in the Studio by the reader's own path (permission `reading:state`). Absent: the digest has no "Mark read" buttons. */
   markRead?(post: ReadingPost): Promise<{ ok: boolean; message?: string }>;
   /** Mark one post unread again by the reader's own path (same permission). Absent: the read symbol only marks. */
@@ -305,13 +308,17 @@ export class BlygDailyView extends ItemView {
   private drawChanges(root: HTMLElement, m: DailyModel): void {
     if (m.corrections.length > 0) {
       const s = this.section(root, "Corrections");
+      const lazy: Array<{ c: Correction; row: HTMLElement; head: HTMLElement }> = [];
       for (const c of m.corrections) {
         const row = s.createDiv({ cls: "blyg-daily-row" });
         // The author's change note leads (bold) when the data holds one; the headline is secondary. No note: the line is as before.
         if (c.note) row.createEl("button", { cls: "blyg-daily-link blyg-correction-note", text: c.note }).addEventListener("click", () => this.openEntry(c.post));
-        row.createEl("button", { cls: c.note ? "blyg-daily-link blyg-correction-headline" : "blyg-daily-link", text: c.headline }).addEventListener("click", () => this.openEntry(c.post));
+        const head = row.createEl("button", { cls: c.note ? "blyg-daily-link blyg-correction-headline" : "blyg-daily-link", text: c.headline });
+        head.addEventListener("click", () => this.openEntry(c.post));
         row.createDiv({ cls: "blyg-daily-meta", text: `${c.post.authorName ?? c.post.subscriptionTitle} · ${c.revised}` });
+        if (!c.note) lazy.push({ c, row, head });
       }
+      if (this.host.changeNote && lazy.length > 0) void this.fillChangeNotes(lazy.slice(0, NOTES_PER_DRAW));
     }
     if (m.retractions.length > 0) {
       const s = this.section(root, "Retractions");
@@ -320,6 +327,18 @@ export class BlygDailyView extends ItemView {
         row.createEl("button", { cls: "blyg-daily-link", text: r.headline }).addEventListener("click", () => this.openEntry(r.post));
         row.createDiv({ cls: "blyg-daily-meta", text: `${r.post.authorName ?? r.post.subscriptionTitle} · withdrawn` });
       }
+    }
+  }
+
+  /** Fill in the change notes of revised posts, one after the other (the Studio is metered); a row that has none, or whose page was drawn again, stays as it was. The text goes in as text only. */
+  private async fillChangeNotes(rows: ReadonlyArray<{ c: Correction; row: HTMLElement; head: HTMLElement }>): Promise<void> {
+    for (const { c, row, head } of rows) {
+      const note = await (this.host.changeNote?.(c.post) ?? Promise.resolve("")).catch(() => "");
+      if (!note || row.isConnected === false) continue;
+      const lead = row.createEl("button", { cls: "blyg-daily-link blyg-correction-note", text: note });
+      lead.addEventListener("click", () => this.openEntry(c.post));
+      row.prepend(lead); // the note leads; the headline already in the row becomes the secondary line
+      head.addClass("blyg-correction-headline");
     }
   }
 

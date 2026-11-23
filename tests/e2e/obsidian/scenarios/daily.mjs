@@ -7,6 +7,7 @@ import { STUDIO, TOKEN, fixtureData, runScenario, wait } from "../lib.mjs";
 // A stand-in Studio: everything is refused (503) except a read mark, which is counted with its time (the digest's "Mark read" must be one request per unread post, spaced out, and none by itself).
 const marks = [];
 const unmarks = []; // DELETE .../read: the digest's read symbol put back
+const histories = []; // GET .../history: the change notes of a revised post, asked lazily
 const others = []; // every other request that reaches the stand-in Studio, with its path
 const stub = http.createServer((req, res) => {
   if (req.method === "PUT" && /\/reading\/[^/]+\/[^/]+\/read$/.test(req.url ?? "")) {
@@ -20,6 +21,11 @@ const stub = http.createServer((req, res) => {
     req.resume();
     res.writeHead(200, { "content-type": "application/json" });
     return res.end(JSON.stringify({ readVersion: null }));
+  }
+  if (req.method === "GET" && /\/imports\/[^/]+\/[^/]+\/history$/.test(req.url ?? "")) {
+    histories.push(req.url);
+    res.writeHead(200, { "content-type": "application/json" });
+    return res.end(JSON.stringify({ current: 2, withdrawn: false, changelog: [{ version: 2, at: "2030-01-01T00:00:00Z", note: "Fixed the <b>March</b> total", pinned: false, generated: false }] }));
   }
   others.push(`${req.method} ${req.url}`);
   // Anything else goes to the local Studio (its manifest and capabilities, which the client reads before any write); the saved list in this scenario is fixed, so nothing it answers is shown.
@@ -49,7 +55,7 @@ await runScenario({ data }, async (s) => {
     const a = mk(k * 2, `Alpha ${t} story body number ${k} for the day.`, `Lead${k}`);
     posts.push(a, mk(k * 2 + 1, `Reply on ${t} story body ${k}.`, `Rep${k}`, { isReply: true, stubTarget: { origin: "https://one.example.com/", id: a.remoteId } }));
   });
-  posts.push(mk(20, "Mushrooms grow quietly under old oak trees. https://example.com/" + "a".repeat(120), "Cy"), mk(21, "Trains were delayed again today. And more.", "Di"));
+  posts.push(mk(20, "Mushrooms grow quietly under old oak trees. https://example.com/" + "a".repeat(120), "Cy"), mk(21, "Trains were delayed again today. And more.", "Di", { version: 2 }));
   await page.evaluate((json) => window.app.vault.adapter.write(".obsidian/plugins/blyg/reader-cache.json", json), JSON.stringify({ v: 1, origin: `${base}/`, savedAt: Date.now(), posts, mentions: [] }));
 
   const open = async () => {
@@ -96,6 +102,15 @@ await runScenario({ data }, async (s) => {
   });
   check(look.rows === 2 && look.weight >= 600 && look.italic === "italic" && /^by \w+/.test(look.byText), `a single post: bold content line, "by Author" in italics (${JSON.stringify(look)})`);
   check(!look.minutes && look.time === 0, "a single post shows no reading time");
+  // a revised post: its change note is read lazily from the history route and leads the correction line (bold), the headline second; shown as text, not as markup
+  await wait(1500);
+  const corr = await page.evaluate(() => {
+    const row = [...document.querySelectorAll(".blyg-daily .blyg-daily-row")].find((r) => r.querySelector(".blyg-correction-note"));
+    const lead = row?.querySelector(".blyg-correction-note");
+    return { lead: lead?.textContent ?? "", weight: lead ? Number(getComputedStyle(lead).fontWeight) : 0, first: row?.firstElementChild === lead, head: row?.querySelector(".blyg-correction-headline")?.textContent ?? "", markup: !!lead?.querySelector("b") };
+  });
+  check(corr.lead === "Fixed the <b>March</b> total" && !corr.markup && corr.weight >= 600 && corr.first && /Trains were delayed/.test(corr.head), `a revised post's change note leads its correction line in bold, as plain text, the headline second (${JSON.stringify(corr)})`);
+  check(histories.length === 1, `the note was asked for once, for the one revised post (${histories.length} request)`);
   const before = marks.length;
   const sym = await page.evaluate(() => { const b = document.querySelector(".blyg-daily .blyg-story-mixed .blyg-mark"); return { label: b?.getAttribute("aria-label"), text: b?.textContent ?? "x", svg: !!b?.querySelector("svg"), w: b?.getBoundingClientRect().width ?? 0 }; });
   check(sym.label === "Mark read" && sym.text === "" && sym.svg && sym.w >= 28, `the read mark is a symbol (an icon, no word) with a label in words and a tappable size (${JSON.stringify(sym)})`);
@@ -198,5 +213,6 @@ await runScenario({ data }, async (s) => {
   await wait(2500);
   check(mode1 === "feed" && mode2 === "digest", `the mode is kept in the settings (${mode1}, then ${mode2})`);
   check(others.length === afterFeed, `switching between Feed and Digest asks the Studio for nothing more (${others.slice(afterFeed).join(", ") || "0 requests"})`);
+  check(histories.length === 1, `opening the digest again, a post and Back asked for no note again (${histories.length} requests)`);
   check(errors.length === 0, `no error was thrown on the page ${errors.join(" | ")}`);
 });
