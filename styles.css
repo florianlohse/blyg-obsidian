@@ -861,3 +861,7 @@ button.blyg-daily-link.blyg-story-who { font-weight: var(--font-semibold); font-
 /* the Feed / Digest switch at the top of the reader's Sort & filter */
 .blyg-reader-viewswitch { display: flex; gap: var(--size-2-2); flex: 1 0 100%; }
 .blyg-reader-viewbtn.is-active { background: var(--interactive-accent); color: var(--text-on-accent); }
+/* Sections (src/ui/DigestView.ts): the lead block and the named sections. New class names only. */
+.blyg-sections-lead .blyg-daily-cluster { padding-bottom: var(--size-4-3); }
+.blyg-sections-lead button.blyg-story-headline { font-size: calc(var(--font-text-size, 16px) * 1.7); }
+.blyg-sections-section > h3 { border-bottom-width: 1px; }

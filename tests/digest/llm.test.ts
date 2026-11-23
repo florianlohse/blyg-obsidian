@@ -306,7 +306,9 @@ describe("batches cover the whole front page", () => {
       groups += k;
     }
     expect(groups).toBe(FRONT_PAGE_MAX);
-    expect(h.estimates[0]?.requests).toBe(h.sent.length);
+    // the last request is the sections pass, which the estimate line names as "plus sections"
+    expect(h.estimates[0]?.requests).toBe(h.sent.length - 1);
+    expect(h.estimates[0]?.sections).toBe(true);
   });
 
   it("a failing second batch keeps the first batch's results", async () => {

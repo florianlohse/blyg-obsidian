@@ -39,4 +39,5 @@ export const GROUPING_NOTE: readonly string[] = [
   "Posts are put in one story when one replies to another, or when they quote the same item.",
   `A post that is still alone is added to the post it resembles most when their wording is very alike (at least ${MIN_SHARED_TERMS} shared words, compared on this device); otherwise it stays alone.`,
   `A story has at least two posts. Bigger stories come first. The front page shows the first ${FRONT_PAGE_MAX} stories; the rest are in "Other posts". Posts that fit no story are in the Mixed bag at the bottom, and the AI is not asked about them.`,
+  "Sections are written by the AI from the story headlines: it is sent only the headlines and summaries, not the posts, and each story is in one section.",
 ];

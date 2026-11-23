@@ -16,6 +16,7 @@ import { addTokens, parseTally, type TokenTally } from "./budget";
 import { estimateCost, formatCost } from "./prices";
 import { authorOf } from "./storyMeta";
 import { cutAtBoundary } from "./truncate";
+import { buildSectionsRequest, estimateSections, SECTIONS_SYSTEM_PROMPT, MIN_STORIES_FOR_SECTIONS, parseSectionsCache, readSections, sectionsCacheKey, sectionsFit, storiesForSections, trimSectionsCache, type Section, type SectionsEntry } from "./sections";
 
 /** Raise when the prompt or the answer format changes: old cached results no longer apply. */
 export const PROMPT_VERSION = "3";
@@ -103,9 +104,11 @@ export interface LlmStore {
   trail: TrailRecord[];
   consent: ConsentRecord | null;
   tally: TokenTally | null;
+  /** The sections pass's cache (src/digest/sections.ts), by a hash of the headline set + prompt version + model. */
+  sections: Record<string, SectionsEntry>;
 }
 
-export const emptyStore = (): LlmStore => ({ v: 1, entries: {}, trail: [], consent: null, tally: null });
+export const emptyStore = (): LlmStore => ({ v: 1, entries: {}, trail: [], consent: null, tally: null, sections: {} });
 
 export function parseStore(raw: unknown): LlmStore {
   const out = emptyStore();
@@ -120,6 +123,7 @@ export function parseStore(raw: unknown): LlmStore {
   const c = r.consent as Partial<ConsentRecord> | null | undefined;
   if (c && typeof c.host === "string" && c.host !== "" && typeof c.at === "number") out.consent = { host: c.host, model: typeof c.model === "string" ? c.model : "", at: c.at };
   out.tally = parseTally(r.tally);
+  out.sections = parseSectionsCache(r.sections);
   if (Array.isArray(r.trail)) {
     for (const t of r.trail as unknown[]) {
       const x = t as Partial<TrailRecord> | null;
@@ -159,7 +163,7 @@ export function hashText(text: string): string {
 }
 
 /** Posts are data: markup characters cannot close or open a delimiter. */
-const neutralise = (t: string): string => t.replace(/</g, "‹").replace(/>/g, "›").replace(/\s+/g, " ").trim();
+export const neutralise = (t: string): string => t.replace(/</g, "‹").replace(/>/g, "›").replace(/\s+/g, " ").trim();
 
 /** An author name as an attribute value: neutralised, no quote or ampersand that could end or open anything, capped. "" when there is none. */
 export const authorAttr = (name: string): string => {
@@ -282,15 +286,18 @@ export interface Estimate {
   tokens: number;
   /** Rough dollars, or null when the model has no price in src/digest/prices.ts. */
   cost: number | null;
+  /** The second request (sections) is part of the run: its tokens and cost are in the numbers above. */
+  sections: boolean;
 }
 
-export function estimateRun(reqs: readonly BuiltRequest[], model: string): Estimate {
+export function estimateRun(reqs: readonly BuiltRequest[], model: string, sectionsStories = 0, host = ""): Estimate {
   const m = model.trim();
   const stories = reqs.reduce((n, r) => n + r.items.length, 0);
-  const inputTokens = reqs.reduce((n, r) => n + Math.ceil((SYSTEM_PROMPT.length + r.chars) / 4), 0);
-  const outputTokens = reqs.reduce((n, r) => n + Math.min(MAX_OUTPUT_TOKENS, r.items.length * OUT_TOKENS_PER_GROUP + 30), 0);
+  const extra = sectionsStories > 0 ? estimateSections(sectionsStories) : { inputTokens: 0, outputTokens: 0 };
+  const inputTokens = reqs.reduce((n, r) => n + Math.ceil((SYSTEM_PROMPT.length + r.chars) / 4), 0) + extra.inputTokens;
+  const outputTokens = reqs.reduce((n, r) => n + Math.min(MAX_OUTPUT_TOKENS, r.items.length * OUT_TOKENS_PER_GROUP + 30), 0) + extra.outputTokens;
   return {
-    host: reqs[0]?.host ?? "",
+    host: reqs[0]?.host ?? host,
     model: m,
     stories,
     posts: reqs.reduce((n, r) => n + r.items.reduce((k, i) => k + i.posts, 0), 0),
@@ -299,6 +306,7 @@ export function estimateRun(reqs: readonly BuiltRequest[], model: string): Estim
     outputTokens,
     tokens: inputTokens + outputTokens,
     cost: estimateCost(m, inputTokens, outputTokens),
+    sections: sectionsStories > 0,
   };
 }
 
@@ -307,13 +315,13 @@ const n = (k: number, one: string, many: string): string => `${k} ${k === 1 ? on
 /** The one line of the confirm: stories (several posts each; single posts are not sent), posts, requests, tokens, a ROUGH cost, the model. */
 export function estimateLine(e: Estimate): string {
   const cost = e.cost === null ? "cost unknown" : `roughly ${formatCost(e.cost)}`;
-  return `${n(e.stories, "story", "stories")} with several posts (single posts are not sent), ${n(e.posts, "post", "posts")}, ${n(e.requests, "request", "requests")}, about ${e.tokens} tokens, ${cost} (${e.model})`;
+  return `${n(e.stories, "story", "stories")} with several posts (single posts are not sent), ${n(e.posts, "post", "posts")}, ${n(e.requests, "request", "requests")}${e.sections ? " plus sections" : ""}, about ${e.tokens} tokens, ${cost} (${e.model})`;
 }
 
 // Control characters are removed on purpose (no-control-regex).
 /* eslint-disable-next-line no-control-regex -- stripping control characters from model output is the point */
 const CONTROL = /[\u0000-\u001f\u007f]+/g;
-const plain = (t: unknown, max: number): string =>
+export const plain = (t: unknown, max: number): string =>
   cutAtBoundary(
     (typeof t === "string" ? t : "")
       .replace(CONTROL, " ")
@@ -324,6 +332,24 @@ const plain = (t: unknown, max: number): string =>
     max,
   );
 
+/** The model's text from a parsed provider answer. Throws LlmError("refused") when the model declined. */
+function answerOf(outer: unknown): string {
+  const o = outer as { stop_reason?: unknown; content?: unknown } | null;
+  if (o?.stop_reason === "refusal") throw new LlmError("refused", "The model declined to write this digest.");
+  const blocks = Array.isArray(o?.content) ? (o?.content as Array<{ type?: unknown; text?: unknown }>) : [];
+  return blocks.filter((b) => b.type === "text" && typeof b.text === "string").map((b) => b.text as string).join("");
+}
+
+/** The model's text from the provider's raw answer body (the sections pass reads it with this). */
+export function answerText(text: string): string {
+  try {
+    return answerOf(JSON.parse(text));
+  } catch (e) {
+    if (e instanceof LlmError) throw e;
+    throw new LlmError("bad", "The provider's answer could not be read.");
+  }
+}
+
 /** Read the provider's answer to `req`. Throws LlmError("bad") when it is not what was asked for. Per item: a plain headline and summary, capped. */
 export function readResponse(text: string, req: BuiltRequest): Map<number, { headline: string; summary: string }> {
   let outer: unknown;
@@ -332,10 +358,7 @@ export function readResponse(text: string, req: BuiltRequest): Map<number, { hea
   } catch {
     throw new LlmError("bad", "The provider's answer could not be read.");
   }
-  const o = outer as { stop_reason?: unknown; content?: unknown } | null;
-  if (o?.stop_reason === "refusal") throw new LlmError("refused", "The model declined to write this digest.");
-  const blocks = Array.isArray(o?.content) ? (o?.content as Array<{ type?: unknown; text?: unknown }>) : [];
-  const answer = blocks.filter((b) => b.type === "text" && typeof b.text === "string").map((b) => b.text as string).join("");
+  const answer = answerOf(outer);
   const json = /\{[\s\S]*\}/.exec(answer)?.[0];
   let parsed: unknown;
   try {
@@ -392,6 +415,8 @@ export interface LlmDeps {
 export interface Outcome {
   /** Per input cluster, what is known (from the cache or a fresh answer); null where nothing is. */
   written: Array<Written | null>;
+  /** The sections (second pass) when there are some: stories as 0-based positions in the clusters passed. null = the plain front page. */
+  sections?: Section[] | null;
   status: "ok" | "cancelled" | "failed" | "nothing-to-send";
   /** A short line for the Daily when status is "failed" or "cancelled". Never contains the key. */
   note?: string;
@@ -404,6 +429,22 @@ function fromStore(store: LlmStore, plan: readonly PlanItem[], model: string, si
     if (e) written[it.index] = { headline: e.headline, summary: e.summary, model, posts: it.posts };
   }
   return written;
+}
+
+/** The sections the cache holds for these written stories, or null. */
+function sectionsFromStore(store: LlmStore, written: ReadonlyArray<Written | null>, model: string): Section[] | null {
+  const stories = storiesForSections(written);
+  const e = stories ? store.sections[sectionsCacheKey(stories, model)] : undefined;
+  return stories && e && sectionsFit(e.sections, stories.length) ? e.sections : null;
+}
+
+/** The sections already in the cache for the cached headlines of these clusters. No request, no key. */
+export async function cachedSections(deps: Pick<LlmDeps, "settings" | "load">, clusters: readonly Cluster[]): Promise<Section[] | null> {
+  const model = deps.settings().model.trim();
+  const plan = planClusters(clusters, model);
+  const store = await deps.load();
+  const w = fromStore(store, plan, model, clusters.length);
+  return sectionsFromStore(store, plan.map((it) => w[it.index] ?? null), model);
 }
 
 /** What the cache already holds for these clusters. No request, no key, nothing sent. */
@@ -433,7 +474,11 @@ export async function writeDigest(deps: LlmDeps, clusters: readonly Cluster[], o
   const plan = planClusters(clusters, model);
   const written = fromStore(store, plan, model, clusters.length);
   const missing = plan.filter((it) => !written[it.index]);
-  if (missing.length === 0) return { written, status: plan.length === 0 ? "nothing-to-send" : "ok" };
+  const storyList = (): Array<Written | null> => plan.map((it) => written[it.index] ?? null);
+  const cachedSec = missing.length === 0 ? sectionsFromStore(store, storyList(), model) : null;
+  // Sections are asked for when there are enough stories and the cache has no answer (with stories still to write, that is only known afterwards: counted in the estimate).
+  const needSections = plan.length >= MIN_STORIES_FOR_SECTIONS && cachedSec === null;
+  if (missing.length === 0 && !needSections) return { written, sections: cachedSec, status: plan.length === 0 ? "nothing-to-send" : "ok" };
 
   const key = (deps.getKey() ?? "").trim();
   const trail = (rec: Omit<TrailRecord, "at" | "model" | "host">, host: string): void => {
@@ -453,12 +498,13 @@ export async function writeDigest(deps: LlmDeps, clusters: readonly Cluster[], o
   let reqs: BuiltRequest[];
   try {
     reqs = buildRequests(missing, settings, key);
+    if (reqs.length === 0) buildSectionsRequest([], settings, key); // only the sections request is left: check the settings the same way
   } catch (e) {
     return fail(e instanceof LlmError ? e : new LlmError("config", "The request could not be built."), "");
   }
-  const est = estimateRun(reqs, model);
+  const est = estimateRun(reqs, model, needSections ? plan.length : 0, normaliseEndpoint(settings.endpoint)?.host ?? "");
   const postIds = reqs.flatMap((r) => r.items.flatMap((i) => i.postIds));
-  const stats = { postIds, clusters: est.stories, chars: reqs.reduce((k, r) => k + r.chars, 0), requests: est.requests };
+  const stats = { postIds, clusters: est.stories, chars: reqs.reduce((k, r) => k + r.chars, 0), requests: est.requests + (needSections ? 1 : 0) };
   const cancelled = async (): Promise<Outcome> => {
     trail({ status: "cancelled", ...stats }, est.host);
     await deps.save(store).catch(() => undefined);
@@ -500,6 +546,38 @@ export async function writeDigest(deps: LlmDeps, clusters: readonly Cluster[], o
       break; // the batches after a failed one are not tried
     }
   }
+  // The second pass: only when every story has its headline and summary, and the cache has no answer for this headline set. Any problem leaves the plain front page.
+  let sections: Section[] | null = null;
+  let sectionsNote = "";
+  if (needSections && !firstError) {
+    const stories = storiesForSections(storyList());
+    if (!stories) sectionsNote = "Sections were skipped: some stories came back without a headline.";
+    else {
+      const cacheKey = sectionsCacheKey(stories, model);
+      sections = sectionsFromStore(store, storyList(), model);
+      if (!sections) {
+        try {
+          const sreq = buildSectionsRequest(stories, settings, key);
+          sentBodies.push(sreq.body);
+          stats.chars += sreq.chars;
+          let res;
+          try {
+            res = await deps.transport({ url: sreq.url, method: "POST", headers: sreq.headers, body: sreq.body, contentType: "application/json" });
+          } catch {
+            throw new LlmError("offline", "The provider could not be reached. Are you offline?");
+          }
+          if (res.status < 200 || res.status >= 300) throw mapFailure(res.status, res.headers, key);
+          usedTokens += usageOf(res.text) ?? Math.ceil((SECTIONS_SYSTEM_PROMPT.length + sreq.chars) / 4) + estimateSections(stories.length).outputTokens;
+          sections = readSections(res.text, stories.length);
+          store.sections[cacheKey] = { at: deps.now(), sections };
+          trimSectionsCache(store.sections);
+        } catch (e) {
+          sections = null;
+          sectionsNote = `Sections could not be made: ${redact(e instanceof LlmError ? e.message : "the answer was not usable.", [key])} Showing the front page.`;
+        }
+      }
+    }
+  }
   const keys = Object.keys(store.entries);
   if (keys.length > CACHE_MAX) for (const k of keys.sort((a, b) => (store.entries[a]?.at ?? 0) - (store.entries[b]?.at ?? 0)).slice(0, keys.length - CACHE_MAX)) delete store.entries[k];
   if (usedTokens > 0) store.tally = addTokens(store.tally, deps.now(), usedTokens);
@@ -514,6 +592,7 @@ export async function writeDigest(deps: LlmDeps, clusters: readonly Cluster[], o
   trail({ status: "sent", ...stats, tokens, cost, bodies: sentBodies, ...(firstError ? { note: redact(firstError.message, [key]) } : {}) }, est.host);
   await deps.save(store).catch(() => undefined);
   const left = est.stories - answered;
-  const note = firstError ? `${left} of ${est.stories} stories could not be written: ${redact(firstError.message, [key])}` : left > 0 ? `${left} of ${est.stories} stories came back without a headline.` : undefined;
-  return { written, status: "ok", ...(note ? { note } : {}) };
+  const storyNote = firstError ? `${left} of ${est.stories} stories could not be written: ${redact(firstError.message, [key])}` : left > 0 ? `${left} of ${est.stories} stories came back without a headline.` : undefined;
+  const note = [storyNote, sectionsNote].filter(Boolean).join(" ");
+  return { written, sections, status: "ok", ...(note ? { note } : {}) };
 }
