@@ -6,7 +6,7 @@ import { MIN_SHARED_TERMS, type Cluster } from "../../src/digest/cluster";
 import type { ReadingPost } from "../../src/studio/reading";
 
 vi.mock("obsidian", () => ({ ItemView: class {} }));
-import { drawViewSwitch, ReturnPoint, setDigestSwitch } from "../../src/ui/readerExtras";
+import { ReturnPoint } from "../../src/ui/readerExtras";
 
 const post = (id: string, html = "<p>Some words here.</p>"): ReadingPost =>
   ({ subscriptionId: "s", subscriptionTitle: "B", origin: null, remoteId: id, kind: "fragment", withdrawn: false, version: 1, readVersion: null, observedAt: "2030-03-10T10:00:00Z", created: null, isReply: false, stubTarget: null, contentHtml: html, contentMd: "", authorName: null, authorUrl: null, sourceUrl: null });
@@ -64,25 +64,5 @@ describe("the way back to the digest", () => {
     expect(go).toHaveBeenCalledTimes(1);
     expect(r.active).toBe(false);
     expect(r.run()).toBe(false);
-  });
-});
-
-describe("the Feed / Digest switch in Sort & filter", () => {
-  it("shows the digest in the same leaf when Digest is pressed", () => {
-    const handlers = new Map<string, () => void>();
-    const el = (): Record<string, unknown> => ({
-      createDiv: () => el(),
-      createEl: (_t: string, o: { text: string }) => ({ ...el(), addEventListener: (_e: string, fn: () => void) => handlers.set(o.text, fn) }),
-      setAttr: () => undefined,
-    });
-    const setViewState = vi.fn(() => Promise.resolve());
-    setDigestSwitch(false);
-    expect(drawViewSwitch(el() as never, { setViewState })).toBeNull(); // the Daily is off: no switch
-    setDigestSwitch(true);
-    drawViewSwitch(el() as never, { setViewState });
-    setDigestSwitch(false);
-    expect([...handlers.keys()]).toEqual(["Digest"]);
-    handlers.get("Digest")?.();
-    expect(setViewState).toHaveBeenCalledWith({ type: "blyg-daily", active: true });
   });
 });

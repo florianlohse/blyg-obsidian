@@ -862,8 +862,11 @@ button.blyg-daily-link.blyg-story-who { font-weight: var(--font-semibold); font-
 @keyframes blyg-story-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .blyg-story-spinner { animation-duration: 3s; } }
 /* the Feed / Digest switch at the top of the reader's Sort & filter */
-.blyg-reader-viewswitch { display: flex; gap: var(--size-2-2); flex: 1 0 100%; }
-.blyg-reader-viewbtn.is-active { background: var(--interactive-accent); color: var(--text-on-accent); }
+/* The Feed | Digest switch in the headers of the feed and of the Daily: two small text tabs, the one you are in pressed. */
+.blyg-modeswitch { display: inline-flex; flex: none; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-s); overflow: hidden; }
+button.blyg-modebtn { height: auto; padding: 1px var(--size-4-2); font-size: var(--font-ui-smaller); line-height: 1.6; background: none; box-shadow: none; border: 0; border-radius: 0; color: var(--text-muted); }
+button.blyg-modebtn.is-active { background: var(--background-modifier-hover); color: var(--text-normal); font-weight: var(--font-semibold); cursor: default; }
+.blyg-reader-steptitle { display: inline-block; max-width: 10em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
 /* Sections (src/ui/DigestView.ts): the lead block and the named sections. New class names only. */
 .blyg-sections-lead .blyg-daily-cluster { padding-bottom: var(--size-4-3); }
 .blyg-sections-lead button.blyg-story-headline { font-size: calc(var(--font-text-size, 16px) * 1.7); }

@@ -1,6 +1,7 @@
 // Which digest section holds a post, in the editions the plugin keeps (the current record, then the written history). Pure; names and ids only.
 import type { EditionRec } from "./edition";
 import type { PastEdition } from "./history";
+import { OTHER_NAME } from "./sections";
 
 export interface InDigest {
   edition: number;
@@ -11,7 +12,8 @@ export interface InDigest {
 export function sectionOfPost(postId: string, current: EditionRec | null, past: readonly PastEdition[]): InDigest | null {
   if (current) {
     const story = current.stories.find((s) => s.posts.includes(postId));
-    const name = story ? story.section : current.postSections?.[postId];
+    // A story the record gives no section is drawn under Other once the page has sections (it is not left to an older edition's section).
+    const name = story ? (story.section ?? (current.sections?.length ? OTHER_NAME : undefined)) : current.postSections?.[postId];
     if (name) return { edition: current.id, section: name };
   }
   for (const e of [...past].sort((a, b) => b.id - a.id)) {

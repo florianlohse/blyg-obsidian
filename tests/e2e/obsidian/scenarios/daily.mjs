@@ -6,6 +6,7 @@ import { STUDIO, TOKEN, fixtureData, runScenario, wait } from "../lib.mjs";
 
 // A stand-in Studio: everything is refused (503) except a read mark, which is counted with its time (the digest's "Mark read" must be one request per unread post, spaced out, and none by itself).
 const marks = [];
+const others = []; // every other request that reaches the stand-in Studio, with its path
 const stub = http.createServer((req, res) => {
   if (req.method === "PUT" && /\/reading\/[^/]+\/[^/]+\/read$/.test(req.url ?? "")) {
     marks.push({ at: Date.now(), path: req.url });
@@ -13,6 +14,7 @@ const stub = http.createServer((req, res) => {
     res.writeHead(200, { "content-type": "application/json" });
     return res.end(JSON.stringify({ readVersion: 1 }));
   }
+  others.push(`${req.method} ${req.url}`);
   // Anything else goes to the local Studio (its manifest and capabilities, which the client reads before any write); the saved list in this scenario is fixed, so nothing it answers is shown.
   const up = http.request(`${STUDIO}${req.url}`, { method: req.method, headers: { ...req.headers, host: new URL(STUDIO).host } }, (r) => { res.writeHead(r.statusCode ?? 502, r.headers); r.pipe(res); });
   up.on("error", () => { res.writeHead(503, { "content-type": "application/json" }); res.end("{}"); });
@@ -99,14 +101,27 @@ await runScenario({ data }, async (s) => {
   check(members === 2, `a story unfolds into its posts (${members})`);
   const set = await page.evaluate(() => { const v = document.querySelector(".view-content.blyg-daily"); const max = v.scrollHeight - v.clientHeight; v.scrollTop = Math.min(max, 120); return { top: v.scrollTop, max }; });
   await wait(300);
+  const asked = others.length;
   await page.click(".blyg-daily .blyg-daily-member .blyg-daily-preview");
   await page.waitForSelector(".blyg-reader-header .blyg-reader-back", { timeout: 20000 });
-  await wait(800);
+  await wait(1500);
+  // Next and Previous walk the story, and the counter names it
+  const counter = () => page.evaluate(() => document.querySelector(".blyg-reader-header .blyg-reader-stepcount")?.textContent ?? "");
+  const c1 = await counter();
+  await page.click(".blyg-reader-header .blyg-reader-step-next");
+  await wait(600);
+  const c2 = await counter();
+  await page.click(".blyg-reader-header .blyg-reader-step-prev");
+  await wait(600);
+  const c3 = await counter();
+  check(/^Story: .+ · 1 of 2$/.test(c1) && /^Story: .+ · 2 of 2$/.test(c2) && c3 === c1, `Next and Previous walk the story: "${c1}", then "${c2}", then "${c3}"`);
   await page.click(".blyg-reader-header .blyg-reader-back");
   await page.waitForSelector(".view-content.blyg-daily .blyg-daily-member", { state: "attached", timeout: 20000 });
   await wait(1500);
   const back = await page.evaluate(() => ({ members: document.querySelectorAll(".blyg-daily .blyg-daily-member").length, top: document.querySelector(".view-content.blyg-daily")?.scrollTop ?? -1 }));
   check(back.members === 2 && Math.abs(back.top - set.top) <= 2, `Back from a post of an unfolded story: still unfolded (${back.members}) at the same place (${back.top} of ${set.top})`);
+  await wait(3000);
+  check(others.length === asked, `opening a post from the digest, stepping, and Back asked the Studio for nothing (${others.slice(asked).join(", ") || "0 requests"})`);
   const storyAt = marks.length;
   await page.click(".blyg-daily .blyg-story .blyg-mark");
   await wait(2500);
@@ -115,5 +130,23 @@ await runScenario({ data }, async (s) => {
   const quiet = marks.length;
   await wait(3000);
   check(marks.length === quiet, "nothing is marked again by itself");
+  // The Feed | Digest switch: small tabs in both headers; the mode is kept; going to the Feed reads the list at most once (the reader opens from nothing), and going back and forth asks nothing more.
+  const tabs = await page.evaluate(() => [...document.querySelectorAll(".blyg-daily .blyg-modebtn")].map((b) => `${b.textContent}${b.classList.contains("is-active") ? "*" : ""}`).join(" "));
+  check(tabs === "Feed Digest*", `the digest has the Feed | Digest switch, Digest pressed (${tabs})`);
+  await page.evaluate(() => [...document.querySelectorAll(".blyg-daily .blyg-modebtn")].find((b) => b.textContent === "Feed").click());
+  await page.waitForSelector(".blyg-reader-header .blyg-modeswitch", { timeout: 20000 });
+  // the reader opens from nothing: its one read of the list starts when the app is idle (up to 3 s) and takes a moment; wait until the requests stop
+  for (let seen = -1, stable = 0, i = 0; stable < 4 && i < 40; i++) { await wait(1000); stable = others.length === seen ? stable + 1 : 0; seen = others.length; }
+  const afterFeed = others.length;
+  const mode1 = await page.evaluate(() => window.app.plugins.plugins.blyg.settings.readerPane.mode ?? "feed");
+  await page.evaluate(() => [...document.querySelectorAll(".blyg-reader-header .blyg-modebtn")].find((b) => b.textContent === "Digest").click());
+  await page.waitForSelector(".blyg-daily .blyg-modeswitch", { timeout: 20000 });
+  await wait(1500);
+  const mode2 = await page.evaluate(() => window.app.plugins.plugins.blyg.settings.readerPane.mode ?? "feed");
+  await page.evaluate(() => [...document.querySelectorAll(".blyg-daily .blyg-modebtn")].find((b) => b.textContent === "Feed").click());
+  await page.waitForSelector(".blyg-reader-header .blyg-modeswitch", { timeout: 20000 });
+  await wait(2500);
+  check(mode1 === "feed" && mode2 === "digest", `the mode is kept in the settings (${mode1}, then ${mode2})`);
+  check(others.length === afterFeed, `switching between Feed and Digest asks the Studio for nothing more (${others.slice(afterFeed).join(", ") || "0 requests"})`);
   check(errors.length === 0, `no error was thrown on the page ${errors.join(" | ")}`);
 });

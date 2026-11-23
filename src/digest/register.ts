@@ -6,7 +6,8 @@ import { BLYG_DAILY_VIEW, BlygDailyView, type DigestHost } from "../ui/DigestVie
 import type { InboundMention, ReadingPost } from "../studio/reading";
 import { Editions, cachedStories, recordSections, rememberWrite } from "./editionHost";
 import { existingSections } from "./sectionRecord";
-import { setDigestSwitch } from "../ui/readerExtras";
+import { useReaderMode, type ModeStore } from "../ui/readerMode";
+import { placedSection } from "./placement";
 import { setDigestChips } from "../ui/readerDigestChip";
 import { sectionOfPost } from "./postSection";
 import { requestJump } from "./scrollMemory";
@@ -31,6 +32,8 @@ export interface DigestDeps {
   /** The setting "Digest time" ("HH:MM", the device's clock). */
   time: () => string;
   readList: () => Promise<{ posts: ReadingPost[]; mentions: InboundMention[]; savedAt: number } | null>;
+  /** The reader's mode (Feed or Digest), kept in the settings (ui/readerMode.ts). */
+  mode: ModeStore;
   /** The reader's own mark-read path (`reading:state`), used by the digest's "Mark read" buttons. Absent: no buttons. */
   markRead?: (post: ReadingPost) => Promise<{ ok: boolean; message?: string }>;
   /** The optional AI layer. Absent: no AI. */
@@ -124,11 +127,12 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
     edition: (posts) => editions.open(posts),
     font: () => deps.font(),
     showFeed: async (leaf) => void (await leaf.setViewState({ type: BLYG_READER_VIEW, active: true })),
-    openPost: async (post, leaf) => {
+    openPost: async (post, leaf, story) => {
       await leaf.setViewState({ type: BLYG_READER_VIEW, active: true });
       if (!(leaf.view instanceof BlygReaderView)) return;
       leaf.view.returnTo.set(() => void leaf.setViewState({ type: BLYG_DAILY_VIEW, active: true }));
-      leaf.view.openPost(post);
+      leaf.view.walk.set(story ?? null); // Next and Previous walk that story (a single post: the feed's order, as before)
+      leaf.view.openPost(post, "digest");
     },
     openWeb: (url) => window.open(url, "_blank"),
   };
@@ -142,10 +146,12 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
   };
   // The reader being opened also starts the day's edition, if its cutoff has passed.
   plugin.registerEvent(plugin.app.workspace.on("active-leaf-change", (leaf) => void (leaf?.view.getViewType() === BLYG_READER_VIEW && editions.touch())));
-  setDigestSwitch(true);
   // The reader's "In the digest: <section>" chip: asks the editions held (current, then the history) and opens the Daily in the reader's own leaf, scrolled to the section.
   setDigestChips({
-    sectionOf: async (p) => sectionOfPost(p.remoteId, await editions.current(), (await history.list()).editions),
+    sectionOf: async (p) => {
+      const cur = await editions.current();
+      return placedSection(p.remoteId, cur?.id) ?? sectionOfPost(p.remoteId, cur, (await history.list()).editions);
+    },
     open: (edition, section) => {
       requestJump(edition, section);
       const leaf = plugin.app.workspace.getLeavesOfType(BLYG_READER_VIEW)[0] ?? plugin.app.workspace.getLeaf("tab");
@@ -153,6 +159,7 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
     },
   });
   plugin.registerView(BLYG_DAILY_VIEW, (leaf) => new BlygDailyView(leaf, host));
+  useReaderMode(deps.mode, open);
   plugin.addCommand({ id: "open-daily", name: "Open Daily", callback: () => void open() });
   if (llm) plugin.addCommand({
     id: "show-digest-sent",

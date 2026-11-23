@@ -52,7 +52,7 @@ import { drawPreview, type PreviewDeps } from "./ui/replyPreview";
 import { limiter, postFromPeek, postOfMention } from "./ui/readerMentions";
 import { parseReaderCache, readerCacheOf } from "./ui/readerCache";
 import { registerFeatureEntries } from "./features/register"; import { createFeatures } from "./features/registry";
-import { BLYG_READER_VIEW, BlygReaderView, excerptOf, type ReaderHost, type ReadResult } from "./ui/ReaderView"; import { createMarginalia } from "./marginalia/wire";
+import { reopenInLastMode } from "./ui/readerMode"; import { BLYG_READER_VIEW, BlygReaderView, excerptOf, type ReaderHost, type ReadResult } from "./ui/ReaderView"; import { createMarginalia } from "./marginalia/wire";
 import { createReaderService } from "./app/readerService";
 import { createFollowHost, replyPlan } from "./app/followHost";
 import type { InboundMention, ReadingPost } from "./studio/reading";
@@ -125,7 +125,7 @@ export default class BlygPlugin extends Plugin {
     this.addCommand({ id: "open-reader", name: "Open reader", callback: () => void this.openReader() });
     this.addCommand({ id: "open-reader-sidebar", name: "Open reader in the sidebar", callback: () => void this.openReader("sidebar") });
     // The switchable features (the Daily and its AI layer, the share entry, the dev commands) register here, each only when features/registry.ts says it is on.
-    registerFeatureEntries(this, this.features, { digest: { font: () => this.settings.readerPane.font, time: () => this.settings.digest.time, readList: () => this.readReaderCache(), markRead: (post) => this.readerMark(post, true), ai: { settings: () => this.settings.digest, keychain: obsidianKeychain(this.app), transport: obsidianTransport } }, share: { settings: () => this.settings, build: () => buildStudio(this.env()), openReader: () => this.openReader() }, contrast: () => this.settings.readerPane.contrast });
+    registerFeatureEntries(this, this.features, { digest: { font: () => this.settings.readerPane.font, time: () => this.settings.digest.time, readList: () => this.readReaderCache(), mode: { get: () => this.settings.readerPane.mode ?? "feed", set: (m) => { this.settings.readerPane.mode = m; void this.saveSettings(); } }, markRead: (post) => this.readerMark(post, true), ai: { settings: () => this.settings.digest, keychain: obsidianKeychain(this.app), transport: obsidianTransport } }, share: { settings: () => this.settings, build: () => buildStudio(this.env()), openReader: () => this.openReader() }, contrast: () => this.settings.readerPane.contrast });
     this.addCommand({
       id: "clear-reader-cache",
       name: "Clear the reader's saved list",
@@ -867,13 +867,13 @@ export default class BlygPlugin extends Plugin {
     });
   }
 
-  /** PROOF OF CONCEPT (S15): the reader pane opens in the main area; what it asks of the plugin is answered here, through the same Studio plumbing as publishing. */
   /**
    * The reader in a tab of its own (the default) or in the sidebar, beside the note you write. A reader already open where you ask for it is brought forward;
    * one open in the other place stays, and a second one is made: each keeps its own place in the feed.
    */
   private async openReader(where: "tab" | "sidebar" = "tab"): Promise<void> {
     const { workspace } = this.app;
+    if (where === "tab" && (await reopenInLastMode())) return; // the Digest was the last mode: "Open reader" opens it
     const inSidebar = (leaf: WorkspaceLeaf): boolean => (leaf.getRoot() as unknown) === (workspace.rightSplit as unknown);
     const existing = workspace.getLeavesOfType(BLYG_READER_VIEW).find((leaf) => inSidebar(leaf) === (where === "sidebar"));
     if (existing) return void (await workspace.revealLeaf(existing));
@@ -1092,8 +1092,8 @@ export default class BlygPlugin extends Plugin {
         const got = await built.studio.client.peekItem(m.sourceOrigin, m.sourceId);
         return got.kind === "ok" ? postFromPeek(m, got.value) : null;
       },
-      myItems: async () => {
-        if (this.readerMine && Date.now() - this.readerMine.at < 5 * 60_000) return this.readerMine.items;
+      myItems: async (mode) => {
+        if (mode !== "fresh" && this.readerMine) return this.readerMine.items; if (mode === "cached") return []; // kept for the session: only Refresh reads it again
         const built = buildStudio(this.env());
         if (!built.ok) return [];
         const got = await built.studio.client.listItems();
