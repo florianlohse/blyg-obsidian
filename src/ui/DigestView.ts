@@ -3,7 +3,7 @@
 import { ItemView, type WorkspaceLeaf } from "obsidian";
 import type { Cluster } from "../digest/cluster";
 import type { Outcome, Written } from "../digest/llm";
-import { leadCount, type Section } from "../digest/sections";
+import { leadCount, OTHER_NAME, type Section } from "../digest/sections";
 import { firstSentence } from "../digest/cluster";
 import { ownWords } from "../digest/quotes";
 import { buildDaily, type DailyModel } from "../digest/daily";
@@ -30,7 +30,14 @@ export interface DigestHost {
   showFeed(leaf: WorkspaceLeaf): Promise<void>;
   openWeb(url: string): void;
   /** The optional AI layer (src/digest/llm.ts); absent or `enabled()` false: the Daily is the deterministic list only. */
-  ai?: { enabled(): boolean; cached(clusters: readonly Cluster[]): Promise<Array<Written | null>>; cachedSections?(clusters: readonly Cluster[]): Promise<Section[] | null>; write(clusters: readonly Cluster[]): Promise<Outcome> };
+  ai?: {
+    enabled(): boolean;
+    cached(clusters: readonly Cluster[]): Promise<Array<Written | null>>;
+    /** The sections kept for these stories and single posts (the Mixed bag). */
+    cachedSections?(clusters: readonly Cluster[], singles: readonly ReadingPost[]): Promise<Section[] | null>;
+    /** Write the digest. `resort`: sort every story and single post into sections again (otherwise only new ones are added to the existing sections). */
+    write(clusters: readonly Cluster[], singles: readonly ReadingPost[], opts?: { resort?: boolean }): Promise<Outcome>;
+  };
 }
 
 const stamp = (t: number): string => new Date(t).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
@@ -75,7 +82,7 @@ export class BlygDailyView extends ItemView {
     }
     this.note = "";
     this.written = model && this.host.ai?.enabled() ? await this.host.ai.cached(model.front).catch(() => []) : [];
-    this.sections = model && this.written.length > 0 && this.host.ai?.enabled() ? await (this.host.ai.cachedSections?.(model.front) ?? Promise.resolve(null)).catch(() => null) : null;
+    this.sections = model && this.written.length > 0 && this.host.ai?.enabled() ? await (this.host.ai.cachedSections?.(model.front, model.mixed) ?? Promise.resolve(null)).catch(() => null) : null;
     this.render(model);
   }
 
@@ -94,14 +101,14 @@ export class BlygDailyView extends ItemView {
     if (model && ai?.enabled()) {
       const btn = head.createEl("button", { cls: "blyg-daily-btn blyg-story-write" });
       this.paintWrite(btn);
-      btn.addEventListener("click", () => {
+      const run = (resort: boolean): void => {
         if (this.busy) return;
         this.busy = true;
         this.note = "";
         const before = this.written;
         this.paintWrite(btn); // in place: the page does not redraw, so nothing jumps
         void ai
-          .write(model.front)
+          .write(model.front, model.mixed, { resort })
           .then((o) => {
             this.written = o.written;
             this.sections = o.sections ?? null;
@@ -113,7 +120,12 @@ export class BlygDailyView extends ItemView {
             this.busy = false;
             this.render(model);
           });
-      });
+      };
+      btn.addEventListener("click", () => run(false));
+      if (this.sections) {
+        const resort = head.createEl("button", { text: "Re-sort sections", cls: "blyg-daily-btn", attr: { title: "Sort every story and post into sections again, not only the new ones" } });
+        resort.addEventListener("click", () => run(true));
+      }
     }
     if (this.note) root.createDiv({ cls: "blyg-daily-meta", text: this.note });
     if (!model) {
@@ -194,28 +206,45 @@ export class BlygDailyView extends ItemView {
     }
   }
 
-  private drawMixed(root: HTMLElement, m: DailyModel): void {
-    if (m.mixed.length > 0) {
+  /** A single post as a compact row: author, then its first sentence. Opens in the reader; Back returns here. */
+  private drawSingle(into: HTMLElement, p: ReadingPost): void {
+    const row = into.createDiv({ cls: `blyg-daily-row blyg-story-mixed${isUnread(p) ? "" : " blyg-is-read"}` });
+    row.createEl("button", { cls: "blyg-daily-link blyg-story-who", text: authorOf(p) }).addEventListener("click", () => void this.host.openPost(p, this.leaf));
+    const first = firstSentence(ownWords(p));
+    if (first) row.createDiv({ cls: "blyg-story-first", text: first });
+  }
+
+  /** The Mixed bag: the single posts no section holds (all of them on the plain page). */
+  private drawMixed(root: HTMLElement, m: DailyModel, placed: ReadonlySet<string> = new Set()): void {
+    const posts = m.mixed.filter((p) => !placed.has(p.remoteId));
+    if (posts.length > 0) {
       const s = this.section(root, "Mixed bag");
-      for (const p of m.mixed) {
-        const row = s.createDiv({ cls: `blyg-daily-row blyg-story-mixed${isUnread(p) ? "" : " blyg-is-read"}` });
-        row.createEl("button", { cls: "blyg-daily-link blyg-story-who", text: authorOf(p) }).addEventListener("click", () => void this.host.openPost(p, this.leaf));
-        const first = firstSentence(ownWords(p));
-        if (first) row.createDiv({ cls: "blyg-story-first", text: first });
-      }
+      for (const p of posts) this.drawSingle(s, p);
     }
   }
 
-  /** The sections to draw: only when they match the stories on the page (a stale or odd arrangement is ignored and the plain front page is drawn). */
+  /** The sections to draw, cleaned against what is on the page: a number out of range, a post that is not in the Mixed bag, or one that is in two sections is dropped; a story no section holds goes to Other. null: the plain front page. */
   private usableSections(m: DailyModel): Section[] | null {
     const sec = this.sections;
-    if (!sec || sec.length === 0) return null;
-    const all = sec.flatMap((x) => x.ids);
-    const fits = all.length === m.front.length && new Set(all).size === all.length && all.every((i) => i >= 0 && i < m.front.length) && this.written.some(Boolean);
-    return fits ? sec : null;
+    if (!sec || sec.length === 0 || !this.written.some(Boolean)) return null;
+    const seen = new Set<number>();
+    const seenPosts = new Set<string>();
+    const single = new Set(m.mixed.map((p) => p.remoteId));
+    const out: Section[] = sec.map((x) => ({
+      name: x.name,
+      ids: x.ids.filter((i) => Number.isInteger(i) && i >= 0 && i < m.front.length && !seen.has(i) && !!seen.add(i)),
+      posts: (x.posts ?? []).filter((id) => single.has(id) && !seenPosts.has(id) && !!seenPosts.add(id)),
+    }));
+    const lost = m.front.map((_, i) => i).filter((i) => !seen.has(i));
+    if (lost.length > 0) {
+      const other = out.find((x) => x.name === OTHER_NAME);
+      if (other) other.ids.push(...lost);
+      else out.push({ name: OTHER_NAME, ids: lost, posts: [] });
+    }
+    return out.filter((x) => x.ids.length + (x.posts?.length ?? 0) > 0);
   }
 
-  /** With sections: a short lead block (the biggest stories), the sections with their other stories, the Mixed bag, then Letters and changes. */
+  /** With sections: a short lead block (the biggest stories), then each section with its stories first and its single posts after, the Mixed bag (only the posts no section holds), then Letters and changes. */
   private drawSectioned(root: HTMLElement, m: DailyModel, sections: Section[]): void {
     const lead = leadCount(m.front.length);
     const front = this.section(root, "Front page");
@@ -224,21 +253,28 @@ export class BlygDailyView extends ItemView {
       const c = m.front[i];
       if (c) this.drawCluster(front, c, this.written[i] ?? null);
     }
+    const byId = new Map(m.mixed.map((p) => [p.remoteId, p]));
+    const placed = new Set<string>();
     for (const sec of sections) {
       const ids = sec.ids.filter((i) => i >= lead);
-      if (ids.length === 0) continue;
+      const singles = (sec.posts ?? []).flatMap((id) => byId.get(id) ?? []);
+      if (ids.length + singles.length === 0) continue;
       const box = this.section(root, sec.name);
       box.addClass("blyg-sections-section");
       for (const i of ids) {
         const c = m.front[i];
         if (c) this.drawCluster(box, c, this.written[i] ?? null);
       }
+      for (const p of singles) {
+        this.drawSingle(box, p);
+        placed.add(p.remoteId);
+      }
     }
     const made = this.written.filter((w): w is Written => w !== null);
     const tail = root.createDiv({ cls: "blyg-daily-section" });
     if (made.length > 0) tail.createDiv({ cls: "blyg-daily-meta blyg-story-credit", text: `Written by ${made[0]?.model ?? ""} from ${plural(made.reduce((k, w) => k + w.posts, 0), "post", "posts")}.` });
     this.drawRest(tail, m);
-    this.drawMixed(root, m);
+    this.drawMixed(root, m, placed);
     this.drawLetters(root, m);
   }
 

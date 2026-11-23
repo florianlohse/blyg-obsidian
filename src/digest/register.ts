@@ -5,6 +5,7 @@ import { BLYG_READER_VIEW, BlygReaderView } from "../ui/ReaderView";
 import { BLYG_DAILY_VIEW, BlygDailyView, type DigestHost } from "../ui/DigestView";
 import type { InboundMention, ReadingPost } from "../studio/reading";
 import { Editions, cachedStories, recordSections, rememberWrite } from "./editionHost";
+import { existingSections } from "./sectionRecord";
 import { setDigestSwitch } from "../ui/readerExtras";
 import type { ReaderFont } from "../ui/readerFonts";
 import { Notice } from "obsidian";
@@ -80,11 +81,11 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
           ai: {
             enabled: () => ai?.settings().useAi === true,
             cached: async (c) => cachedStories(llm, await editions.current(), c),
-            cachedSections: async (c) => recordSections(await editions.current(), c) ?? (await cachedSectionsOf(llm, c)),
-            write: async (c) => {
+            cachedSections: async (c, singles) => recordSections(await editions.current(), c, singles) ?? (await cachedSectionsOf(llm, c, singles)),
+            write: async (c, singles, opts) => {
               const rec = await editions.current();
-              const o = await writeDigest(llm, c);
-              if (rec) await rememberWrite(llm, editions, rec.id, c, o);
+              const o = await writeDigest(llm, c, { singles, existing: existingSections(rec, c, singles), resort: opts?.resort === true });
+              if (rec) await rememberWrite(llm, editions, rec.id, c, o, singles);
               return o;
             },
           },

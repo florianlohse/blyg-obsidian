@@ -91,6 +91,6 @@ describe("the mixed bag", () => {
     const m = buildDaily([a, b, solo("c".repeat(26), "Wholly different zebra matters entirely.")], [], since, NOW);
     const e = estimateRun(buildRequests(planClusters(m.front, "m"), settings, "k"), "m");
     expect([e.stories, e.posts]).toEqual([1, 2]);
-    expect(estimateLine(e)).toMatch(/^1 story with several posts \(single posts are not sent\), 2 posts,/);
+    expect(estimateLine(e)).toMatch(/^1 story with several posts, 2 posts,/);
   });
 });

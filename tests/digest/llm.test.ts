@@ -269,7 +269,7 @@ describe("confirm line", () => {
     expect(e.requests).toBe(h.sent.length);
     expect(e.inputTokens).toBe(built.reduce((k, r) => k + Math.ceil(((JSON.parse(r.body) as { system: string }).system.length + r.chars) / 4), 0));
     expect(e.cost).toBe(estimateCost("claude-sonnet-5-5", e.inputTokens, e.outputTokens));
-    expect(estimateLine(e)).toMatch(/^3 stories with several posts \(single posts are not sent\), 3 posts, 1 request, about \d+ tokens, roughly \$[\d.]+ \(claude-sonnet-5-5\)$/);
+    expect(estimateLine(e)).toMatch(/^3 stories with several posts, 3 posts, 1 request, about \d+ tokens, (under 1 cent|roughly \$[\d.]+) \(claude-sonnet-5-5\)$/);
   });
 
   it("an unknown model shows tokens only, 'cost unknown'", () => {

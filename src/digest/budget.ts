@@ -7,11 +7,13 @@ export interface TokenTally {
 }
 
 /**
- * The default ceiling, in tokens per local day. Conservative: one full front page is a few requests of at most MAX_REQUEST_CHARS (about 6,000 input
- * tokens plus the prompt) and at most MAX_OUTPUT_TOKENS output each, so roughly 20,000 tokens for a full page. 60,000 lets a person run it by hand a
- * couple of times a day and leaves room for an automatic run, and even at the highest table price stays well under a dollar.
+ * The default ceiling, in tokens per local day. High on purpose (Florian, 2026-11-23: a digest costs a fraction of a cent, so quality comes before tokens):
+ * one full run is a few story requests of at most MAX_REQUEST_CHARS (about 25,000 input tokens each) plus the sections requests, so at most a few hundred
+ * thousand tokens; 2,000,000 allows many runs a day and still stays at a few dollars a day at the highest table price. The person can lower it, or set 0 for none.
  */
-export const DEFAULT_DAILY_TOKEN_CEILING = 60_000;
+export const DEFAULT_DAILY_TOKEN_CEILING = 2_000_000;
+/** The default before 23 November 2026; a saved setting that still holds exactly this is moved to the new default (settings/migrate.ts). */
+export const OLD_DAILY_TOKEN_CEILING = 60_000;
 
 export const localDay = (t: number): string => {
   const d = new Date(t);

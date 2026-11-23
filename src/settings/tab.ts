@@ -298,7 +298,7 @@ export class BlygSettingTab extends PluginSettingTab {
         text("AI model", "The model that writes the digest, e.g. claude-sonnet-5-5 (others: claude-haiku-5-5 cheaper, claude-opus-5-5, claude-fable-5-2).", "digest.model", "claude-sonnet-5-5"),
         {
           name: "Daily token ceiling",
-          desc: "The most tokens the digest may use in one day by itself (an automatic run will check this; the “Write the digest” button is never blocked by it, but its tokens count). Default 60000, about two or three full runs. 0 means no ceiling. Token counts are rough.",
+          desc: "The most tokens the digest may use in one day by itself (an automatic run will check this; the “Write the digest” button is never blocked by it, but its tokens count). Default 2000000, plenty for many full runs a day. 0 means no ceiling. Token counts are rough.",
           aliases: ["limit", "budget", "tokens", "cost"],
           render: (setting) => {
             setting.addText((t) => t.setValue(String(s.digest.dailyTokenCeiling)).onChange((v) => {
