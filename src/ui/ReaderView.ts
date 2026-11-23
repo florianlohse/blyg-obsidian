@@ -13,7 +13,8 @@ import { activeFilters, arrange, isReplyToMine, OWN_SOURCE, readFilter, cardOf, 
 import { type ReaderFont } from "./readerFonts";
 import { ReturnPoint, whenIdle } from "./readerExtras";
 import { drawModeToggle, setReaderMode, switchMode } from "./readerMode";
-import { noteListLoaded, startReader } from "./readerStart";
+import { noteListLoaded, sessionSync, startReader } from "./readerStart";
+import { askAndWait } from "../app/readerRefresh";
 import { drawSteps, StoryWalk, stepCount, type Step } from "./readerSteps";
 import { CONTRASTS, type ReaderContrast } from "./readerLook";
 import { responseChip, responseIndex, type ResponseEntry } from "./readerResponses";
@@ -132,7 +133,7 @@ export class BlygReaderView extends ItemView {
     void this.host.setFilter({ ...this.filter });
   }
   /** What the reader remembers about reading the list, to read as little as it can (ui/readerSync.ts). */
-  private sync: SyncMemory = { lastFullAt: 0, readingMoved: false, movedWithoutNew: false };
+  private sync: SyncMemory = sessionSync(); // shared with the digest's Refresh (readerStart.ts)
   /** The Studio's change counters as last seen, and when the list was last read, for the watcher below. */
   private lastMarks: ChangeMarks | null = null;
   private lastMentionsAt = 0;
@@ -378,40 +379,14 @@ export class BlygReaderView extends ItemView {
     this.busy(+1);
     try {
       this.loadMine("fresh"); // Refresh is the one moment the owner's own items are read again
-      const before = await this.host.changeMarks();
-      if (before !== null) this.noteMarks(before);
-      const asked = await this.host.checkForNew(force);
-      if (run !== this.checking) return;
-      if (!asked.asked) {
-        if (asked.reason) this.setStatus(asked.reason);
+      const known = new Set((this.data?.posts ?? []).map((p) => `${keyOf(p)}/${p.version}`));
+      const got = await askAndWait(this.host, { force, noteMarks: (m) => this.noteMarks(m), alive: () => run === this.checking && this.contentEl.isConnected, status: (t) => this.setStatus(t) });
+      if (got.kind === "cancelled") return;
+      if (got.kind === "skipped") {
+        if (got.reason) this.setStatus(got.reason);
         await this.reload(true, { force });
         return;
       }
-      const known = new Set((this.data?.posts ?? []).map((p) => `${keyOf(p)}/${p.version}`));
-      // "Checking blygs · 5/25": each blyg the Studio has fetched counts once (its subscriptions counter rises once per blyg), asked about every 1.5 seconds.
-      const progress = (reported: number): void => this.setStatus(`Checking blygs · ${Math.min(reported, asked.polling)}/${asked.polling}`);
-      progress(0);
-      let mark = before;
-      const startedAt = Date.now();
-      let lastMove = startedAt;
-      for (;;) {
-        await new Promise((r) => window.setTimeout(r, 1500));
-        if (run !== this.checking || !this.contentEl.isConnected) return;
-        const now = await this.host.changeMarks();
-        if (now !== null) {
-          const reset = mark !== null && now.epoch !== mark.epoch;
-          const moved = this.noteMarks(now) || mark === null || reset;
-          if (moved) lastMove = Date.now();
-          mark = now;
-          if (reset) break;
-        }
-        const reported = mark !== null && before !== null ? mark.subscriptions - before.subscriptions : 0;
-        progress(reported);
-        if (reported >= asked.polling) break;
-        if (reported > 0 && Date.now() - lastMove >= 4000) break;
-        if (Date.now() - startedAt >= 30_000) break;
-      }
-      if (run !== this.checking) return;
       await this.reload(true, { force });
       const fresh = (this.data?.posts ?? []).filter((p) => !known.has(`${keyOf(p)}/${p.version}`)).length;
       this.checkedAt = Date.now();

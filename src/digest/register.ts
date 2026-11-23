@@ -25,6 +25,8 @@ import { emptyStore, parseStore, writeDigest, type LlmDeps, type LlmStore } from
 import { History, buildPast } from "./history";
 import { ChangeNotes, type NoteDeps } from "./changeNotes";
 import { addUsage, autoDue, ceilingRefusal } from "./autoWrite";
+import { createDigestRefresh, type DigestReader } from "../app/readerRefresh";
+import { noteListLoaded, sessionSync } from "../ui/readerStart";
 
 export interface DigestDeps {
   /** The reader's saved list (plugin storage), or null. */
@@ -33,6 +35,8 @@ export interface DigestDeps {
   /** The setting "Digest time" ("HH:MM", the device's clock). */
   time: () => string;
   readList: () => Promise<{ posts: ReadingPost[]; mentions: InboundMention[]; savedAt: number } | null>;
+  /** The reader's Studio conversation, so the digest's Refresh is the feed's Refresh (app/readerRefresh.ts). Absent: Refresh only reads the saved list again. */
+  reader?: DigestReader;
   /** The reader's mode (Feed or Digest), kept in the settings (ui/readerMode.ts). */
   mode: ModeStore;
   /** The reader's own mark-read path (`reading:state`), used by the digest's "Mark read" buttons. Absent: no buttons. */
@@ -134,6 +138,7 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
       : {}),
     history: () => history.list(),
     loadList: () => deps.readList(),
+    ...(deps.reader ? { refresh: createDigestRefresh(deps.reader, Date.now, (l, origin, at) => noteListLoaded({ posts: l.posts, mentions: l.mentions, savedAt: at, studioOrigin: origin }), sessionSync) } : {}),
     ...(changeNotes ? { changeNote: (p: ReadingPost) => changeNotes.get(p) } : {}),
     ...(deps.markRead ? { markRead: deps.markRead } : {}),
     ...(deps.markUnread ? { markUnread: deps.markUnread } : {}),

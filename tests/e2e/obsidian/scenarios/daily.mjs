@@ -197,6 +197,48 @@ await runScenario({ data }, async (s) => {
   check(bar.ordinal && bar.kicker && bar.toggle === 2 && bar.menu && bar.folded, `the bar is folded: dateline with an ordinal, title, the Feed | Digest toggle and one menu icon (${JSON.stringify(bar)})`);
   check(bar.scrolled > 0 ? bar.stuck : true, `the bar stays on top while the page scrolls (${JSON.stringify({ scrolled: bar.scrolled, off: bar.off, pad: bar.pad, pos: bar.pos, h: bar.h })})`);
   check(bar.sw, "the folded bar causes no sideways scroll");
+  // DG11, in real Obsidian: (a) the contents list the headings the page draws, in that order, "Top stories" first, with a counter equal to the posts drawn under each heading (the stories' own "N posts" lines, the singles);
+  // (b) a story is a card (own background, thin border, radius) with a chevron that turns when it is unfolded, readable in the light and the dark theme, nothing under the chevron, no sideways scroll.
+  const toc = await page.evaluate(() => {
+    const names = [...document.querySelectorAll(".blyg-daily .blyg-toc-name")].map((e) => e.textContent);
+    const counts = [...document.querySelectorAll(".blyg-daily .blyg-toc-count")].map((e) => e.textContent);
+    const heads = [...document.querySelectorAll(".blyg-daily .blyg-daily-section > h3")].map((e) => e.textContent);
+    const drawn = [...document.querySelectorAll(".blyg-daily .blyg-daily-section")].filter((s) => s.querySelector(":scope > h3")).map((s) => {
+      const posts = [...s.querySelectorAll(".blyg-story > .blyg-daily-meta")].reduce((k, m) => k + Number((/^(\d+) post/.exec(m.textContent ?? "") ?? [0, 0])[1]), 0) + s.querySelectorAll(".blyg-story-mixed").length;
+      const rows = [...s.children].filter((c) => c.classList.contains("blyg-daily-row") && !c.classList.contains("blyg-story-mixed")).length;
+      return { name: s.querySelector(":scope > h3").textContent, n: posts || rows };
+    });
+    return { names, counts, heads, drawn };
+  });
+  check(toc.names.length >= 2 && toc.names[0] === "Top stories" && JSON.stringify(toc.names) === JSON.stringify(toc.heads), `the contents list the headings drawn, in the order drawn, Top stories first (${JSON.stringify(toc.names)} against ${JSON.stringify(toc.heads)})`);
+  check(toc.drawn.every((d, i) => toc.counts[i] === `${d.n} ${d.n === 1 ? "item" : "items"}`), `each contents counter equals what is drawn under its heading (${JSON.stringify(toc.counts)} against ${JSON.stringify(toc.drawn)})`);
+  const cardLook = (theme) => page.evaluate(async (theme) => {
+    if (theme) { document.body.classList.toggle("theme-dark", theme === "dark"); document.body.classList.toggle("theme-light", theme !== "dark"); await new Promise((r) => setTimeout(r, 400)); } // (Obsidian's own theme classes: all the variables follow them)
+    const num = (c) => (c.match(/[\d.]+/g) ?? []).slice(0, 4).map(Number);
+    const lum = (c) => { const [r, g, b] = num(c).map((v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+    const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m); return (x + 0.05) / (y + 0.05); };
+    const card = document.querySelector(".blyg-daily .blyg-daily-cluster.blyg-story");
+    const bar = document.querySelector(".blyg-daily .blyg-daily-bar");
+    const head = card.querySelector(".blyg-story-headline");
+    const chev = card.querySelector(".blyg-story-chevron");
+    const cs = getComputedStyle(card);
+    const range = document.createRange(); range.selectNodeContents(head);
+    const cr = card.getBoundingClientRect(); const vr = chev.getBoundingClientRect(); const tr = range.getBoundingClientRect();
+    const v = document.querySelector(".view-content.blyg-daily");
+    return { theme: document.body.classList.contains("theme-dark") ? "dark" : "light", bg: cs.backgroundColor, pageBg: getComputedStyle(bar).backgroundColor, border: cs.borderTopWidth, radius: parseFloat(cs.borderTopLeftRadius), contrast: +ratio(getComputedStyle(head).color, cs.backgroundColor).toFixed(1), chevIn: vr.left >= cr.left && vr.right <= cr.right && vr.top >= cr.top && vr.bottom <= cr.bottom, clear: tr.right <= vr.left + 1, icon: !!chev.querySelector("svg"), tap: Math.round(vr.height), sw: v.scrollWidth <= v.clientWidth };
+  }, theme);
+  const lookDark = await cardLook("dark");
+  const lookLight = await cardLook("light");
+  for (const c of [lookDark, lookLight]) check(c.bg !== c.pageBg && c.border === "1px" && c.radius >= 4 && c.contrast >= 4.5 && c.chevIn && c.clear && c.icon && c.tap >= 28 && c.sw, `a story is a card with a chevron in the ${c.theme} theme (${JSON.stringify(c)})`);
+  const rot = async () => page.evaluate(async () => { await new Promise((r) => setTimeout(r, 350)); const c = document.querySelector(".blyg-daily .blyg-daily-cluster.blyg-story"); return { open: c.classList.contains("is-open"), tf: getComputedStyle(c.querySelector(".blyg-story-chevron svg")).transform, expanded: c.querySelector(".blyg-story-chevron").getAttribute("aria-expanded"), members: c.querySelectorAll(".blyg-daily-member").length }; });
+  const chev0 = await rot(); // (a story may already be unfolded by an earlier step: the check is that each tap flips it and the chevron follows)
+  await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-cluster.blyg-story .blyg-story-chevron").click());
+  const flipped = await rot();
+  await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-cluster.blyg-story .blyg-story-headline").click());
+  const chev2 = await rot();
+  const turned = (o) => (o.open ? /matrix\(-1, /.test(o.tf) : o.tf === "none" || o.tf === "matrix(1, 0, 0, 1, 0, 0)");
+  check(chev0.open !== flipped.open && chev2.open === chev0.open && [chev0, flipped, chev2].every((o) => turned(o) && o.expanded === String(o.open) && (o.members > 0) === o.open), `the chevron unfolds and folds the story and turns with it; the headline does the same (${JSON.stringify([chev0, flipped, chev2])})`);
+  if (chev0.open) await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-cluster.blyg-story .blyg-story-chevron").click()); // leave it as the later steps found it (folded)
   await page.evaluate(() => { document.querySelector(".view-content.blyg-daily").scrollTop = 0; });
   await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-menu").click());
   await wait(300);
@@ -275,9 +317,11 @@ await runScenario({ data }, async (s) => {
     await page.evaluate(() => [...document.querySelectorAll(".blyg-reader-header .blyg-modebtn")].find((b) => b.textContent === "Digest").click());
     await page.waitForSelector(".blyg-daily .blyg-modeswitch", { timeout: 20000 });
     await wait(1200);
-    const slotDigest = await box(".blyg-daily .blyg-modeslot");
+    const slotDigest = await box(".blyg-daily .blyg-modeswitch"); // (the switch itself: the bar wraps it in a slot of its own)
     // (the emulated phone layout draws a 12 px scrollbar inside the digest's page; a device draws none: the right edge is read without it)
     const bar = await page.evaluate(() => { const v = document.querySelector(".view-content.blyg-daily"); return v ? v.offsetWidth - v.clientWidth : 0; });
+    const cardFit = await page.evaluate(() => { const v = document.querySelector(".view-content.blyg-daily"); const c = document.querySelector(".blyg-daily .blyg-daily-cluster.blyg-story"); const ch = c?.querySelector(".blyg-story-chevron"); const h = c?.querySelector(".blyg-story-headline"); if (!c || !ch || !h) return null; const rg = document.createRange(); rg.selectNodeContents(h); const cr = c.getBoundingClientRect(), vr = ch.getBoundingClientRect(), tr = rg.getBoundingClientRect(); return { sw: v.scrollWidth <= v.clientWidth, inCard: vr.left >= cr.left && vr.right <= cr.right, clear: tr.right <= vr.left + 1, cardR: cr.right, vw: window.innerWidth }; });
+    check(cardFit && cardFit.sw && cardFit.inCard && cardFit.clear && cardFit.cardR <= cardFit.vw, `${label}: a story card fits the screen, its chevron is inside it and no headline text runs under it (${JSON.stringify(cardFit)})`);
     await tap(".blyg-daily .blyg-story-headline");
     await wait(300);
     await tap(".blyg-daily .blyg-daily-member .blyg-daily-preview");
@@ -291,23 +335,53 @@ await runScenario({ data }, async (s) => {
     await page.waitForSelector(".blyg-reader-header .blyg-modeswitch", { timeout: 20000 });
     await wait(1000);
     const near = (a, b, tol) => a !== null && b !== null && Math.abs(a - b) <= tol;
-    check(slotFeed && slotMentions && slotDigest && near(slotFeed.r, slotMentions.r, 1) && near(slotFeed.t, slotMentions.t, 2) && near(slotFeed.r, slotDigest.r + bar, 1),
-      `${label}: the Feed | Digest toggle is in one slot in the feed with a list (Sort & filter shown), the Mentions tab (none) and the digest (same right edge, the digest\'s bar has its own top; right edge ${slotFeed?.r}, ${slotMentions?.r}, ${slotDigest?.r}; top ${slotFeed?.t}, ${slotMentions?.t}, ${slotDigest?.t})`);
+    check(slotFeed && slotMentions && slotDigest && near(slotFeed.r, slotMentions.r, 1) && near(slotFeed.t, slotMentions.t, 2) && near(slotFeed.r, slotDigest.r + bar, 1) && near(slotFeed.t, slotDigest.t, 2),
+      `${label}: the Feed | Digest toggle is in one slot in the feed with a list (Sort & filter shown), the Mentions tab (none) and the digest (same right edge and the same top in the feed and in the digest, whatever the title wraps to; right edge ${slotFeed?.r}, ${slotMentions?.r}, ${slotDigest?.r}; top ${slotFeed?.t}, ${slotMentions?.t}, ${slotDigest?.t})`);
     check(verClear, `${label}: the version label does not overlap the toggle (${JSON.stringify(verRect)} against ${JSON.stringify(slotFeed)})`);
     check(inView(feedPost) && inView(storyPost), `${label}: in an open post (feed and story) every header control is inside the viewport and nothing scrolls sideways (feed ${JSON.stringify(feedPost.view)}, story ${JSON.stringify(storyPost.view)}; right edges feed ${Object.keys(CONTROLS).map((k) => feedPost[k]?.r)}, story ${Object.keys(CONTROLS).map((k) => storyPost[k]?.r)})`);
     const same = Object.keys(CONTROLS).filter((k) => !(feedPost[k] && storyPost[k] && near(feedPost[k].l, storyPost[k].l, 1) && near(feedPost[k].t, storyPost[k].t, 1)));
     check(same.length === 0, `${label}: Back, the read check, Reply, Previous and Next are in the same places in the feed's post and the story's post (differing: ${same.join(", ") || "none"}; feed ${JSON.stringify(feedPost.reply)} against story ${JSON.stringify(storyPost.reply)}; counter "${storyText}")`);
     return slotFeed;
   };
+  // DG11: the toggle in EVERY state the feed header can be in (Dev33: "toggle positioning in feed mode still seems to be broken"). Each state is put on the reader view (its fields, then its own redraw) and the
+  // toggle is measured: its right edge must stay where the plain feed has it and it must sit inside the first row, vertically centred in it. States: unread-only; a chosen source; four choices (Sort & filter (4)); the choices open;
+  // a long status; an error status; busy (loading); the Mentions tab with a long label; no list yet (first load); and, in the phone layout, a larger Obsidian font size (24 px).
+  const statesPass = async (label, ref, font) => {
+    const set = (fn) => page.evaluate((f) => { const v = window.app.workspace.getLeavesOfType("blyg-reader")[0].view; new Function("v", f)(v); v.drawHeader(); v.drawBody?.(); }, fn);
+    const where = () => page.evaluate(() => { const h = document.querySelector(".blyg-reader-header"); const row = h?.querySelector(".blyg-reader-bar"); const tg = h?.querySelector(".blyg-modeslot"); const R = (e) => { const r = e.getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom }; }; return tg && row ? { tg: R(tg), row: R(row), hsw: [h.scrollWidth, h.clientWidth], vw: window.innerWidth } : null; });
+    const states = [
+      ["plain feed", ""],
+      ["unread only", `v.filter = { ...v.filter, unreadOnly: true }`],
+      ["unread only, choices open", `v.filtersOpen = true`],
+      ["source = one blyg, choices open", `v.filter = { ...v.filter, source: v.data.posts[0].subscriptionId }`],
+      ["four choices, closed", `v.filtersOpen = false; v.filter = { ...v.filter, sort: "oldest", length: "short" }`],
+      ["long status", `v.filter = { sort: "newest", source: null, unreadOnly: false, length: "any", repliesToMe: false }; v.status = "Checked 12 min ago, 3 new posts from 2 blygs and a very long extra remark about it"`],
+      ["error status", `v.status = "The Studio could not be reached (HTTP 503). Trying again in 5 minutes."`],
+      ["busy (loading)", `v.status = ""; v.busyCount = 1`],
+      ["Mentions tab, long label", `v.busyCount = 0; v.tab = "mentions"`],
+      ["no list yet (first load)", `v.tab = "stream"; v.data = null`],
+    ];
+    const bad = [];
+    for (const [name, fn] of states) {
+      if (fn) await set(fn);
+      if (name.startsWith("Mentions")) await page.evaluate(() => { const b = [...document.querySelectorAll(".blyg-reader-header .blyg-reader-btn")].find((x) => /^Mentions/.test(x.textContent)); if (b) b.textContent = "Mentions (1234)"; });
+      const w = await where();
+      const same = w && ref && Math.abs(w.tg.r - ref.r) <= 1 && w.tg.l >= 0 && w.tg.r <= w.vw && w.tg.t >= w.row.t - 1 && w.tg.b <= w.row.b + 1 && Math.abs((w.tg.t + w.tg.b) / 2 - (w.row.t + w.row.b) / 2) <= 2 && (font || Math.abs(w.tg.t - ref.t) <= 1) && w.hsw[0] <= w.hsw[1];
+      if (!same) bad.push(`${name}: ${JSON.stringify(w)}`);
+    }
+    check(bad.length === 0, `${label}: the Feed | Digest toggle stays at the right end of the first header row in all ${states.length} feed states${font ? " (Obsidian font size 24)" : ""}; ref right edge ${ref?.r}, top ${ref?.t}${bad.length ? `; MOVED: ${bad.join(" | ")}` : ""}`);
+  };
   const widths = [[393, 852], [360, 780], [320, 700]];
   const refs = {};
-  await layoutPass("desktop layout");
+  const deskRef = await layoutPass("desktop layout");
+  await statesPass("desktop layout", deskRef, false);
   await s.phone();
   const cdp = await page.context().newCDPSession(page);
   for (const [w, h] of widths) {
     await cdp.send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 2, mobile: true });
     await wait(1500);
     refs[w] = await layoutPass(`phone layout ${w} px`);
+    await statesPass(`phone layout ${w} px`, refs[w], false);
   }
   // ---- The quick menu (DG13): a long press with real touch events (CDP, phone layout) on a feed card, a post of the digest and a story card opens the menu; a scroll never does;
   // the release opens nothing; Mark read writes exactly one request. (Chromium emulation, not iOS.)
@@ -403,6 +477,15 @@ await runScenario({ data }, async (s) => {
     const empty = await box(".blyg-reader-header .blyg-modeslot");
     const cards = (await page.$$(".blyg-reader-card")).length;
     check(cards === 0 && empty && refs[w] && Math.abs(empty.r - refs[w].r) <= 1 && Math.abs(empty.t - refs[w].t) <= 2, `phone layout ${w} px: the empty feed has the toggle in the same slot as the feed with a list (${cards} cards; right edge ${empty?.r} against ${refs[w]?.r}; top ${empty?.t} against ${refs[w]?.t})`);
+  }
+  // a larger Obsidian font size (24 px), last because the setting stays in the vault: the toggle keeps the right end of the first row in every state, at the widest and the narrowest phone
+  await page.evaluate(() => { window.app.vault.setConfig("baseFontSize", 24); window.app.vault.setConfig("baseFontSizeAction", true); window.app.updateFontSize?.(); });
+  for (const [w, h] of [[393, 852], [320, 700]]) {
+    await cdp.send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 2, mobile: true });
+    await wait(1500);
+    await startWith(posts);
+    const big = await page.evaluate(() => { const r = document.querySelector(".blyg-reader-header .blyg-modeslot")?.getBoundingClientRect(); return r ? { r: r.right, t: r.top } : null; });
+    await statesPass(`phone layout ${w} px`, big, true);
   }
   check(errors.length === 0, `no error was thrown on the page ${errors.join(" | ")}`);
 });

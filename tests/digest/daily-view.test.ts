@@ -97,8 +97,8 @@ describe("the Daily view", () => {
     const { root } = await mount({ posts: [p({ contentHtml: `<p>${evil.replace(/</g, "&lt;").replace(/>/g, "&gt;")} is the headline here.</p>`, authorName: "Ann" })], mentions: [], savedAt: NOW });
     const texts = root.all().map((e) => e.text).join("\n");
     expect(texts).toContain("<img src=x onerror=alert(1)>");
-    expect(texts).toContain("Front page");
-    expect(root.all().every((e) => ["div", "h1", "h3", "button", "details", "summary", "p"].includes(e.tag))).toBe(true); // no element is made from the post's markup
+    expect(texts).toContain("Top stories");
+    expect(root.all().every((e) => ["div", "h1", "h3", "button", "details", "summary", "p", "span"].includes(e.tag))).toBe(true); // no element is made from the post's markup
     expect((root as unknown as { cls: Set<string> }).cls.has("is-font-serif")).toBe(true); // the type follows the reader's font
   });
   it("opens a single post from the Mixed bag, in this leaf", async () => {
@@ -206,7 +206,7 @@ describe("the Daily view with sections that hold single posts", () => {
     };
     const { root, opened } = await mount(list, ai);
     const all = root.all().map((e) => e.text);
-    const texts = all.slice(all.indexOf("Front page")); // the table of contents above the page also names the sections (tested below)
+    const texts = all.slice(root.all().findIndex((e) => e.tag === "h3" && e.text === "Top stories")); // the table of contents above the page also names the sections (tested below)
     const at = (t: string): number => texts.indexOf(t);
     const garden = at("Garden");
     const town = at("Town");

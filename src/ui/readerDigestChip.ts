@@ -1,6 +1,7 @@
 // The reader's small "In the digest: <section>" chip on an open post, when a digest edition the plugin holds (the current one or the history) put the post in a
 // section. A tap opens that edition scrolled to the section. Kept out of ReaderView.ts (its size is capped). Text only.
 import type { ReadingPost } from "../studio/reading";
+import { sectionLabel } from "../digest/labels";
 
 export interface DigestChipSource {
   /** The section a post is in, in the digest editions held (src/digest/postSection.ts), or null. */
@@ -24,7 +25,7 @@ export function drawDigestChip(line: HTMLElement, post: ReadingPost): void {
     .then((where) => {
       if (!where || !line.isConnected) return;
       line.createSpan({ cls: "blyg-reader-postsep", text: "·" });
-      const a = line.createEl("a", { cls: "blyg-reader-link blyg-reader-digestchip", text: `In the digest: ${where.section}`, attr: { href: "#", role: "button", title: "Open this edition of the digest at that section" } });
+      const a = line.createEl("a", { cls: "blyg-reader-link blyg-reader-digestchip", text: `In the digest: ${sectionLabel(where.section)}`, attr: { href: "#", role: "button", title: "Open this edition of the digest at that section" } });
       a.addEventListener("click", (e) => {
         e.preventDefault();
         src.open(where.edition, where.section);
