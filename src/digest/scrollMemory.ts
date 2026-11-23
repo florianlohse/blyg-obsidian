@@ -15,7 +15,22 @@ export function rememberScroll(key: string, top: number): void {
 export const recalledScroll = (key: string): number | null => kept.get(key) ?? null;
 export const forgetScroll = (key: string): void => void kept.delete(key);
 /** For tests. */
-export const clearScrolls = (): void => kept.clear();
+export const clearScrolls = (): void => {
+  kept.clear();
+  unfolded.clear();
+};
+
+/** Which stories are unfolded on an edition's page, so Back from a post finds them as they were (module memory like the scroll position; never stored on disk). */
+const unfolded = new Map<string, Set<string>>();
+export const storyUnfolded = (key: string, story: string): boolean => unfolded.get(key)?.has(story) === true;
+export function setStoryUnfolded(key: string, story: string, open: boolean): void {
+  const set = unfolded.get(key) ?? new Set<string>();
+  if (open) set.add(story);
+  else set.delete(story);
+  unfolded.delete(key);
+  unfolded.set(key, set);
+  while (unfolded.size > MAX) unfolded.delete(unfolded.keys().next().value as string);
+}
 
 /** A one-time request to open an edition scrolled to a section (the reader's "In the digest" chip): set by the opener, taken by the digest view when it draws. */
 let jump: { edition: number; section: string } | null = null;

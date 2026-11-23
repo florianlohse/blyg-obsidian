@@ -50,7 +50,6 @@ import { parseEditions } from "../../src/digest/edition";
 import { buildPast, parseHistory, type PastEdition } from "../../src/digest/history";
 import { byNewestPost, drawnSections } from "../../src/digest/order";
 import { sectionOfPost } from "../../src/digest/postSection";
-import { digestMinutes, digestReadTime } from "../../src/digest/readTime";
 import { clearScrolls, recalledScroll, rememberScroll, requestJump, scrollKey, takeJump } from "../../src/digest/scrollMemory";
 import { existingSections, recordSections } from "../../src/digest/sectionRecord";
 import { buildSectionsRequest, MAX_ABOUT_CHARS, MAX_LINE_CHARS, parseSectionsCache, plainAbout, plainLine, readPlacement, SECTIONS_PROMPT_VERSION } from "../../src/digest/sections";
@@ -71,6 +70,7 @@ const post = (text: string, author: string | null, over: Partial<ReadingPost> = 
 });
 type El = { text: string; tag: string; cls: Set<string>; attrs: Record<string, string>; scrollTop: number; scrolled: number; click(): void; all(): El[] };
 const cls = (e: El, c: string): boolean => e.cls.has(c);
+const tocLink = (all: El[], name: string): El | undefined => all.find((e) => cls(e, "blyg-toc-link") && e.all().some((c) => cls(c, "blyg-toc-name") && c.text === name));
 
 beforeEach(() => clearScrolls());
 
@@ -360,7 +360,7 @@ describe("the page: bylines, lines, reading time, table of contents", () => {
     const a = post(`Wholly distinct ${t} subject only here ${i}.`, "Ann");
     return [a, post(`Reply ${t}.`, "Bo", { isReply: true, stubTarget: { id: a.remoteId } as never })];
   }));
-  it("shows a section's byline muted below the heading, none when absent; singles show the line (else the first sentence) and the reading time", async () => {
+  it("shows a section's byline muted below the heading, none when absent; singles show the content line in bold and the author under it, with no reading time; the contents show post counts, no bylines", async () => {
     const lone = [post("Mushrooms grow quietly under old oak trees. And more.", "Cy"), post(`${"word ".repeat(450)}end.`, "Di")];
     const list = { posts: [...stories(["alpha", "beta", "gamma", "delta"]).flatMap((c) => c.posts), ...lone], mentions: [], savedAt: NOW };
     const ai: DigestHost["ai"] = {
@@ -379,36 +379,30 @@ describe("the page: bylines, lines, reading time, table of contents", () => {
     const all = root.all();
     const text = (c: string): string[] => all.filter((e) => cls(e, c)).map((e) => e.text);
     expect(text("blyg-section-about")).toEqual(["Soil and seeds"]); // Town has none: nothing drawn
-    expect(text("blyg-story-line")).toEqual(["Cy on old oak mushrooms"]);
-    const times = text("blyg-story-time");
-    expect(times).toHaveLength(2);
-    expect(times.sort()).toEqual(["1 min", "2 min"].sort());
-    expect(all.some((e) => e.tag === "button" && e.text === "Di")).toBe(true); // no line: the author, and the first sentence under it
+    expect(text("blyg-story-line")[0]).toBe("Old oak mushrooms"); // the AI line without its "<Author> on " prefix
+    expect(text("blyg-story-line")[1]).toMatch(/^word word/); // no line: the first sentence
+    expect(text("blyg-story-by").sort()).toEqual(["by Cy", "by Di"]);
+    expect(text("blyg-story-time")).toEqual([]); // no reading time on a single post
     // the table of contents: both sections with the byline, in page order, and a tap scrolls
-    const toc = all.filter((e) => cls(e, "blyg-toc-link")).map((e) => e.text);
-    expect(toc.sort()).toEqual(["Garden", "Town"]);
-    expect(text("blyg-toc-about")).toEqual(["Soil and seeds"]);
+    const toc = all.filter((e) => cls(e, "blyg-toc-name")).map((e) => e.text);
+    expect(toc.sort()).toEqual(["Garden", "Town"]); // name, then the post count (a story's posts plus the singles)
+    expect(text("blyg-toc-about")).toEqual([]);
+    expect(text("blyg-toc-count").sort()).toEqual(["1", "5"]); // what is drawn under each heading (the lead block holds the other stories)
     const heading = all.find((e) => e.tag === "h3" && e.text === "Town");
     expect(heading).toBeDefined();
-    all.find((e) => cls(e, "blyg-toc-link") && e.text === "Town")?.click();
+    tocLink(all, "Town")?.click();
     // (the section's box scrolls; its element is the heading's parent: counted through the view's map)
     const boxes = (view as unknown as { sectionEls: Map<string, El> }).sectionEls;
     expect(boxes.get("Town")?.scrolled).toBe(1);
   });
-  it("counts reading time as words over 200, at least a minute", () => {
-    expect(digestMinutes({ contentHtml: "<p>one two three</p>" })).toBe(1);
-    expect(digestMinutes({ contentHtml: `<p>${"w ".repeat(400)}</p>` })).toBe(2);
-    expect(digestMinutes({ contentHtml: `<p>${"w ".repeat(1000)}</p>` })).toBe(5);
-    expect(digestReadTime({ contentHtml: "" })).toBe("1 min");
-  });
   it("the table of contents is open up to 8 sections and collapsed behind one line above 8; a tap goes to the section", () => {
-    const mk = (k: number) => Array.from({ length: k }, (_, i) => ({ name: `S${i}`, about: i === 0 ? "first" : undefined }));
+    const mk = (k: number) => Array.from({ length: k }, (_, i) => ({ name: `S${i}`, count: i + 1 }));
     const gone: string[] = [];
     // a real fake element from the mock
     const host = new (BlygDailyView as unknown as new (l: unknown, h: unknown) => { contentEl: El })({}, {}).contentEl;
     drawToc(host as never, mk(TOC_OPEN_MAX), (n) => gone.push(n));
     expect(host.all().some((e) => e.tag === "details")).toBe(false);
-    host.all().find((e) => cls(e, "blyg-toc-link") && e.text === "S3")?.click();
+    tocLink(host.all(), "S3")?.click();
     expect(gone).toEqual(["S3"]);
     const many = new (BlygDailyView as unknown as new (l: unknown, h: unknown) => { contentEl: El })({}, {}).contentEl;
     drawToc(many as never, mk(TOC_OPEN_MAX + 1), () => undefined);
@@ -428,9 +422,9 @@ describe("the page: bylines, lines, reading time, table of contents", () => {
     const root = (view as unknown as { contentEl: El }).contentEl;
     root.all().find((e) => e.tag === "button" && e.text === "‹")?.click();
     const all = root.all();
-    expect(all.filter((e) => cls(e, "blyg-toc-link")).map((e) => e.text)).toEqual(["Garden"]);
+    expect(all.filter((e) => cls(e, "blyg-toc-name")).map((e) => e.text)).toEqual(["Garden"]);
     expect(all.filter((e) => cls(e, "blyg-section-about")).map((e) => e.text)).toEqual(["Soil and seeds"]);
-    expect(all.filter((e) => cls(e, "blyg-story-line")).map((e) => e.text)).toEqual(["Cy on old oak mushrooms"]);
+    expect(all.filter((e) => cls(e, "blyg-story-line")).map((e) => e.text)).toEqual(["Old oak mushrooms"]);
     expect(all.filter((e) => cls(e, "blyg-daily-headline")).map((e) => e.text)).toEqual(["Newer", "Old"]); // newest story first
   });
 });

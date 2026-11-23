@@ -877,7 +877,7 @@ button.blyg-daily-link.blyg-story-who { font-weight: var(--font-semibold); font-
 .blyg-daily, .blyg-daily-section, .blyg-daily-cluster, .blyg-daily-row, .blyg-daily-members, .blyg-story-main, .blyg-toc, .blyg-toc-row { min-width: 0; max-width: 100%; box-sizing: border-box; }
 .blyg-daily-head, .blyg-daily-switcher { flex-wrap: wrap; }
 .blyg-daily-select { min-width: 0; }
-.blyg-daily h1, .blyg-daily h3, .blyg-daily-meta, .blyg-daily-empty, .blyg-daily-preview, .blyg-story-summary, .blyg-story-first, .blyg-section-about, .blyg-toc-about, .blyg-daily-who,
+.blyg-daily h1, .blyg-daily h3, .blyg-daily-meta, .blyg-daily-empty, .blyg-daily-preview, .blyg-story-summary, .blyg-story-first, .blyg-section-about, .blyg-daily-who,
 button.blyg-daily-link { overflow-wrap: anywhere; word-break: break-word; min-width: 0; max-width: 100%; }
 button.blyg-daily-link { display: inline-block; white-space: normal; }
 /* The summary is a button (it does what the headline does) that looks like the text it is. */
@@ -885,15 +885,26 @@ button.blyg-daily-link.blyg-story-summary { display: block; width: 100%; font-we
 /* A section's byline, muted, right below its heading. */
 .blyg-section-about { color: var(--text-muted); font-size: var(--font-ui-smaller); font-style: italic; margin: calc(var(--size-4-1) * -1) 0 var(--size-4-2); }
 .blyg-daily-section { scroll-margin-top: var(--size-4-2); }
-/* A single post: the line (or author and first sentence) on the left, its reading time small and muted on the right. */
-.blyg-daily-row.blyg-story-mixed { display: flex; align-items: baseline; gap: var(--size-4-2); }
+/* A single post: the content line in bold, "by Author" in italics under it like a magazine standfirst, and a small "Mark read" at the right. */
+.blyg-daily-row.blyg-story-mixed { display: flex; align-items: baseline; gap: var(--size-4-2); cursor: pointer; }
 .blyg-story-main { flex: 1 1 auto; }
-.blyg-story-time { flex: none; color: var(--text-faint); font-size: var(--font-ui-smaller); font-variant-numeric: tabular-nums; white-space: nowrap; }
+button.blyg-daily-link.blyg-story-line { display: block; font-weight: var(--font-bold); font-size: var(--font-ui-medium); line-height: 1.35; }
+.blyg-story-by { color: var(--text-muted); font-style: italic; font-size: var(--font-ui-smaller); }
+/* Mark read: a small quiet button; a story has one for the whole story. */
+button.blyg-mark { flex: none; height: auto; padding: var(--size-2-1) var(--size-4-2); font-size: var(--font-ui-smaller); color: var(--text-muted); background: none; box-shadow: none; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-s); cursor: pointer; }
+.blyg-story-markrow { margin-top: var(--size-2-2); }
+/* A post in an unfolded story: the whole area is the tap target. */
+.blyg-daily-member { cursor: pointer; }
 /* The table of contents under the masthead. */
 .blyg-toc { margin: var(--size-4-2) 0; padding-bottom: var(--size-4-2); border-bottom: 1px solid var(--blyg-paper-rule); }
-.blyg-toc-row { padding: var(--size-2-1) 0; }
-button.blyg-daily-link.blyg-toc-link { font-weight: var(--font-semibold); font-size: var(--font-ui-small); }
-.blyg-toc-about { color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.blyg-toc-list { display: flex; flex-direction: column; }
+/* A line of the contents: name, dotted leader, post count where a page number would be (tabular, right aligned, muted serif). */
+button.blyg-daily-link.blyg-toc-row { display: flex; align-items: baseline; gap: var(--size-2-2); width: 100%; padding: var(--size-2-1) 0; font-weight: var(--font-semibold); font-size: var(--font-ui-small); }
+.blyg-toc-name { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.blyg-toc-leader { flex: 1 1 1.5em; min-width: 1.5em; border-bottom: 2px dotted var(--text-faint); transform: translateY(-0.2em); }
+.blyg-toc-count { flex: none; min-width: 2ch; text-align: right; color: var(--text-muted); font-weight: var(--font-normal); font-variant-numeric: tabular-nums; font-family: ui-serif, "New York", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif; }
 .blyg-toc-summary { color: var(--text-muted); font-size: var(--font-ui-smaller); cursor: pointer; }
 .blyg-reader-digestchip { white-space: normal; overflow-wrap: anywhere; }
 .blyg-is-read { opacity: 0.55; }
+
+.blyg-daily-markstatus:empty { display: none; }

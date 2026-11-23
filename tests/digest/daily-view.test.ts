@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("obsidian", () => {
   class FakeEl {
@@ -59,6 +59,9 @@ vi.mock("obsidian", () => {
 });
 
 import { BlygDailyView, type DigestHost } from "../../src/ui/DigestView";
+import { clearScrolls } from "../../src/digest/scrollMemory";
+
+beforeEach(() => clearScrolls());
 import type { Written } from "../../src/digest/llm";
 import type { ReadingPost } from "../../src/studio/reading";
 
@@ -100,7 +103,7 @@ describe("the Daily view", () => {
   });
   it("opens a single post from the Mixed bag, in this leaf", async () => {
     const { root, opened, leaves, leaf } = await mount({ posts: [p({})], mentions: [], savedAt: NOW });
-    root.all().find((e) => e.text === "Blyg")?.click(); // the row's author button (here the blyg's title)
+    root.all().find((e) => (e as unknown as { cls: Set<string> }).cls.has("blyg-story-line"))?.click(); // the row's bold content line
     expect(opened).toEqual(["a".repeat(26)]);
     expect(leaves).toEqual([leaf]);
   });
@@ -125,7 +128,7 @@ describe("the Daily view", () => {
     const texts = root.all().map((e) => e.text);
     expect(texts).toContain("No stories with several posts yet.");
     expect(texts).toContain("Mixed bag");
-    expect(texts).toContain("Ann");
+    expect(texts).toContain("by Ann");
     expect(texts).toContain("How this is grouped");
     expect(texts.some((t) => /\bgroups?\b/i.test(t))).toBe(false);
   });
@@ -214,15 +217,15 @@ describe("the Daily view with sections that hold single posts", () => {
     // inside "Town": its non-lead story (index 3) and then its single post, before the Mixed bag
     const townPart = texts.slice(town, mixed);
     expect(townPart.indexOf("Story 3")).toBeGreaterThan(-1);
-    expect(townPart.some((t) => /^Di$|^Cy$|^Ed$/.test(t))).toBe(true);
-    expect(townPart.findIndex((t) => t === "Story 3")).toBeLessThan(townPart.findIndex((t) => /^Di$|^Cy$|^Ed$/.test(t)));
+    expect(townPart.some((t) => /^by (Di|Cy|Ed)$/.test(t))).toBe(true);
+    expect(townPart.findIndex((t) => t === "Story 3")).toBeLessThan(townPart.findIndex((t) => /^by (Di|Cy|Ed)$/.test(t)));
     // exactly one single post is left in the Mixed bag
     const mixedRows = root.all().filter((e) => cls(e).has("blyg-story-mixed"));
     expect(mixedRows).toHaveLength(3); // two in sections, one in the Mixed bag
-    const bag = texts.slice(mixed).filter((t) => /^(Cy|Di|Ed)$/.test(t));
+    const bag = texts.slice(mixed).filter((t) => /^by (Cy|Di|Ed)$/.test(t));
     expect(bag).toHaveLength(1);
     // a section row opens the post like every entry
-    root.all().find((e) => e.text === "Di" || e.text === "Cy" || e.text === "Ed")?.click();
+    root.all().filter((e) => cls(e).has("blyg-story-line"))[0]?.click();
     expect(opened).toHaveLength(1);
   });
   it("with the AI off the plain Mixed bag holds every single post and no section is drawn", async () => {
@@ -230,7 +233,7 @@ describe("the Daily view with sections that hold single posts", () => {
     const texts = root.all().map((e) => e.text);
     expect(texts).toContain("Mixed bag");
     expect(texts).not.toContain("Garden");
-    expect(texts.filter((t) => /^(Cy|Di|Ed)$/.test(t))).toHaveLength(3);
+    expect(texts.filter((t) => /^by (Cy|Di|Ed)$/.test(t))).toHaveLength(3);
     expect(texts).not.toContain("Re-sort sections");
   });
   it("a section the page cannot match is cleaned: unknown numbers and posts dropped, a story no section holds goes to Other", async () => {
@@ -243,7 +246,7 @@ describe("the Daily view with sections that hold single posts", () => {
     const { root } = await mount(list, ai);
     const texts = root.all().map((e) => e.text);
     expect(texts).toContain("Other");
-    expect(texts.filter((t) => /^(Cy|Di|Ed)$/.test(t))).toHaveLength(3); // all still in the Mixed bag
+    expect(texts.filter((t) => /^by (Cy|Di|Ed)$/.test(t))).toHaveLength(3); // all still in the Mixed bag
   });
   it("Re-sort sections asks for a full sort; the plain Write does not", async () => {
     const calls: Array<{ resort?: boolean } | undefined> = [];
