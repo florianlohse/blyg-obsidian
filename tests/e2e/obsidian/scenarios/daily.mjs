@@ -212,33 +212,50 @@ await runScenario({ data }, async (s) => {
   });
   check(toc.names.length >= 2 && toc.names[0] === "Top stories" && JSON.stringify(toc.names) === JSON.stringify(toc.heads), `the contents list the headings drawn, in the order drawn, Top stories first (${JSON.stringify(toc.names)} against ${JSON.stringify(toc.heads)})`);
   check(toc.drawn.every((d, i) => toc.counts[i] === `${d.n} ${d.n === 1 ? "item" : "items"}`), `each contents counter equals what is drawn under its heading (${JSON.stringify(toc.counts)} against ${JSON.stringify(toc.drawn)})`);
-  const cardLook = (theme) => page.evaluate(async (theme) => {
+  // DG14: a story is typography, not a box. Measured in both themes: no background, border, radius or shadow on a story, a hairline between stories, the headline larger than the summary, the meta line small, muted and italic, a "›" mark and no chevron element, contrast of headline, summary and meta.
+  const typeLook = (theme) => page.evaluate(async (theme) => {
     if (theme) { document.body.classList.toggle("theme-dark", theme === "dark"); document.body.classList.toggle("theme-light", theme !== "dark"); await new Promise((r) => setTimeout(r, 400)); } // (Obsidian's own theme classes: all the variables follow them)
     const num = (c) => (c.match(/[\d.]+/g) ?? []).slice(0, 4).map(Number);
     const lum = (c) => { const [r, g, b] = num(c).map((v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
-    const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m); return (x + 0.05) / (y + 0.05); };
-    const card = document.querySelector(".blyg-daily .blyg-daily-cluster.blyg-story");
-    const bar = document.querySelector(".blyg-daily .blyg-daily-bar");
-    const head = card.querySelector(".blyg-story-headline");
-    const chev = card.querySelector(".blyg-story-chevron");
-    const cs = getComputedStyle(card);
-    const range = document.createRange(); range.selectNodeContents(head);
-    const cr = card.getBoundingClientRect(); const vr = chev.getBoundingClientRect(); const tr = range.getBoundingClientRect();
+    const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m); return +((x + 0.05) / (y + 0.05)).toFixed(1); };
+    const stories = [...document.querySelectorAll(".blyg-daily .blyg-daily-cluster.blyg-story")];
+    const card = stories[0];
+    const head = card.querySelector(":scope > .blyg-story-headline");
+    const sum = card.querySelector(":scope > .blyg-story-summary");
+    const meta = card.querySelector(":scope > .blyg-daily-meta");
+    const page = getComputedStyle(document.querySelector(".view-content.blyg-daily")).backgroundColor;
+    const bg = getComputedStyle(document.querySelector(".blyg-daily")).backgroundColor;
+    const solid = (c) => (/rgba\(.*, 0\)$/.test(c) || c === "transparent" ? (/rgba?\(0, 0, 0/.test(bg) ? getComputedStyle(document.body).backgroundColor : bg) : c);
+    const ground = solid(page);
+    const probe = document.createElement("span"); probe.style.color = "var(--text-accent)"; document.body.appendChild(probe); const accent = getComputedStyle(probe).color; probe.remove();
+    const box = (el) => { const c = getComputedStyle(el); return { bg: c.backgroundColor, shadow: c.boxShadow, radius: c.borderTopLeftRadius, l: c.borderLeftWidth, r: c.borderRightWidth, b: c.borderBottomWidth, t: c.borderTopWidth }; };
+    const bx = stories.map(box);
+    const plain = bx.every((c) => (c.bg === "rgba(0, 0, 0, 0)" || c.bg === "transparent") && c.shadow === "none" && c.radius === "0px" && c.l === "0px" && c.r === "0px" && c.b === "0px");
+    const rules = stories.slice(1).map((el, i) => stories[i].nextElementSibling === el && getComputedStyle(el).borderTopWidth === "1px");
+    const px = (el) => parseFloat(getComputedStyle(el).fontSize);
+    const ms = getComputedStyle(meta);
     const v = document.querySelector(".view-content.blyg-daily");
-    return { theme: document.body.classList.contains("theme-dark") ? "dark" : "light", bg: cs.backgroundColor, pageBg: getComputedStyle(bar).backgroundColor, border: cs.borderTopWidth, radius: parseFloat(cs.borderTopLeftRadius), contrast: +ratio(getComputedStyle(head).color, cs.backgroundColor).toFixed(1), chevIn: vr.left >= cr.left && vr.right <= cr.right && vr.top >= cr.top && vr.bottom <= cr.bottom, clear: tr.right <= vr.left + 1, icon: !!chev.querySelector("svg"), tap: Math.round(vr.height), sw: v.scrollWidth <= v.clientWidth };
+    const mark = card.querySelector(":scope > .blyg-daily-meta > .blyg-story-more");
+    return { theme: document.body.classList.contains("theme-dark") ? "dark" : "light", stories: stories.length, plain, ruleBetween: rules.length ? rules.every(Boolean) : null, firstTop: getComputedStyle(card).borderTopWidth, headPx: px(head), sumPx: sum ? px(sum) : null, metaPx: px(meta), headWeight: +getComputedStyle(head).fontWeight, headLead: getComputedStyle(head).lineHeight, metaStyle: ms.fontStyle, headContrast: ratio(getComputedStyle(head).color, ground), sumContrast: sum ? ratio(getComputedStyle(sum).color, ground) : null, metaContrast: ratio(ms.color, ground), accentContrast: ratio(accent, ground), chevron: document.querySelectorAll(".blyg-daily .blyg-story-chevron, .blyg-daily .blyg-story > svg, .blyg-daily .blyg-story > button.clickable-icon").length, markText: mark?.textContent ?? null, markHidden: mark?.getAttribute("aria-hidden") ?? null, headIsButton: head.tagName === "BUTTON" && head.hasAttribute("aria-expanded"), sectionRule: getComputedStyle(document.querySelector(".blyg-daily .blyg-daily-section > h3")).borderBottomWidth, sw: v.scrollWidth <= v.clientWidth };
   }, theme);
-  const lookDark = await cardLook("dark");
-  const lookLight = await cardLook("light");
-  for (const c of [lookDark, lookLight]) check(c.bg !== c.pageBg && c.border === "1px" && c.radius >= 4 && c.contrast >= 4.5 && c.chevIn && c.clear && c.icon && c.tap >= 28 && c.sw, `a story is a card with a chevron in the ${c.theme} theme (${JSON.stringify(c)})`);
-  const rot = async () => page.evaluate(async () => { await new Promise((r) => setTimeout(r, 350)); const c = document.querySelector(".blyg-daily .blyg-daily-cluster.blyg-story"); return { open: c.classList.contains("is-open"), tf: getComputedStyle(c.querySelector(".blyg-story-chevron svg")).transform, expanded: c.querySelector(".blyg-story-chevron").getAttribute("aria-expanded"), members: c.querySelectorAll(".blyg-daily-member").length }; });
-  const chev0 = await rot(); // (a story may already be unfolded by an earlier step: the check is that each tap flips it and the chevron follows)
-  await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-cluster.blyg-story .blyg-story-chevron").click());
-  const flipped = await rot();
+  const lookDark = await typeLook("dark");
+  const lookLight = await typeLook("light");
+  for (const c of [lookDark, lookLight]) {
+    check(c.plain && c.firstTop === "0px" && c.ruleBetween !== false && c.chevron === 0 && c.headIsButton, `a story is plain type in the ${c.theme} theme: no background, border, radius or shadow, a hairline between stories, no chevron, the headline still a button with aria-expanded (${JSON.stringify(c)})`);
+    check(c.headPx > (c.sumPx ?? 0) && c.headWeight >= 600 && c.metaPx < (c.sumPx ?? c.headPx) && c.metaStyle === "italic" && c.markText === "›" && c.markHidden === "true", `the ${c.theme} theme: headline larger than summary, bold; meta line smaller and italic, ending in a "›" that screen readers skip (${JSON.stringify(c)})`);
+    check(c.headContrast >= 4.5 && (c.sumContrast === null || c.sumContrast >= 4.5) && c.metaContrast >= 4.5 && c.accentContrast >= 3 && +c.sectionRule.replace("px", "") >= 2 && c.sw, `the ${c.theme} theme: contrast of headline, summary and meta at least 4.5, accent at least 3 (large text), a heavier rule under the section heading, no sideways scroll (${JSON.stringify(c)})`);
+  }
+  check(lookLight.stories >= 2 && lookLight.ruleBetween === true, `the page holds at least two stories in a row and a rule sits between them (${lookLight.stories} stories, rule ${lookLight.ruleBetween})`);
+  const lead = await page.evaluate(() => { const s = [...document.querySelectorAll(".blyg-daily .blyg-daily-cluster.blyg-story")]; const f = (el) => parseFloat(getComputedStyle(el.querySelector(":scope > .blyg-story-headline")).fontSize); const lead = s.find((e) => !(e.previousElementSibling?.classList.contains("blyg-story"))); const next = s.find((e) => e.previousElementSibling?.classList.contains("blyg-story")); return lead && next ? { lead: f(lead), next: f(next) } : null; });
+  check(lead && lead.lead > lead.next, `the first story of a block is set larger than the next (${JSON.stringify(lead)})`);
+  const rot = async () => page.evaluate(async () => { await new Promise((r) => setTimeout(r, 150)); const c = document.querySelector(".blyg-daily .blyg-daily-cluster.blyg-story"); return { open: c.classList.contains("is-open"), expanded: c.querySelector(".blyg-story-headline").getAttribute("aria-expanded"), members: c.querySelectorAll(".blyg-daily-member").length, ruled: c.querySelector(".blyg-daily-members") ? getComputedStyle(c.querySelector(".blyg-daily-members")).borderLeftWidth : null }; });
+  const t0 = await rot(); // (a story may already be unfolded by an earlier step: the check is that each tap flips it)
   await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-cluster.blyg-story .blyg-story-headline").click());
-  const chev2 = await rot();
-  const turned = (o) => (o.open ? /matrix\(-1, /.test(o.tf) : o.tf === "none" || o.tf === "matrix(1, 0, 0, 1, 0, 0)");
-  check(chev0.open !== flipped.open && chev2.open === chev0.open && [chev0, flipped, chev2].every((o) => turned(o) && o.expanded === String(o.open) && (o.members > 0) === o.open), `the chevron unfolds and folds the story and turns with it; the headline does the same (${JSON.stringify([chev0, flipped, chev2])})`);
-  if (chev0.open) await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-cluster.blyg-story .blyg-story-chevron").click()); // leave it as the later steps found it (folded)
+  const t1 = await rot();
+  await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-cluster.blyg-story .blyg-story-summary, .blyg-daily .blyg-daily-cluster.blyg-story .blyg-story-headline").click());
+  const t2 = await rot();
+  check(t0.open !== t1.open && t2.open === t0.open && [t0, t1, t2].every((o) => o.expanded === String(o.open) && (o.members > 0) === o.open) && [t0, t1, t2].filter((o) => o.open).every((o) => o.ruled === "1px"), `the headline unfolds and folds the story, aria-expanded follows, the posts sit under a left hairline (${JSON.stringify([t0, t1, t2])})`);
+  if (t0.open) await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-cluster.blyg-story .blyg-story-headline").click()); // leave it as the later steps found it (folded)
   await page.evaluate(() => { document.querySelector(".view-content.blyg-daily").scrollTop = 0; });
   await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-menu").click());
   await wait(300);
@@ -320,8 +337,11 @@ await runScenario({ data }, async (s) => {
     const slotDigest = await box(".blyg-daily .blyg-modeswitch"); // (the switch itself: the bar wraps it in a slot of its own)
     // (the emulated phone layout draws a 12 px scrollbar inside the digest's page; a device draws none: the right edge is read without it)
     const bar = await page.evaluate(() => { const v = document.querySelector(".view-content.blyg-daily"); return v ? v.offsetWidth - v.clientWidth : 0; });
-    const cardFit = await page.evaluate(() => { const v = document.querySelector(".view-content.blyg-daily"); const c = document.querySelector(".blyg-daily .blyg-daily-cluster.blyg-story"); const ch = c?.querySelector(".blyg-story-chevron"); const h = c?.querySelector(".blyg-story-headline"); if (!c || !ch || !h) return null; const rg = document.createRange(); rg.selectNodeContents(h); const cr = c.getBoundingClientRect(), vr = ch.getBoundingClientRect(), tr = rg.getBoundingClientRect(); return { sw: v.scrollWidth <= v.clientWidth, inCard: vr.left >= cr.left && vr.right <= cr.right, clear: tr.right <= vr.left + 1, cardR: cr.right, vw: window.innerWidth }; });
-    check(cardFit && cardFit.sw && cardFit.inCard && cardFit.clear && cardFit.cardR <= cardFit.vw, `${label}: a story card fits the screen, its chevron is inside it and no headline text runs under it (${JSON.stringify(cardFit)})`);
+    const fitOf = (theme) => page.evaluate(async (theme) => { document.body.classList.toggle("theme-dark", theme === "dark"); document.body.classList.toggle("theme-light", theme !== "dark"); await new Promise((r) => setTimeout(r, 250)); const v = document.querySelector(".view-content.blyg-daily"); const c = document.querySelector(".blyg-daily .blyg-daily-cluster.blyg-story"); const h = c?.querySelector(".blyg-story-headline"); const m = c?.querySelector(".blyg-daily-meta"); if (!c || !h || !m) return null; const cr = c.getBoundingClientRect(); const over = [...c.querySelectorAll("*")].filter((e) => e.getBoundingClientRect().right > cr.right + 1).length; return { sw: v.scrollWidth <= v.clientWidth, over, cardR: cr.right, vw: window.innerWidth, headH: Math.round(h.getBoundingClientRect().height), chev: !!c.querySelector(".blyg-story-chevron"), plain: getComputedStyle(c).backgroundColor === "rgba(0, 0, 0, 0)" && getComputedStyle(c).borderLeftWidth === "0px" && getComputedStyle(c).borderRadius === "0px" }; }, theme);
+    for (const theme of ["dark", "light"]) {
+      const cardFit = await fitOf(theme);
+      check(cardFit && cardFit.sw && cardFit.over === 0 && !cardFit.chev && cardFit.plain && cardFit.cardR <= cardFit.vw, `${label}, ${theme} theme: a story fits the screen as plain type, nothing in it is wider than it and there is no chevron (${JSON.stringify(cardFit)})`);
+    }
     await tap(".blyg-daily .blyg-story-headline");
     await wait(300);
     await tap(".blyg-daily .blyg-daily-member .blyg-daily-preview");

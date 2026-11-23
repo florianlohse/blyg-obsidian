@@ -5,7 +5,7 @@ import { authorOf } from "../digest/storyMeta";
 import type { ReadingPost } from "../studio/reading";
 import { byLine, topicOf } from "../digest/singleLine";
 import { drawToc, type TocEntry } from "./DigestToc";
-import { addChevron } from "./storyChevron";
+import { addStoryMark } from "./storyOpen";
 import { MIXED_BAG, TOP_STORIES, sectionLabel } from "../digest/labels";
 
 export const NOT_IN_LIST = "no longer in the reader's list";
@@ -56,17 +56,17 @@ export function drawPast(root: HTMLElement, rec: PastEdition, byId: ReadonlyMap<
       r.createDiv({ cls: "blyg-daily-meta blyg-past-gone", text: `(${NOT_IN_LIST})` });
     }
   };
-  /** Draws a story card; returns the posts it holds (what the contents count). */
+  /** Draws a story; returns the posts it holds (what the contents count). */
   const story = (into: HTMLElement, i: number): number => {
     const s = rec.stories[i];
     if (!s) return 0;
     const card = into.createDiv({ cls: "blyg-daily-cluster blyg-story" });
     const title = card.createEl("button", { cls: "blyg-daily-link blyg-daily-headline blyg-story-headline", text: s.headline });
     const summary = s.summary ? card.createEl("button", { cls: "blyg-daily-link blyg-story-summary", text: s.summary }) : null;
-    card.createDiv({ cls: "blyg-daily-meta", text: `${s.posts.length} ${s.posts.length === 1 ? "post" : "posts"}` });
+    const meta = card.createDiv({ cls: "blyg-daily-meta", text: `${s.posts.length} ${s.posts.length === 1 ? "post" : "posts"}` });
     const list = card.createDiv({ cls: "blyg-daily-members" });
     let shown = false;
-    const paintOpen = addChevron(card, [title, ...(summary ? [summary] : [])], () => toggle());
+    const paintOpen = addStoryMark(card, meta, [title, ...(summary ? [summary] : [])]);
     const toggle = (): void => {
       shown = !shown;
       list.empty();
