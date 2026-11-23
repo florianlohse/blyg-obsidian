@@ -468,6 +468,10 @@ await runScenario({ data }, async (s) => {
   await page.waitForSelector(".blyg-reader-header .blyg-reader-back", { timeout: 20000 });
   check(true, "Open first post opens the story's first post");
   await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: false });
+  // leave nothing open: the post that "Open first post" opened would be restored with the layout, and its reply cards are ".blyg-reader-card" too (the empty-feed check below counts cards)
+  await page.evaluate(() => { for (const t of ["blyg-reader", "blyg-daily"]) window.app.workspace.detachLeavesOfType(t); window.app.workspace.requestSaveLayout(); });
+  await page.evaluate(async () => { const b = window.app.plugins.plugins.blyg; b.settings.readerPane.mode = "feed"; await b.saveSettings(); }); // (the digest steps left the mode on Digest; the checks below start from the Feed)
+  await wait(1500);
 
   // the feed with nothing to show (last: a reader that has held a list is not made empty again by a file): the toggle stays where the feed with a list had it, at each width
   await startWith([]);
