@@ -5,8 +5,7 @@ import { livePosts } from "./daily";
 import { ensureEdition, parseEditions, windowOf, type EditionRec, type EditionStore } from "./edition";
 import { cachedDigest, planClusters, type LlmDeps, type Outcome, type Written } from "./llm";
 import type { Cluster } from "./cluster";
-import type { Section } from "./sections";
-import { OTHER_NAME } from "./sections";
+import { recordSections, withPostSections } from "./sectionRecord";
 import { assignPosts, groupOf, type Grouped } from "./stable";
 
 export interface EditionPorts {
@@ -100,26 +99,11 @@ export async function cachedStories(llm: Pick<LlmDeps, "settings" | "load">, rec
   });
 }
 
-/** The sections the stories keep: each story's own section from the record (one that has none is "Other"). null when no story has one. */
-export function recordSections(rec: EditionRec | null, clusters: readonly Cluster[]): Section[] | null {
-  if (!rec) return null;
-  const names = clusters.map((c) => rec.stories.find((s) => s.id === c.id)?.section);
-  if (!names.some(Boolean)) return null;
-  const out: Section[] = [];
-  names.forEach((n, i) => {
-    const name = n ?? OTHER_NAME;
-    const sec = out.find((x) => x.name === name);
-    if (sec) sec.ids.push(i);
-    else out.push({ name, ids: [i] });
-  });
-  return out;
-}
-
-/** After "Write the digest": remember per story the text's key and the posts it was written from, and the story's section. */
-export async function rememberWrite(llm: Pick<LlmDeps, "settings">, editions: Editions, id: number, clusters: readonly Cluster[], o: Outcome): Promise<void> {
+/** After "Write the digest": remember per story the text's key and the posts it was written from, and the story's section; per single post its section. */
+export async function rememberWrite(llm: Pick<LlmDeps, "settings">, editions: Editions, id: number, clusters: readonly Cluster[], o: Outcome, singles: readonly ReadingPost[] = []): Promise<void> {
   if (o.status !== "ok") return;
   const plan = planClusters(clusters, llm.settings().model.trim());
-  await editions.update(id, (rec) => ({
+  await editions.update(id, (rec) => withPostSections({
     ...rec,
     stories: rec.stories.map((s) => {
       const i = clusters.findIndex((c) => c.id === s.id);
@@ -129,5 +113,7 @@ export async function rememberWrite(llm: Pick<LlmDeps, "settings">, editions: Ed
       const sec = o.sections?.find((x) => x.ids.includes(i))?.name;
       return { ...s, textKey: it.cacheKey, textPosts: c.posts.map((p) => p.remoteId), ...(sec ? { section: sec } : {}) };
     }),
-  }));
+  }, singles, o.sections));
 }
+
+export { recordSections };

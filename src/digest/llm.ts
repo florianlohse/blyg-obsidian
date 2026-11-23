@@ -16,7 +16,8 @@ import { addTokens, parseTally, type TokenTally } from "./budget";
 import { estimateCost, formatCost } from "./prices";
 import { authorOf } from "./storyMeta";
 import { cutAtBoundary } from "./truncate";
-import { buildSectionsRequest, estimateSections, SECTIONS_SYSTEM_PROMPT, MIN_STORIES_FOR_SECTIONS, parseSectionsCache, readSections, sectionsCacheKey, sectionsFit, storiesForSections, trimSectionsCache, type Section, type SectionsEntry } from "./sections";
+import { buildSectionsRequest, parseSectionsCache, singleOf, type Section, type SectionsEntry } from "./sections";
+import { cachedPass, estimatePass, runSectionPass, sectionsPrecheck, type ExistingSections, type PassEstimate, type PassSpec } from "./sectionPass";
 
 /** Raise when the prompt or the answer format changes: old cached results no longer apply. */
 export const PROMPT_VERSION = "3";
@@ -27,11 +28,12 @@ export const MAX_CLUSTERS = 8;
 /** Every story the front page shows is covered: the total follows the front page. */
 export const MAX_GROUPS = FRONT_PAGE_MAX;
 /** A safety stop on the number of requests in one run. */
-export const MAX_REQUESTS = 4;
-export const MAX_POSTS_PER_CLUSTER = 6;
-export const MAX_POST_CHARS = 1500;
-/** The user message may not be longer than this; stories that do not fit are left for the next run. */
-export const MAX_REQUEST_CHARS = 24000;
+export const MAX_REQUESTS = 8;
+// Generous on purpose (Florian, 2026-11-23): a whole digest costs a fraction of a cent, so quality comes before tokens.
+export const MAX_POSTS_PER_CLUSTER = 20;
+export const MAX_POST_CHARS = 4000;
+/** The user message may not be longer than this (about 25,000 tokens); stories that do not fit go in the next request. */
+export const MAX_REQUEST_CHARS = 100000;
 export const MAX_HEADLINE_CHARS = 80;
 /** What the model is asked for; an answer a little over is cut at a sentence or word (src/digest/truncate.ts). */
 export const SUMMARY_ASKED_CHARS = 200;
@@ -290,14 +292,17 @@ export interface Estimate {
   tokens: number;
   /** Rough dollars, or null when the model has no price in src/digest/prices.ts. */
   cost: number | null;
-  /** The second request (sections) is part of the run: its tokens and cost are in the numbers above. */
+  /** The sections requests are part of the run: their tokens and cost are in the numbers above. */
   sections: boolean;
+  /** How many sections requests, and how many single posts (author and excerpt only) go along in them. */
+  sectionRequests: number;
+  singles: number;
 }
 
-export function estimateRun(reqs: readonly BuiltRequest[], model: string, sectionsStories = 0, host = ""): Estimate {
+export function estimateRun(reqs: readonly BuiltRequest[], model: string, pass: PassEstimate | null = null, host = ""): Estimate {
   const m = model.trim();
   const stories = reqs.reduce((n, r) => n + r.items.length, 0);
-  const extra = sectionsStories > 0 ? estimateSections(sectionsStories) : { inputTokens: 0, outputTokens: 0 };
+  const extra = pass ?? { requests: 0, inputTokens: 0, outputTokens: 0, singles: 0 };
   const inputTokens = reqs.reduce((n, r) => n + Math.ceil((SYSTEM_PROMPT.length + r.chars) / 4), 0) + extra.inputTokens;
   const outputTokens = reqs.reduce((n, r) => n + Math.min(MAX_OUTPUT_TOKENS, r.items.length * OUT_TOKENS_PER_GROUP + 30), 0) + extra.outputTokens;
   return {
@@ -310,16 +315,19 @@ export function estimateRun(reqs: readonly BuiltRequest[], model: string, sectio
     outputTokens,
     tokens: inputTokens + outputTokens,
     cost: estimateCost(m, inputTokens, outputTokens),
-    sections: sectionsStories > 0,
+    sections: extra.requests > 0,
+    sectionRequests: extra.requests,
+    singles: extra.singles,
   };
 }
 
 const n = (k: number, one: string, many: string): string => `${k} ${k === 1 ? one : many}`;
 
-/** The one line of the confirm: stories (several posts each; single posts are not sent), posts, requests, tokens, a ROUGH cost, the model. */
+/** The one line of the confirm: stories, posts, requests (the sections requests and the single posts they carry), tokens, a ROUGH cost, the model. */
 export function estimateLine(e: Estimate): string {
-  const cost = e.cost === null ? "cost unknown" : `roughly ${formatCost(e.cost)}`;
-  return `${n(e.stories, "story", "stories")} with several posts (single posts are not sent), ${n(e.posts, "post", "posts")}, ${n(e.requests, "request", "requests")}${e.sections ? " plus sections" : ""}, about ${e.tokens} tokens, ${cost} (${e.model})`;
+  const cost = e.cost === null ? "cost unknown" : e.cost < 0.01 ? "under 1 cent" : `roughly ${formatCost(e.cost)}`;
+  const sec = e.sectionRequests > 0 ? ` plus ${n(e.sectionRequests, "sections request", "sections requests")}${e.singles > 0 ? ` (the author and the first lines of ${n(e.singles, "single post", "single posts")} go along)` : ""}` : "";
+  return `${n(e.stories, "story", "stories")} with several posts, ${n(e.posts, "post", "posts")}, ${n(e.requests, "request", "requests")}${sec}, about ${e.tokens} tokens, ${cost} (${e.model})`;
 }
 
 // Control characters are removed on purpose (no-control-regex).
@@ -435,20 +443,13 @@ function fromStore(store: LlmStore, plan: readonly PlanItem[], model: string, si
   return written;
 }
 
-/** The sections the cache holds for these written stories, or null. */
-function sectionsFromStore(store: LlmStore, written: ReadonlyArray<Written | null>, model: string): Section[] | null {
-  const stories = storiesForSections(written);
-  const e = stories ? store.sections[sectionsCacheKey(stories, model)] : undefined;
-  return stories && e && sectionsFit(e.sections, stories.length) ? e.sections : null;
-}
-
-/** The sections already in the cache for the cached headlines of these clusters. No request, no key. */
-export async function cachedSections(deps: Pick<LlmDeps, "settings" | "load">, clusters: readonly Cluster[]): Promise<Section[] | null> {
+/** The sections already in the cache for the cached headlines of these clusters and these single posts. No request, no key. */
+export async function cachedSections(deps: Pick<LlmDeps, "settings" | "load">, clusters: readonly Cluster[], singles: readonly ReadingPost[] = []): Promise<Section[] | null> {
   const model = deps.settings().model.trim();
   const plan = planClusters(clusters, model);
   const store = await deps.load();
   const w = fromStore(store, plan, model, clusters.length);
-  return sectionsFromStore(store, plan.map((it) => w[it.index] ?? null), model);
+  return cachedPass(store, plan.map((it) => w[it.index] ?? null), singles.map(singleOf), model);
 }
 
 /** What the cache already holds for these clusters. No request, no key, nothing sent. */
@@ -458,7 +459,7 @@ export async function cachedDigest(deps: Pick<LlmDeps, "settings" | "load">, clu
 }
 
 /** The provider's own token count from an answer, or null when it gave none. */
-function usageOf(text: string): number | null {
+export function usageOf(text: string): number | null {
   try {
     const u = (JSON.parse(text) as { usage?: { input_tokens?: unknown; output_tokens?: unknown } } | null)?.usage;
     return typeof u?.input_tokens === "number" && typeof u.output_tokens === "number" ? u.input_tokens + u.output_tokens : null;
@@ -471,7 +472,17 @@ function usageOf(text: string): number | null {
  * Write the digest: cache first; if something is missing, check the recorded consent for the provider's host (ask once; no consent, no request), then
  * (`confirm` given) the one-line estimate, then the requests in batches. Never throws. The tokens used are added to the day's tally; the tally never blocks.
  */
-export async function writeDigest(deps: LlmDeps, clusters: readonly Cluster[], opts: { confirm?: boolean } = {}): Promise<Outcome> {
+export interface WriteOptions {
+  confirm?: boolean;
+  /** The single posts (the Mixed bag): they get no AI text, but go to the sections request as author + excerpt. */
+  singles?: readonly ReadingPost[];
+  /** What the edition record already holds: only new items are then sorted, into the existing sections. */
+  existing?: ExistingSections | null;
+  /** Sort everything again (the person asked). */
+  resort?: boolean;
+}
+
+export async function writeDigest(deps: LlmDeps, clusters: readonly Cluster[], opts: WriteOptions = {}): Promise<Outcome> {
   const settings = deps.settings();
   const model = settings.model.trim();
   const store = await deps.load();
@@ -479,10 +490,12 @@ export async function writeDigest(deps: LlmDeps, clusters: readonly Cluster[], o
   const written = fromStore(store, plan, model, clusters.length);
   const missing = plan.filter((it) => !written[it.index]);
   const storyList = (): Array<Written | null> => plan.map((it) => written[it.index] ?? null);
-  const cachedSec = missing.length === 0 ? sectionsFromStore(store, storyList(), model) : null;
-  // Sections are asked for when there are enough stories and the cache has no answer (with stories still to write, that is only known afterwards: counted in the estimate).
-  const needSections = plan.length >= MIN_STORIES_FOR_SECTIONS && cachedSec === null;
-  if (missing.length === 0 && !needSections) return { written, sections: cachedSec, status: plan.length === 0 ? "nothing-to-send" : "ok" };
+  const toStory = (w: Written | null): { headline: string; summary: string } | null => (w ? { headline: w.headline, summary: w.summary } : null);
+  const spec: PassSpec = { singles: (opts.singles ?? []).map(singleOf), existing: opts.existing ?? null, resort: opts.resort === true };
+  const pre = sectionsPrecheck(store, storyList().map(toStory), spec, model);
+  // Sections are asked for when there are enough items and the cache or the record has no answer (with stories still to write, a full pass is only known afterwards: counted in the estimate).
+  const needSections = pre.need;
+  if (missing.length === 0 && !needSections) return { written, sections: pre.cached, status: plan.length === 0 && pre.cached === null ? "nothing-to-send" : "ok" };
 
   const key = (deps.getKey() ?? "").trim();
   const trail = (rec: Omit<TrailRecord, "at" | "model" | "host">, host: string): void => {
@@ -502,13 +515,13 @@ export async function writeDigest(deps: LlmDeps, clusters: readonly Cluster[], o
   let reqs: BuiltRequest[];
   try {
     reqs = buildRequests(missing, settings, key);
-    if (reqs.length === 0) buildSectionsRequest([], settings, key); // only the sections request is left: check the settings the same way
+    if (reqs.length === 0) buildSectionsRequest([], settings, key); // only the sections requests are left: check the settings the same way
   } catch (e) {
     return fail(e instanceof LlmError ? e : new LlmError("config", "The request could not be built."), "");
   }
-  const est = estimateRun(reqs, model, needSections ? plan.length : 0, normaliseEndpoint(settings.endpoint)?.host ?? "");
+  const est = estimateRun(reqs, model, needSections ? estimatePass(pre.steps, storyList().map(toStory), spec.singles) : null, normaliseEndpoint(settings.endpoint)?.host ?? "");
   const postIds = reqs.flatMap((r) => r.items.flatMap((i) => i.postIds));
-  const stats = { postIds, clusters: est.stories, chars: reqs.reduce((k, r) => k + r.chars, 0), requests: est.requests + (needSections ? 1 : 0) };
+  const stats = { postIds, clusters: est.stories, chars: reqs.reduce((k, r) => k + r.chars, 0), requests: est.requests + est.sectionRequests };
   const cancelled = async (): Promise<Outcome> => {
     trail({ status: "cancelled", ...stats }, est.host);
     await deps.save(store).catch(() => undefined);
@@ -550,36 +563,21 @@ export async function writeDigest(deps: LlmDeps, clusters: readonly Cluster[], o
       break; // the batches after a failed one are not tried
     }
   }
-  // The second pass: only when every story has its headline and summary, and the cache has no answer for this headline set. Any problem leaves the plain front page.
-  let sections: Section[] | null = null;
+  // The sections pass: only when every story has its headline and summary. Any problem leaves the plain front page (or, for a later run, the sections as they were).
+  let sections: Section[] | null = pre.cached;
   let sectionsNote = "";
   if (needSections && !firstError) {
-    const stories = storiesForSections(storyList());
-    if (!stories) sectionsNote = "Sections were skipped: some stories came back without a headline.";
+    const stories = storyList().map(toStory);
+    if (stories.some((w) => w === null)) sectionsNote = "Sections were skipped: some stories came back without a headline.";
     else {
-      const cacheKey = sectionsCacheKey(stories, model);
-      sections = sectionsFromStore(store, storyList(), model);
-      if (!sections) {
-        try {
-          const sreq = buildSectionsRequest(stories, settings, key);
-          sentBodies.push(sreq.body);
-          stats.chars += sreq.chars;
-          let res;
-          try {
-            res = await deps.transport({ url: sreq.url, method: "POST", headers: sreq.headers, body: sreq.body, contentType: "application/json" });
-          } catch {
-            throw new LlmError("offline", "The provider could not be reached. Are you offline?");
-          }
-          if (res.status < 200 || res.status >= 300) throw mapFailure(res.status, res.headers, key);
-          usedTokens += usageOf(res.text) ?? Math.ceil((SECTIONS_SYSTEM_PROMPT.length + sreq.chars) / 4) + estimateSections(stories.length).outputTokens;
-          sections = readSections(res.text, stories.length);
-          store.sections[cacheKey] = { at: deps.now(), sections };
-          trimSectionsCache(store.sections);
-        } catch (e) {
-          sections = null;
-          sectionsNote = `Sections could not be made: ${redact(e instanceof LlmError ? e.message : "the answer was not usable.", [key])} Showing the front page.`;
-        }
-      }
+      const r = await runSectionPass(deps, settings, key, store, model, stories as Array<{ headline: string; summary: string }>, spec);
+      sections = r.sections;
+      sectionsNote = r.note;
+      sentBodies.push(...r.bodies);
+      stats.chars += r.chars;
+      stats.postIds.push(...r.sentSingles);
+      stats.requests = reqs.length + r.bodies.length;
+      usedTokens += r.tokens;
     }
   }
   const keys = Object.keys(store.entries);

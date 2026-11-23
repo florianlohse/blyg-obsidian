@@ -168,7 +168,7 @@ export function defaultSettings(flavour: "release" | "dev" = "release"): BlygSet
     mentions: { repoPath: "data/mentions.json" },
     webQuote: { ...DEFAULT_WEB_QUOTE },
     readerPane: { images: "click", font: "default", contrast: "normal", shareInbox: "", filter: { sort: "newest", source: null, unreadOnly: false, length: "any", repliesToMe: false } },
-    digest: { useAi: false, endpoint: "https://api.anthropic.com", model: "claude-sonnet-5-5", keySecretName: "", dailyTokenCeiling: 60000, time: "07:00" },
+    digest: { useAi: false, endpoint: "https://api.anthropic.com", model: "claude-sonnet-5-5", keySecretName: "", dailyTokenCeiling: 2000000, time: "07:00" },
     features: {},
     dev: { allowLiveStudio: false },
   };

@@ -173,7 +173,7 @@ describe("estimate, stored requests and tally", () => {
     const e = h.estimates[0] as Estimate;
     expect(e.sections).toBe(true);
     expect(e.requests).toBe(1);
-    expect(estimateLine(e)).toMatch(/1 request plus sections, about \d+ tokens/);
+    expect(estimateLine(e)).toMatch(/1 request plus 1 sections request, about \d+ tokens/);
     const t = h.store().trail[0];
     expect(t?.requests).toBe(2);
     expect(t?.bodies).toHaveLength(2);
