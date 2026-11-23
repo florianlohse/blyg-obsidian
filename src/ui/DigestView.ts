@@ -95,7 +95,7 @@ export class BlygDailyView extends ItemView {
   }
 
   /** Open a post in the reader: the position is kept first, so Back returns to the same place. */
-  private open(p: ReadingPost): void {
+  private openEntry(p: ReadingPost): void {
     this.saveScroll();
     void this.host.openPost(p, this.leaf);
   }
@@ -192,7 +192,7 @@ export class BlygDailyView extends ItemView {
       const head = root.createDiv({ cls: "blyg-daily-head" });
       head.createEl("button", { text: "Feed", cls: "blyg-daily-btn", attr: { title: "Back to the reader's feed" } }).addEventListener("click", () => void this.host.showFeed(this.leaf));
       if (this.pastCapped) root.createDiv({ cls: "blyg-daily-meta", text: CAPPED_NOTE });
-      drawPast(root, pastRec, this.byId, { open: (p) => this.open(p), section: (name, el) => this.sectionEls.set(name, el), go: (name) => this.goTo(name) });
+      drawPast(root, pastRec, this.byId, { open: (p) => this.openEntry(p), section: (name, el) => this.sectionEls.set(name, el), go: (name) => this.goTo(name) });
       return;
     }
     const head = root.createDiv({ cls: "blyg-daily-head" });
@@ -266,7 +266,7 @@ export class BlygDailyView extends ItemView {
         const row = s.createDiv({ cls: "blyg-daily-row" });
         const open = row.createEl("button", { cls: "blyg-daily-link", text: `${l.who} ${l.words} your item${l.headline ? `: ${l.headline}` : ""}` });
         open.addEventListener("click", () => {
-          if (l.post) this.open(l.post);
+          if (l.post) this.openEntry(l.post);
           else if (l.mention.sourcePage) this.host.openWeb(l.mention.sourcePage);
         });
         row.createDiv({ cls: "blyg-daily-meta", text: stamp(l.when) });
@@ -280,7 +280,7 @@ export class BlygDailyView extends ItemView {
       const s = this.section(root, "Corrections");
       for (const c of m.corrections) {
         const row = s.createDiv({ cls: "blyg-daily-row" });
-        row.createEl("button", { cls: "blyg-daily-link", text: c.headline }).addEventListener("click", () => this.open(c.post));
+        row.createEl("button", { cls: "blyg-daily-link", text: c.headline }).addEventListener("click", () => this.openEntry(c.post));
         row.createDiv({ cls: "blyg-daily-meta", text: `${c.post.authorName ?? c.post.subscriptionTitle} · ${c.note}` });
       }
     }
@@ -288,7 +288,7 @@ export class BlygDailyView extends ItemView {
       const s = this.section(root, "Retractions");
       for (const r of m.retractions) {
         const row = s.createDiv({ cls: "blyg-daily-row" });
-        row.createEl("button", { cls: "blyg-daily-link", text: r.headline }).addEventListener("click", () => this.open(r.post));
+        row.createEl("button", { cls: "blyg-daily-link", text: r.headline }).addEventListener("click", () => this.openEntry(r.post));
         row.createDiv({ cls: "blyg-daily-meta", text: `${r.post.authorName ?? r.post.subscriptionTitle} · withdrawn` });
       }
     }
@@ -298,9 +298,9 @@ export class BlygDailyView extends ItemView {
   private drawSingle(into: HTMLElement, p: ReadingPost, line?: string): void {
     const row = into.createDiv({ cls: `blyg-daily-row blyg-story-mixed${isUnread(p) ? "" : " blyg-is-read"}` });
     const main = row.createDiv({ cls: "blyg-story-main" });
-    if (line) main.createEl("button", { cls: "blyg-daily-link blyg-story-who blyg-story-line", text: line }).addEventListener("click", () => this.open(p));
+    if (line) main.createEl("button", { cls: "blyg-daily-link blyg-story-who blyg-story-line", text: line }).addEventListener("click", () => this.openEntry(p));
     else {
-      main.createEl("button", { cls: "blyg-daily-link blyg-story-who", text: authorOf(p) }).addEventListener("click", () => this.open(p));
+      main.createEl("button", { cls: "blyg-daily-link blyg-story-who", text: authorOf(p) }).addEventListener("click", () => this.openEntry(p));
       const first = firstSentence(ownWords(p));
       if (first) main.createDiv({ cls: "blyg-story-first", text: first });
     }
@@ -390,7 +390,7 @@ export class BlygDailyView extends ItemView {
         if (!shown) return;
         for (const p of rest.posts) {
           const row = list.createDiv({ cls: "blyg-daily-row blyg-daily-member" });
-          row.createEl("button", { cls: "blyg-daily-link blyg-daily-who", text: p.authorName ?? p.subscriptionTitle }).addEventListener("click", () => this.open(p));
+          row.createEl("button", { cls: "blyg-daily-link blyg-daily-who", text: p.authorName ?? p.subscriptionTitle }).addEventListener("click", () => this.openEntry(p));
           const preview = previewOf(p);
           if (preview) row.createDiv({ cls: "blyg-daily-preview", text: preview });
         }
@@ -433,7 +433,7 @@ export class BlygDailyView extends ItemView {
       if (!open) return;
       for (const p of c.posts) {
         const row = list.createDiv({ cls: `blyg-daily-row blyg-daily-member${fresh.has(p.remoteId) ? " blyg-is-new" : ""}${isUnread(p) ? "" : " blyg-is-read"}` });
-        row.createEl("button", { cls: "blyg-daily-link blyg-daily-who", text: `${p.authorName ?? p.subscriptionTitle}${p.isReply ? " (reply)" : ""}` }).addEventListener("click", () => this.open(p));
+        row.createEl("button", { cls: "blyg-daily-link blyg-daily-who", text: `${p.authorName ?? p.subscriptionTitle}${p.isReply ? " (reply)" : ""}` }).addEventListener("click", () => this.openEntry(p));
         const preview = previewOf(p);
         if (preview) row.createDiv({ cls: "blyg-daily-preview", text: preview });
       }
