@@ -478,3 +478,10 @@ describe("placement: a post goes to a section only when it fits", () => {
     expect(d[0]?.singles.map((p) => p.remoteId)).toEqual([c.remoteId, b.remoteId, a.remoteId]);
   });
 });
+
+describe("the view does not shadow Obsidian's own View methods", () => {
+  it("defines no open, close, load or unload of its own: Obsidian calls view.open(parentEl) to start a view, and an override with another meaning left the Daily blank", () => {
+    const own = Object.getOwnPropertyNames(BlygDailyView.prototype);
+    for (const name of ["open", "close", "load", "unload", "onload", "onunload", "setState", "getState"]) expect(own).not.toContain(name);
+  });
+});
