@@ -16,9 +16,9 @@ export function drawBar(root: HTMLElement, o: { date: string; kicker: string; st
   const title = row.createDiv({ cls: "blyg-daily-bartitle" });
   title.createEl("h1", { text: o.date, cls: "blyg-daily-date" });
   title.createDiv({ text: o.kicker, cls: "blyg-daily-kicker" });
-  drawModeToggle(row.createDiv({ cls: "blyg-modeslot" }), "digest", o.toggle);
   const menu = row.createEl("button", { cls: "blyg-daily-menu clickable-icon", attr: { "aria-label": "Digest menu", title: "Digest menu" } });
   setIcon(menu, "menu");
+  drawModeToggle(row.createDiv({ cls: "blyg-modeslot" }), "digest", o.toggle);
   const panel = bar.createDiv({ cls: "blyg-daily-panel" });
   const paint = (): void => {
     panel.toggleClass("is-open", o.state.open);

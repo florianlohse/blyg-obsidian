@@ -287,7 +287,7 @@ await runScenario({ data }, async (s) => {
     await wait(1000);
     const near = (a, b, tol) => a !== null && b !== null && Math.abs(a - b) <= tol;
     check(slotFeed && slotMentions && slotDigest && near(slotFeed.r, slotMentions.r, 1) && near(slotFeed.t, slotMentions.t, 2) && near(slotFeed.r, slotDigest.r + bar, 1),
-      `${label}: the Feed | Digest toggle is in one slot in the feed with a list (Sort & filter shown), the Mentions tab (none) and the digest (same right edge, the digest\'s row top is its own: the masthead is above it; right edge ${slotFeed?.r}, ${slotMentions?.r}, ${slotDigest?.r}; top ${slotFeed?.t}, ${slotMentions?.t}, ${slotDigest?.t})`);
+      `${label}: the Feed | Digest toggle is in one slot in the feed with a list (Sort & filter shown), the Mentions tab (none) and the digest (same right edge, the digest\'s bar has its own top; right edge ${slotFeed?.r}, ${slotMentions?.r}, ${slotDigest?.r}; top ${slotFeed?.t}, ${slotMentions?.t}, ${slotDigest?.t})`);
     check(verClear, `${label}: the version label does not overlap the toggle (${JSON.stringify(verRect)} against ${JSON.stringify(slotFeed)})`);
     check(inView(feedPost) && inView(storyPost), `${label}: in an open post (feed and story) every header control is inside the viewport and nothing scrolls sideways (feed ${JSON.stringify(feedPost.view)}, story ${JSON.stringify(storyPost.view)}; right edges feed ${Object.keys(CONTROLS).map((k) => feedPost[k]?.r)}, story ${Object.keys(CONTROLS).map((k) => storyPost[k]?.r)})`);
     const same = Object.keys(CONTROLS).filter((k) => !(feedPost[k] && storyPost[k] && near(feedPost[k].l, storyPost[k].l, 1) && near(feedPost[k].t, storyPost[k].t, 1)));
