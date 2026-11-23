@@ -2,7 +2,7 @@
 //   Front page: the stories (clusters of two or more posts). Mixed bag: the posts that did not fit a story. Letters: others' words about the owner's own items (mentions). Corrections: posts revised after the first version.
 //   Retractions: posts withdrawn. (From your notes: a later increment.)
 // The reader's data carries no change note for a revised version (checked 2026-11: the Studio's reading rows have only `version` and `readVersion`), so `note` is ""
-// unless a row brings `changeNote`; a correction always says "revised to vN" (`revised`) and, when the owner had read an older version, which one.
+// unless a row brings `changeNote` (the view then asks the Studio's history of the imported item once per item and version: digest/changeNotes.ts); a correction always says "revised to vN" (`revised`) and, when the owner had read an older version, which one.
 import { relationWords, type InboundMention, type ReadingPost } from "../studio/reading";
 import { clusterPosts, firstSentence, postTime, type Cluster } from "./cluster";
 import { ownWords } from "./quotes";

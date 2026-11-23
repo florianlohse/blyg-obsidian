@@ -184,6 +184,16 @@ describe("studio client", () => {
     expect((await client.search({})).kind).toBe("forbidden");
   });
 
+  it("reads the change notes of an imported item from its history (a GET), keeps only entries with a note, and refuses a shape it does not know", async () => {
+    const { client, studio } = setup();
+    studio.forced.set("GET /api/imports/sub1/x/history", { status: 200, text: JSON.stringify({ current: 3, withdrawn: false, changelog: [{ version: 1, at: "t", note: null, pinned: false, generated: false }, { version: 2, at: "t", note: "  ", pinned: false, generated: false }, { version: 3, at: "t", note: "Fixed a figure", pinned: false, generated: true }, { version: "x", note: "bad" }] }) });
+    expect(await client.importedNotes("sub1", "x")).toEqual({ kind: "ok", value: { notes: [{ version: 3, note: "Fixed a figure" }] } });
+    studio.forced.set("GET /api/imports/sub1/x/history", { status: 200, text: '{"changelog":"no"}' });
+    expect(await client.importedNotes("sub1", "x")).toMatchObject({ kind: "error", status: 200 });
+    studio.forced.set("GET /api/imports/sub1/x/history", { status: 404, text: '{"code":"not-found"}' });
+    expect(await client.importedNotes("sub1", "x")).toEqual({ kind: "not-found" });
+  });
+
   it("reads an imported item, and says not-found for one it does not hold", async () => {
     const { client, studio } = setup();
     studio.importItem({ remote_id: "095s4h48j67mnbf6hq8vatc2d4", content_md: "Imported words.", version: 3 });
