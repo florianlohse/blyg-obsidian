@@ -2,6 +2,7 @@
 // nothing for the first time in this session (nothing was read yet, and no post is being opened), and when the person presses Refresh. A reader made again to show a post (from
 // the digest, from a share) or again for the feed, or Back, reads the list saved on this device and asks nothing: no walk, no check, no list of your own posts.
 import type { InboundMention, ReadingPost } from "../studio/reading";
+import type { SyncMemory } from "./readerSync";
 
 /** Plugin-session memory: the Studio has been asked for the list once, whatever it answered (by any reader view). Not stored: a restart of Obsidian is a new session. */
 export interface Saved {
@@ -12,14 +13,19 @@ export interface Saved {
 }
 
 /** `list`: the last list a reader view held, so a reader made again (Feed after Digest) starts from it, newer than the file and also when the file has no posts to keep. */
-const memory: { loaded: boolean; list: Saved | null } = { loaded: false, list: null };
+const memory: { loaded: boolean; list: Saved | null; sync: SyncMemory } = { loaded: false, list: null, sync: freshSync() };
+function freshSync(): SyncMemory {
+  return { lastFullAt: 0, readingMoved: false, movedWithoutNew: false };
+}
+/** What the Studio's list reads have found out so far this session (when the whole window was last read, whether the counters moved): the feed and the digest share it, so a Refresh in one chooses its read as it would in the other. */
+export const sessionSync = (): SyncMemory => memory.sync;
 export function noteListLoaded(list?: Saved): void {
   memory.loaded = true;
   if (list) memory.list = list;
 }
 export const listLoadedThisSession = (): boolean => memory.loaded;
 /** For tests. */
-export const forgetSession = (): void => void ((memory.loaded = false), (memory.list = null));
+export const forgetSession = (): void => void ((memory.loaded = false), (memory.list = null), (memory.sync = freshSync()));
 
 export interface StartPorts {
   /** False once the view was closed while Obsidian was still starting. */

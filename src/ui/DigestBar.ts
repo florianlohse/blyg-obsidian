@@ -10,7 +10,7 @@ export interface DigestBar {
 }
 
 /** Whether the panel is open is kept by the caller (`state`), so a redraw keeps it. */
-export function drawBar(root: HTMLElement, o: { date: string; kicker: string; state: { open: boolean }; toggle: (m: ReaderMode) => void }): DigestBar {
+export function drawBar(root: HTMLElement, o: { date: string; kicker: string; state: { open: boolean }; toggle: (m: ReaderMode) => void; refresh?: { hint: string; click: () => void; made: (btn: HTMLElement) => void } }): DigestBar {
   const bar = root.createDiv({ cls: "blyg-daily-masthead blyg-daily-bar" });
   const row = bar.createDiv({ cls: "blyg-daily-barrow" });
   const title = row.createDiv({ cls: "blyg-daily-bartitle" });
@@ -18,6 +18,13 @@ export function drawBar(root: HTMLElement, o: { date: string; kicker: string; st
   title.createDiv({ text: o.kicker, cls: "blyg-daily-kicker" });
   const menu = row.createEl("button", { cls: "blyg-daily-menu clickable-icon", attr: { "aria-label": "Digest menu", title: "Digest menu" } });
   setIcon(menu, "menu");
+  if (o.refresh) {
+    // Refresh is the same action as the feed's: an icon in the bar, always in reach (the menu keeps its explained entry too).
+    const r = row.createEl("button", { cls: "blyg-daily-refresh clickable-icon", attr: { "aria-label": "Refresh", title: o.refresh.hint } });
+    setIcon(r, "refresh-cw");
+    r.addEventListener("click", o.refresh.click);
+    o.refresh.made(r);
+  }
   drawModeToggle(row.createDiv({ cls: "blyg-modeslot" }), "digest", o.toggle);
   const panel = bar.createDiv({ cls: "blyg-daily-panel" });
   const paint = (): void => {
