@@ -43,6 +43,7 @@ Which check fails when an invariant is broken (each claim below was checked by g
 ## Working here
 
 - Branch from `main` as `claude/<topic>` (or your own name); open a pull request into `main`; never push to `main` directly.
+- **Merging:** a pull request is merged only when every required check is green (`check`, `guard`, `verify`, `declares`, `ticked`, `e2e (pinned)`, `e2e (newest)`, `obsidian-smoke`, `obsidian-ui`); `obsidian-ui-newest` is advisory. Branch protection on `main` enforces this; agents never merge and never bypass it.
 - Every pull request body has two sections, checked by CI (`.github/pull_request_template.md`): `## User-facing note` (what people who use the plugin will notice, or `none`) and `## Device steps` (0 to 3 steps the maintainer does on a device, or `none: covered by tests`).
 - **This repository is public: every push is a publication.** Commit messages and pull request bodies describe the code and may name plan IDs; they carry no internal reasoning, no private names and no secrets. Before you push, run the leak scan (the same one CI runs):
 
