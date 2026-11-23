@@ -377,11 +377,32 @@ await runScenario({ data }, async (s) => {
   await statesPass("desktop layout", deskRef, false);
   await s.phone();
   const cdp = await page.context().newCDPSession(page);
+  if (process.env.E2E_CPU_THROTTLE) await cdp.send("Emulation.setCPUThrottlingRate", { rate: Number(process.env.E2E_CPU_THROTTLE) }); // (a slower machine, to try the timing: E2E_CPU_THROTTLE=4)
   for (const [w, h] of widths) {
     await cdp.send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 2, mobile: true });
     await wait(1500);
     refs[w] = await layoutPass(`phone layout ${w} px`);
     await statesPass(`phone layout ${w} px`, refs[w], false);
+  }
+  // the feed with nothing to show (last: a reader that has held a list is not made empty again by a file): the toggle stays where the feed with a list had it, at each width
+  await startWith([]);
+  for (const [w, h] of widths) {
+    await cdp.send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 2, mobile: true });
+    await wait(1500);
+    const empty = await box(".blyg-reader-header .blyg-modeslot");
+    await page.waitForFunction(() => document.querySelectorAll(".blyg-reader-card").length === 0, undefined, { timeout: 5000 }).catch(() => {});
+    const cards = (await page.$$(".blyg-reader-card")).length;
+    const dom = cards === 0 ? "" : ` ${await page.evaluate(() => JSON.stringify({ leaves: ["blyg-reader", "blyg-daily"].map((t) => `${t}:${window.app.workspace.getLeavesOfType(t).length}`), mode: window.app.plugins.plugins.blyg.settings.readerPane.mode, back: !!document.querySelector(".blyg-reader-header .blyg-reader-back"), texts: [...document.querySelectorAll(".blyg-reader-card")].map((c) => c.textContent.slice(0, 60)) }))}`;
+    check(cards === 0 && empty && refs[w] && Math.abs(empty.r - refs[w].r) <= 1 && Math.abs(empty.t - refs[w].t) <= 2, `phone layout ${w} px: the empty feed has the toggle in the same slot as the feed with a list (${cards} cards${dom}; right edge ${empty?.r} against ${refs[w]?.r}; top ${empty?.t} against ${refs[w]?.t})`);
+  }
+  // a larger Obsidian font size (24 px), last because the setting stays in the vault: the toggle keeps the right end of the first row in every state, at the widest and the narrowest phone
+  await page.evaluate(() => { window.app.vault.setConfig("baseFontSize", 24); window.app.vault.setConfig("baseFontSizeAction", true); window.app.updateFontSize?.(); });
+  for (const [w, h] of [[393, 852], [320, 700]]) {
+    await cdp.send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 2, mobile: true });
+    await wait(1500);
+    await startWith(posts);
+    const big = await page.evaluate(() => { const r = document.querySelector(".blyg-reader-header .blyg-modeslot")?.getBoundingClientRect(); return r ? { r: r.right, t: r.top } : null; });
+    await statesPass(`phone layout ${w} px`, big, true);
   }
   // ---- The quick menu (DG13): a long press with real touch events (CDP, phone layout) on a feed card, a post of the digest and a story card opens the menu; a scroll never does;
   // the release opens nothing; Mark read writes exactly one request. (Chromium emulation, not iOS.)
@@ -468,28 +489,5 @@ await runScenario({ data }, async (s) => {
   await page.waitForSelector(".blyg-reader-header .blyg-reader-back", { timeout: 20000 });
   check(true, "Open first post opens the story's first post");
   await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: false });
-  // leave nothing open: the post that "Open first post" opened would be restored with the layout, and its reply cards are ".blyg-reader-card" too (the empty-feed check below counts cards)
-  await page.evaluate(() => { for (const t of ["blyg-reader", "blyg-daily"]) window.app.workspace.detachLeavesOfType(t); window.app.workspace.requestSaveLayout(); });
-  await page.evaluate(async () => { const b = window.app.plugins.plugins.blyg; b.settings.readerPane.mode = "feed"; await b.saveSettings(); }); // (the digest steps left the mode on Digest; the checks below start from the Feed)
-  await wait(1500);
-
-  // the feed with nothing to show (last: a reader that has held a list is not made empty again by a file): the toggle stays where the feed with a list had it, at each width
-  await startWith([]);
-  for (const [w, h] of widths) {
-    await cdp.send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 2, mobile: true });
-    await wait(1500);
-    const empty = await box(".blyg-reader-header .blyg-modeslot");
-    const cards = (await page.$$(".blyg-reader-card")).length;
-    check(cards === 0 && empty && refs[w] && Math.abs(empty.r - refs[w].r) <= 1 && Math.abs(empty.t - refs[w].t) <= 2, `phone layout ${w} px: the empty feed has the toggle in the same slot as the feed with a list (${cards} cards; right edge ${empty?.r} against ${refs[w]?.r}; top ${empty?.t} against ${refs[w]?.t})`);
-  }
-  // a larger Obsidian font size (24 px), last because the setting stays in the vault: the toggle keeps the right end of the first row in every state, at the widest and the narrowest phone
-  await page.evaluate(() => { window.app.vault.setConfig("baseFontSize", 24); window.app.vault.setConfig("baseFontSizeAction", true); window.app.updateFontSize?.(); });
-  for (const [w, h] of [[393, 852], [320, 700]]) {
-    await cdp.send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 2, mobile: true });
-    await wait(1500);
-    await startWith(posts);
-    const big = await page.evaluate(() => { const r = document.querySelector(".blyg-reader-header .blyg-modeslot")?.getBoundingClientRect(); return r ? { r: r.right, t: r.top } : null; });
-    await statesPass(`phone layout ${w} px`, big, true);
-  }
   check(errors.length === 0, `no error was thrown on the page ${errors.join(" | ")}`);
 });
