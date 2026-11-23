@@ -9,7 +9,10 @@ import { isUnread, type InboundMention, type ReadingPost } from "../studio/readi
 import { plainText, renderForeign, type ImageMode } from "./defang";
 import { activeFilters, arrange, isReplyToMine, OWN_SOURCE, readFilter, cardOf, DEFAULT_FILTER, frameable, LENGTH_LABELS, postOfQuote, readingTimeLabel, relativeTime, SORT_LABELS, sourcesOf, type FeedFilter, type FeedLength, type FeedSort } from "./readerFeed";
 import { type ReaderFont } from "./readerFonts";
-import { drawViewSwitch, ReturnPoint, whenIdle } from "./readerExtras";
+import { ReturnPoint, whenIdle } from "./readerExtras";
+import { drawModeToggle, setReaderMode, switchMode } from "./readerMode";
+import { noteListLoaded, startReader } from "./readerStart";
+import { drawSteps, StoryWalk, stepCount, type Step } from "./readerSteps";
 import { CONTRASTS, type ReaderContrast } from "./readerLook";
 import { responseChip, responseIndex, type ResponseEntry } from "./readerResponses";
 import { changedCount, chooseWalk, keepOlderTail, keepOwnPosts, knownOf, mergeFresh, READER_KEEP, type OlderResult, type SyncMemory } from "./readerSync";
@@ -83,7 +86,8 @@ export interface ReaderHost extends FollowHost {
   /** Look an item of another blyg up (through the owner's Studio) and open its page in the browser; false when it cannot be found. */
   openQuotedItem(origin: string, itemId: string): Promise<boolean>;
   /** The owner's own items (for the replies they wrote to a post); empty when they cannot be had. Kept for a few minutes by the host. */
-  myItems(): Promise<StudioListedItem[]>;
+  /** The owner's own items (the replies chip): `cached` only what this session kept, `ask` that or one request, `fresh` always one request (Refresh). */
+  myItems(mode: "cached" | "ask" | "fresh"): Promise<StudioListedItem[]>;
   /** Open the note of one of the owner's items in Obsidian; false when no note of this vault holds it. */
   openOwnItem(itemId: string): Promise<boolean>;
   markRead(post: ReadingPost): Promise<ReadResult>; // needs the token permission `reading:state`; the message says so when it is missing
@@ -203,32 +207,35 @@ export class BlygReaderView extends ItemView {
     this.app.workspace.onLayoutReady(() => whenIdle(() => void this.start()));
   }
 
-  /** What follows the opening: the owner's own items, the list saved by the last session, then the Studio behind it. Never throws: a failure is a status line. */
-  private async start(): Promise<void> {
-    if (!this.contentEl.isConnected) return; // closed while Obsidian was still starting
-    try {
-      this.loadMine();
-      const saved = await this.host.readCache().catch(() => null);
-      if (saved && this.data === null) {
+  /** What follows the opening (ui/readerStart.ts): the Studio is asked only when the reader opens from nothing for the first time this session; Never throws: a failure is a status line. */
+  private start(): Promise<void> {
+    const forPost = (): boolean => this.shown !== null || this.returnTo.active;
+    if (!forPost()) setReaderMode("feed");
+    return startReader({
+      alive: () => this.contentEl.isConnected, // closed while Obsidian was still starting
+      forPost,
+      hasData: () => this.data !== null,
+      readCache: () => this.host.readCache(),
+      mine: (ask) => this.loadMine(ask ? "ask" : "cached"),
+      showSaved: (saved, updating) => {
         this.data = { posts: saved.posts, mentions: saved.mentions, note: "", studioOrigin: saved.studioOrigin, fromCache: true };
-        // The last-updated line is there from the first moment: the age of the saved list, then (when the Studio has answered) "just now".
-        this.updatedAt = saved.savedAt;
-        this.setStatus(`${this.updatedText()} · updating…`);
+        this.dropGoneSource(saved.posts);
+        this.updatedAt = saved.savedAt; // the age of the saved list, then (when the Studio has answered) "just now"
+        this.setStatus(updating ? `${this.updatedText()} · updating…` : this.updatedText());
         this.draw();
+      },
+      walk: async () => {
         this.busy(+1);
         try {
-          // The saved list may be hours old and read marks may have changed elsewhere: this one walk reads the whole window, behind the list already on screen.
-          await this.reload(true, { walk: "full", mentions: true });
+          await this.reload(true, { walk: "full", mentions: true }); // behind the list already on screen
         } finally {
           this.busy(-1);
         }
         if (this.status.endsWith(" · updating…")) this.setStatus(this.afterReadText());
-        return;
-      }
-      await this.reload();
-    } catch {
-      this.setStatus("The reader could not start. Press Refresh to try again.");
-    }
+      },
+      load: () => this.reload(),
+      failed: () => this.setStatus("The reader could not start. Press Refresh to try again."),
+    });
   }
 
   override async onClose(): Promise<void> {
@@ -324,13 +331,10 @@ export class BlygReaderView extends ItemView {
         // What the first mentions show (the post and the item it is about) is fetched in the background now, a few at a time, so the Mentions tab opens filled.
         for (const m of mentions.slice(0, 8)) void this.loadMention(m);
         this.host.writeCache({ posts, mentions });
-        // A blyg the Studio no longer reads cannot stay chosen: the feed would be empty with no way to tell why.
-        if (this.filter.source !== null && !posts.some((q) => (this.filter.source === OWN_SOURCE ? q.own === true : q.subscriptionId === this.filter.source))) {
-          this.filter.source = null;
-          this.saveFilter();
-        }
+        this.dropGoneSource(posts);
         // (A post opened from the first pages keeps its own status line, e.g. "Opening the page…".)
         this.updatedAt = Date.now();
+        noteListLoaded({ posts, mentions, savedAt: this.updatedAt, studioOrigin: this.data.studioOrigin ?? "" });
         if (!quiet && (this.status === "" || this.status.startsWith("Loading"))) this.setStatus(this.afterReadText());
       } else if (!quiet) {
         this.data = held;
@@ -343,6 +347,13 @@ export class BlygReaderView extends ItemView {
     }
     this.drawHeader();
     if (!this.shown) this.drawBody(); // an open post is left alone: its page would load again
+  }
+
+  /** A blyg the Studio no longer reads cannot stay chosen: the feed would be empty with no way to tell why. */
+  private dropGoneSource(posts: ReadingPost[]): void {
+    if (this.filter.source === null || posts.some((q) => (this.filter.source === OWN_SOURCE ? q.own === true : q.subscriptionId === this.filter.source))) return;
+    this.filter.source = null;
+    this.saveFilter();
   }
 
   /** Note what the Studio's change counters say now: did the reading list move since the last look? */
@@ -364,6 +375,7 @@ export class BlygReaderView extends ItemView {
     const run = ++this.checking;
     this.busy(+1);
     try {
+      this.loadMine("fresh"); // Refresh is the one moment the owner's own items are read again
       const before = await this.host.changeMarks();
       if (before !== null) this.noteMarks(before);
       const asked = await this.host.checkForNew(force);
@@ -580,14 +592,16 @@ export class BlygReaderView extends ItemView {
   /** The reading column of the open post (the replies are drawn at its end). */
   private postColumn: HTMLElement | null = null;
 
-  private loadMine(): void {
-    if (this.mineAsked) return;
-    this.mineAsked = true;
-    void this.host.myItems().then((items) => {
+  /** The owner's own items for the replies chip. Never by itself after the first read of the session: `cached` takes only what is held, Refresh asks `fresh`. */
+  private loadMine(mode: "cached" | "ask" | "fresh"): void {
+    if (mode === "ask" && this.mineAsked) return;
+    if (mode !== "cached") this.mineAsked = true;
+    void this.host.myItems(mode).then((items) => {
+      if (mode === "cached" && items.length === 0) return;
       this.mine = items;
       this.mineIds = new Set(items.map((i) => i.id));
       if (this.filter.repliesToMe && !this.shown) {
-            this.drawBody();
+        this.drawBody();
       }
       if (this.shown) {
         this.drawHeader();
@@ -595,9 +609,6 @@ export class BlygReaderView extends ItemView {
       } else if (this.tab === "stream") for (const q of this.data?.posts ?? []) this.refreshPost(q); // the green badges of the feed's cards
     }).catch(() => {
       this.mine = [];
-    }).finally(() => {
-      // asked again after a few minutes, not for every post
-      window.setTimeout(() => (this.mineAsked = false), 5 * 60_000);
     });
   }
 
@@ -656,22 +667,22 @@ export class BlygReaderView extends ItemView {
 
   /** The keys of the posts in the order the feed showed when the open post was opened from it (its blyg, length and unread choices applied): ‹ › step through it. */
   private stepKeys: string[] | null = null;
-  /** True once a long press on Next has done its work, so the tap that ends the press does nothing more. */
-  private longPressed = false;
-
-  private stepIndex(p: ReadingPost): { keys: string[]; at: number } | null {
+  /** Where the open post is in what Next and Previous walk: its story's posts (opened from a story of the digest), else the feed's order. */
+  private stepIndex(p: ReadingPost): Step | null {
+    const story = this.walk.where(p);
+    if (story) return story;
     if (!this.data || !this.inFeed(p)) return null;
     this.stepKeys ??= arrange(this.data.posts, this.filter, this.mineIds).map(keyOf);
     const at = this.stepKeys.indexOf(keyOf(p));
     return at < 0 ? null : { keys: this.stepKeys, at };
   }
 
-  /** Open the post before or after the open one in the feed's order. `markRead`: the open one counts as read first (a long press on Next). */
+  /** Open the post before or after the open one in that order. `markRead`: the open one counts as read first (a long press on Next). */
   private async stepTo(p: ReadingPost, delta: 1 | -1, markRead: boolean): Promise<void> {
     const where = this.stepIndex(p);
     if (!where || this.moving) return;
     const key = where.keys[where.at + delta];
-    const target = key === undefined ? null : (this.data?.posts.find((q) => keyOf(q) === key) ?? null);
+    const target = key === undefined ? null : (where.story !== undefined ? this.walk.post(key) : null) ?? this.data?.posts.find((q) => keyOf(q) === key) ?? null;
     if (!target) return;
     this.moving = true;
     try {
@@ -684,38 +695,12 @@ export class BlygReaderView extends ItemView {
     }
   }
 
-  /** Previous and Next, in the corner of the thumb row. A tap steps through the feed; holding Next marks the open post read and goes on. */
-  private drawSteps(row: HTMLElement, p: ReadingPost, where: { keys: string[]; at: number }): void {
-    const steps = row.createDiv({ cls: "blyg-reader-steps" });
-    const prev = this.button(steps, "", () => this.stepTo(p, -1, false), { cls: "blyg-reader-step blyg-reader-step-prev", disabled: where.at <= 0, title: "The post before this one in the feed" });
-    this.addIcon(prev, "chevron-left");
-    const next = this.button(steps, "Next", () => {
-      if (this.longPressed) {
-        this.longPressed = false;
-        return;
-      }
-      return this.stepTo(p, 1, false);
-    }, { cls: "blyg-reader-step blyg-reader-step-next", disabled: where.at >= where.keys.length - 1, title: "The post after this one in the feed. Hold to mark this one read and go on." });
-    const icon = createSpan({ cls: "blyg-reader-icon" });
-    setIcon(icon, "chevron-right");
-    next.append(icon);
-    let timer = 0;
-    const cancel = (): void => window.clearTimeout(timer);
-    next.addEventListener("pointerdown", () => {
-      this.longPressed = false;
-      timer = window.setTimeout(() => {
-        this.longPressed = true;
-        void this.stepTo(p, 1, true);
-      }, 500);
-    });
-    for (const ev of ["pointerup", "pointerleave", "pointercancel"]) next.addEventListener(ev, cancel);
-    next.addEventListener("contextmenu", (e) => e.preventDefault());
-  }
-
   /** The posts you came from by following a quote to its source: Back goes to the last of them, and to the list when there is none. */
   private trail: ReadingPost[] = [];
   /** Set by the digest when it opens a post here: Back, once the trail is used up, returns to the digest. */
   readonly returnTo = new ReturnPoint();
+  /** Set by the digest when it opens a post of a story: Next and Previous walk that story (ui/readerSteps.ts). */
+  readonly walk = new StoryWalk();
 
   private closePost(): void {
     const back = this.trail.pop();
@@ -726,6 +711,7 @@ export class BlygReaderView extends ItemView {
     if (this.returnTo.run()) return;
     this.shown = null;
     this.stepKeys = null;
+    this.walk.clear();
     this.drawHeader();
     this.drawBody();
   }
@@ -734,24 +720,25 @@ export class BlygReaderView extends ItemView {
    * Open a post from the feed (or the next one): the page state starts afresh, the post starts at its top. `via`: "quote" follows a quote to its source
    * (the post you leave is kept for Back), "back" is that Back; anything else starts a fresh trail.
    */
-  openPost(p: ReadingPost, via: "feed" | "quote" | "back" | "step" = "feed"): void {
+  openPost(p: ReadingPost, via: "feed" | "quote" | "back" | "step" | "digest" = "feed"): void {
     if (this.shown === null) this.feedScroll = this.scrollEl?.scrollTop ?? 0;
     if (via === "quote" && this.shown) this.trail.push(this.shown);
-    else if (via === "feed" || via === "step") this.trail = [];
-    if (via === "feed") this.stepKeys = null; // the order to step through is taken from the feed as it is when a post is opened from it
+    else if (via === "feed" || via === "step" || via === "digest") this.trail = [];
+    if (via === "feed") this.walk.clear();
+    if (via === "feed" || via === "digest") this.stepKeys = null; // the order to step through is taken from the feed as it is when a post is opened from it
     this.responsesEl = null;
     this.shown = p;
     this.selected = "";
     this.drawHeader();
     this.drawBody();
-    this.loadMine();
+    this.loadMine("cached"); // never a request of its own: the list of your own items is read with the list
     this.checkFetched(p);
   }
 
   /** A post that did not come from the feed (a mention's, a quote's): ask whether the Studio really holds it, and say so in the header when it does not (S15-H). */
   private checkFetched(p: ReadingPost): void {
     const key = keyOf(p);
-    if (p.subscriptionId === "" || this.inFeed(p) || this.fetchChecked.has(key)) return;
+    if (this.data === null || p.subscriptionId === "" || this.inFeed(p) || this.fetchChecked.has(key)) return; // (no list yet: the reader was made to show this post, nothing is asked)
     this.fetchChecked.add(key);
     void this.host.isImported(p).then((held) => {
       if (held !== false) return;
@@ -840,6 +827,7 @@ export class BlygReaderView extends ItemView {
       }, { active: this.tab === id });
     }
     row.createDiv({ cls: "blyg-reader-spacer" });
+    drawModeToggle(row, "feed", (m) => switchMode(this.leaf, m));
     const canFilter = this.tab === "stream" && this.data !== null && this.data.posts.length > 0;
     if (canFilter) {
       const n = activeFilters(this.filter);
@@ -863,7 +851,6 @@ export class BlygReaderView extends ItemView {
 
     // Two rows: the three choices side by side, then the two switches as chips and "Clear" at the end.
     const controls = h.createDiv({ cls: "blyg-reader-controls" });
-    drawViewSwitch(controls, this.leaf);
     const select = (label: string, options: Array<[string, string]>, value: string, set: (v: string) => void, isSet: boolean, after: () => void = () => this.drawBody()): void => {
       // A choice that differs from the start value is drawn in the accent colour, like an active chip; the others stay grey.
       const el = controls.createEl("select", { cls: `dropdown blyg-reader-select${isSet ? " is-set" : ""}`, attr: { "aria-label": label, title: label } });
@@ -948,11 +935,11 @@ export class BlygReaderView extends ItemView {
       this.button(row, "Open note", async () => {
         if (!(await this.host.openOwnItem(p.remoteId))) this.setStatus("No note of this vault holds this post.");
       }, { title: "Open the note this post was published from" });
-      if (where) this.stepCount(row, where);
+      if (where) stepCount(row, where);
     } else {
       // The read mark is the feed card's own: a ring while unread, a green check once read. The place in the feed ("3 of 24") sits beside it.
       this.readCheck(row, p, unread, { disabled: p.withdrawn || !held });
-      if (where) this.stepCount(row, where);
+      if (where) stepCount(row, where);
     }
     row.createDiv({ cls: "blyg-reader-spacer" });
     this.replyBtn = this.button(row, "Reply", () => {
@@ -961,7 +948,7 @@ export class BlygReaderView extends ItemView {
     }, { disabled: p.withdrawn || !(held || isUnfollowedPost(p)), cls: "blyg-reader-replybtn", title: p.own === true ? "Your own post: write the follow-up in your vault" : isUnfollowedPost(p) ? unfollowedReplyTitle : held ? "Reply in Obsidian: a new thread that answers this post" : fetched ? "Subscribe to this blyg in your Studio to reply to its posts from here." : "Your Studio has not fetched this post yet." });
     if (where) {
       row.createDiv({ cls: "blyg-reader-spacer" });
-      this.drawSteps(row, p, where);
+      drawSteps(row, where, { button: (...a) => this.button(...a), addIcon: (el, i) => this.addIcon(el, i), step: (d, m) => this.stepTo(p, d, m) });
     }
     // Under the bar, while a passage is selected: what Reply will quote (the button itself never changes its words).
     this.replyHint = h.createDiv({ cls: "blyg-reader-replyhint" });
@@ -987,13 +974,6 @@ export class BlygReaderView extends ItemView {
       void this.setRead(p, unread);
     });
     return check;
-  }
-
-  /** "3 of 24": where the open post is in the feed's order. */
-  private stepCount(parent: HTMLElement, where: { keys: string[]; at: number }): void {
-    const count = parent.createSpan({ cls: "blyg-reader-stepcount" });
-    count.createEl("strong", { text: String(where.at + 1) });
-    count.appendText(` of ${where.keys.length}`);
   }
 
   /** Draw the pieces of a line with " · " between them. */

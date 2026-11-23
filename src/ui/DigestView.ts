@@ -15,6 +15,8 @@ import { byLine, contentLine } from "../digest/singleLine";
 import { markable, realSleep, sharedMarks, watchMarks, type MarkQueue } from "../digest/markQueue";
 import { forgetScroll, recalledScroll, rememberScroll, scrollKey, setStoryUnfolded, storyUnfolded, takeJump } from "../digest/scrollMemory";
 import { drawToc } from "./DigestToc";
+import { drawModeToggle, setReaderMode } from "./readerMode";
+import { publishPlacement } from "../digest/placement";
 import { isUnread, type InboundMention, type ReadingPost } from "../studio/reading";
 import type { PastEdition } from "../digest/history";
 import { CAPPED_NOTE } from "../digest/history";
@@ -34,7 +36,7 @@ export interface DigestHost {
   /** The reader's font setting; the digest's type follows it. */
   font(): ReaderFont;
   /** Open a post in the reader, in this leaf, like a feed card; the reader's Back returns to the digest. */
-  openPost(post: ReadingPost, leaf: WorkspaceLeaf): Promise<void>;
+  openPost(post: ReadingPost, leaf: WorkspaceLeaf, story?: { title: string; posts: readonly ReadingPost[] }): Promise<void>;
   /** Show the reader's feed in this leaf. */
   showFeed(leaf: WorkspaceLeaf): Promise<void>;
   openWeb(url: string): void;
@@ -92,6 +94,7 @@ export class BlygDailyView extends ItemView {
   }
   override async onOpen(): Promise<void> {
     this.contentEl.addClass("blyg-daily");
+    setReaderMode("digest"); // this leaf shows the digest now: the reader's mode is the Digest until the person switches back
     watchMarks({ change: () => this.readPainters.forEach((f) => f()), reverted: (m) => this.say(m) });
     await this.refresh();
   }
@@ -116,9 +119,9 @@ export class BlygDailyView extends ItemView {
   }
 
   /** Open a post in the reader: the position is kept first, so Back returns to the same place. */
-  private openEntry(p: ReadingPost): void {
+  private openEntry(p: ReadingPost, story?: { title: string; posts: readonly ReadingPost[] }): void {
     this.saveScroll();
-    void this.host.openPost(p, this.leaf);
+    void this.host.openPost(p, this.leaf, story);
   }
 
   private async refresh(): Promise<void> {
@@ -200,6 +203,7 @@ export class BlygDailyView extends ItemView {
     this.saveScroll();
     this.sectionEls = new Map();
     this.readPainters = [];
+    publishPlacement(undefined, null); // set again by a page with sections
     root.empty();
     for (const f of ["default", "serif", "sans", "mono"] as const) root.toggleClass(`is-font-${f}`, f === this.host.font());
     const mast = root.createDiv({ cls: "blyg-daily-masthead" });
@@ -213,15 +217,13 @@ export class BlygDailyView extends ItemView {
       this.render(model);
     });
     if (pastRec) {
-      const head = root.createDiv({ cls: "blyg-daily-head" });
-      head.createEl("button", { text: "Feed", cls: "blyg-daily-btn", attr: { title: "Back to the reader's feed" } }).addEventListener("click", () => void this.host.showFeed(this.leaf));
+      drawModeToggle(root.createDiv({ cls: "blyg-daily-head" }), "digest", () => void this.host.showFeed(this.leaf));
       if (this.pastCapped) root.createDiv({ cls: "blyg-daily-meta", text: CAPPED_NOTE });
       drawPast(root, pastRec, this.byId, { open: (p) => this.openEntry(p), section: (name, el) => this.sectionEls.set(name, el), go: (name) => this.goTo(name) });
       return;
     }
     const head = root.createDiv({ cls: "blyg-daily-head" });
-    const feed = head.createEl("button", { text: "Feed", cls: "blyg-daily-btn", attr: { title: "Back to the reader's feed" } });
-    feed.addEventListener("click", () => void this.host.showFeed(this.leaf));
+    drawModeToggle(head, "digest", () => void this.host.showFeed(this.leaf));
     head.createEl("button", { text: "Refresh", cls: "blyg-daily-btn" }).addEventListener("click", () => void this.refresh());
     const ai = this.host.ai;
     if (model && ai?.enabled()) {
@@ -389,6 +391,15 @@ export class BlygDailyView extends ItemView {
     const byId = new Map(m.mixed.map((p) => [p.remoteId, p]));
     const placed = new Set<string>();
     const drawn: Drawn[] = drawnSections(sections, m.front, byId, (i) => i < lead);
+    // Where each post is drawn, for the reader's "In the digest" chip: the lead block is "Front page" (its stories are not drawn again in their sections).
+    const where = new Map<string, string>();
+    for (let i = 0; i < lead; i++) for (const q of m.front[i]?.posts ?? []) where.set(q.remoteId, "Front page");
+    for (const d of drawn) {
+      for (const i of d.stories) for (const q of m.front[i]?.posts ?? []) where.set(q.remoteId, d.name);
+      for (const q of d.singles) where.set(q.remoteId, d.name);
+    }
+    for (const q of m.mixed) if (!where.has(q.remoteId)) where.set(q.remoteId, "Mixed bag");
+    publishPlacement(m.edition, where);
     // The table of contents, then the lead block, then the sections; the page order is the rule in digest/order.ts.
     drawToc(root, drawn.map((d) => ({ name: d.name, count: d.stories.reduce((k, i) => k + (m.front[i]?.posts.length ?? 0), 0) + d.singles.length })), (name) => this.goTo(name));
     const front = this.section(root, "Front page");
@@ -475,6 +486,7 @@ export class BlygDailyView extends ItemView {
     this.paintRead(card, card.createDiv({ cls: "blyg-story-markrow" }), c.posts, "Mark story read");
     const list = card.createDiv({ cls: "blyg-daily-members" });
     const story = c.id ?? c.headline;
+    const walk = { title: ai ? ai.headline : c.headline, posts: c.posts }; // Next and Previous in the reader walk this story, in this order
     const key = scrollKey(this.viewing ?? this.edition);
     const toggle = (open: boolean): void => {
       list.empty();
@@ -485,11 +497,11 @@ export class BlygDailyView extends ItemView {
         const who = row.createEl("button", { cls: "blyg-daily-link blyg-daily-who", text: `${p.authorName ?? p.subscriptionTitle}${p.isReply ? " (reply)" : ""}` });
         who.addEventListener("click", (e) => {
           e?.stopPropagation?.();
-          this.openEntry(p);
+          this.openEntry(p, walk);
         });
         const preview = previewOf(p);
         if (preview) row.createDiv({ cls: "blyg-daily-preview", text: preview });
-        row.addEventListener("click", () => this.openEntry(p)); // a tap anywhere on the post's area opens it
+        row.addEventListener("click", () => this.openEntry(p, walk)); // a tap anywhere on the post's area opens it
         const dim = (): void => row.toggleClass("blyg-is-read", !isUnread(p));
         dim();
         this.readPainters.push(dim);

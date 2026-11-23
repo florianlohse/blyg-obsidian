@@ -116,6 +116,8 @@ export interface BlygSettings {
     contrast: "reduced" | "normal" | "high";
     /** The folder the iOS share sheet's Location writes new notes into ("Share inbox folder"). Empty: off. A new note there that names a blyg post opens it in the reader; no note is ever changed. */
     shareInbox: string;
+    /** The mode the reader was left in (ui/readerMode.ts): the Feed or the Digest. Absent: the Feed. Only used while the Daily feature is on. */
+    mode?: "feed" | "digest";
     /** The feed's order and choices, kept across restarts (ui/readerFeed.ts). `source` is a subscription id of the Studio, null for all blygs. */
     filter: { sort: "newest" | "oldest" | "shortest" | "longest"; source: string | null; unreadOnly: boolean; length: "any" | "short" | "medium" | "long"; repliesToMe: boolean };
   };
