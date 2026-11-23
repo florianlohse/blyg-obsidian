@@ -33,8 +33,16 @@ const wrap = (text: string, usage = { input_tokens: 100, output_tokens: 50 }): R
 const contentOf = (r: RawRequest): string => (JSON.parse(r.body ?? "") as { messages: Array<{ content: string }> }).messages[0]?.content ?? "";
 const systemOf = (r: RawRequest): string => (JSON.parse(r.body ?? "") as { system: string }).system;
 const isStoryReq = (r: RawRequest): boolean => contentOf(r).includes("<cluster id=");
-const isAssign = (r: RawRequest): boolean => contentOf(r).startsWith("<sections>");
+const isAssign = (r: RawRequest): boolean => contentOf(r).startsWith("<sections>") && !isFill(r);
 const ids = (c: string, tag: string): number[] => [...c.matchAll(new RegExp(`<${tag} id="(\\d+)"`, "g"))].map((m) => Number(m[1]));
+const isFill = (r: RawRequest): boolean => systemOf(r).startsWith("You add missing short texts");
+/** A model that answers a backfill request properly: a byline per section sent and a line per post sent. */
+function fillAnswer(r: RawRequest): RawResponse {
+  const c = contentOf(r);
+  const about = [...c.matchAll(/<name>([^<]*)<\/name>/g)].map((m) => ({ name: m[1], about: `All about ${m[1]} matters` }));
+  const lines = [...c.matchAll(/<post id="(\d+)" author="([^"]*)"/g)].map((m) => ({ id: Number(m[1]), line: `${m[2]} on small things` }));
+  return wrap(JSON.stringify({ about, lines }));
+}
 const knownNames = (c: string): string[] => [...c.matchAll(/<section>([^<]*)<\/section>/g)].map((m) => m[1] as string);
 
 /** Full request: three sections A/B/C by id; later request: everything into the first known name. */
@@ -55,6 +63,7 @@ function harness(answer: (r: RawRequest) => RawResponse = defaultAnswer) {
     settings: () => ({ endpoint: "https://api.example.com/", model: "claude-sonnet-5-5" }),
     transport: async (r) => {
       sent.push(r);
+      if (isFill(r)) return fillAnswer(r);
       if (isStoryReq(r)) return wrap(JSON.stringify({ clusters: ids(contentOf(r), "cluster").map((id) => ({ id, headline: `Headline ${id}`, summary: `Summary ${id}.` })) }));
       return answer(r);
     },
@@ -65,7 +74,7 @@ function harness(answer: (r: RawRequest) => RawResponse = defaultAnswer) {
     save: async (s) => void (store = structuredClone(s)),
     now: () => NOW,
   };
-  return { deps, sent, estimates, store: () => store, sectionReqs: () => sent.filter((r) => !isStoryReq(r)) };
+  return { deps, sent, estimates, store: () => store, sectionReqs: () => sent.filter((r) => !isStoryReq(r) && !isFill(r)) };
 }
 
 describe("what the sections request carries for single posts", () => {
@@ -278,7 +287,7 @@ describe("a later write only adds the new items", () => {
     const { out } = await write(h2, w.ed, [...w.items, ...w.lone, fresh]);
     const reqs = h2.sent;
     expect(reqs.filter(isStoryReq)).toHaveLength(0); // stories are unchanged: no new text
-    const sec = reqs.filter((r) => !isStoryReq(r));
+    const sec = reqs.filter((r) => !isStoryReq(r) && !isFill(r));
     expect(sec).toHaveLength(1);
     const c = contentOf(sec[0] as RawRequest);
     expect(isAssign(sec[0] as RawRequest)).toBe(true);
@@ -322,7 +331,7 @@ describe("a later write only adds the new items", () => {
     await write(h, w.ed, [...w.items, ...w.lone]);
     h.sent.length = 0;
     const same = await write(h, w.ed, [...w.items, ...w.lone]);
-    expect(h.sent).toHaveLength(0);
+    expect(h.sent.filter((r) => !isFill(r))).toHaveLength(0);
     expect(same.out.sections?.length).toBeGreaterThan(0);
     const fresh = post("Another late post about gardens.", "Yan", { observedAt: new Date(T0 - 300_000).toISOString() });
     const bad = harness(() => ({ status: 503, headers: {}, text: "" }));

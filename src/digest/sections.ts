@@ -5,7 +5,7 @@
 // plain text only and validated strictly: unknown numbers dropped, a number in two sections kept in the first, a forgotten item goes to "Other", names capped.
 import { graphemePrefix } from "../core/textContent";
 import type { ReadingPost } from "../studio/reading";
-import { API_VERSION, authorAttr, hashText, LlmError, neutralise, normaliseEndpoint, plain, answerText, type DigestAiSettings } from "./llm";
+import { API_VERSION, authorAttr, hashText, CutOffError, LlmError, neutralise, normaliseEndpoint, plain, answerText, type DigestAiSettings } from "./llm";
 import { ownWords } from "./quotes";
 import { authorOf } from "./storyMeta";
 
@@ -20,14 +20,17 @@ export const MAX_SECTION_NAME_CHARS = 24;
 export const MAX_ABOUT_CHARS = 90;
 export const MAX_LINE_CHARS = 80;
 export const OTHER_NAME = "Other";
-export const SECTIONS_MAX_TOKENS = 4096;
+export const SECTIONS_MAX_TOKENS = 8192;
+/** Singles per request (the answer holds an id and a line for each, so output size, not only input size, bounds a batch) and items (stories plus singles) per later request. */
+export const SECTIONS_MAX_SINGLES = 40;
+export const SECTIONS_MAX_ITEMS = 50;
 /** How much of a single post goes to the model: its author and about this many characters of its own words. */
 export const SINGLE_EXCERPT_CAP = 300;
 const STORY_HEADLINE_CAP = 120;
 const STORY_SUMMARY_CAP = 260;
 /** Rough sizes for the estimate, before the headlines exist. */
 export const EST_CHARS_PER_STORY = 260;
-export const EST_OUT_TOKENS_PER_ITEM = 8;
+export const EST_OUT_TOKENS_PER_ITEM = 20;
 const SECTIONS_CACHE_MAX = 30;
 
 const NAME_RULES = "a short plain name of at most 24 characters, such as Economy or Sport: plain text, no Markdown, no HTML, no links";
@@ -125,6 +128,44 @@ export function estimateSections(items: number, chars = items * EST_CHARS_PER_ST
   return { inputTokens: Math.ceil(((assign ? SECTIONS_ASSIGN_PROMPT : SECTIONS_SYSTEM_PROMPT).length + chars) / 4), outputTokens: Math.min(SECTIONS_MAX_TOKENS, items * EST_OUT_TOKENS_PER_ITEM + 60) };
 }
 
+/** The provider's stop_reason from its raw answer body, "" when absent or unreadable. */
+export function stopReasonOf(text: string): string {
+  try {
+    const r = (JSON.parse(text) as { stop_reason?: unknown } | null)?.stop_reason;
+    return typeof r === "string" ? r : "";
+  } catch {
+    return "";
+  }
+}
+
+/** The first JSON object in a text that parses, whatever surrounds it (prose, Markdown fences): the balanced {...} is found with strings respected. null when there is none. */
+export function jsonObjectIn(text: string): unknown {
+  let from = 0;
+  for (let tries = 0; tries < 8; tries++) {
+    const start = text.indexOf("{", from);
+    if (start < 0) return null;
+    let depth = 0;
+    let inStr = false;
+    for (let i = start; i < text.length; i++) {
+      const c = text[i];
+      if (inStr) {
+        if (c === "\\") i++;
+        else if (c === '"') inStr = false;
+      } else if (c === '"') inStr = true;
+      else if (c === "{") depth++;
+      else if (c === "}" && --depth === 0) {
+        try {
+          return JSON.parse(text.slice(start, i + 1));
+        } catch {
+          break;
+        }
+      }
+    }
+    from = start + 1;
+  }
+  return null;
+}
+
 /** A section name as plain text: tags and links gone, markup characters removed, capped. "" when nothing usable is left (or it looks like an address). */
 export function plainName(raw: unknown): string {
   const t = plain(raw, 200).replace(/[*_#`~|>\\]/g, " ").replace(/\s+/g, " ").trim();
@@ -186,13 +227,9 @@ const asIds = (v: unknown, count: number, seen: Set<number>): number[] => {
  * "Other", names are plain text and capped.
  */
 export function readPlacement(text: string, nStories: number, nSingles: number, known?: readonly string[], authors: readonly string[] = []): Placement[] {
+  if (stopReasonOf(text) === "max_tokens") throw new CutOffError();
   const answer = answerText(text);
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(/\{[\s\S]*\}/.exec(answer)?.[0] ?? "");
-  } catch {
-    throw new LlmError("bad", "The sections came back in a shape this plugin cannot read.");
-  }
+  const parsed = jsonObjectIn(answer);
   const list = (parsed as { sections?: unknown } | null)?.sections;
   if (!Array.isArray(list)) throw new LlmError("bad", "The sections came back in a shape this plugin cannot read.");
   const seenS = new Set<number>();
