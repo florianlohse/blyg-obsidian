@@ -28,7 +28,13 @@ export function recordSections(rec: EditionRec | null, clusters: readonly Cluste
     return s;
   };
   names.forEach((n, i) => at(n ?? OTHER_NAME).ids.push(i));
-  for (const [id, name] of posts) (at(name).posts ??= []).push(id);
+  for (const [id, name] of posts) {
+    const s = at(name);
+    (s.posts ??= []).push(id);
+    const line = rec.postLines?.[id];
+    if (line) (s.lines ??= {})[id] = line;
+  }
+  for (const s of byName.values()) if (rec.sectionAbout?.[s.name]) s.about = rec.sectionAbout[s.name];
   return ordered(rec, byName.keys()).map((n) => byName.get(n) as Section);
 }
 
@@ -42,7 +48,7 @@ export function existingSections(rec: EditionRec | null, clusters: readonly Clus
     if (n) posts[p.remoteId] = n;
   }
   const names = ordered(rec, [...stories.filter((n): n is string => n !== undefined), ...Object.values(posts)]);
-  return names.length > 0 ? { names, stories, posts } : null;
+  return names.length > 0 ? { names, stories, posts, ...(rec.sectionAbout ? { about: rec.sectionAbout } : {}), ...(rec.postLines ? { lines: rec.postLines } : {}) } : null;
 }
 
 /** The record after a run that arranged `sections`: single posts and the order of the names are remembered (a story's own name is set by the caller). Unchanged when there are none. */
@@ -53,6 +59,17 @@ export function withPostSections(rec: EditionRec, singles: readonly ReadingPost[
     const name = sections.find((s) => s.posts?.includes(p.remoteId))?.name ?? rec.postSections?.[p.remoteId];
     if (name) postSections[p.remoteId] = name;
   }
-  const { postSections: _old, ...rest } = rec;
-  return { ...rest, sections: sections.map((s) => s.name), ...(Object.keys(postSections).length ? { postSections } : {}) };
+  // The bylines and lines: what this run gave, else what the record already had (a line is written once and kept; only new single posts get one).
+  const postLines: Record<string, string> = {};
+  for (const p of singles) {
+    const line = sections.find((s) => s.posts?.includes(p.remoteId))?.lines?.[p.remoteId] ?? rec.postLines?.[p.remoteId];
+    if (line) postLines[p.remoteId] = line;
+  }
+  const sectionAbout: Record<string, string> = {};
+  for (const s of sections) {
+    const about = s.about ?? rec.sectionAbout?.[s.name];
+    if (about) sectionAbout[s.name] = about;
+  }
+  const { postSections: _old, postLines: _oldLines, sectionAbout: _oldAbout, ...rest } = rec;
+  return { ...rest, sections: sections.map((s) => s.name), ...(Object.keys(postSections).length ? { postSections } : {}), ...(Object.keys(postLines).length ? { postLines } : {}), ...(Object.keys(sectionAbout).length ? { sectionAbout } : {}) };
 }

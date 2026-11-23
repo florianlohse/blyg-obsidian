@@ -140,7 +140,7 @@ describe("stable stories", () => {
     const loner = post({ text: "Completely different subject: zebras, kilns, and sailing manuals." });
     const info = await s.ed.open([...w.items, reply, sameQuote, alike, loner]);
     const now = idsOf(info.grouped);
-    expect(Object.keys(now)).toEqual(Object.keys(before)); // no new top-level story
+    expect(Object.keys(now).sort()).toEqual(Object.keys(before).sort()); // no new top-level story (the same set; the order is the page's order now, not the record's)
     expect(now["s1"]).toContain(reply.remoteId); // by reply
     expect(now["s3"]).toContain(sameQuote.remoteId); // by the same quoted item
     expect(now["s4"]).toContain(alike.remoteId); // by similarity

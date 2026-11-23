@@ -21,9 +21,13 @@ export interface PastStory {
   summary: string;
   /** Post ids (remote ids). */
   posts: string[];
+  /** When the story's newest post came (ms), for the order of stories within a section; absent in older records. */
+  newest?: number;
 }
 export interface PastSection {
   name: string;
+  /** The section's byline, or absent. */
+  about?: string;
   /** Positions in `stories`. */
   stories: number[];
   /** Single post ids. */
@@ -41,6 +45,8 @@ export interface PastEdition {
   sections: PastSection[] | null;
   /** The author's name per post id. */
   who: Record<string, string>;
+  /** The AI line of a single post, by post id (absent: none). */
+  lines?: Record<string, string>;
 }
 export interface HistoryStore {
   v: 1;
@@ -62,15 +68,17 @@ export function buildPast(id: number, clusters: readonly Cluster[], o: Pick<Outc
     const w = o.written[i];
     const posts = c.posts.slice(0, MAX_POSTS_PER_STORY);
     for (const p of posts) who[p.remoteId] = authorOf(p).slice(0, MAX_NAME);
-    return { headline: str(w?.headline ?? c.headline, MAX_TEXT), summary: str(w?.summary ?? "", MAX_TEXT), posts: posts.map((p) => p.remoteId) };
+    return { headline: str(w?.headline ?? c.headline, MAX_TEXT), summary: str(w?.summary ?? "", MAX_TEXT), posts: posts.map((p) => p.remoteId), newest: c.newest };
   });
   const kept = singles.slice(0, MAX_SINGLES);
   for (const p of kept) who[p.remoteId] = authorOf(p).slice(0, MAX_NAME);
   const ids = new Set(kept.map((p) => p.remoteId));
   const sections = o.sections
-    ? o.sections.map((s): PastSection => ({ name: str(s.name, 40), stories: s.ids.filter((i) => Number.isInteger(i) && i >= 0 && i < stories.length), posts: (s.posts ?? []).filter((x) => ids.has(x)) }))
+    ? o.sections.map((s): PastSection => ({ name: str(s.name, 40), ...(s.about ? { about: str(s.about, 90) } : {}), stories: s.ids.filter((i) => Number.isInteger(i) && i >= 0 && i < stories.length), posts: (s.posts ?? []).filter((x) => ids.has(x)) }))
     : null;
-  return { id, at: now, stories, singles: kept.map((p) => p.remoteId), sections, who };
+  const lines: Record<string, string> = {};
+  for (const s of o.sections ?? []) for (const [k, v] of Object.entries(s.lines ?? {})) if (ids.has(k)) lines[k] = str(v, 80);
+  return { id, at: now, stories, singles: kept.map((p) => p.remoteId), sections, who, ...(Object.keys(lines).length ? { lines } : {}) };
 }
 
 export function parseHistory(raw: unknown): HistoryStore {
@@ -82,17 +90,20 @@ export function parseHistory(raw: unknown): HistoryStore {
     if (!o || typeof o.id !== "number" || !Number.isFinite(o.id) || typeof o.at !== "number") continue;
     const stories = (Array.isArray(o.stories) ? (o.stories as unknown[]) : []).slice(0, MAX_STORIES).map((s): PastStory => {
       const x = s as Record<string, unknown> | null;
-      return { headline: str(x?.headline, MAX_TEXT), summary: str(x?.summary, MAX_TEXT), posts: strs(x?.posts, MAX_POSTS_PER_STORY) };
+      return { headline: str(x?.headline, MAX_TEXT), summary: str(x?.summary, MAX_TEXT), posts: strs(x?.posts, MAX_POSTS_PER_STORY), ...(typeof x?.newest === "number" && Number.isFinite(x.newest) ? { newest: x.newest } : {}) };
     });
     const sections = Array.isArray(o.sections)
       ? (o.sections as unknown[]).map((s): PastSection => {
           const x = s as Record<string, unknown> | null;
-          return { name: str(x?.name, 40), stories: ints(x?.stories).filter((i) => i < stories.length), posts: strs(x?.posts, MAX_SINGLES) };
+          const about = str(x?.about, 90);
+          return { name: str(x?.name, 40), ...(about ? { about } : {}), stories: ints(x?.stories).filter((i) => i < stories.length), posts: strs(x?.posts, MAX_SINGLES) };
         })
       : null;
     const who: Record<string, string> = {};
     for (const [k, v] of Object.entries((o.who as Record<string, unknown> | undefined) ?? {})) if (typeof v === "string") who[k] = v.slice(0, MAX_NAME);
-    out.editions.push({ id: o.id, at: o.at, stories, singles: strs(o.singles, MAX_SINGLES), sections, who });
+    const lines: Record<string, string> = {};
+    for (const [k, v] of Object.entries((o.lines as Record<string, unknown> | undefined) ?? {})) if (typeof v === "string" && v !== "") lines[k] = v.slice(0, 80);
+    out.editions.push({ id: o.id, at: o.at, stories, singles: strs(o.singles, MAX_SINGLES), sections, who, ...(Object.keys(lines).length ? { lines } : {}) });
   }
   if (r.capped === true) out.capped = true;
   return trimHistory(out);

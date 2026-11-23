@@ -2,7 +2,7 @@
 //
 // The reader watches counters so it can tell "something moved" from "nothing did" without reading the list. Without them it keeps its own two marks, in the
 // same shape (ReaderView reads `ChangeMarks` and does not care where they come from):
-//  - `reading`: a plain re-read, paced. The mark moves once per CHECK_PAUSE_MS, so a reader that is open and showing re-reads its newest rows at most once a minute,
+//  - `reading`: a plain re-read, paced. The mark moves once per CHECK_PAUSE_MS, so a Refresh sees it move (the reader has no watcher of its own since DG6: nothing re-reads on a timer),
 //    which is the pause the reader already keeps between checks. (A conditional GET of the list could say "unchanged" for less, but whether iOS's `requestUrl`
 //    passes `If-None-Match` and a bodyless 304 through is not known from here; it is a device step, and until it is checked the plain re-read is the honest option.)
 //  - `subscriptions`: how many blygs the Studio has fetched since Refresh asked. `GET /subscriptions` lists each blyg's `lastPollAt`; a poll moves it at once

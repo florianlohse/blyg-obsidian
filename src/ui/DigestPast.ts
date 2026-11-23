@@ -3,6 +3,8 @@
 import type { PastEdition } from "../digest/history";
 import { authorOf } from "../digest/storyMeta";
 import type { ReadingPost } from "../studio/reading";
+import { digestReadTime } from "../digest/readTime";
+import { drawToc } from "./DigestToc";
 
 export const NOT_IN_LIST = "no longer in the reader's list";
 export const editionDate = (id: number): string => new Date(id).toLocaleDateString(undefined, { dateStyle: "medium" });
@@ -28,7 +30,15 @@ export function drawSwitcher(into: HTMLElement, ids: readonly number[], current:
 }
 
 /** A past edition, read-only: sections with their stories (headline, summary, posts) and single posts. */
-export function drawPast(root: HTMLElement, rec: PastEdition, byId: ReadonlyMap<string, ReadingPost>, open: (p: ReadingPost) => void): void {
+export interface PastHooks {
+  open: (p: ReadingPost) => void;
+  /** A section's box was drawn (so the table of contents and the reader's chip can scroll to it). */
+  section: (name: string, el: HTMLElement) => void;
+  go: (name: string) => void;
+}
+
+export function drawPast(root: HTMLElement, rec: PastEdition, byId: ReadonlyMap<string, ReadingPost>, hooks: PastHooks): void {
+  const open = hooks.open;
   root.createDiv({ cls: "blyg-daily-meta", text: `Read-only: the edition of ${editionDate(rec.id)}, as it was written.` });
   const row = (into: HTMLElement, id: string): void => {
     const p = byId.get(id);
@@ -44,28 +54,48 @@ export function drawPast(root: HTMLElement, rec: PastEdition, byId: ReadonlyMap<
     if (!s) return;
     const card = into.createDiv({ cls: "blyg-daily-cluster blyg-story" });
     const title = card.createEl("button", { cls: "blyg-daily-link blyg-daily-headline blyg-story-headline", text: s.headline });
-    if (s.summary) card.createDiv({ cls: "blyg-story-summary", text: s.summary });
+    const summary = s.summary ? card.createEl("button", { cls: "blyg-daily-link blyg-story-summary", text: s.summary }) : null;
     card.createDiv({ cls: "blyg-daily-meta", text: `${s.posts.length} ${s.posts.length === 1 ? "post" : "posts"}` });
     const list = card.createDiv({ cls: "blyg-daily-members" });
     let shown = false;
-    title.addEventListener("click", () => {
+    const toggle = (): void => {
       shown = !shown;
       list.empty();
       if (shown) for (const id of s.posts) row(list, id);
-    });
+    };
+    title.addEventListener("click", toggle);
+    summary?.addEventListener("click", toggle); // the summary does what the headline does
   };
-  const box = (title: string): HTMLElement => {
+  /** A single post: its AI line when there is one, else the author; a post the reader still holds opens and shows its reading time. */
+  const single = (into: HTMLElement, id: string): void => {
+    const p = byId.get(id);
+    const r = into.createDiv({ cls: "blyg-daily-row blyg-story-mixed" });
+    const main = r.createDiv({ cls: "blyg-story-main" });
+    const line = rec.lines?.[id];
+    if (p) main.createEl("button", { cls: "blyg-daily-link blyg-story-who blyg-story-line", text: line ?? authorOf(p) }).addEventListener("click", () => open(p));
+    else {
+      main.createDiv({ cls: "blyg-daily-who", text: line ?? rec.who[id] ?? "A post" });
+      main.createDiv({ cls: "blyg-daily-meta blyg-past-gone", text: `(${NOT_IN_LIST})` });
+    }
+    if (p) r.createDiv({ cls: "blyg-story-time", text: digestReadTime(p) });
+  };
+  const box = (title: string, about?: string): HTMLElement => {
     const s = root.createDiv({ cls: "blyg-daily-section" });
     s.createEl("h3", { text: title });
+    if (about) s.createDiv({ cls: "blyg-section-about", text: about });
+    hooks.section(title, s);
     return s;
   };
   if (rec.sections && rec.sections.length > 0) {
     const placed = new Set<number>();
     const placedPosts = new Set<string>();
+    drawToc(root, rec.sections, hooks.go);
     for (const sec of rec.sections) {
-      const b = box(sec.name);
-      for (const i of sec.stories) if (!placed.has(i) && !!placed.add(i)) story(b, i);
-      for (const id of sec.posts) if (!placedPosts.has(id) && !!placedPosts.add(id)) row(b, id);
+      const b = box(sec.name, sec.about);
+      // The same order as today's page (digest/order.ts): stories by their newest post (records from before that was kept stay as they were), single posts as recorded (newest first).
+      const stories = [...sec.stories].sort((x, y) => (rec.stories[y]?.newest ?? 0) - (rec.stories[x]?.newest ?? 0) || x - y);
+      for (const i of stories) if (!placed.has(i) && !!placed.add(i)) story(b, i);
+      for (const id of sec.posts) if (!placedPosts.has(id) && !!placedPosts.add(id)) single(b, id);
     }
     const lost = rec.stories.map((_, i) => i).filter((i) => !placed.has(i));
     if (lost.length > 0) {
@@ -75,7 +105,7 @@ export function drawPast(root: HTMLElement, rec: PastEdition, byId: ReadonlyMap<
     const loose = rec.singles.filter((id) => !placedPosts.has(id));
     if (loose.length > 0) {
       const b = box("Mixed bag");
-      for (const id of loose) row(b, id);
+      for (const id of loose) single(b, id);
     }
     return;
   }
@@ -83,6 +113,6 @@ export function drawPast(root: HTMLElement, rec: PastEdition, byId: ReadonlyMap<
   rec.stories.forEach((_, i) => story(front, i));
   if (rec.singles.length > 0) {
     const b = box("Mixed bag");
-    for (const id of rec.singles) row(b, id);
+    for (const id of rec.singles) single(b, id);
   }
 }
