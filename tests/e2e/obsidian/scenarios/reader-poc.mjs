@@ -226,6 +226,8 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await wait(1500);
     const result = await page.evaluate(async () => {
       const view = window.app.workspace.getLeavesOfType("blyg-reader")[0].view;
+      view.data.posts.forEach((p) => (p.readVersion = null)); // the marks were reset in the Studio from outside; a reader made again holds the list of the last one
+      view.draw();
       const realLoad = view.host.load.bind(view.host);
       const stale = await realLoad(); // the Studio's state before the mark: everything unread
       document.querySelector(".blyg-reader-card .blyg-reader-check")?.click(); // the mark, shown at once
@@ -687,7 +689,8 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await openReader();
     await page.waitForFunction(() => !/^Loading|updating/.test(document.querySelector(".blyg-reader-status")?.textContent ?? ""), null, { timeout: 20000 }).catch(() => {});
     const opened = await page.evaluate(() => ({ ...window.__calls }));
-    check(opened.checkForNew === 0 && opened.load >= 1 && opened.readCache === 1, `${layout}: economy: opening the reader asks no blyg to be checked, only reads the list (${JSON.stringify(opened)})`);
+    // DG8: the list is read once per plugin session (the earlier scenarios did); a reader made again starts from what the last one held and asks the Studio for nothing.
+    check(opened.checkForNew === 0 && opened.load === 0 && opened.changeMarks === 0, `${layout}: economy: a reader opened again asks the Studio for nothing, not even to read the list (${JSON.stringify(opened)})`);
     // Refresh: one read of the list at the end, however often the counters moved
     await publishOnBlogB(`${Date.now().toString(36)} economy. A new post.`);
     await page.evaluate(() => { window.app.plugins.plugins.blyg.readerService.state.checkedAt = 0; window.__calls = { load: 0, checkForNew: 0, changeMarks: 0, readCache: 0 }; });
@@ -707,13 +710,14 @@ await runScenario({ data: fixtureData() }, async (s) => {
     check(saved !== null && saved.posts > 0 && saved.mdLeft === 0 && saved.inVaultNotes === 0, `${layout}: economy: the list is saved for the next session in the plugin's own folder, without the posts' Markdown (${JSON.stringify(saved)})`);
     await closeReader();
     // the saved list shows at once, even while the Studio is not answering; and it says so in words
-    await page.evaluate(() => { window.app.plugins.plugins.blyg.readerService.state.trouble = { failures: 2, until: Date.now() + 120000 }; });
+    await page.evaluate(() => { window.app.plugins.plugins.blyg.readerService.state.trouble = { failures: 2, until: Date.now() + 120000 }; window.__calls = { load: 0, checkForNew: 0, changeMarks: 0, readCache: 0 }; });
     await openReader();
     const cached = await page.evaluate(() => ({ cards: document.querySelectorAll(".blyg-reader-card").length, status: document.querySelector(".blyg-reader-status")?.textContent ?? "" }));
     check(cached.cards > 0, `${layout}: economy: the saved list shows at once (${cached.cards} cards)`);
     await wait(1500);
     const backed = await page.evaluate(() => document.querySelector(".blyg-reader-status")?.textContent ?? "");
-    check(/not answering; the reader tries again in about \d+ min/.test(backed), `${layout}: economy: a failing Studio is left alone and the status says when the reader tries again ("${backed.slice(0, 90)}")`);
+    const again = await page.evaluate(() => ({ ...window.__calls }));
+    check(again.load === 0 && again.checkForNew === 0, `${layout}: economy: a Studio in trouble is not even asked when the reader opens again ("${backed.slice(0, 60)}", ${JSON.stringify(again)})`);
     await page.evaluate(() => { window.app.plugins.plugins.blyg.readerService.state.trouble = { failures: 0, until: 0 }; });
     await closeReader();
     await page.evaluate(() => window.app.commands.executeCommandById("blyg:clear-reader-cache"));

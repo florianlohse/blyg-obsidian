@@ -219,6 +219,7 @@ export class BlygReaderView extends ItemView {
       mine: (ask) => this.loadMine(ask ? "ask" : "cached"),
       showSaved: (saved, updating) => {
         this.data = { posts: saved.posts, mentions: saved.mentions, note: "", studioOrigin: saved.studioOrigin, fromCache: true };
+        this.dropGoneSource(saved.posts);
         this.updatedAt = saved.savedAt; // the age of the saved list, then (when the Studio has answered) "just now"
         this.setStatus(updating ? `${this.updatedText()} · updating…` : this.updatedText());
         this.draw();
@@ -330,11 +331,7 @@ export class BlygReaderView extends ItemView {
         // What the first mentions show (the post and the item it is about) is fetched in the background now, a few at a time, so the Mentions tab opens filled.
         for (const m of mentions.slice(0, 8)) void this.loadMention(m);
         this.host.writeCache({ posts, mentions });
-        // A blyg the Studio no longer reads cannot stay chosen: the feed would be empty with no way to tell why.
-        if (this.filter.source !== null && !posts.some((q) => (this.filter.source === OWN_SOURCE ? q.own === true : q.subscriptionId === this.filter.source))) {
-          this.filter.source = null;
-          this.saveFilter();
-        }
+        this.dropGoneSource(posts);
         // (A post opened from the first pages keeps its own status line, e.g. "Opening the page…".)
         this.updatedAt = Date.now();
         noteListLoaded({ posts, mentions, savedAt: this.updatedAt, studioOrigin: this.data.studioOrigin ?? "" });
@@ -350,6 +347,13 @@ export class BlygReaderView extends ItemView {
     }
     this.drawHeader();
     if (!this.shown) this.drawBody(); // an open post is left alone: its page would load again
+  }
+
+  /** A blyg the Studio no longer reads cannot stay chosen: the feed would be empty with no way to tell why. */
+  private dropGoneSource(posts: ReadingPost[]): void {
+    if (this.filter.source === null || posts.some((q) => (this.filter.source === OWN_SOURCE ? q.own === true : q.subscriptionId === this.filter.source))) return;
+    this.filter.source = null;
+    this.saveFilter();
   }
 
   /** Note what the Studio's change counters say now: did the reading list move since the last look? */
