@@ -8,6 +8,7 @@ import { firstSentence } from "../digest/cluster";
 import { ownWords } from "../digest/quotes";
 import { buildDaily, type DailyModel } from "../digest/daily";
 import type { Grouped } from "../digest/stable";
+import { nothingToWriteNote } from "../digest/writeNote";
 import { GROUPING_NOTE, previewOf, summarizeRest } from "../digest/layout";
 import { authorOf, authorsLine, keywordsOf } from "../digest/storyMeta";
 import { mastheadDate } from "../digest/window";
@@ -90,19 +91,21 @@ export class BlygDailyView extends ItemView {
     feed.addEventListener("click", () => void this.host.showFeed(this.leaf));
     head.createEl("button", { text: "Refresh", cls: "blyg-daily-btn" }).addEventListener("click", () => void this.refresh());
     const ai = this.host.ai;
-    if (model && ai?.enabled() && model.front.length > 0) {
+    if (model && ai?.enabled()) {
       const btn = head.createEl("button", { cls: "blyg-daily-btn blyg-story-write" });
       this.paintWrite(btn);
       btn.addEventListener("click", () => {
         if (this.busy) return;
         this.busy = true;
+        this.note = "";
+        const before = this.written;
         this.paintWrite(btn); // in place: the page does not redraw, so nothing jumps
         void ai
           .write(model.front)
           .then((o) => {
             this.written = o.written;
             this.sections = o.sections ?? null;
-            this.note = o.status === "ok" && !o.note ? "" : (o.note ?? "");
+            this.note = o.note ?? nothingToWriteNote(o, before, model.front.length, model.mixed.length);
             if (o.status === "failed") this.note = `${o.note ?? "The digest could not be written."} Showing the list made on your device.`;
           })
           .catch(() => (this.note = "The digest could not be written. Showing the list made on your device."))

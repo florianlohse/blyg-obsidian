@@ -161,6 +161,17 @@ describe("the Daily view", () => {
     expect(rows.filter((r) => cls(r).has("blyg-is-read"))).toHaveLength(1); // Ann's post was read; Bo's was not
     expect(root.all().filter((e) => cls(e).has("blyg-story-mixed") && cls(e).has("blyg-is-read"))).toHaveLength(1); // the lone post, read
   });
+  it("Write the digest with nothing to send says so, and the button is back", async () => {
+    const ai: DigestHost["ai"] = { enabled: () => true, cached: async () => [], write: async () => ({ written: [], status: "nothing-to-send" }) };
+    const { root } = await mount({ posts: [p({ authorName: "Ann" })], mentions: [], savedAt: NOW }, ai);
+    const btn = root.all().find((e) => (e as unknown as { cls: Set<string> }).cls.has("blyg-story-write"));
+    expect(btn).toBeDefined(); // shown even with no story
+    btn?.click();
+    await new Promise((r) => setTimeout(r, 0));
+    const after = root.all();
+    expect(after.some((e) => e.text === "Nothing to write. 1 single post is in the Mixed bag; it gets no AI text.")).toBe(true);
+    expect(after.some((e) => e.text === "Writing the digest…")).toBe(false);
+  });
   it("has no HTML sink in the view or the digest code", () => {
     for (const f of ["src/ui/DigestView.ts", "src/digest/register.ts", "src/digest/daily.ts", "src/digest/cluster.ts", "src/digest/stable.ts", "src/digest/editionHost.ts"]) {
       expect(readFileSync(f, "utf8")).not.toMatch(/innerHTML|outerHTML|insertAdjacentHTML|sanitizeHTMLToDom|createEl\([^)]*\bhtml\b/);

@@ -43,8 +43,10 @@ export interface EditionRec {
   /** Next story number (story ids are "s" + a number, never reused within the edition). */
   n: number;
   stories: StoryRec[];
-  /** The Mixed bag's post ids. */
+  /** The Mixed bag's post ids: the posts with no section. */
   mixed: string[];
+  /** Room for single posts to carry a section too (post id to section name); not written or drawn yet. */
+  postSections?: Record<string, string>;
   /** When each post was first seen in this edition. */
   seen: Record<string, number>;
 }
@@ -81,7 +83,9 @@ export function parseEditions(raw: unknown): EditionStore {
     });
     const seen: Record<string, number> = {};
     for (const [k, v] of Object.entries((r.seen as Record<string, unknown> | undefined) ?? {})) if (num(v) !== null) seen[k] = v as number;
-    out.editions.push({ id, createdAt, n: num(r.n) ?? stories.length + 1, stories, mixed: strs(r.mixed), seen });
+    const postSections: Record<string, string> = {};
+    for (const [k, v] of Object.entries((r.postSections as Record<string, unknown> | undefined) ?? {})) if (typeof v === "string") postSections[k] = v;
+    out.editions.push({ id, createdAt, n: num(r.n) ?? stories.length + 1, stories, mixed: strs(r.mixed), seen, ...(Object.keys(postSections).length ? { postSections } : {}) });
   }
   out.editions.sort((a, b) => a.id - b.id);
   return pruneEditions(out);
