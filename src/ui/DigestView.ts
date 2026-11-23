@@ -3,6 +3,7 @@
 import { ItemView, type WorkspaceLeaf } from "obsidian";
 import type { Cluster } from "../digest/cluster";
 import type { Outcome, Written } from "../digest/llm";
+import { leadCount, type Section } from "../digest/sections";
 import { firstSentence } from "../digest/cluster";
 import { ownWords } from "../digest/quotes";
 import { buildDaily, type DailyModel } from "../digest/daily";
@@ -27,7 +28,7 @@ export interface DigestHost {
   showFeed(leaf: WorkspaceLeaf): Promise<void>;
   openWeb(url: string): void;
   /** The optional AI layer (src/digest/llm.ts); absent or `enabled()` false: the Daily is the deterministic list only. */
-  ai?: { enabled(): boolean; cached(clusters: readonly Cluster[]): Promise<Array<Written | null>>; write(clusters: readonly Cluster[]): Promise<Outcome> };
+  ai?: { enabled(): boolean; cached(clusters: readonly Cluster[]): Promise<Array<Written | null>>; cachedSections?(clusters: readonly Cluster[]): Promise<Section[] | null>; write(clusters: readonly Cluster[]): Promise<Outcome> };
 }
 
 const stamp = (t: number): string => new Date(t).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
@@ -36,6 +37,7 @@ const plural = (n: number, one: string, many: string): string => `${n} ${n === 1
 
 export class BlygDailyView extends ItemView {
   private written: Array<Written | null> = [];
+  private sections: Section[] | null = null;
   private note = "";
   private busy = false;
   constructor(leaf: WorkspaceLeaf, private readonly host: DigestHost) {
@@ -70,6 +72,7 @@ export class BlygDailyView extends ItemView {
     }
     this.note = "";
     this.written = model && this.host.ai?.enabled() ? await this.host.ai.cached(model.front).catch(() => []) : [];
+    this.sections = model && this.written.length > 0 && this.host.ai?.enabled() ? await (this.host.ai.cachedSections?.(model.front) ?? Promise.resolve(null)).catch(() => null) : null;
     this.render(model);
   }
 
@@ -96,6 +99,7 @@ export class BlygDailyView extends ItemView {
           .write(model.front)
           .then((o) => {
             this.written = o.written;
+            this.sections = o.sections ?? null;
             this.note = o.status === "ok" && !o.note ? "" : (o.note ?? "");
             if (o.status === "failed") this.note = `${o.note ?? "The digest could not be written."} Showing the list made on your device.`;
           })
@@ -135,6 +139,8 @@ export class BlygDailyView extends ItemView {
       root.createDiv({ cls: "blyg-daily-empty", text: "Nothing new today yet." });
       return;
     }
+    const sections = this.usableSections(m);
+    if (sections) return this.drawSectioned(root, m, sections);
     if (m.front.length > 0 || m.mixed.length > 0) {
       const s = this.section(root, "Front page");
       if (m.front.length === 0) s.createDiv({ cls: "blyg-daily-empty", text: "No stories with several posts yet." });
@@ -143,6 +149,12 @@ export class BlygDailyView extends ItemView {
       if (made.length > 0) s.createDiv({ cls: "blyg-daily-meta blyg-story-credit", text: `Written by ${made[0]?.model ?? ""} from ${plural(made.reduce((k, w) => k + w.posts, 0), "post", "posts")}` });
       this.drawRest(s, m);
     }
+    this.drawLetters(root, m);
+    this.drawMixed(root, m);
+  }
+
+  /** Letters and changes (corrections, retractions), as on the plain page. */
+  private drawLetters(root: HTMLElement, m: DailyModel): void {
     if (m.letters.length > 0) {
       const s = this.section(root, "Letters");
       for (const l of m.letters) {
@@ -155,6 +167,10 @@ export class BlygDailyView extends ItemView {
         row.createDiv({ cls: "blyg-daily-meta", text: stamp(l.when) });
       }
     }
+    this.drawChanges(root, m);
+  }
+
+  private drawChanges(root: HTMLElement, m: DailyModel): void {
     if (m.corrections.length > 0) {
       const s = this.section(root, "Corrections");
       for (const c of m.corrections) {
@@ -171,6 +187,9 @@ export class BlygDailyView extends ItemView {
         row.createDiv({ cls: "blyg-daily-meta", text: `${r.post.authorName ?? r.post.subscriptionTitle} · withdrawn` });
       }
     }
+  }
+
+  private drawMixed(root: HTMLElement, m: DailyModel): void {
     if (m.mixed.length > 0) {
       const s = this.section(root, "Mixed bag");
       for (const p of m.mixed) {
@@ -180,6 +199,42 @@ export class BlygDailyView extends ItemView {
         if (first) row.createDiv({ cls: "blyg-story-first", text: first });
       }
     }
+  }
+
+  /** The sections to draw: only when they match the stories on the page (a stale or odd arrangement is ignored and the plain front page is drawn). */
+  private usableSections(m: DailyModel): Section[] | null {
+    const sec = this.sections;
+    if (!sec || sec.length === 0) return null;
+    const all = sec.flatMap((x) => x.ids);
+    const fits = all.length === m.front.length && new Set(all).size === all.length && all.every((i) => i >= 0 && i < m.front.length) && this.written.filter(Boolean).length === m.front.length;
+    return fits ? sec : null;
+  }
+
+  /** With sections: a short lead block (the biggest stories), the sections with their other stories, the Mixed bag, then Letters and changes. */
+  private drawSectioned(root: HTMLElement, m: DailyModel, sections: Section[]): void {
+    const lead = leadCount(m.front.length);
+    const front = this.section(root, "Front page");
+    front.addClass("blyg-sections-lead");
+    for (let i = 0; i < lead; i++) {
+      const c = m.front[i];
+      if (c) this.drawCluster(front, c, this.written[i] ?? null);
+    }
+    for (const sec of sections) {
+      const ids = sec.ids.filter((i) => i >= lead);
+      if (ids.length === 0) continue;
+      const box = this.section(root, sec.name);
+      box.addClass("blyg-sections-section");
+      for (const i of ids) {
+        const c = m.front[i];
+        if (c) this.drawCluster(box, c, this.written[i] ?? null);
+      }
+    }
+    const made = this.written.filter((w): w is Written => w !== null);
+    const tail = root.createDiv({ cls: "blyg-daily-section" });
+    if (made.length > 0) tail.createDiv({ cls: "blyg-daily-meta blyg-story-credit", text: `Written by ${made[0]?.model ?? ""} from ${plural(made.reduce((k, w) => k + w.posts, 0), "post", "posts")}.` });
+    this.drawRest(tail, m);
+    this.drawMixed(root, m);
+    this.drawLetters(root, m);
   }
 
   /** What is not on the front page, told as it is, with one collapsed list; then the grouping rules in plain words. */

@@ -16,7 +16,7 @@ import { trailText } from "./trailText";
 import { setConsentGate } from "./consentGate";
 import { clearBodies, normaliseEndpoint } from "./llm";
 import { TextModal } from "../ui/TextModal";
-import { cachedDigest, emptyStore, parseStore, writeDigest, type LlmDeps, type LlmStore } from "./llm";
+import { cachedDigest, cachedSections, emptyStore, parseStore, writeDigest, type LlmDeps, type LlmStore } from "./llm";
 
 export interface DigestDeps {
   /** The reader's saved list (plugin storage), or null. */
@@ -66,7 +66,7 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
     return true;
   });
   const host: DigestHost = {
-    ...(llm ? { ai: { enabled: () => ai?.settings().useAi === true, cached: (c) => cachedDigest(llm, c), write: (c) => writeDigest(llm, c) } } : {}),
+    ...(llm ? { ai: { enabled: () => ai?.settings().useAi === true, cached: (c) => cachedDigest(llm, c), cachedSections: (c) => cachedSections(llm, c), write: (c) => writeDigest(llm, c) } } : {}),
     loadList: () => deps.readList(),
     window: () => Promise.resolve(dayWindow(Date.now())),
     font: () => deps.font(),
