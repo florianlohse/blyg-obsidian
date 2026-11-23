@@ -53,7 +53,7 @@ import { sectionOfPost } from "../../src/digest/postSection";
 import { digestMinutes, digestReadTime } from "../../src/digest/readTime";
 import { clearScrolls, recalledScroll, rememberScroll, requestJump, scrollKey, takeJump } from "../../src/digest/scrollMemory";
 import { existingSections, recordSections } from "../../src/digest/sectionRecord";
-import { MAX_ABOUT_CHARS, MAX_LINE_CHARS, parseSectionsCache, plainAbout, plainLine, readPlacement, SECTIONS_PROMPT_VERSION } from "../../src/digest/sections";
+import { buildSectionsRequest, MAX_ABOUT_CHARS, MAX_LINE_CHARS, parseSectionsCache, plainAbout, plainLine, readPlacement, SECTIONS_PROMPT_VERSION } from "../../src/digest/sections";
 import { groupOf } from "../../src/digest/stable";
 import { GROUPING_NOTE } from "../../src/digest/layout";
 import { BlygDailyView, type DigestHost } from "../../src/ui/DigestView";
@@ -248,7 +248,7 @@ describe("the AI's byline for a section and line for a single post", () => {
     expect(p.find((s) => s.name === "Third")?.about).toBeUndefined(); // none given: none shown
   });
   it("the prompt version is bumped, and an old cache is not trusted", () => {
-    expect(SECTIONS_PROMPT_VERSION).toBe("3");
+    expect(SECTIONS_PROMPT_VERSION).toBe("4");
     const c = parseSectionsCache({ k: { at: 1, sections: [{ name: "A", about: "<b>x</b> https://e.example.com", ids: [0], posts: ["p1"], lines: { p1: 'Ann on "tea"', zz: "stranger" } }] } });
     expect(c.k?.sections[0]?.about).toBeUndefined(); // an address: no byline
     expect(c.k?.sections[0]?.lines).toEqual({ p1: "Ann on tea" });
@@ -270,7 +270,7 @@ function harness() {
       sent.push(r);
       const c = contentOf(r);
       if (c.includes("<cluster id=")) return wrapAnswer(JSON.stringify({ clusters: idsOf(c, "cluster").map((id) => ({ id, headline: `Headline ${id}`, summary: `Summary ${id}.` })) }));
-      const known = [...c.matchAll(/<section>([^<]*)<\/section>/g)].map((m) => m[1] as string);
+      const known = [...c.matchAll(/<section[^>]*>([^<]*)<\/section>/g)].map((m) => m[1] as string);
       const s = idsOf(c, "story");
       const ps = idsOf(c, "post");
       const au = authors(c);
@@ -456,5 +456,25 @@ describe("no sideways scroll (CSS) and no automatic checking (reader)", () => {
       expect(at).toBeGreaterThan(refresh);
       expect(at).toBeLessThan(refreshEnd);
     }
+  });
+});
+
+describe("placement: a post goes to a section only when it fits", () => {
+  it("the later request shows each existing section's byline and tells the model to use Other for what does not fit; an Other answer lands in Other", () => {
+    const req = buildSectionsRequest([], { endpoint: "https://api.example.com", model: "m" }, KEY, [{ id: "p", author: "Fred", excerpt: "An essay on ideology and politics" }], ["Studio releases", "Other"], { "Studio releases": "Blygger Studio versions, fixes and clients" });
+    const body = JSON.parse(req.body) as { system: string; messages: Array<{ content: string }> };
+    expect(body.messages[0]?.content).toContain('<section about="Blygger Studio versions, fixes and clients">Studio releases</section>');
+    expect(body.system).toMatch(/ONLY when it clearly fits/);
+    expect(body.system).toMatch(/goes in Other/);
+    const placed = readPlacement(JSON.stringify({ content: [{ type: "text", text: JSON.stringify({ sections: [{ name: "Other", stories: [], posts: [{ id: 1, line: "Fred on ideology" }] }] }) }] }), 0, 1, ["Studio releases", "Other"], ["Fred"]);
+    expect(placed.map((s) => s.name)).toEqual(["Other"]);
+  });
+  it("read stories and posts sink below unread ones inside a section, keeping their order otherwise", () => {
+    const mk = (m: number, read: boolean): ReadingPost => post(`s${m}`, "Ann", { observedAt: new Date(NOW - m * 60_000).toISOString(), readVersion: read ? 1 : null });
+    const a = mk(10, true);
+    const b = mk(50, false);
+    const c = mk(30, false);
+    const d = drawnSections([{ name: "S", ids: [], posts: [a.remoteId, b.remoteId, c.remoteId] }], [], new Map([a, b, c].map((p) => [p.remoteId, p])));
+    expect(d[0]?.singles.map((p) => p.remoteId)).toEqual([c.remoteId, b.remoteId, a.remoteId]);
   });
 });

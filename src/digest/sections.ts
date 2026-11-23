@@ -10,7 +10,7 @@ import { ownWords } from "./quotes";
 import { authorOf } from "./storyMeta";
 
 /** Raise when the prompt or the answer format changes: old cached sections no longer apply. */
-export const SECTIONS_PROMPT_VERSION = "3";
+export const SECTIONS_PROMPT_VERSION = "4";
 /** Fewer items (stories plus single posts) than this: no sections pass. */
 export const MIN_STORIES_FOR_SECTIONS = 4;
 export const MIN_SECTIONS = 3;
@@ -46,7 +46,7 @@ export const SECTIONS_SYSTEM_PROMPT =
 /** The prompt of a later request: the sections already exist (inside <sections>) and only NEW items are sent. */
 export const SECTIONS_ASSIGN_PROMPT =
   "You add new items to the sections of a daily digest, like the sections of a newspaper. The digest already has the sections listed inside <sections>, one <section> element each. " + ITEMS + DATA_RULES +
-  `Put every item below in exactly one of the existing sections, or in Other when it fits none. Make a new section (${NAME_RULES}) only when several items clearly belong together and no existing section fits. Never rename or remove a section. ` + SHAPE_ASSIGN;
+  `Put every item below in exactly one of the existing sections, but ONLY when it clearly fits that section's topic (judge by the section name and its about text, not by loose similarity); an item that is about something else goes in Other, never into a section just because that section exists. Make a new section (${NAME_RULES}) only when several items clearly belong together and no existing section fits. Never rename or remove a section. ` + SHAPE_ASSIGN;
 
 export interface SectionStory {
   headline: string;
@@ -100,14 +100,16 @@ export function sectionsContent(stories: readonly SectionStory[], singles: reado
 }
 
 /** The existing section names as the later requests show them (names are data too: neutralised). */
-export const knownContent = (names: readonly string[]): string => `<sections>${names.map((n) => `<section>${neutralise(n)}</section>`).join("")}</sections>\n`;
+/** `about`: the existing bylines (name to line), shown as an attribute so the model can judge what a section is really about. */
+export const knownContent = (names: readonly string[], about: Readonly<Record<string, string>> = {}): string =>
+  `<sections>${names.map((n) => `<section${about[n] ? ` about="${neutralise(about[n]).replace(/["'&`]/g, " ")}"` : ""}>${neutralise(n)}</section>`).join("")}</sections>\n`;
 
 /** `known` given: a later request (existing names + only the new items); absent: the full request. */
-export function buildSectionsRequest(stories: readonly SectionStory[], settings: DigestAiSettings, key: string, singles: readonly SectionSingle[] = [], known?: readonly string[]): SectionsRequest {
+export function buildSectionsRequest(stories: readonly SectionStory[], settings: DigestAiSettings, key: string, singles: readonly SectionSingle[] = [], known?: readonly string[], knownAbout: Readonly<Record<string, string>> = {}): SectionsRequest {
   const ep = normaliseEndpoint(settings.endpoint);
   if (!ep) throw new LlmError("config", "The AI endpoint is not an https address.");
   if (settings.model.trim() === "") throw new LlmError("config", "No AI model is set.");
-  const content = (known ? knownContent(known) : "") + sectionsContent(stories, singles);
+  const content = (known ? knownContent(known, knownAbout) : "") + sectionsContent(stories, singles);
   const body = JSON.stringify({
     model: settings.model.trim(),
     max_tokens: SECTIONS_MAX_TOKENS,

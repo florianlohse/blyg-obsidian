@@ -199,7 +199,7 @@ export async function runSectionPass(deps: Pick<LlmDeps, "transport" | "now">, s
       const ss = step.stories.map((i) => stories[i] as SectionStory);
       const ps = step.singles.map((i) => spec.singles[i] as SectionSingle);
       const assign = step.mode === "assign";
-      const req = buildSectionsRequest(ss, settings, key, ps, assign ? acc.order : undefined);
+      const req = buildSectionsRequest(ss, settings, key, ps, assign ? acc.order : undefined, assign ? Object.fromEntries(acc.about) : {});
       res.bodies.push(req.body);
       res.chars += req.chars;
       res.sentSingles.push(...ps.map((p) => p.id));
