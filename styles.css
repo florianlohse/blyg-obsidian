@@ -880,13 +880,10 @@ button.blyg-modebtn.is-active { background: var(--background-modifier-hover); co
 .blyg-reader-surface .blyg-reader-body blockquote, .blyg-reader-surface .blyg-reader-body pre, .blyg-reader-surface .blyg-reader-body img, .blyg-reader-surface .blyg-reader-body table { max-width: 100%; box-sizing: border-box; }
 .blyg-reader-surface .blyg-reader-body pre { overflow-x: auto; }
 /* Sections (src/ui/DigestView.ts): the lead block and the named sections. New class names only. */
-.blyg-sections-lead .blyg-daily-cluster { padding-bottom: var(--size-4-3); }
-.blyg-sections-lead button.blyg-story-headline { font-size: calc(var(--font-text-size, 16px) * 1.7); }
-.blyg-sections-section > h3 { border-bottom-width: 1px; }
 
 /* Editions: a story that grew since its text was written, its new posts, and posts already read. */
 .blyg-story-updated { color: var(--text-accent); font-weight: var(--font-semibold); white-space: nowrap; }
-.blyg-daily-member.blyg-is-new { background: var(--background-modifier-hover); border-radius: var(--radius-s); }
+.blyg-daily-member.blyg-is-new { font-weight: var(--font-semibold); }
 /* DG6: no sideways scroll. Long unbroken text (a URL-like token in a headline, an author name) wraps inside its box instead of widening the page: flex children may shrink (min-width: 0), every text box breaks anywhere, and the page itself never scrolls sideways. */
 .view-content.blyg-daily { overflow-x: hidden; max-width: 100%; box-sizing: border-box; }
 .blyg-daily, .blyg-daily-section, .blyg-daily-cluster, .blyg-daily-row, .blyg-daily-members, .blyg-story-main, .blyg-toc, .blyg-toc-row { min-width: 0; max-width: 100%; box-sizing: border-box; }
@@ -944,21 +941,27 @@ button.blyg-daily-link.blyg-correction-headline { color: var(--text-muted); font
 
 /* DG13: a long press on a post opens the quick menu, so the system's own press menu and text selection must not start on a card or row. */
 .blyg-reader-card, .blyg-daily-row, .blyg-story { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
-/* DG11: a story is a card you can tap. Subtle box (secondary background, thin border, radius), a chevron at the right that turns when unfolded, a pressed look. Theme variables only (light and dark follow the theme);
-   single posts stay light rows. The headline and summary keep their type; the text keeps clear of the chevron so nothing runs under it. */
-.blyg-daily-cluster.blyg-story { position: relative; background: var(--background-secondary); border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); padding: var(--size-4-3); margin: var(--size-4-2) 0; transition: background-color 0.12s ease; }
-.blyg-daily-cluster.blyg-story:has(> .blyg-story-headline:active, > .blyg-story-summary:active, > .blyg-story-chevron:active) { background: var(--background-modifier-hover); }
-.blyg-daily-cluster.blyg-story.is-open { border-color: var(--background-modifier-border-hover); }
-.blyg-story > button.blyg-story-headline, .blyg-story > button.blyg-story-summary { padding-inline-end: calc(var(--clickable-icon-size, 32px) - var(--size-4-1)); box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-button.blyg-story-chevron { position: absolute; top: var(--size-4-2); right: var(--size-4-2); display: inline-flex; align-items: center; justify-content: center; width: var(--clickable-icon-size, 32px); height: var(--clickable-icon-size, 32px); padding: 0; box-shadow: none; background: none; border: 0; color: var(--text-muted); cursor: pointer; }
-button.blyg-story-chevron svg { width: 20px; height: 20px; transition: transform 0.15s ease; }
-.blyg-story.is-open button.blyg-story-chevron svg { transform: rotate(180deg); }
-.blyg-story.is-open button.blyg-story-chevron { color: var(--text-accent); }
-@media (prefers-reduced-motion: reduce) { .blyg-daily-cluster.blyg-story, button.blyg-story-chevron svg { transition: none; } }
-.blyg-sections-lead .blyg-daily-cluster.blyg-story { padding-bottom: var(--size-4-3); }
-/* the members of an unfolded story sit inside the card: no extra rule under the last one */
-.blyg-story .blyg-daily-members { padding-left: 0; margin-top: var(--size-2-2); }
-.blyg-daily-cluster.blyg-story { overflow-wrap: anywhere; }
+/* DG14: stories as pure typography, the way a newspaper sets them. No box, no background, no radius, no shadow, no icon. Hierarchy by size and weight: a bold serif headline with tight leading, a regular summary, a small italic muted meta line that ends in a "›" (the tap mark). A hairline between stories, a heavier rule under each section heading.
+   One spacing scale (below), theme variables only (light and dark follow the theme, the type follows the reader's font setting). Tapping is shown in type: the headline turns to the accent colour on hover, focus and press. */
+.blyg-daily { --blyg-sp-1: var(--size-4-1); --blyg-sp-2: var(--size-4-2); --blyg-sp-3: var(--size-4-4); --blyg-sp-4: var(--size-4-6); --blyg-hair: 1px solid var(--blyg-paper-rule); }
+.blyg-daily-cluster.blyg-story { padding: var(--blyg-sp-3) 0; margin: 0; border: 0; border-radius: 0; background: none; box-shadow: none; overflow-wrap: anywhere; }
+.blyg-daily-cluster.blyg-story + .blyg-daily-cluster.blyg-story { border-top: var(--blyg-hair); }
+.blyg-daily-cluster.blyg-story:not(.blyg-story + .blyg-story) { padding-top: var(--blyg-sp-2); }
+.blyg-story > button.blyg-story-headline, .blyg-story > button.blyg-story-summary { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+.blyg-story > button.blyg-story-headline { font-size: calc(var(--font-text-size, 16px) * 1.5); line-height: 1.15; letter-spacing: -0.01em; }
+.blyg-daily-cluster.blyg-story:not(.blyg-story + .blyg-story) > button.blyg-story-headline { font-size: calc(var(--font-text-size, 16px) * 1.9); line-height: 1.1; }
+.blyg-story > button.blyg-story-summary { font-family: inherit; font-size: var(--font-text-size, 16px); line-height: 1.5; margin-top: var(--blyg-sp-2); color: var(--text-normal); }
+.blyg-story > .blyg-daily-meta { margin-top: var(--blyg-sp-2); font-style: italic; font-size: var(--font-ui-smaller); letter-spacing: 0.02em; }
+.blyg-story-more { margin-inline-start: var(--blyg-sp-1); font-style: normal; font-weight: var(--font-bold); }
+.blyg-story.is-open .blyg-story-more, .blyg-story:has(> button:hover) .blyg-story-more { color: var(--text-accent); }
+.blyg-story > button.blyg-story-headline:hover, .blyg-story > button.blyg-story-headline:focus-visible, .blyg-story > button.blyg-story-headline:active,
+.blyg-story:has(> button.blyg-story-summary:hover, > button.blyg-story-summary:active) > button.blyg-story-headline { color: var(--text-accent); }
+button.blyg-daily-link:focus-visible { outline: 2px solid var(--text-accent); outline-offset: 2px; border-radius: 0; }
+/* the posts of an unfolded story: light rows indented under the headline with a left hairline (a thin vertical rule, not a box) */
+.blyg-story .blyg-daily-members { margin: var(--blyg-sp-2) 0 0 var(--blyg-sp-1); padding-left: var(--blyg-sp-3); border-left: var(--blyg-hair); }
+.blyg-story .blyg-daily-member { background: none; border-radius: 0; }
+.blyg-story .blyg-daily-member + .blyg-daily-member { border-top: 1px solid var(--background-modifier-border); }
+.blyg-story .blyg-daily-member.blyg-is-new .blyg-daily-who { color: var(--text-accent); }
 /* DG11: the Digest's bar puts its toggle in the same place as the feed's header (the top of the first row, not the middle of a two-line title), whatever the title wraps to. */
 .blyg-daily-barrow { align-items: flex-start; }
 /* the first row starts as far from the top as the feed header's first row (its padding is --size-4-2; the masthead's own 4px rule is part of it) */

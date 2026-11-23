@@ -16,7 +16,7 @@ import { byLine, contentLine } from "../digest/singleLine";
 import { markable, realSleep, unmarkable, sharedMarks, watchMarks, type MarkQueue } from "../digest/markQueue";
 import { forgetScroll, recalledScroll, rememberScroll, scrollKey, setStoryUnfolded, storyUnfolded, takeJump } from "../digest/scrollMemory";
 import { drawToc, type TocEntry } from "./DigestToc";
-import { addChevron } from "./storyChevron";
+import { addStoryMark } from "./storyOpen";
 import { MIXED_BAG, TOP_STORIES, sectionLabel } from "../digest/labels";
 import { quickPost, quickStory } from "./quickMenu";
 import { setReaderMode } from "./readerMode";
@@ -642,7 +642,7 @@ export class BlygDailyView extends ItemView {
     const sq = this.queue();
     quickStory(card, c.posts, { open: () => c.posts[0] && this.openEntry(c.posts[0], walk), ...(sq ? { mark: (read: boolean) => void (read ? sq.enqueue(c.posts) : sq.enqueueUnread(c.posts)) } : {}) });
     const key = scrollKey(this.viewing ?? this.edition);
-    const paintOpen = addChevron(card, [title, ...(summary ? [summary] : [])], () => toggle((open = !open)));
+    const paintOpen = addStoryMark(card, meta, [title, ...(summary ? [summary] : [])]);
     const toggle = (open: boolean): void => {
       list.empty();
       paintOpen(open);
