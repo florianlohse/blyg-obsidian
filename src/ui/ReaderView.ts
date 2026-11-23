@@ -4,6 +4,7 @@
 //
 // Layout: a header that never scrolls away (tabs and controls, or for a post two rows: the way out and its small print, then the read mark, Reply and Previous / Next; and a status line only when something happened) above a
 // body that scrolls by itself. Read state changes at once, in place, and is put back if the Studio refuses.
+import { drawFilterRow } from "./readerHeader";
 import { ItemView, sanitizeHTMLToDom, setIcon, type WorkspaceLeaf } from "obsidian";
 import { isUnread, type InboundMention, type ReadingPost } from "../studio/reading";
 import { plainText, renderForeign, type ImageMode } from "./defang";
@@ -827,15 +828,12 @@ export class BlygReaderView extends ItemView {
       }, { active: this.tab === id });
     }
     row.createDiv({ cls: "blyg-reader-spacer" });
-    drawModeToggle(row, "feed", (m) => switchMode(this.leaf, m));
+    drawModeToggle(row, "feed", (m) => switchMode(this.leaf, m)); // the toggle is always the last thing of this row: one fixed slot, whatever else is drawn
     const canFilter = this.tab === "stream" && this.data !== null && this.data.posts.length > 0;
-    if (canFilter) {
-      const n = activeFilters(this.filter);
-      this.button(row, n > 0 ? `Sort & filter (${n})` : "Sort & filter", () => {
-        this.filtersOpen = !this.filtersOpen;
-        this.drawHeader();
-      }, { active: this.filtersOpen, cls: "blyg-reader-filterbtn", title: "Order, blyg, length and unread" });
-    }
+    if (canFilter) drawFilterRow(h, (...a) => this.button(...a), activeFilters(this.filter), this.filtersOpen, () => {
+      this.filtersOpen = !this.filtersOpen;
+      this.drawHeader();
+    });
     // One item: what the last check found (or what is going on) and the button that checks again, in a single bar under the tabs.
     const bar = h.createDiv({ cls: "blyg-reader-statusrow" });
     this.statusEl = bar.createDiv({ cls: "blyg-reader-status", text: this.status });

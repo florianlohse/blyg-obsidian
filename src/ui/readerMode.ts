@@ -51,7 +51,7 @@ export function switchMode(leaf: Pick<WorkspaceLeaf, "setViewState">, mode: Read
  */
 export function drawModeToggle(into: HTMLElement, shown: ReaderMode, pick: (mode: ReaderMode) => void): HTMLElement | null {
   if (!digestAvailable()) return null;
-  const box = into.createDiv({ cls: "blyg-modeswitch", attr: { role: "group", "aria-label": "Feed or digest" } });
+  const box = into.createDiv({ cls: "blyg-modeswitch blyg-modeslot", attr: { role: "group", "aria-label": "Feed or digest" } });
   for (const [mode, label, title] of [["feed", "Feed", "The list of posts"], ["digest", "Digest", "Today's digest: stories and sections"]] as const) {
     const on = mode === shown;
     const b = box.createEl("button", { text: label, cls: `blyg-modebtn${on ? " is-active" : ""}`, attr: { title, "aria-pressed": String(on) } });

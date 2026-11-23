@@ -28,6 +28,8 @@ const stub = http.createServer((req, res) => {
     return res.end(JSON.stringify({ current: 2, withdrawn: false, changelog: [{ version: 2, at: "2030-01-01T00:00:00Z", note: "Fixed the <b>March</b> total", pinned: false, generated: false }] }));
   }
   others.push(`${req.method} ${req.url}`);
+  // The list and the mentions are never answered, so the reader keeps the saved list and the feed has the posts below.
+  if (req.method === "GET" && /\/api\/(reading|mentions)(\?|$)/.test(req.url ?? "")) { req.resume(); return; } // (no answer: the saved list stays on screen)
   // Anything else goes to the local Studio (its manifest and capabilities, which the client reads before any write); the saved list in this scenario is fixed, so nothing it answers is shown.
   const up = http.request(`${STUDIO}${req.url}`, { method: req.method, headers: { ...req.headers, host: new URL(STUDIO).host } }, (r) => { res.writeHead(r.statusCode ?? 502, r.headers); r.pipe(res); });
   up.on("error", () => { res.writeHead(503, { "content-type": "application/json" }); res.end("{}"); });
@@ -214,5 +216,102 @@ await runScenario({ data }, async (s) => {
   check(mode1 === "feed" && mode2 === "digest", `the mode is kept in the settings (${mode1}, then ${mode2})`);
   check(others.length === afterFeed, `switching between Feed and Digest asks the Studio for nothing more (${others.slice(afterFeed).join(", ") || "0 requests"})`);
   check(histories.length === 1, `opening the digest again, a post and Back asked for no note again (${histories.length} requests)`);
+
+  // ---- Layout parity (DG9): MEASUREMENTS of the Feed | Digest toggle and of an open post's header, in the desktop layout, then in the phone layout at 393 and 360 px wide.
+  // The toggle is one slot (the right end of the first header row) in a feed with a list, in a feed without Sort & filter (the Mentions tab) and in the digest; an open post
+  // draws the same controls in the same places from a story and from the feed, and nothing in it is wider than the screen. (Chromium emulation, not iOS.)
+  const tap = (sel) => page.evaluate((q) => document.querySelector(q)?.click(), sel);
+  const box = (sel) => page.evaluate((q) => { const e = document.querySelector(q); if (!e) return null; const r = e.getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, w: r.width }; }, sel);
+  const CONTROLS = { back: ".blyg-reader-header .blyg-reader-back", check: ".blyg-reader-header .blyg-reader-check", reply: ".blyg-reader-header .blyg-reader-replybtn", prev: ".blyg-reader-header .blyg-reader-step-prev", next: ".blyg-reader-header .blyg-reader-step-next" };
+  const openPost = async () => {
+    const o = {};
+    for (const [k, sel] of Object.entries(CONTROLS)) o[k] = await box(sel);
+    o.count = await box(".blyg-reader-header .blyg-reader-stepcount");
+    o.view = await page.evaluate(() => { const v = document.querySelector(".view-content.blyg-reader"); const b = document.querySelector(".blyg-reader-scroll"); return { vw: window.innerWidth, sw: v?.scrollWidth ?? 0, cw: v?.clientWidth ?? 0, bsw: b?.scrollWidth ?? 0, bcw: b?.clientWidth ?? 0, dsw: document.documentElement.scrollWidth, dcw: document.documentElement.clientWidth }; });
+    return o;
+  };
+  const inView = (o) => Object.keys(CONTROLS).every((k) => o[k] && o[k].r <= o.view.vw + 0.5 && o[k].l >= 0) && o.view.sw <= o.view.cw && o.view.bsw <= o.view.bcw && o.view.dsw <= o.view.dcw;
+  // The reader starts from the saved list (the stand-in Studio never answers the list): first an empty one (the feed with nothing to show), then the full one.
+  const startWith = async (list) => {
+    await page.evaluate((json) => window.app.vault.adapter.write(".obsidian/plugins/blyg/reader-cache.json", json), JSON.stringify({ v: 1, origin: `${base}/`, savedAt: Date.now(), posts: list, mentions: [] }));
+    await page.evaluate(() => window.app.workspace.requestSaveLayout());
+    await wait(1500);
+    await page.evaluate(() => window.app.commands.executeCommandById("app:reload")).catch(() => {});
+    await wait(2500);
+    await page.waitForFunction(() => window.app?.workspace?.layoutReady && window.app.plugins.plugins.blyg, undefined, { timeout: 90000 });
+    await page.evaluate(() => window.app.commands.executeCommandById("blyg:open-reader"));
+    await page.waitForSelector(".blyg-reader-header .blyg-modeswitch", { timeout: 30000 });
+    await wait(3000);
+    // (a load that was under way when the app reloaded may have written the list again: write ours once more and open the reader afresh, from the file)
+    await page.evaluate((json) => window.app.vault.adapter.write(".obsidian/plugins/blyg/reader-cache.json", json), JSON.stringify({ v: 1, origin: `${base}/`, savedAt: Date.now(), posts: list, mentions: [] }));
+    await page.evaluate(() => window.app.workspace.detachLeavesOfType("blyg-reader"));
+    await wait(500);
+    await page.evaluate(() => window.app.commands.executeCommandById("blyg:open-reader"));
+    await page.waitForSelector(".blyg-reader-header .blyg-modeswitch", { timeout: 30000 });
+    await wait(1500);
+  };
+  const layoutPass = async (label) => {
+    await startWith(posts);
+    await page.waitForSelector(".blyg-reader-card", { timeout: 30000 }).catch(async () => { console.error("cache:", await page.evaluate(() => window.app.vault.adapter.read(".obsidian/plugins/blyg/reader-cache.json").then((t) => t.slice(0, 200))), "base", base, "studio", await page.evaluate(() => window.app.plugins.plugins.blyg.settings.studio?.baseUrl)); console.error("view data:", await page.evaluate(() => { const v = window.app.workspace.getLeavesOfType("blyg-reader")[0]?.view; return JSON.stringify({ posts: v?.data?.posts?.length, filter: v?.filter, tab: v?.tab, status: v?.status }); })); console.error("reader shows:", await page.evaluate(() => document.querySelector(".view-content.blyg-reader")?.innerText?.slice(0, 400) ?? "(no reader)")); throw new Error("the feed shows no cards"); });
+    const slotFeed = await box(".blyg-reader-header .blyg-modeslot");
+    await page.evaluate(() => [...document.querySelectorAll(".blyg-reader-header .blyg-reader-btn")].find((b) => /^Mentions/.test(b.textContent ?? ""))?.click());
+    await wait(500);
+    const slotMentions = await box(".blyg-reader-header .blyg-modeslot");
+    await page.evaluate(() => [...document.querySelectorAll(".blyg-reader-header .blyg-reader-btn")].find((b) => b.textContent === "Reading")?.click());
+    await wait(500);
+    const verRect = await box(".blyg-reader-header .blyg-reader-version");
+    const verClear = !verRect || !slotFeed || verRect.r <= slotFeed.l || verRect.l >= slotFeed.r || verRect.t >= slotFeed.t + 40;
+    await page.evaluate(() => document.querySelector(".blyg-reader-card")?.click());
+    await page.waitForSelector(".blyg-reader-header .blyg-reader-back", { timeout: 20000 });
+    await wait(800);
+    const feedPost = await openPost();
+    await tap(".blyg-reader-header .blyg-reader-back");
+    await page.waitForSelector(".blyg-reader-card", { timeout: 20000 });
+    await page.evaluate(() => [...document.querySelectorAll(".blyg-reader-header .blyg-modebtn")].find((b) => b.textContent === "Digest").click());
+    await page.waitForSelector(".blyg-daily .blyg-modeswitch", { timeout: 20000 });
+    await wait(1200);
+    const slotDigest = await box(".blyg-daily .blyg-modeslot");
+    // (the emulated phone layout draws a 12 px scrollbar inside the digest's page; a device draws none: the right edge is read without it)
+    const bar = await page.evaluate(() => { const v = document.querySelector(".view-content.blyg-daily"); return v ? v.offsetWidth - v.clientWidth : 0; });
+    await tap(".blyg-daily .blyg-story-headline");
+    await wait(300);
+    await tap(".blyg-daily .blyg-daily-member .blyg-daily-preview");
+    await page.waitForSelector(".blyg-reader-header .blyg-reader-back", { timeout: 20000 });
+    await wait(1000);
+    const storyPost = await openPost();
+    const storyText = await page.evaluate(() => document.querySelector(".blyg-reader-header .blyg-reader-stepcount")?.textContent ?? "");
+    await tap(".blyg-reader-header .blyg-reader-back");
+    await page.waitForSelector(".blyg-daily .blyg-modeswitch", { timeout: 20000 });
+    await page.evaluate(() => [...document.querySelectorAll(".blyg-daily .blyg-modebtn")].find((b) => b.textContent === "Feed").click());
+    await page.waitForSelector(".blyg-reader-header .blyg-modeswitch", { timeout: 20000 });
+    await wait(1000);
+    const near = (a, b, tol) => a !== null && b !== null && Math.abs(a - b) <= tol;
+    check(slotFeed && slotMentions && slotDigest && near(slotFeed.r, slotMentions.r, 1) && near(slotFeed.t, slotMentions.t, 2) && near(slotFeed.r, slotDigest.r + bar, 1),
+      `${label}: the Feed | Digest toggle is in one slot in the feed with a list (Sort & filter shown), the Mentions tab (none) and the digest (same right edge, the digest\'s row top is its own: the masthead is above it; right edge ${slotFeed?.r}, ${slotMentions?.r}, ${slotDigest?.r}; top ${slotFeed?.t}, ${slotMentions?.t}, ${slotDigest?.t})`);
+    check(verClear, `${label}: the version label does not overlap the toggle (${JSON.stringify(verRect)} against ${JSON.stringify(slotFeed)})`);
+    check(inView(feedPost) && inView(storyPost), `${label}: in an open post (feed and story) every header control is inside the viewport and nothing scrolls sideways (feed ${JSON.stringify(feedPost.view)}, story ${JSON.stringify(storyPost.view)}; right edges feed ${Object.keys(CONTROLS).map((k) => feedPost[k]?.r)}, story ${Object.keys(CONTROLS).map((k) => storyPost[k]?.r)})`);
+    const same = Object.keys(CONTROLS).filter((k) => !(feedPost[k] && storyPost[k] && near(feedPost[k].l, storyPost[k].l, 1) && near(feedPost[k].t, storyPost[k].t, 1)));
+    check(same.length === 0, `${label}: Back, the read check, Reply, Previous and Next are in the same places in the feed's post and the story's post (differing: ${same.join(", ") || "none"}; feed ${JSON.stringify(feedPost.reply)} against story ${JSON.stringify(storyPost.reply)}; counter "${storyText}")`);
+    return slotFeed;
+  };
+  const widths = [[393, 852], [360, 780], [320, 700]];
+  const refs = {};
+  await layoutPass("desktop layout");
+  await s.phone();
+  const cdp = await page.context().newCDPSession(page);
+  for (const [w, h] of widths) {
+    await cdp.send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 2, mobile: true });
+    await wait(1500);
+    refs[w] = await layoutPass(`phone layout ${w} px`);
+  }
+  // the feed with nothing to show (last: a reader that has held a list is not made empty again by a file): the toggle stays where the feed with a list had it, at each width
+  await startWith([]);
+  for (const [w, h] of widths) {
+    await cdp.send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 2, mobile: true });
+    await wait(1500);
+    const empty = await box(".blyg-reader-header .blyg-modeslot");
+    const cards = (await page.$$(".blyg-reader-card")).length;
+    check(cards === 0 && empty && refs[w] && Math.abs(empty.r - refs[w].r) <= 1 && Math.abs(empty.t - refs[w].t) <= 2, `phone layout ${w} px: the empty feed has the toggle in the same slot as the feed with a list (${cards} cards; right edge ${empty?.r} against ${refs[w]?.r}; top ${empty?.t} against ${refs[w]?.t})`);
+  }
   check(errors.length === 0, `no error was thrown on the page ${errors.join(" | ")}`);
 });

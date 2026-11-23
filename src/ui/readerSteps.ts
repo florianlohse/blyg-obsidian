@@ -77,7 +77,8 @@ export function drawSteps(row: HTMLElement, where: Step, h: StepHooks): void {
 export function stepCount(parent: HTMLElement, where: Step): void {
   const count = parent.createSpan({ cls: "blyg-reader-stepcount" });
   if (where.story !== undefined) count.createSpan({ cls: "blyg-reader-steptitle", text: `Story: ${where.story}` }).setAttr("title", where.story);
-  if (where.story !== undefined) count.appendText(" · ");
-  count.createEl("strong", { text: String(where.at + 1) });
-  count.appendText(` of ${where.keys.length}`);
+  const num = count.createSpan({ cls: "blyg-reader-stepnum" });
+  if (where.story !== undefined) num.appendText(" · ");
+  num.createEl("strong", { text: String(where.at + 1) });
+  num.appendText(` of ${where.keys.length}`);
 }
