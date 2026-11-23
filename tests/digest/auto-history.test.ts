@@ -158,7 +158,7 @@ describe("automatic write in the Daily", () => {
     const m = await mount({ due: [true], write: () => new Promise<Outcome>((r) => (release = r)) });
     expect(m.calls).toEqual([{ resort: false, auto: true }]);
     expect(m.texts()).toContain("Writing the digest…"); // quiet spinner while it runs
-    expect(m.texts()).toContain("Front page"); // the plain digest is there meanwhile
+    expect(m.texts()).toContain("Top stories"); // the plain digest is there meanwhile
     release(ok());
     await settle();
     expect(m.texts()).toContain("Gardens");

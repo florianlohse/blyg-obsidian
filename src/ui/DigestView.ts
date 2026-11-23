@@ -15,7 +15,9 @@ import { byNewestPost, drawnSections, type Drawn } from "../digest/order";
 import { byLine, contentLine } from "../digest/singleLine";
 import { markable, realSleep, unmarkable, sharedMarks, watchMarks, type MarkQueue } from "../digest/markQueue";
 import { forgetScroll, recalledScroll, rememberScroll, scrollKey, setStoryUnfolded, storyUnfolded, takeJump } from "../digest/scrollMemory";
-import { drawToc } from "./DigestToc";
+import { drawToc, type TocEntry } from "./DigestToc";
+import { addChevron } from "./storyChevron";
+import { MIXED_BAG, TOP_STORIES, sectionLabel } from "../digest/labels";
 import { setReaderMode } from "./readerMode";
 import { drawBar } from "./DigestBar";
 import { publishPlacement } from "../digest/placement";
@@ -70,6 +72,8 @@ const RESORT_HINT = "Sorts every story and post into sections again, uses tokens
 const stamp = (t: number): string => new Date(t).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
 const timeOnly = (t: number): string => new Date(t).toLocaleTimeString(undefined, { timeStyle: "short" });
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
+/** The posts in these stories (what a heading's counter says: posts, not stories). */
+const postsIn = (stories: readonly Cluster[]): number => stories.reduce((k, c) => k + c.posts.length, 0);
 
 export class BlygDailyView extends ItemView {
   private written: Array<Written | null> = [];
@@ -94,6 +98,8 @@ export class BlygDailyView extends ItemView {
   private markStatus: HTMLElement | null = null;
   /** The sticky bar's menu: folded until the person opens it (kept over redraws). */
   private bar = { open: false };
+  /** The contents of the page being drawn: one entry per heading, pushed by section() as the heading is drawn, so the contents can never differ from the page. */
+  private toc: TocEntry[] = [];
   /** The list the page was made from (kept so Refresh merges into it), and the posts drawn last: what a refresh adds is marked "new". */
   private list: { posts: ReadingPost[]; mentions: InboundMention[] } | null = null;
   private shown: Set<string> | null = null;
@@ -283,7 +289,7 @@ export class BlygDailyView extends ItemView {
     this.paint(model);
     this.drawnKey = scrollKey(this.viewing ?? model?.edition);
     const root = this.contentEl;
-    const want = this.wantSection !== null ? this.sectionEls.get(this.wantSection) : undefined;
+    const want = this.wantSection !== null ? this.sectionEls.get(sectionLabel(this.wantSection)) : undefined;
     this.wantSection = null;
     const put = (): void => (want ? want.scrollIntoView?.({ block: "start" }) : void (root.scrollTop = recalledScroll(this.drawnKey ?? "") ?? 0));
     put();
@@ -294,6 +300,7 @@ export class BlygDailyView extends ItemView {
     const root = this.contentEl;
     this.saveScroll();
     this.sectionEls = new Map();
+    this.toc = [];
     this.readPainters = [];
     this.refreshBtns = [];
     publishPlacement(undefined, null); // set again by a page with sections
@@ -374,9 +381,15 @@ export class BlygDailyView extends ItemView {
       return;
     }
     const sections = this.usableSections(m);
-    if (sections) return this.drawSectioned(root, m, sections);
+    const tocSlot = root.createDiv(); // the contents go here once the page below is drawn (a line per heading drawn, in the order drawn)
+    if (sections) this.drawSectioned(root, m, sections);
+    else this.drawPlain(root, m);
+    if (sections || this.toc.length > 1) drawToc(tocSlot, this.toc, (name) => this.goTo(name)); // the plain page with one heading needs no contents
+  }
+
+  private drawPlain(root: HTMLElement, m: DailyModel): void {
     if (m.front.length > 0 || m.mixed.length > 0) {
-      const s = this.section(root, "Front page");
+      const s = this.section(root, TOP_STORIES, postsIn(m.front));
       if (m.front.length === 0) s.createDiv({ cls: "blyg-daily-empty", text: "No stories with several posts yet." });
       m.front.forEach((c, i) => this.drawCluster(s, c, this.written[i] ?? null));
       const made = this.written.filter((w): w is Written => w !== null);
@@ -390,7 +403,7 @@ export class BlygDailyView extends ItemView {
   /** Letters and changes (corrections, retractions), as on the plain page. */
   private drawLetters(root: HTMLElement, m: DailyModel): void {
     if (m.letters.length > 0) {
-      const s = this.section(root, "Letters");
+      const s = this.section(root, "Letters", m.letters.length);
       for (const l of m.letters) {
         const row = s.createDiv({ cls: "blyg-daily-row" });
         const open = row.createEl("button", { cls: "blyg-daily-link", text: `${l.who} ${l.words} your item${l.headline ? `: ${l.headline}` : ""}` });
@@ -406,7 +419,7 @@ export class BlygDailyView extends ItemView {
 
   private drawChanges(root: HTMLElement, m: DailyModel): void {
     if (m.corrections.length > 0) {
-      const s = this.section(root, "Corrections");
+      const s = this.section(root, "Corrections", m.corrections.length);
       const lazy: Array<{ c: Correction; row: HTMLElement; head: HTMLElement }> = [];
       for (const c of m.corrections) {
         const row = s.createDiv({ cls: "blyg-daily-row" });
@@ -420,7 +433,7 @@ export class BlygDailyView extends ItemView {
       if (this.host.changeNote && lazy.length > 0) void this.fillChangeNotes(lazy.slice(0, NOTES_PER_DRAW));
     }
     if (m.retractions.length > 0) {
-      const s = this.section(root, "Retractions");
+      const s = this.section(root, "Retractions", m.retractions.length);
       for (const r of m.retractions) {
         const row = s.createDiv({ cls: "blyg-daily-row" });
         row.createEl("button", { cls: "blyg-daily-link", text: r.headline }).addEventListener("click", () => this.openEntry(r.post));
@@ -484,7 +497,7 @@ export class BlygDailyView extends ItemView {
   private drawMixed(root: HTMLElement, m: DailyModel, placed: ReadonlySet<string> = new Set()): void {
     const posts = m.mixed.filter((p) => !placed.has(p.remoteId)).sort(byNewestPost);
     if (posts.length > 0) {
-      const s = this.section(root, "Mixed bag");
+      const s = this.section(root, MIXED_BAG, posts.length);
       for (const p of posts) this.drawSingle(s, p);
     }
   }
@@ -518,25 +531,24 @@ export class BlygDailyView extends ItemView {
     const byId = new Map(m.mixed.map((p) => [p.remoteId, p]));
     const placed = new Set<string>();
     const drawn: Drawn[] = drawnSections(sections, m.front, byId, (i) => i < lead);
-    // Where each post is drawn, for the reader's "In the digest" chip: the lead block is "Front page" (its stories are not drawn again in their sections).
+    // Where each post is drawn, for the reader's "In the digest" chip: the lead block is "Top stories" (its stories are not drawn again in their sections).
     const where = new Map<string, string>();
-    for (let i = 0; i < lead; i++) for (const q of m.front[i]?.posts ?? []) where.set(q.remoteId, "Front page");
+    for (let i = 0; i < lead; i++) for (const q of m.front[i]?.posts ?? []) where.set(q.remoteId, TOP_STORIES);
     for (const d of drawn) {
-      for (const i of d.stories) for (const q of m.front[i]?.posts ?? []) where.set(q.remoteId, d.name);
-      for (const q of d.singles) where.set(q.remoteId, d.name);
+      for (const i of d.stories) for (const q of m.front[i]?.posts ?? []) where.set(q.remoteId, sectionLabel(d.name));
+      for (const q of d.singles) where.set(q.remoteId, sectionLabel(d.name));
     }
-    for (const q of m.mixed) if (!where.has(q.remoteId)) where.set(q.remoteId, "Mixed bag");
+    for (const q of m.mixed) if (!where.has(q.remoteId)) where.set(q.remoteId, MIXED_BAG);
     publishPlacement(m.edition, where);
-    // The table of contents, then the lead block, then the sections; the page order is the rule in digest/order.ts.
-    drawToc(root, drawn.map((d) => ({ name: d.name, count: d.stories.reduce((k, i) => k + (m.front[i]?.posts.length ?? 0), 0) + d.singles.length })), (name) => this.goTo(name));
-    const front = this.section(root, "Front page");
+    // The lead block, then the sections; the page order is the rule in digest/order.ts. The contents (draw()) are made from the headings as they are drawn.
+    const front = this.section(root, TOP_STORIES, postsIn(m.front.slice(0, lead)));
     front.addClass("blyg-sections-lead");
     for (let i = 0; i < lead; i++) {
       const c = m.front[i];
       if (c) this.drawCluster(front, c, this.written[i] ?? null);
     }
     for (const sec of drawn) {
-      const box = this.section(root, sec.name, sec.about);
+      const box = this.section(root, sectionLabel(sec.name), sec.stories.reduce((k, i) => k + (m.front[i]?.posts.length ?? 0), 0) + sec.singles.length, sec.about);
       box.addClass("blyg-sections-section");
       for (const i of sec.stories) {
         const c = m.front[i];
@@ -583,17 +595,19 @@ export class BlygDailyView extends ItemView {
     for (const line of GROUPING_NOTE) how.createEl("p", { text: line, cls: "blyg-daily-meta" });
   }
 
-  private section(root: HTMLElement, title: string, about?: string): HTMLElement {
+  /** A heading box. `count`: the items drawn under it; every heading drawn is a line of the contents, in the order it is drawn (see tocSlot). */
+  private section(root: HTMLElement, title: string, count: number, about?: string): HTMLElement {
     const s = root.createDiv({ cls: "blyg-daily-section" });
     s.createEl("h3", { text: title });
     if (about) s.createDiv({ cls: "blyg-section-about", text: about }); // the AI's one-line byline, muted; none when it gave none
     this.sectionEls.set(title, s);
+    this.toc.push({ name: title, count });
     return s;
   }
 
   /** Scroll to a section's box (the table of contents, the reader's chip). */
   private goTo(name: string): void {
-    this.sectionEls.get(name)?.scrollIntoView?.({ block: "start", behavior: "smooth" });
+    this.sectionEls.get(sectionLabel(name))?.scrollIntoView?.({ block: "start", behavior: "smooth" });
   }
 
   private drawCluster(into: HTMLElement, c: Cluster, ai: Written | null): void {
@@ -615,8 +629,10 @@ export class BlygDailyView extends ItemView {
     const story = c.id ?? c.headline;
     const walk = { title: ai ? ai.headline : c.headline, posts: c.posts }; // Next and Previous in the reader walk this story, in this order
     const key = scrollKey(this.viewing ?? this.edition);
+    const paintOpen = addChevron(card, [title, ...(summary ? [summary] : [])], () => toggle((open = !open)));
     const toggle = (open: boolean): void => {
       list.empty();
+      paintOpen(open);
       setStoryUnfolded(key, story, open);
       if (!open) return;
       for (const p of c.posts) {

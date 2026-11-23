@@ -242,7 +242,7 @@ describe("the digest chip names the heading the current post is under", () => {
     const past = [{ id: 3, at: 3, stories: [], singles: [], who: {}, sections: [{ name: "Old", stories: [], posts: ["pa"] }] }] as never;
     expect(sectionOfPost("pa", current, past)).toEqual({ edition: 9, section: "Other" });
   });
-  it("the page publishes where it drew each post: the lead block is Front page, not its section", async () => {
+  it("the page publishes where it drew each post: the lead block is Top stories, not its section", async () => {
     const stories = ["alpha", "beta", "gamma", "delta"].map((t, i) => {
       const a = post(`Wholly distinct ${t} subject only here ${i}.`, "Ann");
       return [a, post(`Reply ${t}.`, "Bo", { isReply: true, stubTarget: { id: a.remoteId } as never })];
@@ -260,7 +260,7 @@ describe("the digest chip names the heading the current post is under", () => {
     await view.onOpen();
     const where = (id: string): string | undefined => placedSection(id, 9)?.section;
     const names = new Set(posts.map((p) => where(p.remoteId)));
-    expect(names.has("Front page")).toBe(true); // the biggest stories are the lead block
+    expect(names.has("Top stories")).toBe(true); // the biggest stories are the lead block
     expect(where(lone.remoteId)).toBe("Garden");
     expect(placedSection(lone.remoteId, 8)).toBeNull(); // another edition: no claim
     // and a tap on the chip scrolls that edition's page to that section

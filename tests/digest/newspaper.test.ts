@@ -28,15 +28,15 @@ describe("the masthead", () => {
   });
 });
 
-describe("what is not on the front page", () => {
+describe("what is not in the Top stories", () => {
   it("is empty when nothing is left over", () => {
     expect(summarizeRest([])).toEqual({ line: "", posts: [] });
   });
   it("counts the stories beyond the front page", () => {
     const r = summarizeRest([cluster("a", "b"), cluster("c", "d", "e")]);
-    expect(r.line).toBe("2 more stories (5 posts) not on the front page");
+    expect(r.line).toBe("2 more stories (5 posts) not in the Top stories");
     expect(r.posts.map((p) => p.remoteId)).toEqual(["a", "b", "c", "d", "e"]);
-    expect(summarizeRest([cluster("a", "b")]).line).toBe("1 more story (2 posts) not on the front page");
+    expect(summarizeRest([cluster("a", "b")]).line).toBe("1 more story (2 posts) not in the Top stories");
   });
 });
 

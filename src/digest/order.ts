@@ -1,5 +1,5 @@
 // The order of the digest page, in one place. The rule (also said in the page's "How this is grouped" note):
-//   - Front page lead and the plain front page: the biggest stories first (most posts), then the one with the newest post, then by id.
+//   - Top stories lead and the plain Top stories: the biggest stories first (most posts), then the one with the newest post, then by id.
 //   - Within a section: stories by the time of their NEWEST post, newest first; single posts newest first.
 //   - Read posts sink: inside a section a story or post you have already read comes after the unread ones (the relative order is kept otherwise).
 //   - Window: a post belongs to an edition by `postTime` (when the Studio first saw it), not by its published date, so a post imported late can show an older date.

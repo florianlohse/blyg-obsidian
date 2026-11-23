@@ -1,4 +1,4 @@
-// Where the Daily page put each post the last time it drew today's edition (the section's name as the page shows it: "Front page" for the lead block, a section, "Other",
+// Where the Daily page put each post the last time it drew today's edition (the section's name as the page shows it: "Top stories" for the lead block, a section, "Other",
 // "Mixed bag"). The reader's "In the digest: <section>" chip asks here first, so it names the heading the post is really under; only when the Daily has not drawn the edition in
 // this session does it fall back to what the edition record says (postSection.ts). Module memory, ids and names only, never stored.
 import type { InDigest } from "./postSection";
