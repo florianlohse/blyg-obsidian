@@ -31,6 +31,8 @@ export interface DigestDeps {
   /** The setting "Digest time" ("HH:MM", the device's clock). */
   time: () => string;
   readList: () => Promise<{ posts: ReadingPost[]; mentions: InboundMention[]; savedAt: number } | null>;
+  /** The reader's own mark-read path (`reading:state`), used by the digest's "Mark read" buttons. Absent: no buttons. */
+  markRead?: (post: ReadingPost) => Promise<{ ok: boolean; message?: string }>;
   /** The optional AI layer. Absent: no AI. */
   ai?: { settings: () => BlygSettings["digest"]; keychain: Keychain; transport: RawTransport };
 }
@@ -118,6 +120,7 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
       : {}),
     history: () => history.list(),
     loadList: () => deps.readList(),
+    ...(deps.markRead ? { markRead: deps.markRead } : {}),
     edition: (posts) => editions.open(posts),
     font: () => deps.font(),
     showFeed: async (leaf) => void (await leaf.setViewState({ type: BLYG_READER_VIEW, active: true })),

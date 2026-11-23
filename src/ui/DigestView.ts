@@ -4,8 +4,6 @@ import { ItemView, type WorkspaceLeaf } from "obsidian";
 import type { Cluster } from "../digest/cluster";
 import type { Outcome, Written } from "../digest/llm";
 import { leadCount, OTHER_NAME, type Section } from "../digest/sections";
-import { firstSentence } from "../digest/cluster";
-import { ownWords } from "../digest/quotes";
 import { buildDaily, type DailyModel } from "../digest/daily";
 import type { Grouped } from "../digest/stable";
 import { nothingToWriteNote } from "../digest/writeNote";
@@ -13,8 +11,9 @@ import { GROUPING_NOTE, previewOf, summarizeRest } from "../digest/layout";
 import { authorOf, authorsLine, keywordsOf } from "../digest/storyMeta";
 import { mastheadDate } from "../digest/window";
 import { byNewestPost, drawnSections, type Drawn } from "../digest/order";
-import { digestReadTime } from "../digest/readTime";
-import { forgetScroll, recalledScroll, rememberScroll, scrollKey, takeJump } from "../digest/scrollMemory";
+import { byLine, contentLine } from "../digest/singleLine";
+import { markable, realSleep, sharedMarks, watchMarks, type MarkQueue } from "../digest/markQueue";
+import { forgetScroll, recalledScroll, rememberScroll, scrollKey, setStoryUnfolded, storyUnfolded, takeJump } from "../digest/scrollMemory";
 import { drawToc } from "./DigestToc";
 import { isUnread, type InboundMention, type ReadingPost } from "../studio/reading";
 import type { PastEdition } from "../digest/history";
@@ -39,6 +38,8 @@ export interface DigestHost {
   /** Show the reader's feed in this leaf. */
   showFeed(leaf: WorkspaceLeaf): Promise<void>;
   openWeb(url: string): void;
+  /** Mark one post read in the Studio by the reader's own path (permission `reading:state`). Absent: the digest has no "Mark read" buttons. */
+  markRead?(post: ReadingPost): Promise<{ ok: boolean; message?: string }>;
   /** The optional AI layer (src/digest/llm.ts); absent or `enabled()` false: the Daily is the deterministic list only. */
   ai?: {
     enabled(): boolean;
@@ -70,8 +71,13 @@ export class BlygDailyView extends ItemView {
   /** The section boxes drawn now, by name (the table of contents and the reader's chip scroll to them), and the section a chip asked for. */
   private sectionEls = new Map<string, HTMLElement>();
   private wantSection: string | null = null;
+  /** The edition the page shows now (today's), for the unfold memory. */
+  private edition: number | null = null;
   /** The page whose scroll position is kept (an edition's id, see digest/scrollMemory.ts); null until something is drawn. */
   private drawnKey: string | null = null;
+  /** Repainters of the "read" look of what is drawn (a card dims, a button goes) when a mark changes; filled while drawing. */
+  private readPainters: Array<() => void> = [];
+  private markStatus: HTMLElement | null = null;
   constructor(leaf: WorkspaceLeaf, private readonly host: DigestHost) {
     super(leaf);
   }
@@ -86,7 +92,22 @@ export class BlygDailyView extends ItemView {
   }
   override async onOpen(): Promise<void> {
     this.contentEl.addClass("blyg-daily");
+    watchMarks({ change: () => this.readPainters.forEach((f) => f()), reverted: (m) => this.say(m) });
     await this.refresh();
+  }
+  override async onClose(): Promise<void> {
+    watchMarks(null);
+    return Promise.resolve();
+  }
+
+  /** The queue that marks posts read (one for the plugin session), or null when the host cannot mark. */
+  private queue(): MarkQueue | null {
+    const host = this.host;
+    return host.markRead ? sharedMarks((p) => host.markRead?.(p) ?? Promise.resolve({ ok: false }), realSleep) : null;
+  }
+  private say(text: string): void {
+    this.note = text;
+    if (this.markStatus) this.markStatus.textContent = text;
   }
 
   /** Keep where the page is scrolled to, under its edition (it is made again when the person comes Back from a post). */
@@ -110,6 +131,7 @@ export class BlygDailyView extends ItemView {
     try {
       const list = await this.host.loadList();
       if (list) {
+        this.queue()?.apply(list.posts, list.savedAt);
         this.byId = new Map(list.posts.map((p) => [p.remoteId, p]));
         const win = await this.host.edition(list.posts);
         model = buildDaily(list.posts, list.mentions, win.since, win.until, win.grouped, win.id);
@@ -162,6 +184,7 @@ export class BlygDailyView extends ItemView {
   }
 
   private render(model: DailyModel | null): void {
+    this.edition = model?.edition ?? null;
     this.paint(model);
     this.drawnKey = scrollKey(this.viewing ?? model?.edition);
     const root = this.contentEl;
@@ -176,6 +199,7 @@ export class BlygDailyView extends ItemView {
     const root = this.contentEl;
     this.saveScroll();
     this.sectionEls = new Map();
+    this.readPainters = [];
     root.empty();
     for (const f of ["default", "serif", "sans", "mono"] as const) root.toggleClass(`is-font-${f}`, f === this.host.font());
     const mast = root.createDiv({ cls: "blyg-daily-masthead" });
@@ -210,7 +234,7 @@ export class BlygDailyView extends ItemView {
         resort.addEventListener("click", () => this.run(model, true));
       }
     }
-    if (this.note) root.createDiv({ cls: "blyg-daily-meta", text: this.note });
+    this.markStatus = root.createDiv({ cls: "blyg-daily-meta blyg-daily-markstatus", text: this.note });
     if (!model) {
       root.createDiv({ cls: "blyg-daily-empty", text: "There is no saved list to read yet. Open the reader and let it load, then come back." });
       return;
@@ -294,17 +318,37 @@ export class BlygDailyView extends ItemView {
     }
   }
 
-  /** A single post as a compact row: the AI line ("<Author> on <topic>") or, with none, the author and the first sentence; the reading time muted at the right. Opens in the reader; Back returns here. */
+  /** A single post: its content line in bold (the AI line's topic, else its first sentence), "by <Author>" in italics under it, and a small "Mark read". A tap on the row opens it in the reader; Back returns here. */
   private drawSingle(into: HTMLElement, p: ReadingPost, line?: string): void {
-    const row = into.createDiv({ cls: `blyg-daily-row blyg-story-mixed${isUnread(p) ? "" : " blyg-is-read"}` });
+    const row = into.createDiv({ cls: "blyg-daily-row blyg-story-mixed" });
     const main = row.createDiv({ cls: "blyg-story-main" });
-    if (line) main.createEl("button", { cls: "blyg-daily-link blyg-story-who blyg-story-line", text: line }).addEventListener("click", () => this.openEntry(p));
-    else {
-      main.createEl("button", { cls: "blyg-daily-link blyg-story-who", text: authorOf(p) }).addEventListener("click", () => this.openEntry(p));
-      const first = firstSentence(ownWords(p));
-      if (first) main.createDiv({ cls: "blyg-story-first", text: first });
-    }
-    row.createDiv({ cls: "blyg-story-time", text: digestReadTime(p) });
+    const text = contentLine(p, line);
+    main.createEl("button", { cls: "blyg-daily-link blyg-story-who blyg-story-line", text: text || byLine(p) }).addEventListener("click", (e) => {
+      e?.stopPropagation?.();
+      this.openEntry(p);
+    });
+    if (text) main.createDiv({ cls: "blyg-story-by", text: byLine(p) });
+    row.addEventListener("click", () => this.openEntry(p));
+    const slot = row.createDiv({ cls: "blyg-story-markslot" });
+    this.paintRead(row, slot, [p]);
+  }
+
+  /** The "read" look of a card or row and its "Mark read" button, now and after every change of a mark. `slot` holds the button (one for all `posts`). */
+  private paintRead(card: HTMLElement, slot: HTMLElement, posts: readonly ReadingPost[], label = "Mark read"): void {
+    const paint = (): void => {
+      const unread = markable(posts);
+      card.toggleClass("blyg-is-read", posts.every((q) => !isUnread(q)));
+      slot.empty();
+      const q = this.queue();
+      if (!q || unread.length === 0) return;
+      const btn = slot.createEl("button", { cls: "blyg-mark", text: label, attr: { title: posts.length > 1 ? "Mark every post of this story read" : "Mark this post read" } });
+      btn.addEventListener("click", (e) => {
+        e?.stopPropagation?.();
+        void q.enqueue(posts);
+      });
+    };
+    paint();
+    this.readPainters.push(paint);
   }
 
   /** The Mixed bag: the single posts no section holds (all of them on the plain page). */
@@ -346,7 +390,7 @@ export class BlygDailyView extends ItemView {
     const placed = new Set<string>();
     const drawn: Drawn[] = drawnSections(sections, m.front, byId, (i) => i < lead);
     // The table of contents, then the lead block, then the sections; the page order is the rule in digest/order.ts.
-    drawToc(root, drawn, (name) => this.goTo(name));
+    drawToc(root, drawn.map((d) => ({ name: d.name, count: d.stories.reduce((k, i) => k + (m.front[i]?.posts.length ?? 0), 0) + d.singles.length })), (name) => this.goTo(name));
     const front = this.section(root, "Front page");
     front.addClass("blyg-sections-lead");
     for (let i = 0; i < lead; i++) {
@@ -415,7 +459,7 @@ export class BlygDailyView extends ItemView {
   }
 
   private drawCluster(into: HTMLElement, c: Cluster, ai: Written | null): void {
-    const card = into.createDiv({ cls: `blyg-daily-cluster blyg-story${c.posts.every((p) => !isUnread(p)) ? " blyg-is-read" : ""}` });
+    const card = into.createDiv({ cls: "blyg-daily-cluster blyg-story" });
     const blygs = new Set(c.posts.map((p) => p.subscriptionTitle || p.origin || "")).size;
     const title = card.createEl("button", { cls: `blyg-daily-link blyg-daily-headline blyg-story-headline blyg-story-font-${this.host.font()}`, text: ai ? ai.headline : c.headline });
     // Generated text: put on the page as text only (never HTML). The "Written by" label is once, under the front page.
@@ -427,18 +471,32 @@ export class BlygDailyView extends ItemView {
     });
     const fresh = new Set(ai?.fresh ?? []);
     if (fresh.size > 0) meta.createSpan({ cls: "blyg-story-updated", text: ` +${plural(fresh.size, "new post", "new posts")}` });
+    // One button marks the whole story (its unread posts) read.
+    this.paintRead(card, card.createDiv({ cls: "blyg-story-markrow" }), c.posts, "Mark story read");
     const list = card.createDiv({ cls: "blyg-daily-members" });
+    const story = c.id ?? c.headline;
+    const key = scrollKey(this.viewing ?? this.edition);
     const toggle = (open: boolean): void => {
       list.empty();
+      setStoryUnfolded(key, story, open);
       if (!open) return;
       for (const p of c.posts) {
-        const row = list.createDiv({ cls: `blyg-daily-row blyg-daily-member${fresh.has(p.remoteId) ? " blyg-is-new" : ""}${isUnread(p) ? "" : " blyg-is-read"}` });
-        row.createEl("button", { cls: "blyg-daily-link blyg-daily-who", text: `${p.authorName ?? p.subscriptionTitle}${p.isReply ? " (reply)" : ""}` }).addEventListener("click", () => this.openEntry(p));
+        const row = list.createDiv({ cls: `blyg-daily-row blyg-daily-member${fresh.has(p.remoteId) ? " blyg-is-new" : ""}` });
+        const who = row.createEl("button", { cls: "blyg-daily-link blyg-daily-who", text: `${p.authorName ?? p.subscriptionTitle}${p.isReply ? " (reply)" : ""}` });
+        who.addEventListener("click", (e) => {
+          e?.stopPropagation?.();
+          this.openEntry(p);
+        });
         const preview = previewOf(p);
         if (preview) row.createDiv({ cls: "blyg-daily-preview", text: preview });
+        row.addEventListener("click", () => this.openEntry(p)); // a tap anywhere on the post's area opens it
+        const dim = (): void => row.toggleClass("blyg-is-read", !isUnread(p));
+        dim();
+        this.readPainters.push(dim);
       }
     };
-    let open = false;
+    let open = storyUnfolded(key, story);
+    toggle(open);
     // The summary does what the headline does.
     title.addEventListener("click", () => toggle((open = !open)));
     summary?.addEventListener("click", () => toggle((open = !open)));

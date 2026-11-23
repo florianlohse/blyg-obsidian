@@ -3,7 +3,7 @@
 import type { PastEdition } from "../digest/history";
 import { authorOf } from "../digest/storyMeta";
 import type { ReadingPost } from "../studio/reading";
-import { digestReadTime } from "../digest/readTime";
+import { byLine, topicOf } from "../digest/singleLine";
 import { drawToc } from "./DigestToc";
 
 export const NOT_IN_LIST = "no longer in the reader's list";
@@ -43,8 +43,13 @@ export function drawPast(root: HTMLElement, rec: PastEdition, byId: ReadonlyMap<
   const row = (into: HTMLElement, id: string): void => {
     const p = byId.get(id);
     const r = into.createDiv({ cls: "blyg-daily-row blyg-daily-member" });
-    if (p) r.createEl("button", { cls: "blyg-daily-link blyg-daily-who", text: authorOf(p) }).addEventListener("click", () => open(p));
-    else {
+    if (p) {
+      r.createEl("button", { cls: "blyg-daily-link blyg-daily-who", text: authorOf(p) }).addEventListener("click", (e) => {
+        e?.stopPropagation?.();
+        open(p);
+      });
+      r.addEventListener("click", () => open(p)); // a tap anywhere on the post's area
+    } else {
       r.createDiv({ cls: "blyg-daily-who", text: rec.who[id] ?? "A post" });
       r.createDiv({ cls: "blyg-daily-meta blyg-past-gone", text: `(${NOT_IN_LIST})` });
     }
@@ -66,18 +71,24 @@ export function drawPast(root: HTMLElement, rec: PastEdition, byId: ReadonlyMap<
     title.addEventListener("click", toggle);
     summary?.addEventListener("click", toggle); // the summary does what the headline does
   };
-  /** A single post: its AI line when there is one, else the author; a post the reader still holds opens and shows its reading time. */
+  /** A single post, as on today's page: the content line in bold, "by <Author>" in italics; a post the reader no longer holds is told so. */
   const single = (into: HTMLElement, id: string): void => {
     const p = byId.get(id);
     const r = into.createDiv({ cls: "blyg-daily-row blyg-story-mixed" });
     const main = r.createDiv({ cls: "blyg-story-main" });
     const line = rec.lines?.[id];
-    if (p) main.createEl("button", { cls: "blyg-daily-link blyg-story-who blyg-story-line", text: line ?? authorOf(p) }).addEventListener("click", () => open(p));
-    else {
+    if (p) {
+      const text = line ? topicOf(line, p) : "";
+      main.createEl("button", { cls: "blyg-daily-link blyg-story-who blyg-story-line", text: text || byLine(p) }).addEventListener("click", (e) => {
+        e?.stopPropagation?.();
+        open(p);
+      });
+      if (text) main.createDiv({ cls: "blyg-story-by", text: byLine(p) });
+      r.addEventListener("click", () => open(p));
+    } else {
       main.createDiv({ cls: "blyg-daily-who", text: line ?? rec.who[id] ?? "A post" });
       main.createDiv({ cls: "blyg-daily-meta blyg-past-gone", text: `(${NOT_IN_LIST})` });
     }
-    if (p) r.createDiv({ cls: "blyg-story-time", text: digestReadTime(p) });
   };
   const box = (title: string, about?: string): HTMLElement => {
     const s = root.createDiv({ cls: "blyg-daily-section" });
@@ -89,7 +100,7 @@ export function drawPast(root: HTMLElement, rec: PastEdition, byId: ReadonlyMap<
   if (rec.sections && rec.sections.length > 0) {
     const placed = new Set<number>();
     const placedPosts = new Set<string>();
-    drawToc(root, rec.sections, hooks.go);
+    drawToc(root, rec.sections.map((x) => ({ name: x.name, count: x.stories.reduce((k, i) => k + (rec.stories[i]?.posts.length ?? 0), 0) + x.posts.length })), hooks.go);
     for (const sec of rec.sections) {
       const b = box(sec.name, sec.about);
       // The same order as today's page (digest/order.ts): stories by their newest post (records from before that was kept stay as they were), single posts as recorded (newest first).
