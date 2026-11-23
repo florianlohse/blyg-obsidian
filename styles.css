@@ -527,13 +527,13 @@
 /* S15: the reader. A header that stays put, a body that scrolls by itself, theme variables only; one column, so it holds on a phone. */
 .view-content.blyg-reader { display: flex; flex-direction: column; height: 100%; padding: 0; box-sizing: border-box; }
 /* On a phone Obsidian's bar floats over the pane: keep the pane's last line, and the bar below a post, clear of it. */
-.view-content.blyg-reader { padding-bottom: var(--blyg-bottom-clear, 0px); }
+.view-content.blyg-reader { padding-bottom: var(--blyg-bottom-clear, 0px); overflow-x: hidden; }
 .is-mobile .view-content.blyg-reader { padding-bottom: var(--blyg-bottom-clear, calc(var(--mobile-navbar-height, 0px) + env(safe-area-inset-bottom, 0px))); }
 .blyg-reader-bodywrap { position: relative; }
 .blyg-reader-header { flex: none; padding: var(--size-4-2) var(--size-4-3) var(--size-2-2); border-bottom: 1px solid var(--background-modifier-border); background: var(--background-primary); }
 .blyg-reader-bodywrap { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-.blyg-reader-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--size-4-3); -webkit-user-select: text; user-select: text; }
-.blyg-reader-column { max-width: 42rem; margin: 0 auto; }
+.blyg-reader-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: var(--size-4-3); -webkit-user-select: text; user-select: text; }
+.blyg-reader-column { max-width: 42rem; margin: 0 auto; min-width: 0; }
 .blyg-reader-bar, .blyg-reader-controls { display: flex; gap: var(--size-4-1); flex-wrap: wrap; align-items: center; }
 .blyg-reader-controls { margin-top: var(--size-4-1); }
 .blyg-reader-spacer { flex: 1 1 auto; }
@@ -650,7 +650,6 @@
 .blyg-reader-surface .blyg-reader-body hr { border: 0; border-top: 1px solid var(--blyg-rule); margin: 1.6em 0; }
 .blyg-reader-surface .blyg-reader-body :is(pre, code) { background: color-mix(in srgb, var(--blyg-ink) 7%, transparent); border-radius: var(--radius-s); }
 /* Code and tables never break the frame: a code box scrolls sideways, a long word in inline code may break, a wide table scrolls. */
-.blyg-reader-column { min-width: 0; }
 .blyg-reader-surface .blyg-reader-body pre { max-width: 100%; overflow-x: auto; padding: 0.6em 0.8em; white-space: pre; tab-size: 4; -webkit-overflow-scrolling: touch; }
 .blyg-reader-surface .blyg-reader-body pre code { background: none; white-space: pre; overflow-wrap: normal; }
 .blyg-reader-surface .blyg-reader-body :not(pre) > code { overflow-wrap: anywhere; }
@@ -866,7 +865,20 @@ button.blyg-daily-link.blyg-story-who { font-weight: var(--font-semibold); font-
 .blyg-modeswitch { display: inline-flex; flex: none; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-s); overflow: hidden; }
 button.blyg-modebtn { height: auto; padding: 1px var(--size-4-2); font-size: var(--font-ui-smaller); line-height: 1.6; background: none; box-shadow: none; border: 0; border-radius: 0; color: var(--text-muted); }
 button.blyg-modebtn.is-active { background: var(--background-modifier-hover); color: var(--text-normal); font-weight: var(--font-semibold); cursor: default; }
-.blyg-reader-steptitle { display: inline-block; max-width: 10em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+/* One slot for the Feed | Digest toggle: the right end of the first header row, in the reader's feed header and in the Daily's header (the same box, the same edge). */
+.blyg-modeslot { flex: none; margin-left: auto; }
+.blyg-daily-head > .blyg-modeslot { order: 99; }
+.blyg-reader-filterrow { margin-top: var(--size-4-1); }
+/* The open post's header fits the viewport in both modes: the step counter gives way (its story title is cut with an ellipsis, a small fixed budget), Reply and the steps never move or shrink. */
+.blyg-reader-header, .blyg-reader-bodywrap, .blyg-reader-bar-thumb, .blyg-reader-bar-main { min-width: 0; max-width: 100%; box-sizing: border-box; }
+.blyg-reader-bar-thumb > .blyg-reader-stepcount { flex: 0 1 auto; min-width: 0; display: inline-flex; overflow: hidden; }
+.blyg-reader-stepcount .blyg-reader-steptitle { display: block; flex: 0 1 auto; min-width: 0; max-width: 7em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.blyg-reader-stepnum { flex: none; white-space: pre; }
+.blyg-reader-bar-thumb .blyg-reader-check, .blyg-reader-bar-thumb .blyg-reader-replybtn, .blyg-reader-bar-thumb .blyg-reader-steps { flex: none; }
+.blyg-reader-bar-thumb .blyg-reader-replybtn ~ .blyg-reader-spacer { flex: 0 0 var(--size-4-2); }
+.blyg-reader-surface .blyg-reader-body { min-width: 0; overflow-wrap: anywhere; }
+.blyg-reader-surface .blyg-reader-body blockquote, .blyg-reader-surface .blyg-reader-body pre, .blyg-reader-surface .blyg-reader-body img, .blyg-reader-surface .blyg-reader-body table { max-width: 100%; box-sizing: border-box; }
+.blyg-reader-surface .blyg-reader-body pre { overflow-x: auto; }
 /* Sections (src/ui/DigestView.ts): the lead block and the named sections. New class names only. */
 .blyg-sections-lead .blyg-daily-cluster { padding-bottom: var(--size-4-3); }
 .blyg-sections-lead button.blyg-story-headline { font-size: calc(var(--font-text-size, 16px) * 1.7); }
