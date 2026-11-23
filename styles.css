@@ -865,3 +865,8 @@ button.blyg-daily-link.blyg-story-who { font-weight: var(--font-semibold); font-
 .blyg-sections-lead .blyg-daily-cluster { padding-bottom: var(--size-4-3); }
 .blyg-sections-lead button.blyg-story-headline { font-size: calc(var(--font-text-size, 16px) * 1.7); }
 .blyg-sections-section > h3 { border-bottom-width: 1px; }
+
+/* Editions: a story that grew since its text was written, its new posts, and posts already read. */
+.blyg-story-updated { color: var(--text-accent); font-weight: var(--font-semibold); white-space: nowrap; }
+.blyg-daily-member.blyg-is-new { background: var(--background-modifier-hover); border-radius: var(--radius-s); }
+.blyg-is-read { opacity: 0.55; }

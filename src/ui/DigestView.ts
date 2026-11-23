@@ -7,10 +7,12 @@ import { leadCount, type Section } from "../digest/sections";
 import { firstSentence } from "../digest/cluster";
 import { ownWords } from "../digest/quotes";
 import { buildDaily, type DailyModel } from "../digest/daily";
+import type { Grouped } from "../digest/stable";
+import { nothingToWriteNote } from "../digest/writeNote";
 import { GROUPING_NOTE, previewOf, summarizeRest } from "../digest/layout";
 import { authorOf, authorsLine, keywordsOf } from "../digest/storyMeta";
 import { mastheadDate } from "../digest/window";
-import type { InboundMention, ReadingPost } from "../studio/reading";
+import { isUnread, type InboundMention, type ReadingPost } from "../studio/reading";
 import type { ReaderFont } from "./readerFonts";
 
 export const BLYG_DAILY_VIEW = "blyg-daily";
@@ -18,8 +20,8 @@ export const BLYG_DAILY_VIEW = "blyg-daily";
 export interface DigestHost {
   /** The reader's saved list and when it was saved, or null when there is none (the reader has not been opened, or the list is too old). */
   loadList(): Promise<{ posts: ReadingPost[]; mentions: InboundMention[]; savedAt: number } | null>;
-  /** Today: local midnight to now. */
-  window(): Promise<{ since: number; until: number }>;
+  /** The current edition for these posts (src/digest/editionHost.ts): its window, and the stories and Mixed bag it has settled. Absent `id`/`grouped`: group the window afresh. */
+  edition(posts: readonly ReadingPost[]): Promise<{ id?: number; since: number; until: number; grouped?: Grouped }>;
   /** The reader's font setting; the digest's type follows it. */
   font(): ReaderFont;
   /** Open a post in the reader, in this leaf, like a feed card; the reader's Back returns to the digest. */
@@ -63,9 +65,10 @@ export class BlygDailyView extends ItemView {
     root.createDiv({ cls: "blyg-daily-status", text: "Reading your list…" });
     let model: DailyModel | null = null;
     try {
-      const [list, win] = await Promise.all([this.host.loadList(), this.host.window()]);
+      const list = await this.host.loadList();
       if (list) {
-        model = buildDaily(list.posts, list.mentions, win.since, win.until);
+        const win = await this.host.edition(list.posts);
+        model = buildDaily(list.posts, list.mentions, win.since, win.until, win.grouped, win.id);
       }
     } catch {
       model = null;
@@ -81,26 +84,28 @@ export class BlygDailyView extends ItemView {
     root.empty();
     for (const f of ["default", "serif", "sans", "mono"] as const) root.toggleClass(`is-font-${f}`, f === this.host.font());
     const mast = root.createDiv({ cls: "blyg-daily-masthead" });
-    mast.createEl("h1", { text: mastheadDate(model?.since ?? Date.now()), cls: "blyg-daily-date" });
+    mast.createEl("h1", { text: mastheadDate(model?.edition ?? model?.since ?? Date.now()), cls: "blyg-daily-date" });
     mast.createDiv({ text: "Your digest", cls: "blyg-daily-kicker" });
     const head = root.createDiv({ cls: "blyg-daily-head" });
     const feed = head.createEl("button", { text: "Feed", cls: "blyg-daily-btn", attr: { title: "Back to the reader's feed" } });
     feed.addEventListener("click", () => void this.host.showFeed(this.leaf));
     head.createEl("button", { text: "Refresh", cls: "blyg-daily-btn" }).addEventListener("click", () => void this.refresh());
     const ai = this.host.ai;
-    if (model && ai?.enabled() && model.front.length > 0) {
+    if (model && ai?.enabled()) {
       const btn = head.createEl("button", { cls: "blyg-daily-btn blyg-story-write" });
       this.paintWrite(btn);
       btn.addEventListener("click", () => {
         if (this.busy) return;
         this.busy = true;
+        this.note = "";
+        const before = this.written;
         this.paintWrite(btn); // in place: the page does not redraw, so nothing jumps
         void ai
           .write(model.front)
           .then((o) => {
             this.written = o.written;
             this.sections = o.sections ?? null;
-            this.note = o.status === "ok" && !o.note ? "" : (o.note ?? "");
+            this.note = o.note ?? nothingToWriteNote(o, before, model.front.length, model.mixed.length);
             if (o.status === "failed") this.note = `${o.note ?? "The digest could not be written."} Showing the list made on your device.`;
           })
           .catch(() => (this.note = "The digest could not be written. Showing the list made on your device."))
@@ -134,9 +139,9 @@ export class BlygDailyView extends ItemView {
   }
 
   private draw(root: HTMLElement, m: DailyModel): void {
-    root.createDiv({ cls: "blyg-daily-meta", text: `${plural(m.postCount, "post", "posts")} today, as of ${timeOnly(m.until)}` });
+    root.createDiv({ cls: "blyg-daily-meta", text: `${plural(m.postCount, "post", "posts")} in this edition, as of ${timeOnly(m.until)}` });
     if (m.postCount === 0 && m.letters.length === 0 && m.corrections.length === 0 && m.retractions.length === 0) {
-      root.createDiv({ cls: "blyg-daily-empty", text: "Nothing new today yet." });
+      root.createDiv({ cls: "blyg-daily-empty", text: "Nothing new in this edition yet." });
       return;
     }
     const sections = this.usableSections(m);
@@ -193,7 +198,7 @@ export class BlygDailyView extends ItemView {
     if (m.mixed.length > 0) {
       const s = this.section(root, "Mixed bag");
       for (const p of m.mixed) {
-        const row = s.createDiv({ cls: "blyg-daily-row blyg-story-mixed" });
+        const row = s.createDiv({ cls: `blyg-daily-row blyg-story-mixed${isUnread(p) ? "" : " blyg-is-read"}` });
         row.createEl("button", { cls: "blyg-daily-link blyg-story-who", text: authorOf(p) }).addEventListener("click", () => void this.host.openPost(p, this.leaf));
         const first = firstSentence(ownWords(p));
         if (first) row.createDiv({ cls: "blyg-story-first", text: first });
@@ -206,7 +211,7 @@ export class BlygDailyView extends ItemView {
     const sec = this.sections;
     if (!sec || sec.length === 0) return null;
     const all = sec.flatMap((x) => x.ids);
-    const fits = all.length === m.front.length && new Set(all).size === all.length && all.every((i) => i >= 0 && i < m.front.length) && this.written.filter(Boolean).length === m.front.length;
+    const fits = all.length === m.front.length && new Set(all).size === all.length && all.every((i) => i >= 0 && i < m.front.length) && this.written.some(Boolean);
     return fits ? sec : null;
   }
 
@@ -271,22 +276,24 @@ export class BlygDailyView extends ItemView {
   }
 
   private drawCluster(into: HTMLElement, c: Cluster, ai: Written | null): void {
-    const card = into.createDiv({ cls: "blyg-daily-cluster blyg-story" });
+    const card = into.createDiv({ cls: `blyg-daily-cluster blyg-story${c.posts.every((p) => !isUnread(p)) ? " blyg-is-read" : ""}` });
     const blygs = new Set(c.posts.map((p) => p.subscriptionTitle || p.origin || "")).size;
     const title = card.createEl("button", { cls: `blyg-daily-link blyg-daily-headline blyg-story-headline blyg-story-font-${this.host.font()}`, text: ai ? ai.headline : c.headline });
     // Generated text: put on the page as text only (never HTML). The "Written by" label is once, under the front page.
     if (ai?.summary) card.createDiv({ cls: "blyg-story-summary", text: ai.summary });
     const names = c.posts.map(authorOf);
-    card.createDiv({
+    const meta = card.createDiv({
       cls: "blyg-daily-meta",
       text: [`${plural(c.posts.length, "post", "posts")} in ${plural(blygs, "blyg", "blygs")}`, authorsLine(c.posts), ai ? "" : keywordsOf(c.terms, names).join(" · ")].filter(Boolean).join(" · "),
     });
+    const fresh = new Set(ai?.fresh ?? []);
+    if (fresh.size > 0) meta.createSpan({ cls: "blyg-story-updated", text: ` +${plural(fresh.size, "new post", "new posts")}` });
     const list = card.createDiv({ cls: "blyg-daily-members" });
     const toggle = (open: boolean): void => {
       list.empty();
       if (!open) return;
       for (const p of c.posts) {
-        const row = list.createDiv({ cls: "blyg-daily-row blyg-daily-member" });
+        const row = list.createDiv({ cls: `blyg-daily-row blyg-daily-member${fresh.has(p.remoteId) ? " blyg-is-new" : ""}${isUnread(p) ? "" : " blyg-is-read"}` });
         row.createEl("button", { cls: "blyg-daily-link blyg-daily-who", text: `${p.authorName ?? p.subscriptionTitle}${p.isReply ? " (reply)" : ""}` }).addEventListener("click", () => void this.host.openPost(p, this.leaf));
         const preview = previewOf(p);
         if (preview) row.createDiv({ cls: "blyg-daily-preview", text: preview });

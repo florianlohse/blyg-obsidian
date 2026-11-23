@@ -38,7 +38,7 @@ const fakePlugin = (id: string) => {
   const calls: string[] = [];
   const p = {
     manifest: { id },
-    app: { workspace: { onLayoutReady: () => {} }, vault: {} },
+    app: { workspace: { onLayoutReady: () => {}, on: () => ({}) }, vault: {} },
     addCommand: (c: { id: string }) => calls.push(`cmd:${c.id}`),
     addRibbonIcon: (_i: string, t: string) => calls.push(`ribbon:${t}`),
     registerView: (t: string) => calls.push(`view:${t}`),
@@ -46,7 +46,7 @@ const fakePlugin = (id: string) => {
   };
   return { calls, p: p as never };
 };
-const deps = { digest: { font: () => "default" as const, readList: async () => null, ai: { settings: () => ({}) as never, keychain: {} as never, transport: {} as never } }, share: { settings: () => ({}) as never, build: () => ({}) as never, openReader: async () => {} }, contrast: () => "normal" as const };
+const deps = { digest: { font: () => "default" as const, time: () => "07:00", readList: async () => null, ai: { settings: () => ({}) as never, keychain: {} as never, transport: {} as never } }, share: { settings: () => ({}) as never, build: () => ({}) as never, openReader: async () => {} }, contrast: () => "normal" as const };
 
 describe("registerFeatureEntries", () => {
   it("registers nothing switchable in the release build by default", () => {

@@ -1,10 +1,10 @@
-// Wires the Daily into the plugin: the view, the command, the ribbon icon. The Daily is one digest per local calendar day and remembers nothing between
-// openings. New file so main.ts only grows by one call.
+// Wires the Daily into the plugin: the view, the command, the ribbon icon. The Daily is made of editions (edition.ts): the records of the current ones are
+// kept in plugin storage (`digest-editions.json`, ids only). New file so main.ts only grows by one call.
 import { normalizePath, type Plugin } from "obsidian";
 import { BLYG_READER_VIEW, BlygReaderView } from "../ui/ReaderView";
 import { BLYG_DAILY_VIEW, BlygDailyView, type DigestHost } from "../ui/DigestView";
 import type { InboundMention, ReadingPost } from "../studio/reading";
-import { dayWindow } from "./window";
+import { Editions, cachedStories, recordSections, rememberWrite } from "./editionHost";
 import { setDigestSwitch } from "../ui/readerExtras";
 import type { ReaderFont } from "../ui/readerFonts";
 import { Notice } from "obsidian";
@@ -14,14 +14,16 @@ import type { BlygSettings } from "../settings/schema";
 import { DigestConfirmModal, DigestConsentModal } from "../ui/DigestModals";
 import { trailText } from "./trailText";
 import { setConsentGate } from "./consentGate";
-import { clearBodies, normaliseEndpoint } from "./llm";
+import { cachedSections as cachedSectionsOf, clearBodies, normaliseEndpoint } from "./llm";
 import { TextModal } from "../ui/TextModal";
-import { cachedDigest, cachedSections, emptyStore, parseStore, writeDigest, type LlmDeps, type LlmStore } from "./llm";
+import { emptyStore, parseStore, writeDigest, type LlmDeps, type LlmStore } from "./llm";
 
 export interface DigestDeps {
   /** The reader's saved list (plugin storage), or null. */
   /** The reader's font setting (the digest follows it). */
   font: () => ReaderFont;
+  /** The setting "Digest time" ("HH:MM", the device's clock). */
+  time: () => string;
   readList: () => Promise<{ posts: ReadingPost[]; mentions: InboundMention[]; savedAt: number } | null>;
   /** The optional AI layer. Absent: no AI. */
   ai?: { settings: () => BlygSettings["digest"]; keychain: Keychain; transport: RawTransport };
@@ -37,6 +39,13 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
       return emptyStore();
     }
   };
+  const editionsPath = (): string => normalizePath(`${plugin.manifest.dir ?? `${plugin.app.vault.configDir}/plugins/${plugin.manifest.id}`}/digest-editions.json`);
+  const editions = new Editions({
+    read: async () => ((await plugin.app.vault.adapter.exists(editionsPath())) ? (JSON.parse(await plugin.app.vault.adapter.read(editionsPath())) as unknown) : null),
+    write: (text) => plugin.app.vault.adapter.write(editionsPath(), text),
+    now: () => Date.now(),
+    time: () => deps.time(),
+  });
   const ai = deps.ai;
   const llm: LlmDeps | null = ai
     ? {
@@ -66,9 +75,23 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
     return true;
   });
   const host: DigestHost = {
-    ...(llm ? { ai: { enabled: () => ai?.settings().useAi === true, cached: (c) => cachedDigest(llm, c), cachedSections: (c) => cachedSections(llm, c), write: (c) => writeDigest(llm, c) } } : {}),
+    ...(llm
+      ? {
+          ai: {
+            enabled: () => ai?.settings().useAi === true,
+            cached: async (c) => cachedStories(llm, await editions.current(), c),
+            cachedSections: async (c) => recordSections(await editions.current(), c) ?? (await cachedSectionsOf(llm, c)),
+            write: async (c) => {
+              const rec = await editions.current();
+              const o = await writeDigest(llm, c);
+              if (rec) await rememberWrite(llm, editions, rec.id, c, o);
+              return o;
+            },
+          },
+        }
+      : {}),
     loadList: () => deps.readList(),
-    window: () => Promise.resolve(dayWindow(Date.now())),
+    edition: (posts) => editions.open(posts),
     font: () => deps.font(),
     showFeed: async (leaf) => void (await leaf.setViewState({ type: BLYG_READER_VIEW, active: true })),
     openPost: async (post, leaf) => {
@@ -87,6 +110,8 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
     await leaf.setViewState({ type: BLYG_DAILY_VIEW, active: true });
     await workspace.revealLeaf(leaf);
   };
+  // The reader being opened also starts the day's edition, if its cutoff has passed.
+  plugin.registerEvent(plugin.app.workspace.on("active-leaf-change", (leaf) => void (leaf?.view.getViewType() === BLYG_READER_VIEW && editions.touch())));
   setDigestSwitch(true);
   plugin.registerView(BLYG_DAILY_VIEW, (leaf) => new BlygDailyView(leaf, host));
   plugin.addCommand({ id: "open-daily", name: "Open Daily", callback: () => void open() });

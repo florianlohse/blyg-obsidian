@@ -69,12 +69,13 @@ const p = (over: Partial<ReadingPost>): ReadingPost => ({
 });
 type El = { text: string; tag: string; click(): void; all(): El[]; contentEl?: unknown };
 
-async function mount(list: Awaited<ReturnType<DigestHost["loadList"]>>) {
+async function mount(list: Awaited<ReturnType<DigestHost["loadList"]>>, ai?: DigestHost["ai"]) {
   const opened: string[] = [];
   const leaves: unknown[] = [];
   const host: DigestHost = {
     loadList: () => Promise.resolve(list),
-    window: () => Promise.resolve({ since: NOW - 6 * 3600_000, until: NOW }),
+    edition: () => Promise.resolve({ since: NOW - 6 * 3600_000, until: NOW }),
+    ...(ai ? { ai } : {}),
     font: () => "serif",
     showFeed: () => Promise.resolve(),
     openPost: (post, leaf) => Promise.resolve(void (opened.push(post.remoteId), leaves.push(leaf))),
@@ -146,8 +147,33 @@ describe("the Daily view", () => {
     expect(h.cls.has("blyg-story-font-serif")).toBe(true); // the test host's font() is "serif"
     expect(root.all().some((e) => e.text === "2 posts in 1 blyg · by Ann, Bo" || e.text.startsWith("2 posts in 1 blyg · by Ann, Bo"))).toBe(true);
   });
+  it("dims posts already read, and marks a story's new posts with +N and a quiet highlight", async () => {
+    const a = p({ remoteId: "a".repeat(26), contentHtml: "<p>Shared topic about gardens and tomatoes in spring.</p>", authorName: "Ann", readVersion: 1 });
+    const b = p({ remoteId: "b".repeat(26), isReply: true, stubTarget: { id: a.remoteId } as never, contentHtml: "<p>My tomatoes did badly this spring.</p>", authorName: "Bo" });
+    const lone = p({ remoteId: "z".repeat(26), contentHtml: "<p>A lone post nobody answers at all.</p>", authorName: "Cy", readVersion: 1 });
+    const ai: DigestHost["ai"] = { enabled: () => true, cached: async () => [{ headline: "Gardens", summary: "Tomatoes.", model: "m", posts: 1, fresh: [b.remoteId] }], write: async () => ({ written: [], status: "ok" }) };
+    const { root } = await mount({ posts: [a, b, lone], mentions: [], savedAt: NOW }, ai);
+    const cls = (e: unknown): Set<string> => (e as { cls: Set<string> }).cls;
+    expect(root.all().some((e) => e.text === " +1 new post")).toBe(true);
+    root.all().find((e) => cls(e).has("blyg-daily-headline"))?.click();
+    const rows = root.all().filter((e) => cls(e).has("blyg-daily-member"));
+    expect(rows.filter((r) => cls(r).has("blyg-is-new"))).toHaveLength(1);
+    expect(rows.filter((r) => cls(r).has("blyg-is-read"))).toHaveLength(1); // Ann's post was read; Bo's was not
+    expect(root.all().filter((e) => cls(e).has("blyg-story-mixed") && cls(e).has("blyg-is-read"))).toHaveLength(1); // the lone post, read
+  });
+  it("Write the digest with nothing to send says so, and the button is back", async () => {
+    const ai: DigestHost["ai"] = { enabled: () => true, cached: async () => [], write: async () => ({ written: [], status: "nothing-to-send" }) };
+    const { root } = await mount({ posts: [p({ authorName: "Ann" })], mentions: [], savedAt: NOW }, ai);
+    const btn = root.all().find((e) => (e as unknown as { cls: Set<string> }).cls.has("blyg-story-write"));
+    expect(btn).toBeDefined(); // shown even with no story
+    btn?.click();
+    await new Promise((r) => setTimeout(r, 0));
+    const after = root.all();
+    expect(after.some((e) => e.text === "Nothing to write. 1 single post is in the Mixed bag; it gets no AI text.")).toBe(true);
+    expect(after.some((e) => e.text === "Writing the digest…")).toBe(false);
+  });
   it("has no HTML sink in the view or the digest code", () => {
-    for (const f of ["src/ui/DigestView.ts", "src/digest/register.ts", "src/digest/daily.ts", "src/digest/cluster.ts"]) {
+    for (const f of ["src/ui/DigestView.ts", "src/digest/register.ts", "src/digest/daily.ts", "src/digest/cluster.ts", "src/digest/stable.ts", "src/digest/editionHost.ts"]) {
       expect(readFileSync(f, "utf8")).not.toMatch(/innerHTML|outerHTML|insertAdjacentHTML|sanitizeHTMLToDom|createEl\([^)]*\bhtml\b/);
     }
   });

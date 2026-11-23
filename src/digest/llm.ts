@@ -61,6 +61,8 @@ export interface Written {
   model: string;
   /** How many posts it was written from. */
   posts: number;
+  /** Posts that joined the story after this text was written (a stable story of an edition): the page shows "+N new posts". */
+  fresh?: string[];
 }
 
 export interface TrailRecord {
@@ -193,7 +195,9 @@ export function planClusters(clusters: readonly Cluster[], model: string): PlanI
   clusters.slice(0, MAX_GROUPS).forEach((c, index) => {
     const used: ReadingPost[] = c.posts.slice(0, MAX_POSTS_PER_CLUSTER);
     const inner = used.map((p) => `<post${authorAttr(authorOf(p))}>${neutralise(graphemePrefix(ownWords(p), MAX_POST_CHARS))}</post>`).join("\n");
-    items.push({ index, cacheKey: cacheKeyOf(inner, model), postIds: used.map((p) => p.remoteId), posts: used.length, inner, headline: c.headline });
+    // A stable story (it has an id) is keyed by its id and its whole post set, so a post that joins it, even beyond the ones sent, asks again.
+    const scope = c.id ? `${c.id}|${c.posts.map((p) => p.remoteId).sort().join(",")}\n` : "";
+    items.push({ index, cacheKey: cacheKeyOf(scope + inner, model), postIds: used.map((p) => p.remoteId), posts: used.length, inner, headline: c.headline });
   });
   return items;
 }

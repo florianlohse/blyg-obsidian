@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { startOfLocalDay, mastheadDate } from "../../src/digest/window";
+import { mastheadDate } from "../../src/digest/window";
 import { GROUPING_NOTE, previewOf, summarizeRest } from "../../src/digest/layout";
 import { FRONT_PAGE_MAX } from "../../src/digest/daily";
 import { MIN_SHARED_TERMS, type Cluster } from "../../src/digest/cluster";
@@ -12,11 +12,7 @@ const post = (id: string, html = "<p>Some words here.</p>"): ReadingPost =>
   ({ subscriptionId: "s", subscriptionTitle: "B", origin: null, remoteId: id, kind: "fragment", withdrawn: false, version: 1, readVersion: null, observedAt: "2030-03-10T10:00:00Z", created: null, isReply: false, stubTarget: null, contentHtml: html, contentMd: "", authorName: null, authorUrl: null, sourceUrl: null });
 const cluster = (...ids: string[]): Cluster => ({ posts: ids.map((i) => post(i)), newest: 0, headline: "h", terms: [] });
 
-describe("the day and its masthead", () => {
-  it("starts at local midnight", () => {
-    const t = new Date(2030, 2, 10, 15, 30).getTime();
-    expect(startOfLocalDay(t)).toBe(new Date(2030, 2, 10).getTime());
-  });
+describe("the masthead", () => {
   it("names the weekday and the date in the given locale", () => {
     const t = new Date(2030, 2, 10, 12).getTime();
     expect(mastheadDate(t, "en-US")).toBe("Sunday, March 10, 2030");
