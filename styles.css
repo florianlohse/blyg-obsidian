@@ -941,3 +941,25 @@ button.blyg-mark.is-read { color: var(--text-accent); }
 button.blyg-mark svg { width: 20px; height: 20px; }
 .blyg-correction-note { font-weight: var(--font-bold); display: block; }
 button.blyg-daily-link.blyg-correction-headline { color: var(--text-muted); font-size: var(--font-ui-smaller); }
+
+/* DG11: a story is a card you can tap. Subtle box (secondary background, thin border, radius), a chevron at the right that turns when unfolded, a pressed look. Theme variables only (light and dark follow the theme);
+   single posts stay light rows. The headline and summary keep their type; the text keeps clear of the chevron so nothing runs under it. */
+.blyg-daily-cluster.blyg-story { position: relative; background: var(--background-secondary); border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); padding: var(--size-4-3); margin: var(--size-4-2) 0; transition: background-color 0.12s ease; }
+.blyg-daily-cluster.blyg-story:has(> .blyg-story-headline:active, > .blyg-story-summary:active, > .blyg-story-chevron:active) { background: var(--background-modifier-hover); }
+.blyg-daily-cluster.blyg-story.is-open { border-color: var(--background-modifier-border-hover); }
+.blyg-story > button.blyg-story-headline, .blyg-story > button.blyg-story-summary { padding-inline-end: calc(var(--clickable-icon-size, 32px) - var(--size-4-1)); box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+button.blyg-story-chevron { position: absolute; top: var(--size-4-2); right: var(--size-4-2); display: inline-flex; align-items: center; justify-content: center; width: var(--clickable-icon-size, 32px); height: var(--clickable-icon-size, 32px); padding: 0; box-shadow: none; background: none; border: 0; color: var(--text-muted); cursor: pointer; }
+button.blyg-story-chevron svg { width: 20px; height: 20px; transition: transform 0.15s ease; }
+.blyg-story.is-open button.blyg-story-chevron svg { transform: rotate(180deg); }
+.blyg-story.is-open button.blyg-story-chevron { color: var(--text-accent); }
+@media (prefers-reduced-motion: reduce) { .blyg-daily-cluster.blyg-story, button.blyg-story-chevron svg { transition: none; } }
+.blyg-sections-lead .blyg-daily-cluster.blyg-story { padding-bottom: var(--size-4-3); }
+/* the members of an unfolded story sit inside the card: no extra rule under the last one */
+.blyg-story .blyg-daily-members { padding-left: 0; margin-top: var(--size-2-2); }
+.blyg-daily-cluster.blyg-story { overflow-wrap: anywhere; }
+/* DG11: the Digest's bar puts its toggle in the same place as the feed's header (the top of the first row, not the middle of a two-line title), whatever the title wraps to. */
+.blyg-daily-barrow { align-items: flex-start; }
+/* the first row starts as far from the top as the feed header's first row (its padding is --size-4-2; the masthead's own 4px rule is part of it) */
+.blyg-daily-bar { padding-top: calc(var(--size-4-2) - 4px); }
+.blyg-daily-barrow > .blyg-modeslot { display: flex; align-items: center; justify-content: flex-end; min-height: var(--input-height, 30px); }
+.blyg-daily-barrow > .blyg-daily-menu { align-self: flex-start; }

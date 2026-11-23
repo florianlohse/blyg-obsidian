@@ -208,6 +208,21 @@ describe("the reader's chip: In the digest", () => {
     expect(opened).toEqual([[7, "Garden"]]);
     setDigestChips(null);
   });
+  it("a record that still holds the old name 'Front page' shows as 'Top stories' in the chip, and the tap still hands the stored name on (the record is not rewritten)", async () => {
+    const opened: Array<[number, string]> = [];
+    const stored = { edition: 4, section: "Front page" };
+    setDigestChips({ sectionOf: async () => stored, open: (e, s) => opened.push([e, s]) });
+    const line = new (await import("obsidian").then(() => class { cls = new Set(); children: unknown[] = []; isConnected = true; createSpan(o: { text: string }) { this.children.push(o); return this; } createEl(_t: string, o: { text: string }) { const c = { ...o, handlers: [] as unknown[], addEventListener(_e: string, f: unknown) { this.handlers.push(f); } }; this.children.push(c); return c; } }))();
+    drawDigestChip(line as never, post("t", "A", { remoteId: "old" }));
+    await new Promise((r) => setTimeout(r, 0));
+    const chip = line.children.find((c) => (c as { text: string }).text === "In the digest: Top stories") as { handlers: Array<(e: { preventDefault(): void }) => void> };
+    expect(chip).toBeDefined();
+    expect(line.children.some((c) => (c as { text: string }).text.includes("Front page"))).toBe(false);
+    chip.handlers[0]?.({ preventDefault: () => undefined });
+    expect(opened).toEqual([[4, "Front page"]]); // the page maps it to its heading (sectionLabel); the stored name stays as it was
+    expect(stored.section).toBe("Front page");
+    setDigestChips(null);
+  });
   it("the reader gains no lines: the chip's code is in its own module and ReaderView stays under its cap", () => {
     const caps = JSON.parse(readFileSync("scripts/size-caps.json", "utf8")) as Record<string, number>;
     expect(readFileSync("src/ui/ReaderView.ts", "utf8").split("\n").length - 1).toBeLessThanOrEqual(caps["src/ui/ReaderView.ts"] as number);
@@ -385,9 +400,9 @@ describe("the page: bylines, lines, reading time, table of contents", () => {
     expect(text("blyg-story-time")).toEqual([]); // no reading time on a single post
     // the table of contents: both sections with the byline, in page order, and a tap scrolls
     const toc = all.filter((e) => cls(e, "blyg-toc-name")).map((e) => e.text);
-    expect(toc.sort()).toEqual(["Garden", "Town"]); // name, then the post count (a story's posts plus the singles)
+    expect(toc).toEqual(["Top stories", "Garden", "Town"]); // name, then the post count (a story's posts plus the singles)
     expect(text("blyg-toc-about")).toEqual([]);
-    expect(text("blyg-toc-count").sort()).toEqual(["1 item", "5 items"]); // what is drawn under each heading (the lead block holds the other stories)
+    expect(text("blyg-toc-count")).toEqual(["4 items", "5 items", "1 item"]); // Top stories, Garden, Town: in the order drawn; // what is drawn under each heading (the lead block holds the other stories)
     const heading = all.find((e) => e.tag === "h3" && e.text === "Town");
     expect(heading).toBeDefined();
     tocLink(all, "Town")?.click();
@@ -407,7 +422,7 @@ describe("the page: bylines, lines, reading time, table of contents", () => {
     const many = new (BlygDailyView as unknown as new (l: unknown, h: unknown) => { contentEl: El })({}, {}).contentEl;
     drawToc(many as never, mk(TOC_OPEN_MAX + 1), () => undefined);
     expect(many.all().some((e) => e.tag === "details")).toBe(true);
-    expect(many.all().find((e) => e.tag === "summary")?.text).toBe("Sections (9)");
+    expect(many.all().find((e) => e.tag === "summary")?.text).toBe("Contents (9)");
     expect(many.all().filter((e) => cls(e, "blyg-toc-link"))).toHaveLength(9);
   });
   it("a past edition has the table of contents, bylines and lines too", async () => {
@@ -422,7 +437,7 @@ describe("the page: bylines, lines, reading time, table of contents", () => {
     const root = (view as unknown as { contentEl: El }).contentEl;
     root.all().find((e) => e.tag === "button" && e.text === "‹")?.click();
     const all = root.all();
-    expect(all.filter((e) => cls(e, "blyg-toc-name")).map((e) => e.text)).toEqual(["Garden"]);
+    expect(all.filter((e) => cls(e, "blyg-toc-name")).map((e) => e.text)).toEqual(["Garden"]); // a past edition has no lead block, so no Top stories line
     expect(all.filter((e) => cls(e, "blyg-section-about")).map((e) => e.text)).toEqual(["Soil and seeds"]);
     expect(all.filter((e) => cls(e, "blyg-story-line")).map((e) => e.text)).toEqual(["Old oak mushrooms"]);
     expect(all.filter((e) => cls(e, "blyg-daily-headline")).map((e) => e.text)).toEqual(["Newer", "Old"]); // newest story first
@@ -477,5 +492,73 @@ describe("the view does not shadow Obsidian's own View methods", () => {
   it("defines no open, close, load or unload of its own: Obsidian calls view.open(parentEl) to start a view, and an override with another meaning left the Daily blank", () => {
     const own = Object.getOwnPropertyNames(BlygDailyView.prototype);
     for (const name of ["open", "close", "load", "unload", "onload", "onunload", "setState", "getState"]) expect(own).not.toContain(name);
+  });
+});
+
+describe("DG11: the contents are the headings the page draws, in the order drawn, with what is drawn under each", () => {
+  const stories = (names: string[]): Cluster[] => clusterPosts(names.flatMap((t, i) => {
+    const a = post(`Wholly distinct ${t} subject only here ${i}.`, "Ann");
+    return [a, post(`Reply ${t}.`, "Bo", { isReply: true, stubTarget: { id: a.remoteId } as never })];
+  }));
+  const mountList = async (list: { posts: ReadingPost[]; mentions: never[]; savedAt: number }, ai?: DigestHost["ai"], history?: PastEdition[]) => {
+    const host: DigestHost = { loadList: () => Promise.resolve(list), edition: () => Promise.resolve({ id: 9, since: NOW - 6 * 3600_000, until: NOW }), ...(ai ? { ai } : {}), ...(history ? { history: () => Promise.resolve({ editions: history, capped: false }) } : {}), font: () => "serif", showFeed: () => Promise.resolve(), openPost: () => Promise.resolve(), openWeb: () => undefined };
+    const view = new BlygDailyView({} as never, host);
+    await view.onOpen();
+    return (view as unknown as { contentEl: El }).contentEl;
+  };
+  const contents = (root: El): Array<[string, string]> => {
+    const names = root.all().filter((e) => cls(e, "blyg-toc-name")).map((e) => e.text);
+    const counts = root.all().filter((e) => cls(e, "blyg-toc-count")).map((e) => e.text);
+    return names.map((n, i): [string, string] => [n, counts[i] ?? ""]);
+  };
+  const headings = (root: El): string[] => root.all().filter((e) => e.tag === "h3").map((e) => e.text);
+  it("with AI sections: Top stories first, then each section as drawn, then the Mixed bag; counts are posts", async () => {
+    const lone = [post("Mushrooms grow quietly under old oak trees.", "Cy"), post("Trains were late again today for everyone.", "Di"), post("A third lone remark about the weather outside.", "Ed")];
+    const list = { posts: [...stories(["alpha", "beta", "gamma", "delta"]).flatMap((c) => c.posts), ...lone], mentions: [] as never[], savedAt: NOW };
+    const ai: DigestHost["ai"] = {
+      enabled: () => true,
+      cached: async (c) => c.map((_, i): Written => ({ headline: `Story ${i}`, summary: `Summary ${i}.`, model: "m", posts: 2 })),
+      cachedSections: async (_c, singles) => [{ name: "Garden", ids: [2, 3], posts: [singles[0]!.remoteId] }, { name: "Town", ids: [0, 1], posts: [singles[1]!.remoteId] }],
+      write: async () => ({ written: [], status: "ok" }),
+    };
+    const root = await mountList(list, ai);
+    const toc = contents(root);
+    expect(toc.map(([n]) => n)).toEqual(headings(root)); // the same lines in the same order as the headings
+    expect(toc[0]).toEqual(["Top stories", "4 items"]); // the lead block: 2 stories of 2 posts; it is the FIRST entry
+    expect(toc.map(([n]) => n)).toContain("Mixed bag");
+    expect(toc.at(-1)).toEqual(["Mixed bag", "1 item"]); // the singles no section holds
+    // a section's counter: its stories' posts plus its single posts, equal to what its card says
+    const garden = toc.find(([n]) => n === "Garden");
+    expect(garden?.[1]).toBe("5 items");
+  });
+  it("without AI sections (the plain page): Top stories first, then Letters and the Mixed bag as drawn", async () => {
+    const lone = [post("Mushrooms grow quietly under old oak trees.", "Cy"), post("Trains were late again today for everyone.", "Di")];
+    const list = { posts: [...stories(["alpha", "beta"]).flatMap((c) => c.posts), ...lone], mentions: [] as never[], savedAt: NOW };
+    const root = await mountList(list);
+    const toc = contents(root);
+    expect(toc).toEqual([["Top stories", "4 items"], ["Mixed bag", "2 items"]]);
+    expect(toc.map(([n]) => n)).toEqual(headings(root));
+  });
+  it("a past edition: the contents are its headings in the order drawn, counts are the posts under each (a plain one starts with Top stories)", async () => {
+    const lone = post("Mushrooms grow quietly under old oak trees.", "Cy");
+    const sectioned: PastEdition = {
+      id: 3, at: 3, stories: [{ headline: "Old", summary: "", posts: ["x1", "x2"], newest: 5 }, { headline: "Newer", summary: "", posts: ["x3", "x4", "x5"], newest: 9 }, { headline: "Loose", summary: "", posts: ["x6", "x7"], newest: 1 }],
+      singles: [lone.remoteId, "z9"], sections: [{ name: "Garden", stories: [0, 1], posts: [lone.remoteId] }], who: {},
+    };
+    const plain: PastEdition = { id: 2, at: 2, stories: [{ headline: "One", summary: "", posts: ["a1", "a2"], newest: 1 }], singles: ["b1"], who: {}, sections: null };
+    const old: PastEdition = { id: 1, at: 1, stories: [{ headline: "Two", summary: "", posts: ["c1", "c2"], newest: 1 }], singles: [], who: {}, sections: [{ name: "Front page", stories: [0], posts: [] }, { name: "Sport", stories: [], posts: ["d1"] }] };
+    const root = await mountList({ posts: [lone], mentions: [], savedAt: NOW }, undefined, [sectioned, plain, old]);
+    const go = (n: number): void => { for (let i = 0; i < n; i++) root.all().find((e) => e.tag === "button" && e.text === "‹")?.click(); };
+    go(1);
+    expect(contents(root)).toEqual([["Garden", "6 items"], ["Other", "2 items"], ["Mixed bag", "1 item"]]); // Garden: 2 + 3 + 1; the story no section holds is under Other; one single is not in any section
+    expect(contents(root).map(([n]) => n)).toEqual(headings(root));
+    go(1);
+    expect(contents(root)).toEqual([["Top stories", "2 items"], ["Mixed bag", "1 item"]]);
+    expect(contents(root).map(([n]) => n)).toEqual(headings(root));
+    go(1);
+    // an old record whose section is called "Front page" is shown under the new label; the stored name is not changed
+    expect(contents(root).map(([n]) => n)).toEqual(["Top stories", "Sport"]);
+    expect(headings(root)).toEqual(["Top stories", "Sport"]);
+    expect(old.sections?.[0]?.name).toBe("Front page");
   });
 });
