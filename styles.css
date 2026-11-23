@@ -942,6 +942,8 @@ button.blyg-mark svg { width: 20px; height: 20px; }
 .blyg-correction-note { font-weight: var(--font-bold); display: block; }
 button.blyg-daily-link.blyg-correction-headline { color: var(--text-muted); font-size: var(--font-ui-smaller); }
 
+/* DG13: a long press on a post opens the quick menu, so the system's own press menu and text selection must not start on a card or row. */
+.blyg-reader-card, .blyg-daily-row, .blyg-story { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 /* DG11: a story is a card you can tap. Subtle box (secondary background, thin border, radius), a chevron at the right that turns when unfolded, a pressed look. Theme variables only (light and dark follow the theme);
    single posts stay light rows. The headline and summary keep their type; the text keeps clear of the chevron so nothing runs under it. */
 .blyg-daily-cluster.blyg-story { position: relative; background: var(--background-secondary); border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); padding: var(--size-4-3); margin: var(--size-4-2) 0; transition: background-color 0.12s ease; }

@@ -8,6 +8,7 @@ import { STUDIO, TOKEN, fixtureData, runScenario, wait } from "../lib.mjs";
 const marks = [];
 const unmarks = []; // DELETE .../read: the digest's read symbol put back
 const histories = []; // GET .../history: the change notes of a revised post, asked lazily
+const hung = []; // list requests left unanswered: they hold the app's few connections to this host open until they are closed
 const others = []; // every other request that reaches the stand-in Studio, with its path
 const stub = http.createServer((req, res) => {
   if (req.method === "PUT" && /\/reading\/[^/]+\/[^/]+\/read$/.test(req.url ?? "")) {
@@ -29,7 +30,11 @@ const stub = http.createServer((req, res) => {
   }
   others.push(`${req.method} ${req.url}`);
   // The list and the mentions are never answered, so the reader keeps the saved list and the feed has the posts below.
-  if (req.method === "GET" && /\/api\/(reading|mentions)(\?|$)/.test(req.url ?? "")) { req.resume(); return; } // (no answer: the saved list stays on screen)
+  if (req.method === "GET" && /\/api\/(reading|mentions)(\?|$)/.test(req.url ?? "")) {
+    req.resume();
+    hung.push(res);
+    return;
+  } // (no answer: the saved list stays on screen)
   // Anything else goes to the local Studio (its manifest and capabilities, which the client reads before any write); the saved list in this scenario is fixed, so nothing it answers is shown.
   const up = http.request(`${STUDIO}${req.url}`, { method: req.method, headers: { ...req.headers, host: new URL(STUDIO).host } }, (r) => { res.writeHead(r.statusCode ?? 502, r.headers); r.pipe(res); });
   up.on("error", () => { res.writeHead(503, { "content-type": "application/json" }); res.end("{}"); });
@@ -372,6 +377,7 @@ await runScenario({ data }, async (s) => {
   await statesPass("desktop layout", deskRef, false);
   await s.phone();
   const cdp = await page.context().newCDPSession(page);
+  if (process.env.E2E_CPU_THROTTLE) await cdp.send("Emulation.setCPUThrottlingRate", { rate: Number(process.env.E2E_CPU_THROTTLE) }); // (a slower machine, to try the timing: E2E_CPU_THROTTLE=4)
   for (const [w, h] of widths) {
     await cdp.send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 2, mobile: true });
     await wait(1500);
@@ -384,8 +390,10 @@ await runScenario({ data }, async (s) => {
     await cdp.send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 2, mobile: true });
     await wait(1500);
     const empty = await box(".blyg-reader-header .blyg-modeslot");
+    await page.waitForFunction(() => document.querySelectorAll(".blyg-reader-card").length === 0, undefined, { timeout: 5000 }).catch(() => {});
     const cards = (await page.$$(".blyg-reader-card")).length;
-    check(cards === 0 && empty && refs[w] && Math.abs(empty.r - refs[w].r) <= 1 && Math.abs(empty.t - refs[w].t) <= 2, `phone layout ${w} px: the empty feed has the toggle in the same slot as the feed with a list (${cards} cards; right edge ${empty?.r} against ${refs[w]?.r}; top ${empty?.t} against ${refs[w]?.t})`);
+    const dom = cards === 0 ? "" : ` ${await page.evaluate(() => JSON.stringify({ leaves: ["blyg-reader", "blyg-daily"].map((t) => `${t}:${window.app.workspace.getLeavesOfType(t).length}`), mode: window.app.plugins.plugins.blyg.settings.readerPane.mode, back: !!document.querySelector(".blyg-reader-header .blyg-reader-back"), texts: [...document.querySelectorAll(".blyg-reader-card")].map((c) => c.textContent.slice(0, 60)) }))}`;
+    check(cards === 0 && empty && refs[w] && Math.abs(empty.r - refs[w].r) <= 1 && Math.abs(empty.t - refs[w].t) <= 2, `phone layout ${w} px: the empty feed has the toggle in the same slot as the feed with a list (${cards} cards${dom}; right edge ${empty?.r} against ${refs[w]?.r}; top ${empty?.t} against ${refs[w]?.t})`);
   }
   // a larger Obsidian font size (24 px), last because the setting stays in the vault: the toggle keeps the right end of the first row in every state, at the widest and the narrowest phone
   await page.evaluate(() => { window.app.vault.setConfig("baseFontSize", 24); window.app.vault.setConfig("baseFontSizeAction", true); window.app.updateFontSize?.(); });
@@ -396,5 +404,90 @@ await runScenario({ data }, async (s) => {
     const big = await page.evaluate(() => { const r = document.querySelector(".blyg-reader-header .blyg-modeslot")?.getBoundingClientRect(); return r ? { r: r.right, t: r.top } : null; });
     await statesPass(`phone layout ${w} px`, big, true);
   }
+  // ---- The quick menu (DG13): a long press with real touch events (CDP, phone layout) on a feed card, a post of the digest and a story card opens the menu; a scroll never does;
+  // the release opens nothing; Mark read writes exactly one request. (Chromium emulation, not iOS.)
+  await cdp.send("Emulation.setDeviceMetricsOverride", { width: 393, height: 852, deviceScaleFactor: 2, mobile: true });
+  await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+  const freeSockets = () => hung.splice(0).forEach((r) => r.socket?.destroy());
+  freeSockets();
+  await startWith(posts);
+  await page.waitForSelector(".blyg-reader-card", { timeout: 30000 });
+  const centre = (sel) => page.evaluate((q) => { const e = document.querySelector(q); const r = e?.getBoundingClientRect(); if (!r) return null; const x = Math.round(r.left + Math.min(r.width / 2, 120)), y = Math.round(r.top + Math.min(r.height / 2, 20)); return { x, y, hit: !!e.contains(document.elementFromPoint(x, y)) }; }, sel);
+  const touch = async (sel, { hold = 650, drift = 0 } = {}) => {
+    await page.evaluate((q) => document.querySelector(q)?.scrollIntoView({ block: "center" }), sel);
+    await wait(600);
+    const c = await centre(sel); // measured right before the finger goes down, and the finger must land on the element
+    if (!c || !c.hit) { console.error("touch: nothing of", sel, "under", JSON.stringify(c)); return false; }
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: c.x, y: c.y }] });
+    if (drift) for (let i = 1; i <= 4; i++) { await wait(40); await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: c.x, y: c.y + (drift * i) / 4 }] }); }
+    await wait(hold);
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await wait(500);
+    return true;
+  };
+  const menu = () => page.evaluate(() => [...document.querySelectorAll(".menu .menu-item-title")].map((e) => e.textContent));
+  const freshFeed = async () => { // the reader opened afresh (as startWith does), at its list
+    await page.evaluate(() => window.app.workspace.detachLeavesOfType("blyg-reader"));
+    await wait(500);
+    await page.evaluate(() => window.app.commands.executeCommandById("blyg:open-reader"));
+    await page.waitForSelector(".blyg-reader-card", { timeout: 30000 });
+    await wait(1500);
+  };
+  // a write waits for the Studio's capabilities first (after a reload): wait until the request arrived, then a little longer to count that no second one follows
+  const settle = async (list, n) => { for (let i = 0; i < 50 && list.length < n; i++) { if (i % 5 === 0) freeSockets(); await wait(200); } await wait(1500); };
+  const closeMenu = async () => { await page.keyboard.press("Escape"); await wait(300); };
+  const opened = () => page.evaluate(() => !!document.querySelector(".blyg-reader-header .blyg-reader-back"));
+  const pick = async (title) => {
+    freeSockets(); await page.evaluate((t) => [...document.querySelectorAll(".menu .menu-item")].find((e) => e.querySelector(".menu-item-title")?.textContent === t)?.click?.(), title); await wait(1500); };
+
+
+  const marked0 = marks.length;
+  const others0 = others.length;
+  await touch(".blyg-reader-card", { drift: 40 });
+  check((await menu()).length === 0 && !(await opened()), "a press that moves (a scroll) opens no menu and no post");
+  await touch(".blyg-reader-card", { hold: 200 });
+  check((await menu()).length === 0 && (await opened()), "a short touch opens no menu: it is a tap and opens the post");
+  await freshFeed();
+  await touch(".blyg-reader-card");
+  const feedMenu = await menu();
+  check(JSON.stringify(feedMenu) === JSON.stringify(["Open", "Reply", "Mark read"]) && !(await opened()), `a long press on a feed card opens the menu (${JSON.stringify(feedMenu)}) and the release did not open the post`);
+  check(marks.length === marked0 && others.length === others0, "opening the menu asked the Studio for nothing");
+  await pick("Mark read");
+  await settle(marks, marked0 + 1);
+  check(marks.length === marked0 + 1, `Mark read in the feed's menu wrote exactly one request (${marks.length - marked0})`);
+  await touch(".blyg-reader-card.is-read");
+  const feedMenu2 = await menu();
+  check(feedMenu2.includes("Mark unread") && !feedMenu2.includes("Mark read"), `the read card's menu says Mark unread (${JSON.stringify(feedMenu2)})`);
+  const un0 = unmarks.length;
+  await pick("Mark unread");
+  await settle(unmarks, un0 + 1);
+  check(unmarks.length === un0 + 1, `Mark unread wrote exactly one request (${unmarks.length - un0})`);
+  await page.click(".blyg-reader-card", { button: "right" });
+  await wait(500);
+  check((await menu()).includes("Mark read") || (await menu()).includes("Mark unread"), "a right click on a feed card opens the same menu");
+  await closeMenu();
+  await touch(".blyg-reader-card");
+  await pick("Open");
+  await page.waitForSelector(".blyg-reader-header .blyg-reader-back", { timeout: 20000 });
+  check(true, "Open in the menu opens the post in the reader");
+  await freshFeed();
+  // the digest: a post of the Mixed bag and a story card
+  await page.evaluate(() => [...document.querySelectorAll(".blyg-reader-header .blyg-modebtn")].find((b) => b.textContent === "Digest").click());
+  await page.waitForSelector(".blyg-daily .blyg-story-mixed", { timeout: 20000 });
+  await wait(1200);
+  const m1 = marks.length;
+  await touch(".blyg-daily .blyg-story-mixed");
+  const dm = await menu();
+  check(JSON.stringify(dm) === JSON.stringify(["Open", "Reply", "Mark read"]) && !(await opened()), `a long press on a digest post opens the menu (${JSON.stringify(dm)}), the release opened nothing`);
+  await pick("Mark read");
+  await settle(marks, m1 + 1);
+  check(marks.length === m1 + 1 && (await page.evaluate(() => document.querySelector(".blyg-daily .blyg-story-mixed")?.classList.contains("blyg-is-read"))), `Mark read in the digest wrote exactly one request and showed at once (${marks.length - m1})`);
+  await touch(".blyg-daily .blyg-story .blyg-daily-meta");
+  const sm = await menu();
+  check(sm[0] === "Open first post" && /^Mark story (read|unread)$/.test(sm[1] ?? "") && sm.length === 2, `a long press on a story card offers Open first post and Mark story read (${JSON.stringify(sm)})`);
+  await pick("Open first post");
+  await page.waitForSelector(".blyg-reader-header .blyg-reader-back", { timeout: 20000 });
+  check(true, "Open first post opens the story's first post");
+  await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: false });
   check(errors.length === 0, `no error was thrown on the page ${errors.join(" | ")}`);
 });

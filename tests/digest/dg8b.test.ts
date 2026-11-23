@@ -30,7 +30,7 @@ vi.mock("obsidian", () => {
     createDiv(o?: { cls?: string; text?: string }) { return this.make("div", o); }
     createSpan(o?: { cls?: string; text?: string }) { return this.make("span", o); }
     createEl(tag: string, o?: { cls?: string; text?: string; attr?: Record<string, string> }) { return this.make(tag, o); }
-    addEventListener(_t: string, fn: () => void) { this.handlers.push(fn); }
+    addEventListener(t: string, fn: () => void) { if (!/^(touch|context)/.test(t)) this.handlers.push(fn); } // the quick menu's touch and context handlers are not clicks
     click() { this.handlers.forEach((h) => h()); }
     empty() { this.children = []; }
     appendText(t: string) { const n = new FakeEl("#text"); n.text = t; this.children.push(n); }

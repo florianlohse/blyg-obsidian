@@ -18,6 +18,7 @@ import { forgetScroll, recalledScroll, rememberScroll, scrollKey, setStoryUnfold
 import { drawToc, type TocEntry } from "./DigestToc";
 import { addChevron } from "./storyChevron";
 import { MIXED_BAG, TOP_STORIES, sectionLabel } from "../digest/labels";
+import { quickPost, quickStory } from "./quickMenu";
 import { setReaderMode } from "./readerMode";
 import { drawBar } from "./DigestBar";
 import { publishPlacement } from "../digest/placement";
@@ -50,6 +51,8 @@ export interface DigestHost {
   changeNote?(post: ReadingPost): Promise<string>;
   /** Mark one post read in the Studio by the reader's own path (permission `reading:state`). Absent: the digest has no "Mark read" buttons. */
   markRead?(post: ReadingPost): Promise<{ ok: boolean; message?: string }>;
+  /** Reply to a post by the reader's own path (a new reply thread). Absent: the quick menu has no Reply. */
+  replyTo?(post: ReadingPost): Promise<void>;
   /** Mark one post unread again by the reader's own path (same permission). Absent: the read symbol only marks. */
   markUnread?(post: ReadingPost): Promise<{ ok: boolean; message?: string }>;
   /** The optional AI layer (src/digest/llm.ts); absent or `enabled()` false: the Daily is the deterministic list only. */
@@ -466,8 +469,16 @@ export class BlygDailyView extends ItemView {
     });
     if (text) main.createDiv({ cls: "blyg-story-by", text: byLine(p) });
     row.addEventListener("click", () => this.openEntry(p));
+    this.quick(row, p);
     const slot = row.createDiv({ cls: "blyg-story-markslot" });
     this.paintRead(row, slot, [p]);
+  }
+
+  /** The quick menu (long press or right click) of a post's row; marks go through the same queue as the read symbol. */
+  private quick(el: HTMLElement, p: ReadingPost, story?: { title: string; posts: readonly ReadingPost[] }): void {
+    const q = this.queue();
+    const host = this.host;
+    quickPost(el, () => p, { open: () => this.openEntry(p, story), ...(host.replyTo ? { reply: () => void host.replyTo?.(p) } : {}), ...(q ? { mark: (read: boolean) => void (read ? q.enqueue([p]) : q.enqueueUnread([p])) } : {}) }, this.contentEl);
   }
 
   /** The "read" look of a card or row and its read symbol (a circle to mark read, a check to mark unread again), now and after every change of a mark. `slot` holds the symbol (one for all `posts`). */
@@ -628,6 +639,8 @@ export class BlygDailyView extends ItemView {
     const list = card.createDiv({ cls: "blyg-daily-members" });
     const story = c.id ?? c.headline;
     const walk = { title: ai ? ai.headline : c.headline, posts: c.posts }; // Next and Previous in the reader walk this story, in this order
+    const sq = this.queue();
+    quickStory(card, c.posts, { open: () => c.posts[0] && this.openEntry(c.posts[0], walk), ...(sq ? { mark: (read: boolean) => void (read ? sq.enqueue(c.posts) : sq.enqueueUnread(c.posts)) } : {}) });
     const key = scrollKey(this.viewing ?? this.edition);
     const paintOpen = addChevron(card, [title, ...(summary ? [summary] : [])], () => toggle((open = !open)));
     const toggle = (open: boolean): void => {
@@ -645,6 +658,7 @@ export class BlygDailyView extends ItemView {
         const preview = previewOf(p);
         if (preview) row.createDiv({ cls: "blyg-daily-preview", text: preview });
         row.addEventListener("click", () => this.openEntry(p, walk)); // a tap anywhere on the post's area opens it
+        this.quick(row, p, walk);
         const dim = (): void => row.toggleClass("blyg-is-read", !isUnread(p));
         dim();
         this.readPainters.push(dim);

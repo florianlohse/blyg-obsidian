@@ -7,6 +7,7 @@
 import { drawFilterRow } from "./readerHeader";
 import { ItemView, sanitizeHTMLToDom, setIcon, type WorkspaceLeaf } from "obsidian";
 import { isUnread, type InboundMention, type ReadingPost } from "../studio/reading";
+import { quickPost } from "./quickMenu";
 import { plainText, renderForeign, type ImageMode } from "./defang";
 import { activeFilters, arrange, isReplyToMine, OWN_SOURCE, readFilter, cardOf, DEFAULT_FILTER, frameable, LENGTH_LABELS, postOfQuote, readingTimeLabel, relativeTime, SORT_LABELS, sourcesOf, type FeedFilter, type FeedLength, type FeedSort } from "./readerFeed";
 import { type ReaderFont } from "./readerFonts";
@@ -1008,11 +1009,8 @@ export class BlygReaderView extends ItemView {
         before?.parentElement?.insertBefore(card, before);
         this.cardEls.set(keyOf(p), card);
         this.fillCard(card, p);
-        card.addEventListener("click", () => {
-          // A press that selected some text is a selection, not a tap.
-          if ((activeWindow.getSelection()?.toString() ?? "") !== "") return;
-          this.openPost(p);
-        });
+        card.addEventListener("click", () => (activeWindow.getSelection()?.toString() ?? "") === "" && this.openPost(p)); // a press that selected some text is a selection, not a tap
+        quickPost(card, () => this.live(p), { open: () => this.openPost(p), reply: () => void this.host.replyTo(p), mark: (read) => void this.setRead(p, read), fetched: () => !this.notFetched.has(keyOf(p)) }, this.scrollEl);
         return card;
       },
       dropped: (key) => this.cardEls.delete(key),
