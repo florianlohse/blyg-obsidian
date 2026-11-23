@@ -24,6 +24,9 @@ export interface ExistingSections {
   names: string[];
   stories: Array<string | undefined>;
   posts: Record<string, string>;
+  /** The bylines and single-post lines already kept (by section name, by post id). */
+  about?: Record<string, string>;
+  lines?: Record<string, string>;
 }
 
 export interface PassSpec {
@@ -84,12 +87,16 @@ interface Acc {
   order: string[];
   story: Map<number, string>;
   post: Map<string, string>;
+  about: Map<string, string>;
+  line: Map<string, string>;
 }
 
 function accOf(spec: PassSpec): Acc {
-  const acc: Acc = { order: [], story: new Map(), post: new Map() };
+  const acc: Acc = { order: [], story: new Map(), post: new Map(), about: new Map(), line: new Map() };
   if (isFull(spec) || !spec.existing) return acc;
   acc.order = [...spec.existing.names];
+  for (const [k, v] of Object.entries(spec.existing.about ?? {})) acc.about.set(k, v);
+  for (const [k, v] of Object.entries(spec.existing.lines ?? {})) acc.line.set(k, v);
   spec.existing.stories.forEach((n, i) => n !== undefined && acc.story.set(i, n));
   for (const p of spec.singles) {
     const n = spec.existing.posts[p.id];
@@ -106,7 +113,13 @@ function sectionsOf(acc: Acc, storyCount: number, singles: readonly SectionSingl
     const ids: number[] = [];
     for (let i = 0; i < storyCount; i++) if (acc.story.get(i) === name) ids.push(i);
     const posts = singles.filter((p) => acc.post.get(p.id) === name).map((p) => p.id);
-    if (ids.length + posts.length > 0) out.push({ name, ids, ...(posts.length ? { posts } : {}) });
+    const about = acc.about.get(name);
+    const lines: Record<string, string> = {};
+    for (const id of posts) {
+      const l = acc.line.get(id);
+      if (l) lines[id] = l;
+    }
+    if (ids.length + posts.length > 0) out.push({ name, ...(about ? { about } : {}), ids, ...(posts.length ? { posts } : {}), ...(Object.keys(lines).length ? { lines } : {}) });
   }
   return out.length > 0 ? out : null;
 }
@@ -186,7 +199,7 @@ export async function runSectionPass(deps: Pick<LlmDeps, "transport" | "now">, s
       const ss = step.stories.map((i) => stories[i] as SectionStory);
       const ps = step.singles.map((i) => spec.singles[i] as SectionSingle);
       const assign = step.mode === "assign";
-      const req = buildSectionsRequest(ss, settings, key, ps, assign ? acc.order : undefined);
+      const req = buildSectionsRequest(ss, settings, key, ps, assign ? acc.order : undefined, assign ? Object.fromEntries(acc.about) : {});
       res.bodies.push(req.body);
       res.chars += req.chars;
       res.sentSingles.push(...ps.map((p) => p.id));
@@ -198,8 +211,10 @@ export async function runSectionPass(deps: Pick<LlmDeps, "transport" | "now">, s
       }
       if (r.status < 200 || r.status >= 300) throw mapFailure(r.status, r.headers, key);
       res.tokens += usageOf(r.text) ?? Math.ceil(((assign ? SECTIONS_ASSIGN_PROMPT : SECTIONS_SYSTEM_PROMPT).length + req.chars) / 4) + estimateSections(ss.length + ps.length).outputTokens;
-      for (const p of readPlacement(r.text, ss.length, ps.length, assign ? acc.order : undefined)) {
+      for (const p of readPlacement(r.text, ss.length, ps.length, assign ? acc.order : undefined, ps.map((x) => x.author))) {
         if (!acc.order.includes(p.name)) acc.order.push(p.name);
+        if (p.about && !acc.about.has(p.name) && p.name !== OTHER_NAME) acc.about.set(p.name, p.about);
+        for (const [i, line] of Object.entries(p.lines ?? {})) acc.line.set((spec.singles[step.singles[Number(i)] as number] as SectionSingle).id, line);
         for (const i of p.stories) acc.story.set(step.stories[i] as number, p.name);
         for (const i of p.singles) acc.post.set((spec.singles[step.singles[i] as number] as SectionSingle).id, p.name);
       }

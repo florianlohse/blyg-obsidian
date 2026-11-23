@@ -18,6 +18,7 @@ import { newWindowMemory, restartWindow, StreamWindow } from "./readerWindow";
 import type { StudioListedItem } from "../studio/types";
 import { bottomClearance } from "./readerBottom";
 import { hostOf, limiter, mentionBadge, postOfMention, visibleMentions } from "./readerMentions";
+import { drawDigestChip } from "./readerDigestChip";
 import { drawFollowedButton, drawFollowNote, isUnfollowedPost, selectionNotQuoted, unfollowedReplyTitle, type FollowHost } from "./readerFollow";
 
 export const BLYG_READER_VIEW = "blyg-reader";
@@ -128,7 +129,6 @@ export class BlygReaderView extends ItemView {
   private sync: SyncMemory = { lastFullAt: 0, readingMoved: false, movedWithoutNew: false };
   /** The Studio's change counters as last seen, and when the list was last read, for the watcher below. */
   private lastMarks: ChangeMarks | null = null;
-  private lastWalkAt = 0;
   private lastMentionsAt = 0;
   /** Whether the sort and filter choices are open (they start closed, so the header stays slim). */
   private filtersOpen = false;
@@ -192,8 +192,7 @@ export class BlygReaderView extends ItemView {
       if (this.checkedAt !== null && this.status.includes(" · checked ")) this.setStatus(this.checkedText());
       else if (this.updatedAt !== null && this.status.startsWith("Updated ")) this.setStatus(this.updatedText());
     }, 20_000));
-    // While the reader is on screen, look at the Studio's change counters now and then (a request that costs almost nothing) and read the list only when they moved.
-    this.registerInterval(window.setInterval(() => void this.lookForMoves(), 30_000));
+    // No automatic check for new posts: the list is read when the reader opens and when the person presses Refresh (the watcher that did it every 30 s is gone).
     this.registerEvent(this.app.workspace.on("layout-change", () => this.clearBottom()));
     this.registerDomEvent(activeWindow, "resize", () => this.clearBottom());
     // The reader's own window (a popout has its own document; `activeDocument` can be another window than the one the reader is in).
@@ -318,7 +317,6 @@ export class BlygReaderView extends ItemView {
           this.sync.movedWithoutNew = false;
         }
         this.olderPosts.setMore(got.data.moreOlder);
-        this.lastWalkAt = Date.now();
         this.keepLocalReadState(posts);
         const mentions = got.data.mentionsFetched === false && held ? held.mentions : got.data.mentions;
         if (got.data.mentionsFetched !== false) this.lastMentionsAt = Date.now();
@@ -355,14 +353,6 @@ export class BlygReaderView extends ItemView {
     const moved = now.epoch !== last.epoch || now.reading !== last.reading || now.subscriptions !== last.subscriptions;
     if (now.reading !== last.reading || now.epoch !== last.epoch) this.sync.readingMoved = true;
     return moved;
-  }
-
-  /** The watcher: a quiet look at the counters, and a read of the list at most once a minute, only when they moved. Nothing while a check runs or the reader is hidden. */
-  private async lookForMoves(): Promise<void> {
-    if (!this.contentEl.isShown() || this.busyCount > 0 || this.moving) return;
-    const now = await this.host.changeMarks();
-    if (now === null) return;
-    if (this.noteMarks(now) && Date.now() - this.lastWalkAt >= 60_000) await this.reload(true);
   }
 
   /**
@@ -949,6 +939,7 @@ export class BlygReaderView extends ItemView {
       });
     }
     this.joined(rest, bits);
+    drawDigestChip(rest, p);
 
     // Row 2: the thumb row. Equal room either side of Reply, so Next in the corner is not next to it.
     const row = h.createDiv({ cls: "blyg-reader-bar blyg-reader-bar-thumb" });

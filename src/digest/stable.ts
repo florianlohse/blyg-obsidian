@@ -6,6 +6,7 @@ import type { ReadingPost } from "../studio/reading";
 import { clusterPosts, docSimilarity, finishCluster, postTime, prepareDocs, SIMILARITY_THRESHOLD, type Cluster } from "./cluster";
 import { quotedIdsOf } from "./quotes";
 import type { EditionRec, StoryRec } from "./edition";
+import { bySize, byNewestPost } from "./order";
 
 const touched = (p: ReadingPost): string[] => [p.remoteId, ...(p.stubTarget ? [p.stubTarget.id] : []), ...quotedIdsOf(p)];
 
@@ -71,6 +72,7 @@ export function groupOf(rec: EditionRec, posts: readonly ReadingPost[]): Grouped
     for (const p of c.posts) inStory.add(p.remoteId);
     clusters.push({ ...c, id: s.id });
   }
-  const mixed = posts.filter((p) => !inStory.has(p.remoteId)).sort((a, b) => postTime(b) - postTime(a) || (a.remoteId < b.remoteId ? -1 : 1));
-  return { clusters, mixed };
+  // The page's order, not the record's (the record keeps the order stories were made in, so a story that grew or got a newer post stayed where it was): see order.ts.
+  const mixed = posts.filter((p) => !inStory.has(p.remoteId)).sort(byNewestPost);
+  return { clusters: clusters.sort(bySize), mixed };
 }

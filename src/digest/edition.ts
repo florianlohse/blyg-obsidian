@@ -5,6 +5,8 @@ export const DEFAULT_DIGEST_TIME = "07:00";
 export const EDITION_MS = 24 * 3600 * 1000;
 /** Edition records kept; older ones are dropped. */
 export const EDITIONS_KEPT = 14;
+const MAX_ABOUT_CHARS = 90;
+const MAX_LINE_CHARS = 80;
 
 /** A "HH:MM" 24-hour time, or the default for anything else. */
 export function parseDigestTime(v: unknown): string {
@@ -49,6 +51,10 @@ export interface EditionRec {
   postSections?: Record<string, string>;
   /** The section names in the order the page shows them. */
   sections?: string[];
+  /** The AI byline of a section (section name to one plain line); a section with none shows no byline. */
+  sectionAbout?: Record<string, string>;
+  /** The AI line of a single post ("<Author> on <topic>", post id to line); a post with none shows its first sentence. */
+  postLines?: Record<string, string>;
   /** When each post was first seen in this edition. */
   seen: Record<string, number>;
   /** Present once the automatic write has been tried for this edition (it is never tried twice); `note`: why it did not write, plain text. */
@@ -67,6 +73,13 @@ export const emptyEditions = (): EditionStore => ({ v: 1, editions: [] });
 
 const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
+/** A stored map of plain strings, each cut to `max` characters; anything else is dropped. */
+const textMap = (v: unknown, max: number): Record<string, string> => {
+  const out: Record<string, string> = {};
+  for (const [k, x] of Object.entries((v as Record<string, unknown> | null | undefined) ?? {})) if (typeof x === "string" && x.trim() !== "") out[k] = x.slice(0, max);
+  return out;
+};
 
 /** Read a stored file defensively: anything odd is dropped, never trusted. */
 export function parseEditions(raw: unknown): EditionStore {
@@ -92,10 +105,12 @@ export function parseEditions(raw: unknown): EditionStore {
     const postSections: Record<string, string> = {};
     for (const [k, v] of Object.entries((r.postSections as Record<string, unknown> | undefined) ?? {})) if (typeof v === "string") postSections[k] = v;
     const names = strs(r.sections);
+    const sectionAbout = textMap(r.sectionAbout, MAX_ABOUT_CHARS);
+    const postLines = textMap(r.postLines, MAX_LINE_CHARS);
     const au = r.auto as { note?: unknown } | undefined;
     const us = r.usage as { tokens?: unknown; cost?: unknown } | undefined;
     const tokens = num(us?.tokens);
-    out.editions.push({ id, createdAt, n: num(r.n) ?? stories.length + 1, stories, mixed: strs(r.mixed), seen, ...(au && typeof au === "object" ? { auto: typeof au.note === "string" ? { note: au.note.slice(0, 200) } : {} } : {}), ...(tokens !== null && tokens >= 0 ? { usage: { tokens, cost: num(us?.cost) } } : {}), ...(Object.keys(postSections).length ? { postSections } : {}), ...(names.length ? { sections: names } : {}) });
+    out.editions.push({ id, createdAt, n: num(r.n) ?? stories.length + 1, stories, mixed: strs(r.mixed), seen, ...(au && typeof au === "object" ? { auto: typeof au.note === "string" ? { note: au.note.slice(0, 200) } : {} } : {}), ...(tokens !== null && tokens >= 0 ? { usage: { tokens, cost: num(us?.cost) } } : {}), ...(Object.keys(postSections).length ? { postSections } : {}), ...(names.length ? { sections: names } : {}), ...(Object.keys(sectionAbout).length ? { sectionAbout } : {}), ...(Object.keys(postLines).length ? { postLines } : {}) });
   }
   out.editions.sort((a, b) => a.id - b.id);
   return pruneEditions(out);

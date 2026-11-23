@@ -202,7 +202,8 @@ describe("the Daily view with sections that hold single posts", () => {
       write: async () => ({ written: [], status: "ok" }),
     };
     const { root, opened } = await mount(list, ai);
-    const texts = root.all().map((e) => e.text);
+    const all = root.all().map((e) => e.text);
+    const texts = all.slice(all.indexOf("Front page")); // the table of contents above the page also names the sections (tested below)
     const at = (t: string): number => texts.indexOf(t);
     const garden = at("Garden");
     const town = at("Town");

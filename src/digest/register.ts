@@ -7,6 +7,9 @@ import type { InboundMention, ReadingPost } from "../studio/reading";
 import { Editions, cachedStories, recordSections, rememberWrite } from "./editionHost";
 import { existingSections } from "./sectionRecord";
 import { setDigestSwitch } from "../ui/readerExtras";
+import { setDigestChips } from "../ui/readerDigestChip";
+import { sectionOfPost } from "./postSection";
+import { requestJump } from "./scrollMemory";
 import type { ReaderFont } from "../ui/readerFonts";
 import { Notice } from "obsidian";
 import type { Keychain } from "../platform/ports";
@@ -137,6 +140,15 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
   // The reader being opened also starts the day's edition, if its cutoff has passed.
   plugin.registerEvent(plugin.app.workspace.on("active-leaf-change", (leaf) => void (leaf?.view.getViewType() === BLYG_READER_VIEW && editions.touch())));
   setDigestSwitch(true);
+  // The reader's "In the digest: <section>" chip: asks the editions held (current, then the history) and opens the Daily in the reader's own leaf, scrolled to the section.
+  setDigestChips({
+    sectionOf: async (p) => sectionOfPost(p.remoteId, await editions.current(), (await history.list()).editions),
+    open: (edition, section) => {
+      requestJump(edition, section);
+      const leaf = plugin.app.workspace.getLeavesOfType(BLYG_READER_VIEW)[0] ?? plugin.app.workspace.getLeaf("tab");
+      void leaf.setViewState({ type: BLYG_DAILY_VIEW, active: true });
+    },
+  });
   plugin.registerView(BLYG_DAILY_VIEW, (leaf) => new BlygDailyView(leaf, host));
   plugin.addCommand({ id: "open-daily", name: "Open Daily", callback: () => void open() });
   if (llm) plugin.addCommand({

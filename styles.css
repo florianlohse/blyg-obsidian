@@ -872,4 +872,28 @@ button.blyg-daily-link.blyg-story-who { font-weight: var(--font-semibold); font-
 /* Editions: a story that grew since its text was written, its new posts, and posts already read. */
 .blyg-story-updated { color: var(--text-accent); font-weight: var(--font-semibold); white-space: nowrap; }
 .blyg-daily-member.blyg-is-new { background: var(--background-modifier-hover); border-radius: var(--radius-s); }
+/* DG6: no sideways scroll. Long unbroken text (a URL-like token in a headline, an author name) wraps inside its box instead of widening the page: flex children may shrink (min-width: 0), every text box breaks anywhere, and the page itself never scrolls sideways. */
+.view-content.blyg-daily { overflow-x: hidden; max-width: 100%; box-sizing: border-box; }
+.blyg-daily, .blyg-daily-section, .blyg-daily-cluster, .blyg-daily-row, .blyg-daily-members, .blyg-story-main, .blyg-toc, .blyg-toc-row { min-width: 0; max-width: 100%; box-sizing: border-box; }
+.blyg-daily-head, .blyg-daily-switcher { flex-wrap: wrap; }
+.blyg-daily-select { min-width: 0; }
+.blyg-daily h1, .blyg-daily h3, .blyg-daily-meta, .blyg-daily-empty, .blyg-daily-preview, .blyg-story-summary, .blyg-story-first, .blyg-section-about, .blyg-toc-about, .blyg-daily-who,
+button.blyg-daily-link { overflow-wrap: anywhere; word-break: break-word; min-width: 0; max-width: 100%; }
+button.blyg-daily-link { display: inline-block; white-space: normal; }
+/* The summary is a button (it does what the headline does) that looks like the text it is. */
+button.blyg-daily-link.blyg-story-summary { display: block; width: 100%; font-weight: var(--font-normal); font-size: calc(var(--font-text-size, 16px) * 0.9); line-height: 1.5; color: color-mix(in srgb, var(--text-normal) 82%, var(--background-primary)); }
+/* A section's byline, muted, right below its heading. */
+.blyg-section-about { color: var(--text-muted); font-size: var(--font-ui-smaller); font-style: italic; margin: calc(var(--size-4-1) * -1) 0 var(--size-4-2); }
+.blyg-daily-section { scroll-margin-top: var(--size-4-2); }
+/* A single post: the line (or author and first sentence) on the left, its reading time small and muted on the right. */
+.blyg-daily-row.blyg-story-mixed { display: flex; align-items: baseline; gap: var(--size-4-2); }
+.blyg-story-main { flex: 1 1 auto; }
+.blyg-story-time { flex: none; color: var(--text-faint); font-size: var(--font-ui-smaller); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* The table of contents under the masthead. */
+.blyg-toc { margin: var(--size-4-2) 0; padding-bottom: var(--size-4-2); border-bottom: 1px solid var(--blyg-paper-rule); }
+.blyg-toc-row { padding: var(--size-2-1) 0; }
+button.blyg-daily-link.blyg-toc-link { font-weight: var(--font-semibold); font-size: var(--font-ui-small); }
+.blyg-toc-about { color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.blyg-toc-summary { color: var(--text-muted); font-size: var(--font-ui-smaller); cursor: pointer; }
+.blyg-reader-digestchip { white-space: normal; overflow-wrap: anywhere; }
 .blyg-is-read { opacity: 0.55; }
