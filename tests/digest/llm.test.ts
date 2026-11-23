@@ -66,7 +66,7 @@ describe("request", () => {
     expect(h.sent[0]?.body).not.toContain(KEY);
     expect(h.sent[0]?.headers["x-api-key"]).toBe(KEY);
     expect(h.sent[0]?.url).toBe("https://api.example.com/v1/messages");
-    expect(h.estimates[0]).toMatchObject({ host: "api.example.com", model: "test-model", posts: 3, groups: 3, requests: 1 });
+    expect(h.estimates[0]).toMatchObject({ host: "api.example.com", model: "test-model", posts: 3, stories: 3, requests: 1 });
   });
 
   it("nothing is sent when the person cancels", async () => {
@@ -205,7 +205,10 @@ describe("the key never reaches the trail, the cache or a note", () => {
 });
 
 const frontPage = (): Cluster[] => {
-  const posts = Array.from({ length: FRONT_PAGE_MAX + 3 }, (_, i) => post(`Subject${i}alpha unique${i}beta words${i}gamma topic${i}delta story ${"filler ".repeat(40)}`, { remoteId: `front${String(i).padStart(4, "0")}` }));
+  const posts = Array.from({ length: FRONT_PAGE_MAX + 3 }, (_, i) => [
+    post(`Subject${i}alpha unique${i}beta words${i}gamma topic${i}delta story ${"filler ".repeat(40)}`, { remoteId: `front${String(i).padStart(4, "0")}` }),
+    post(`Reply ${i}.`, { remoteId: `reply${String(i).padStart(4, "0")}`, isReply: true, stubTarget: { id: `front${String(i).padStart(4, "0")}` } as never }),
+  ]).flat();
   return buildDaily(posts, [], NOW - 86400_000, NOW).front;
 };
 const answerFor = (r: RawRequest): RawResponse => {
@@ -261,12 +264,12 @@ describe("confirm line", () => {
     const built = buildRequests(planClusters(cl, "claude-sonnet-5-5"), { endpoint: "https://api.example.com", model: "claude-sonnet-5-5" }, "k");
     await writeDigest(h.deps, cl);
     const e = h.estimates[0] as Estimate;
-    expect(e.groups).toBe(built.reduce((k, r) => k + r.items.length, 0));
+    expect(e.stories).toBe(built.reduce((k, r) => k + r.items.length, 0));
     expect(e.posts).toBe(built.reduce((k, r) => k + r.items.reduce((j, i) => j + i.posts, 0), 0));
     expect(e.requests).toBe(h.sent.length);
     expect(e.inputTokens).toBe(built.reduce((k, r) => k + Math.ceil(((JSON.parse(r.body) as { system: string }).system.length + r.chars) / 4), 0));
     expect(e.cost).toBe(estimateCost("claude-sonnet-5-5", e.inputTokens, e.outputTokens));
-    expect(estimateLine(e)).toMatch(/^3 groups, 3 posts, 1 request, about \d+ tokens, roughly \$[\d.]+ \(claude-sonnet-5-5\)$/);
+    expect(estimateLine(e)).toMatch(/^3 stories with several posts \(single posts are not sent\), 3 posts, 1 request, about \d+ tokens, roughly \$[\d.]+ \(claude-sonnet-5-5\)$/);
   });
 
   it("an unknown model shows tokens only, 'cost unknown'", () => {

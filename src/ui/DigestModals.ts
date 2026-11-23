@@ -1,6 +1,6 @@
 // The two small questions the digest asks before it sends anything to an AI provider, .
 // 1. Consent (once per provider host): one plain sentence, Agree / Cancel.
-// 2. The one-line confirm of a manual run: groups, posts, requests, tokens, a rough cost, Send / Cancel.
+// 2. The one-line confirm of a manual run: stories, posts, requests, tokens, a rough cost, Send / Cancel.
 // Closing a window any other way is Cancel. Plain text only (everything is put on the page as text).
 import { Modal, Setting, type App } from "obsidian";
 import { estimateLine, type Estimate } from "../digest/llm";

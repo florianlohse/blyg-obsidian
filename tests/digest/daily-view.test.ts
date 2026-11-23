@@ -19,6 +19,9 @@ vi.mock("obsidian", () => {
     setAttr(k: string, v: string) {
       this.attrs[k] = v;
     }
+    removeAttribute(k: string) {
+      delete this.attrs[k];
+    }
     private make(tag: string, o?: { cls?: string; text?: string }) {
       const el = new FakeEl(tag);
       if (o?.cls) o.cls.split(" ").forEach((c) => el.cls.add(c));
@@ -28,6 +31,9 @@ vi.mock("obsidian", () => {
     }
     createDiv(o?: { cls?: string; text?: string }) {
       return this.make("div", o);
+    }
+    createSpan(o?: { cls?: string; text?: string }) {
+      return this.make("span", o);
     }
     createEl(tag: string, o?: { cls?: string; text?: string }) {
       return this.make(tag, o);
@@ -90,9 +96,9 @@ describe("the Daily view", () => {
     expect(root.all().every((e) => ["div", "h1", "h3", "button", "details", "summary", "p"].includes(e.tag))).toBe(true); // no element is made from the post's markup
     expect((root as unknown as { cls: Set<string> }).cls.has("is-font-serif")).toBe(true); // the type follows the reader's font
   });
-  it("opens a post from a single-post cluster, in this leaf", async () => {
+  it("opens a single post from the Mixed bag, in this leaf", async () => {
     const { root, opened, leaves, leaf } = await mount({ posts: [p({})], mentions: [], savedAt: NOW });
-    root.all().find((e) => e.text.startsWith("Hello there"))?.click();
+    root.all().find((e) => e.text === "Blyg")?.click(); // the row's author button (here the blyg's title)
     expect(opened).toEqual(["a".repeat(26)]);
     expect(leaves).toEqual([leaf]);
   });
@@ -100,7 +106,7 @@ describe("the Daily view", () => {
     const { root } = await mount(null);
     expect(root.all().some((e) => e.text.includes("no saved list"))).toBe(true);
   });
-  it("unfolds a group into previews and has no Web button", async () => {
+  it("unfolds a story into previews and has no Web button", async () => {
     const a = p({ remoteId: "a".repeat(26), contentHtml: "<p>Shared topic about gardens and tomatoes in spring.</p>", authorName: "Ann" });
     const b = p({ remoteId: "b".repeat(26), isReply: true, stubTarget: { id: a.remoteId } as never, contentHtml: "<p>My tomatoes did badly this spring, sadly.</p>", authorName: "Bo" });
     const { root, opened } = await mount({ posts: [a, b], mentions: [], savedAt: NOW });
@@ -112,12 +118,33 @@ describe("the Daily view", () => {
     root.all().find((e) => e.text === "Bo (reply)")?.click();
     expect(opened).toEqual(["b".repeat(26)]);
   });
-  it("says how many posts are not grouped and lists them collapsed", async () => {
-    const posts = Array.from({ length: 17 }, (_, i) => p({ remoteId: String.fromCharCode(97 + i).repeat(26), contentHtml: `<p>Wholly distinct ${["alpha", "beta", "gamma", "delta", "kappa", "sigma", "omega", "theta", "iota", "zeta", "eta", "rho", "tau", "phi", "chi", "psi", "nu"][i]} subject only.</p>` }));
-    const { root } = await mount({ posts, mentions: [], savedAt: NOW });
-    expect(root.all().some((e) => /^2 single posts, not grouped/.test(e.text))).toBe(true);
-    expect(root.all().some((e) => e.text === "Other posts (2)")).toBe(true);
-    expect(root.all().some((e) => e.text === "How this is grouped")).toBe(true);
+  it("puts single posts in the Mixed bag and says so when no story has several posts", async () => {
+    const { root } = await mount({ posts: [p({ authorName: "Ann" })], mentions: [], savedAt: NOW });
+    const texts = root.all().map((e) => e.text);
+    expect(texts).toContain("No stories with several posts yet.");
+    expect(texts).toContain("Mixed bag");
+    expect(texts).toContain("Ann");
+    expect(texts).toContain("How this is grouped");
+    expect(texts.some((t) => /\bgroups?\b/i.test(t))).toBe(false);
+  });
+  it("lists stories on the front page and the rest of the posts below, with the 15-story cap", async () => {
+    const words = ["alpha", "beta", "gamma", "delta", "kappa", "sigma", "omega", "theta", "iota", "zeta", "eta", "rho", "tau", "phi", "chi", "psi", "nu"];
+    const posts = words.flatMap((w, i) => {
+      const a = p({ remoteId: `a${i}`.padEnd(26, "x"), contentHtml: `<p>Wholly distinct ${w} subject only here.</p>`, authorName: "Ann" });
+      return [a, p({ remoteId: `b${i}`.padEnd(26, "x"), isReply: true, stubTarget: { id: a.remoteId } as never, contentHtml: `<p>Reply ${w}.</p>`, authorName: "Bo" })];
+    });
+    const { root } = await mount({ posts: [...posts, p({ remoteId: "z".repeat(26), contentHtml: "<p>A lone post nobody answers at all.</p>", authorName: "Cy" })], mentions: [], savedAt: NOW });
+    expect(root.all().filter((e) => (e as unknown as { cls: Set<string> }).cls.has("blyg-story")).length).toBe(15);
+    expect(root.all().some((e) => /^2 more stories \(4 posts\)/.test(e.text))).toBe(true);
+    expect(root.all().some((e) => e.text === "Mixed bag")).toBe(true);
+  });
+  it("sets each headline in the reader's font", async () => {
+    const a = p({ remoteId: "a".repeat(26), contentHtml: "<p>Shared topic about gardens and tomatoes in spring.</p>", authorName: "Ann" });
+    const b = p({ remoteId: "b".repeat(26), isReply: true, stubTarget: { id: a.remoteId } as never, contentHtml: "<p>My tomatoes did badly this spring.</p>", authorName: "Bo" });
+    const { root } = await mount({ posts: [a, b], mentions: [], savedAt: NOW });
+    const h = root.all().find((e) => (e as unknown as { cls: Set<string> }).cls.has("blyg-story-headline")) as unknown as { cls: Set<string> };
+    expect(h.cls.has("blyg-story-font-serif")).toBe(true); // the test host's font() is "serif"
+    expect(root.all().some((e) => e.text === "2 posts in 1 blyg · by Ann, Bo" || e.text.startsWith("2 posts in 1 blyg · by Ann, Bo"))).toBe(true);
   });
   it("has no HTML sink in the view or the digest code", () => {
     for (const f of ["src/ui/DigestView.ts", "src/digest/register.ts", "src/digest/daily.ts", "src/digest/cluster.ts"]) {

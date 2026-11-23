@@ -28,16 +28,11 @@ describe("what is not on the front page", () => {
   it("is empty when nothing is left over", () => {
     expect(summarizeRest([])).toEqual({ line: "", posts: [] });
   });
-  it("counts single posts, not groups", () => {
-    const r = summarizeRest([cluster("a"), cluster("b"), cluster("c")]);
-    expect(r.line).toBe("3 single posts, not grouped");
-    expect(r.posts.map((p) => p.remoteId)).toEqual(["a", "b", "c"]);
-    expect(summarizeRest([cluster("a")]).line).toBe("1 single post, not grouped");
-  });
-  it("says so when smaller groups are among them", () => {
-    const r = summarizeRest([cluster("a", "b"), cluster("c")]);
-    expect(r.line).toBe("1 single post, not grouped; 1 smaller group (2 posts) not on the front page");
-    expect(summarizeRest([cluster("a", "b")]).line).toBe("1 smaller group (2 posts) not on the front page");
+  it("counts the stories beyond the front page", () => {
+    const r = summarizeRest([cluster("a", "b"), cluster("c", "d", "e")]);
+    expect(r.line).toBe("2 more stories (5 posts) not on the front page");
+    expect(r.posts.map((p) => p.remoteId)).toEqual(["a", "b", "c", "d", "e"]);
+    expect(summarizeRest([cluster("a", "b")]).line).toBe("1 more story (2 posts) not on the front page");
   });
 });
 

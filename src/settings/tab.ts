@@ -272,7 +272,7 @@ export class BlygSettingTab extends PluginSettingTab {
       items: [
         {
           name: "Use an AI model",
-          desc: "Off by default. Turning it on asks once for your agreement: the text of posts from blygs you follow is then sent to the provider below to write the digest. A manual “Write the digest” shows one line (groups, posts, tokens, a rough cost) and waits for Send. Afterwards, “Show what the digest sent” lists every run. Without it the Daily is the same list, made on your device.",
+          desc: "Off by default. Turning it on asks once for your agreement: the text of posts from blygs you follow is then sent to the provider below to write the digest. A manual “Write the digest” shows one line (stories, posts, tokens, a rough cost) and waits for Send. Afterwards, “Show what the digest sent” lists every run. Without it the Daily is the same list, made on your device.",
           aliases: ["ai", "llm", "claude", "anthropic", "summary"],
           control: { type: "toggle", key: "digest.useAi", defaultValue: false },
         },

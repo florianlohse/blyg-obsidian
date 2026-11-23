@@ -139,7 +139,8 @@ describe("buildDaily", () => {
   it("keeps to the window, and leaves out the owner's own posts", () => {
     const m = buildDaily([post({ text: "Fresh enough to count here." }), post({ text: "Too old to count.", observedAt: ago(50) }), post({ text: "Mine.", own: true, subscriptionId: "" })], [], since, NOW);
     expect(m.postCount).toBe(1);
-    expect(m.front).toHaveLength(1);
+    expect(m.front).toHaveLength(0); // one post is a single post: it is in the Mixed bag, not a story
+    expect(m.mixed).toHaveLength(1);
   });
   it("lists revised posts as corrections: 'revised to vN', and which version you read", () => {
     const m = buildDaily([post({ remoteId: ID.a, version: 3, readVersion: 2, text: "Corrected figure for March." }), post({ remoteId: ID.b, version: 2, text: "A second revision." }), post({ text: "Never revised." })], [], since, NOW);
@@ -159,7 +160,10 @@ describe("buildDaily", () => {
     expect(m.letters[0]?.words).toBe("quoted");
   });
   it("shows only the first clusters and counts the rest", () => {
-    const many = Array.from({ length: 20 }, (_, i) => post({ remoteId: `${"a".repeat(24)}${String(i).padStart(2, "0")}`, text: `Topic${i} unique${i} wording${i} alpha${i} beta${i}.` }));
+    const many = Array.from({ length: 20 }, (_, i) => {
+      const id = `${"a".repeat(24)}${String(i).padStart(2, "0")}`;
+      return [post({ remoteId: id, text: `Topic${i} unique${i} wording${i} alpha${i} beta${i}.` }), post({ remoteId: `${"c".repeat(24)}${String(i).padStart(2, "0")}`, isReply: true, stubTarget: { id } as never, text: `Reply ${i}.` })];
+    }).flat();
     const m = buildDaily(many, [], since, NOW);
     expect(m.front).toHaveLength(15);
     expect(m.moreClusters).toBe(5);

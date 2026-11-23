@@ -12,7 +12,7 @@ export function trailText(store: LlmStore): string {
     const what = t.status === "sent" ? "sent" : t.status === "cancelled" ? "cancelled (nothing sent)" : "failed";
     const tokens = t.tokens === undefined ? "" : `, about ${t.tokens} tokens, ${t.cost === null || t.cost === undefined ? "cost unknown" : `roughly ${formatCost(t.cost)}`}`;
     const reqs = t.requests && t.requests > 1 ? `, ${t.requests} requests` : "";
-    return [`${stamp(t.at)} · ${what} · ${t.model}${t.host ? ` · ${t.host}` : ""}`, `${t.clusters} groups, ${t.postIds.length} posts, ${t.chars} characters${reqs}${tokens}`, t.note ?? "", t.postIds.length ? `post ids: ${t.postIds.join(", ")}` : "", ...(t.bodies ?? []).map((b, i) => `request ${i + 1} as sent:\n${b}`)].filter(Boolean).join("\n");
+    return [`${stamp(t.at)} · ${what} · ${t.model}${t.host ? ` · ${t.host}` : ""}`, `${t.clusters} stories, ${t.postIds.length} posts, ${t.chars} characters${reqs}${tokens}`, t.note ?? "", t.postIds.length ? `post ids: ${t.postIds.join(", ")}` : "", ...(t.bodies ?? []).map((b, i) => `request ${i + 1} as sent:\n${b}`)].filter(Boolean).join("\n");
   });
   return [...head, ...runs].join("\n\n");
 }
