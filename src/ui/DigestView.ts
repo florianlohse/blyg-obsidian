@@ -13,6 +13,10 @@ import { GROUPING_NOTE, previewOf, summarizeRest } from "../digest/layout";
 import { authorOf, authorsLine, keywordsOf } from "../digest/storyMeta";
 import { mastheadDate } from "../digest/window";
 import { isUnread, type InboundMention, type ReadingPost } from "../studio/reading";
+import type { PastEdition } from "../digest/history";
+import { CAPPED_NOTE } from "../digest/history";
+import { addUsage, usageLine } from "../digest/autoWrite";
+import { drawPast, drawSwitcher } from "./DigestPast";
 import type { ReaderFont } from "./readerFonts";
 
 export const BLYG_DAILY_VIEW = "blyg-daily";
@@ -21,7 +25,9 @@ export interface DigestHost {
   /** The reader's saved list and when it was saved, or null when there is none (the reader has not been opened, or the list is too old). */
   loadList(): Promise<{ posts: ReadingPost[]; mentions: InboundMention[]; savedAt: number } | null>;
   /** The current edition for these posts (src/digest/editionHost.ts): its window, and the stories and Mixed bag it has settled. Absent `id`/`grouped`: group the window afresh. */
-  edition(posts: readonly ReadingPost[]): Promise<{ id?: number; since: number; until: number; grouped?: Grouped }>;
+  edition(posts: readonly ReadingPost[]): Promise<{ id?: number; since: number; until: number; grouped?: Grouped; auto?: { note?: string }; usage?: { tokens: number; cost: number | null } }>;
+  /** The saved past editions, newest first (src/digest/history.ts). Absent: no history. */
+  history?(): Promise<{ editions: PastEdition[]; capped: boolean }>;
   /** The reader's font setting; the digest's type follows it. */
   font(): ReaderFont;
   /** Open a post in the reader, in this leaf, like a feed card; the reader's Back returns to the digest. */
@@ -34,9 +40,11 @@ export interface DigestHost {
     enabled(): boolean;
     cached(clusters: readonly Cluster[]): Promise<Array<Written | null>>;
     /** The sections kept for these stories and single posts (the Mixed bag). */
+    /** True once, when the digest should write itself now (setting on, consent given, not tried for this edition); it also marks the edition as tried. */
+    autoDue?(clusters: readonly Cluster[]): Promise<boolean>;
     cachedSections?(clusters: readonly Cluster[], singles: readonly ReadingPost[]): Promise<Section[] | null>;
     /** Write the digest. `resort`: sort every story and single post into sections again (otherwise only new ones are added to the existing sections). */
-    write(clusters: readonly Cluster[], singles: readonly ReadingPost[], opts?: { resort?: boolean }): Promise<Outcome>;
+    write(clusters: readonly Cluster[], singles: readonly ReadingPost[], opts?: { resort?: boolean; auto?: boolean }): Promise<Outcome>;
   };
 }
 
@@ -49,6 +57,12 @@ export class BlygDailyView extends ItemView {
   private sections: Section[] | null = null;
   private note = "";
   private busy = false;
+  private usage: { tokens: number; cost: number | null } | undefined;
+  private past: PastEdition[] = [];
+  private pastCapped = false;
+  private viewing: number | null = null;
+  private byId = new Map<string, ReadingPost>();
+  private writeBtn: HTMLElement | null = null;
   constructor(leaf: WorkspaceLeaf, private readonly host: DigestHost) {
     super(leaf);
   }
@@ -71,19 +85,53 @@ export class BlygDailyView extends ItemView {
     root.empty();
     root.createDiv({ cls: "blyg-daily-status", text: "Reading your list…" });
     let model: DailyModel | null = null;
+    let autoNote = "";
     try {
       const list = await this.host.loadList();
       if (list) {
+        this.byId = new Map(list.posts.map((p) => [p.remoteId, p]));
         const win = await this.host.edition(list.posts);
         model = buildDaily(list.posts, list.mentions, win.since, win.until, win.grouped, win.id);
+        this.usage = win.usage;
+        autoNote = win.auto?.note ?? "";
       }
     } catch {
       model = null;
     }
-    this.note = "";
+    const h = await (this.host.history?.() ?? Promise.resolve(null)).catch(() => null);
+    this.past = h?.editions ?? [];
+    this.pastCapped = h?.capped === true;
+    this.note = autoNote;
     this.written = model && this.host.ai?.enabled() ? await this.host.ai.cached(model.front).catch(() => []) : [];
     this.sections = model && this.written.length > 0 && this.host.ai?.enabled() ? await (this.host.ai.cachedSections?.(model.front, model.mixed) ?? Promise.resolve(null)).catch(() => null) : null;
     this.render(model);
+    // The automatic write: the plain digest is on the page already; the text replaces it when it is ready.
+    const ai = this.host.ai;
+    if (model && ai?.enabled() && !this.busy && this.viewing === null && (await (ai.autoDue?.(model.front) ?? Promise.resolve(false)).catch(() => false))) this.run(model, false, true);
+  }
+
+  /** "Write the digest" (or the automatic write): in the background; the page redraws when the answer is in. */
+  private run(model: DailyModel, resort: boolean, auto = false): void {
+    const ai = this.host.ai;
+    if (!ai || this.busy) return;
+    this.busy = true;
+    this.note = "";
+    const before = this.written;
+    if (this.writeBtn) this.paintWrite(this.writeBtn); // in place: the page does not redraw, so nothing jumps
+    void ai
+      .write(model.front, model.mixed, { resort, ...(auto ? { auto: true } : {}) })
+      .then((o) => {
+        this.written = o.written;
+        this.sections = o.sections ?? null;
+        if (o.status === "ok" && o.tokens) this.usage = addUsage(this.usage, o.tokens, o.cost ?? null);
+        this.note = o.note ?? nothingToWriteNote(o, before, model.front.length, model.mixed.length);
+        if (o.status === "failed") this.note = auto ? `The automatic write did not work: ${o.note ?? "no reason given"}` : `${o.note ?? "The digest could not be written."} Showing the list made on your device.`;
+      })
+      .catch(() => (this.note = "The digest could not be written. Showing the list made on your device."))
+      .finally(() => {
+        this.busy = false;
+        this.render(model);
+      });
   }
 
   private render(model: DailyModel | null): void {
@@ -91,8 +139,22 @@ export class BlygDailyView extends ItemView {
     root.empty();
     for (const f of ["default", "serif", "sans", "mono"] as const) root.toggleClass(`is-font-${f}`, f === this.host.font());
     const mast = root.createDiv({ cls: "blyg-daily-masthead" });
-    mast.createEl("h1", { text: mastheadDate(model?.edition ?? model?.since ?? Date.now()), cls: "blyg-daily-date" });
+    mast.createEl("h1", { text: mastheadDate(this.viewing ?? model?.edition ?? model?.since ?? Date.now()), cls: "blyg-daily-date" });
     mast.createDiv({ text: "Your digest", cls: "blyg-daily-kicker" });
+    const today = model?.edition ?? null;
+    const pastRec = this.viewing !== null ? this.past.find((e) => e.id === this.viewing) : undefined;
+    const ids = [...(today !== null ? [today] : []), ...this.past.map((e) => e.id).filter((id) => id !== today)];
+    if (ids.length > 1 || pastRec) drawSwitcher(mast, ids, pastRec ? pastRec.id : (today ?? ids[0] ?? 0), (id) => {
+      this.viewing = id === today ? null : id;
+      this.render(model);
+    });
+    if (pastRec) {
+      const head = root.createDiv({ cls: "blyg-daily-head" });
+      head.createEl("button", { text: "Feed", cls: "blyg-daily-btn", attr: { title: "Back to the reader's feed" } }).addEventListener("click", () => void this.host.showFeed(this.leaf));
+      if (this.pastCapped) root.createDiv({ cls: "blyg-daily-meta", text: CAPPED_NOTE });
+      drawPast(root, pastRec, this.byId, (p) => void this.host.openPost(p, this.leaf));
+      return;
+    }
     const head = root.createDiv({ cls: "blyg-daily-head" });
     const feed = head.createEl("button", { text: "Feed", cls: "blyg-daily-btn", attr: { title: "Back to the reader's feed" } });
     feed.addEventListener("click", () => void this.host.showFeed(this.leaf));
@@ -100,31 +162,12 @@ export class BlygDailyView extends ItemView {
     const ai = this.host.ai;
     if (model && ai?.enabled()) {
       const btn = head.createEl("button", { cls: "blyg-daily-btn blyg-story-write" });
+      this.writeBtn = btn;
       this.paintWrite(btn);
-      const run = (resort: boolean): void => {
-        if (this.busy) return;
-        this.busy = true;
-        this.note = "";
-        const before = this.written;
-        this.paintWrite(btn); // in place: the page does not redraw, so nothing jumps
-        void ai
-          .write(model.front, model.mixed, { resort })
-          .then((o) => {
-            this.written = o.written;
-            this.sections = o.sections ?? null;
-            this.note = o.note ?? nothingToWriteNote(o, before, model.front.length, model.mixed.length);
-            if (o.status === "failed") this.note = `${o.note ?? "The digest could not be written."} Showing the list made on your device.`;
-          })
-          .catch(() => (this.note = "The digest could not be written. Showing the list made on your device."))
-          .finally(() => {
-            this.busy = false;
-            this.render(model);
-          });
-      };
-      btn.addEventListener("click", () => run(false));
+      btn.addEventListener("click", () => this.run(model, false));
       if (this.sections) {
         const resort = head.createEl("button", { text: "Re-sort sections", cls: "blyg-daily-btn", attr: { title: "Sort every story and post into sections again, not only the new ones" } });
-        resort.addEventListener("click", () => run(true));
+        resort.addEventListener("click", () => this.run(model, true));
       }
     }
     if (this.note) root.createDiv({ cls: "blyg-daily-meta", text: this.note });
@@ -136,6 +179,11 @@ export class BlygDailyView extends ItemView {
   }
 
   /** The Write button: "Write the digest", or, while a run is going, disabled with a spinner. Same width either way. */
+  /** The estimate after a write: " · about N tokens, under 1 cent". */
+  private footer(): string {
+    return this.usage ? ` · ${usageLine(this.usage)}` : "";
+  }
+
   private paintWrite(btn: HTMLElement): void {
     btn.empty();
     if (this.busy) {
@@ -163,7 +211,7 @@ export class BlygDailyView extends ItemView {
       if (m.front.length === 0) s.createDiv({ cls: "blyg-daily-empty", text: "No stories with several posts yet." });
       m.front.forEach((c, i) => this.drawCluster(s, c, this.written[i] ?? null));
       const made = this.written.filter((w): w is Written => w !== null);
-      if (made.length > 0) s.createDiv({ cls: "blyg-daily-meta blyg-story-credit", text: `Written by ${made[0]?.model ?? ""} from ${plural(made.reduce((k, w) => k + w.posts, 0), "post", "posts")}` });
+      if (made.length > 0) s.createDiv({ cls: "blyg-daily-meta blyg-story-credit", text: `Written by ${made[0]?.model ?? ""} from ${plural(made.reduce((k, w) => k + w.posts, 0), "post", "posts")}${this.footer()}` });
       this.drawRest(s, m);
     }
     this.drawLetters(root, m);
@@ -272,7 +320,7 @@ export class BlygDailyView extends ItemView {
     }
     const made = this.written.filter((w): w is Written => w !== null);
     const tail = root.createDiv({ cls: "blyg-daily-section" });
-    if (made.length > 0) tail.createDiv({ cls: "blyg-daily-meta blyg-story-credit", text: `Written by ${made[0]?.model ?? ""} from ${plural(made.reduce((k, w) => k + w.posts, 0), "post", "posts")}.` });
+    if (made.length > 0) tail.createDiv({ cls: "blyg-daily-meta blyg-story-credit", text: `Written by ${made[0]?.model ?? ""} from ${plural(made.reduce((k, w) => k + w.posts, 0), "post", "posts")}${this.footer()}.` });
     this.drawRest(tail, m);
     this.drawMixed(root, m, placed);
     this.drawLetters(root, m);

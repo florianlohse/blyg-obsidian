@@ -430,6 +430,9 @@ export interface Outcome {
   /** The sections (second pass) when there are some: stories as 0-based positions in the clusters passed. null = the plain front page. */
   sections?: Section[] | null;
   status: "ok" | "cancelled" | "failed" | "nothing-to-send";
+  /** What this run used (the provider's count, else the estimate) and its rough cost (null: no price); set when something was sent. */
+  tokens?: number;
+  cost?: number | null;
   /** A short line for the Daily when status is "failed" or "cancelled". Never contains the key. */
   note?: string;
 }
@@ -480,6 +483,8 @@ export interface WriteOptions {
   existing?: ExistingSections | null;
   /** Sort everything again (the person asked). */
   resort?: boolean;
+  /** Called with the estimate before consent and sending; a string refuses the run (an automatic run's ceiling). */
+  gate?: (estimate: Estimate) => string | null;
 }
 
 export async function writeDigest(deps: LlmDeps, clusters: readonly Cluster[], opts: WriteOptions = {}): Promise<Outcome> {
@@ -527,6 +532,11 @@ export async function writeDigest(deps: LlmDeps, clusters: readonly Cluster[], o
     await deps.save(store).catch(() => undefined);
     return { written, status: "cancelled", note: "Nothing was sent." };
   };
+  const refusal = opts.gate?.(est) ?? null;
+  if (refusal !== null) {
+    await deps.save(store).catch(() => undefined);
+    return { written, status: "cancelled", note: refusal };
+  }
   // Consent first: without a record for this host nothing is ever sent.
   if (store.consent?.host !== est.host) {
     if (!(await deps.askConsent(est.host, model))) return cancelled();
@@ -596,5 +606,5 @@ export async function writeDigest(deps: LlmDeps, clusters: readonly Cluster[], o
   const left = est.stories - answered;
   const storyNote = firstError ? `${left} of ${est.stories} stories could not be written: ${redact(firstError.message, [key])}` : left > 0 ? `${left} of ${est.stories} stories came back without a headline.` : undefined;
   const note = [storyNote, sectionsNote].filter(Boolean).join(" ");
-  return { written, sections, status: "ok", ...(note ? { note } : {}) };
+  return { written, sections, status: "ok", tokens, cost, ...(note ? { note } : {}) };
 }

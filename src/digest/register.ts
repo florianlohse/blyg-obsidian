@@ -18,6 +18,8 @@ import { setConsentGate } from "./consentGate";
 import { cachedSections as cachedSectionsOf, clearBodies, normaliseEndpoint } from "./llm";
 import { TextModal } from "../ui/TextModal";
 import { emptyStore, parseStore, writeDigest, type LlmDeps, type LlmStore } from "./llm";
+import { History, buildPast } from "./history";
+import { addUsage, autoDue, ceilingRefusal } from "./autoWrite";
 
 export interface DigestDeps {
   /** The reader's saved list (plugin storage), or null. */
@@ -47,6 +49,12 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
     now: () => Date.now(),
     time: () => deps.time(),
   });
+  const historyPath = (): string => normalizePath(`${plugin.manifest.dir ?? `${plugin.app.vault.configDir}/plugins/${plugin.manifest.id}`}/digest-history.json`);
+  const history = new History({
+    read: async () => ((await plugin.app.vault.adapter.exists(historyPath())) ? (JSON.parse(await plugin.app.vault.adapter.read(historyPath())) as unknown) : null),
+    write: (text) => plugin.app.vault.adapter.write(historyPath(), text),
+  });
+  const llmSettings = (): BlygSettings["digest"] => (ai ? ai.settings() : { useAi: false, endpoint: "", model: "", keySecretName: "", dailyTokenCeiling: 0, autoWrite: false, time: "07:00" });
   const ai = deps.ai;
   const llm: LlmDeps | null = ai
     ? {
@@ -82,15 +90,30 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
             enabled: () => ai?.settings().useAi === true,
             cached: async (c) => cachedStories(llm, await editions.current(), c),
             cachedSections: async (c, singles) => recordSections(await editions.current(), c, singles) ?? (await cachedSectionsOf(llm, c, singles)),
+            autoDue: async (c) => {
+              const st = await loadStore();
+              return editions.claimAuto((rec) => autoDue(llmSettings(), rec, st, c.length));
+            },
             write: async (c, singles, opts) => {
               const rec = await editions.current();
-              const o = await writeDigest(llm, c, { singles, existing: existingSections(rec, c, singles), resort: opts?.resort === true });
-              if (rec) await rememberWrite(llm, editions, rec.id, c, o, singles);
+              const auto = opts?.auto === true;
+              const st = auto ? await loadStore() : null;
+              // An automatic run never asks (no consent: nothing is sent), never shows the confirm line, and keeps to the daily ceiling.
+              const run: LlmDeps = auto ? { ...llm, askConsent: () => Promise.resolve(false) } : llm;
+              const o = await writeDigest(run, c, { singles, existing: existingSections(rec, c, singles), resort: opts?.resort === true, ...(auto && st ? { confirm: false, gate: (e) => ceilingRefusal(llmSettings(), st, Date.now(), e) } : {}) });
+              if (rec) {
+                await rememberWrite(llm, editions, rec.id, c, o, singles);
+                if (o.status === "ok") {
+                  if (o.tokens) await editions.update(rec.id, (e) => ({ ...e, usage: addUsage(e.usage, o.tokens ?? 0, o.cost ?? null) }));
+                  if (o.written.some(Boolean)) await history.put(buildPast(rec.id, c, o, singles, Date.now()));
+                } else if (auto) await editions.update(rec.id, (e) => ({ ...e, auto: { note: o.status === "failed" ? `The automatic write did not work: ${o.note ?? "no reason given"}` : (o.note ?? "Not written automatically.") } }));
+              }
               return o;
             },
           },
         }
       : {}),
+    history: () => history.list(),
     loadList: () => deps.readList(),
     edition: (posts) => editions.open(posts),
     font: () => deps.font(),

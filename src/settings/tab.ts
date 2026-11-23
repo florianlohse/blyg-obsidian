@@ -294,11 +294,17 @@ export class BlygSettingTab extends PluginSettingTab {
           aliases: ["ai", "llm", "claude", "anthropic", "summary"],
           control: { type: "toggle", key: "digest.useAi", defaultValue: false },
         },
+        {
+          name: "Write the digest automatically",
+          desc: "Off by default. When on, the AI digest is written once for each new edition, in the background while the plain digest shows, if the AI layer is on, you agreed, and the daily token ceiling is not used up. A later update of the same edition stays manual (“Write the digest”). A failed try is not repeated; the button stays.",
+          aliases: ["auto", "automatic", "background"],
+          control: { type: "toggle", key: "digest.autoWrite", defaultValue: false },
+        },
         text("AI endpoint", "The provider's address. Default: the Anthropic API. Only https addresses are used.", "digest.endpoint", "https://api.anthropic.com"),
         text("AI model", "The model that writes the digest, e.g. claude-sonnet-5-5 (others: claude-haiku-5-5 cheaper, claude-opus-5-5, claude-fable-5-2).", "digest.model", "claude-sonnet-5-5"),
         {
           name: "Daily token ceiling",
-          desc: "The most tokens the digest may use in one day by itself (an automatic run will check this; the “Write the digest” button is never blocked by it, but its tokens count). Default 2000000, plenty for many full runs a day. 0 means no ceiling. Token counts are rough.",
+          desc: "The most tokens the digest may use in one day by itself (the automatic run checks this; the “Write the digest” button is never blocked by it, but its tokens count). Default 2000000, plenty for many full runs a day. 0 means no ceiling. Token counts are rough.",
           aliases: ["limit", "budget", "tokens", "cost"],
           render: (setting) => {
             setting.addText((t) => t.setValue(String(s.digest.dailyTokenCeiling)).onChange((v) => {

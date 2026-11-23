@@ -815,6 +815,9 @@
 .view-content.blyg-daily { padding: var(--size-4-3); }
 .is-mobile .view-content.blyg-daily { padding-bottom: calc(var(--mobile-navbar-height, 0px) + env(safe-area-inset-bottom, 0px) + var(--size-4-3)); }
 .blyg-daily-head { display: flex; align-items: center; justify-content: space-between; gap: var(--size-4-2); }
+.blyg-daily-switcher { display: flex; align-items: center; justify-content: center; gap: var(--size-4-2); margin-top: var(--size-4-2); }
+.blyg-daily-select { max-width: 60%; }
+.blyg-past-gone { font-style: italic; }
 .blyg-daily-section { margin-top: var(--size-4-4); }
 .blyg-daily-cluster, .blyg-daily-row { padding: var(--size-2-2) 0; }
 .blyg-daily-cluster { border-bottom: 1px solid var(--background-modifier-border); }
