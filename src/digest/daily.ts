@@ -1,5 +1,5 @@
 // The Daily as data: what the reader's saved list says about the window. No model, no network, no storage. Pure and deterministic.
-//   Front page: the clusters. Letters: others' words about the owner's own items (mentions). Corrections: posts revised after the first version.
+//   Front page: the stories (clusters of two or more posts). Mixed bag: the posts that did not fit a story. Letters: others' words about the owner's own items (mentions). Corrections: posts revised after the first version.
 //   Retractions: posts withdrawn. (From your notes: a later increment.)
 // The reader's data carries no change note for a revised version (checked 2026-11: `ReadingPost` has only `version` and `readVersion`; the Studio's
 // change notes are not on the reading rows), so a correction says "revised to vN" and, when the owner had read an older version, which one.
@@ -7,7 +7,7 @@ import { relationWords, type InboundMention, type ReadingPost } from "../studio/
 import { clusterPosts, firstSentence, postTime, type Cluster } from "./cluster";
 import { ownWords } from "./quotes";
 
-/** How many clusters the front page shows; the rest are counted, not listed. */
+/** How many stories the front page shows; the rest are counted, not listed. */
 export const FRONT_PAGE_MAX = 15;
 
 export interface Letter {
@@ -39,11 +39,14 @@ export interface DailyModel {
   until: number;
   /** Posts of blygs read that fall in the window (the owner's own and withdrawn ones are not counted). */
   postCount: number;
+  /** Stories (two or more posts) on the front page: the only ones the AI layer is asked about. */
   front: Cluster[];
-  /** Clusters beyond FRONT_PAGE_MAX. */
+  /** Stories beyond FRONT_PAGE_MAX. */
   moreClusters: number;
-  /** Those clusters themselves: the page lists their posts under "Other posts". */
+  /** Those stories themselves: the page lists their posts under "Other posts". */
   rest: Cluster[];
+  /** The posts that did not fit a story, newest story first. No AI request is made for them. */
+  mixed: ReadingPost[];
   letters: Letter[];
   corrections: Correction[];
   retractions: Retraction[];
@@ -55,7 +58,9 @@ export function buildDaily(posts: readonly ReadingPost[], mentions: readonly Inb
   const read = posts.filter((p) => !p.own && p.subscriptionId !== "");
   const fresh = read.filter((p) => inWindow(postTime(p), since, until));
   const live = fresh.filter((p) => !p.withdrawn);
-  const clusters = clusterPosts(live);
+  const all = clusterPosts(live);
+  const clusters = all.filter((c) => c.posts.length >= 2);
+  const mixed = all.filter((c) => c.posts.length < 2).flatMap((c) => c.posts);
 
   const held = new Map<string, ReadingPost>();
   for (const p of read) held.set(p.remoteId, p);
@@ -96,6 +101,7 @@ export function buildDaily(posts: readonly ReadingPost[], mentions: readonly Inb
     front: clusters.slice(0, FRONT_PAGE_MAX),
     moreClusters: Math.max(0, clusters.length - FRONT_PAGE_MAX),
     rest: clusters.slice(FRONT_PAGE_MAX),
+    mixed,
     letters,
     corrections,
     retractions,

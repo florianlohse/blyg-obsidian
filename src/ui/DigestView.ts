@@ -3,8 +3,11 @@
 import { ItemView, type WorkspaceLeaf } from "obsidian";
 import type { Cluster } from "../digest/cluster";
 import type { Outcome, Written } from "../digest/llm";
+import { firstSentence } from "../digest/cluster";
+import { ownWords } from "../digest/quotes";
 import { buildDaily, type DailyModel } from "../digest/daily";
 import { GROUPING_NOTE, previewOf, summarizeRest } from "../digest/layout";
+import { authorOf, authorsLine, keywordsOf } from "../digest/storyMeta";
 import { mastheadDate } from "../digest/window";
 import type { InboundMention, ReadingPost } from "../studio/reading";
 import type { ReaderFont } from "./readerFonts";
@@ -83,11 +86,12 @@ export class BlygDailyView extends ItemView {
     head.createEl("button", { text: "Refresh", cls: "blyg-daily-btn" }).addEventListener("click", () => void this.refresh());
     const ai = this.host.ai;
     if (model && ai?.enabled() && model.front.length > 0) {
-      const btn = head.createEl("button", { text: this.busy ? "Writing…" : "Write the digest", cls: "blyg-daily-btn" });
+      const btn = head.createEl("button", { cls: "blyg-daily-btn blyg-story-write" });
+      this.paintWrite(btn);
       btn.addEventListener("click", () => {
         if (this.busy) return;
         this.busy = true;
-        this.render(model);
+        this.paintWrite(btn); // in place: the page does not redraw, so nothing jumps
         void ai
           .write(model.front)
           .then((o) => {
@@ -110,15 +114,33 @@ export class BlygDailyView extends ItemView {
     this.draw(root, model);
   }
 
+  /** The Write button: "Write the digest", or, while a run is going, disabled with a spinner. Same width either way. */
+  private paintWrite(btn: HTMLElement): void {
+    btn.empty();
+    if (this.busy) {
+      btn.createSpan({ cls: "blyg-story-spinner" });
+      btn.createSpan({ text: "Writing the digest…" });
+      btn.setAttr("disabled", "true");
+      btn.setAttr("aria-busy", "true");
+    } else {
+      btn.createSpan({ text: "Write the digest" });
+      btn.removeAttribute("disabled");
+      btn.removeAttribute("aria-busy");
+    }
+  }
+
   private draw(root: HTMLElement, m: DailyModel): void {
     root.createDiv({ cls: "blyg-daily-meta", text: `${plural(m.postCount, "post", "posts")} today, as of ${timeOnly(m.until)}` });
     if (m.postCount === 0 && m.letters.length === 0 && m.corrections.length === 0 && m.retractions.length === 0) {
       root.createDiv({ cls: "blyg-daily-empty", text: "Nothing new today yet." });
       return;
     }
-    if (m.front.length > 0) {
+    if (m.front.length > 0 || m.mixed.length > 0) {
       const s = this.section(root, "Front page");
+      if (m.front.length === 0) s.createDiv({ cls: "blyg-daily-empty", text: "No stories with several posts yet." });
       m.front.forEach((c, i) => this.drawCluster(s, c, this.written[i] ?? null));
+      const made = this.written.filter((w): w is Written => w !== null);
+      if (made.length > 0) s.createDiv({ cls: "blyg-daily-meta blyg-story-credit", text: `Written by ${made[0]?.model ?? ""} from ${plural(made.reduce((k, w) => k + w.posts, 0), "post", "posts")}` });
       this.drawRest(s, m);
     }
     if (m.letters.length > 0) {
@@ -147,6 +169,15 @@ export class BlygDailyView extends ItemView {
         const row = s.createDiv({ cls: "blyg-daily-row" });
         row.createEl("button", { cls: "blyg-daily-link", text: r.headline }).addEventListener("click", () => void this.host.openPost(r.post, this.leaf));
         row.createDiv({ cls: "blyg-daily-meta", text: `${r.post.authorName ?? r.post.subscriptionTitle} · withdrawn` });
+      }
+    }
+    if (m.mixed.length > 0) {
+      const s = this.section(root, "Mixed bag");
+      for (const p of m.mixed) {
+        const row = s.createDiv({ cls: "blyg-daily-row blyg-story-mixed" });
+        row.createEl("button", { cls: "blyg-daily-link blyg-story-who", text: authorOf(p) }).addEventListener("click", () => void this.host.openPost(p, this.leaf));
+        const first = firstSentence(ownWords(p));
+        if (first) row.createDiv({ cls: "blyg-story-first", text: first });
       }
     }
   }
@@ -185,17 +216,15 @@ export class BlygDailyView extends ItemView {
   }
 
   private drawCluster(into: HTMLElement, c: Cluster, ai: Written | null): void {
-    const card = into.createDiv({ cls: "blyg-daily-cluster" });
+    const card = into.createDiv({ cls: "blyg-daily-cluster blyg-story" });
     const blygs = new Set(c.posts.map((p) => p.subscriptionTitle || p.origin || "")).size;
-    const title = card.createEl("button", { cls: "blyg-daily-link blyg-daily-headline", text: ai ? ai.headline : c.headline });
-    if (ai) {
-      // Generated text: put on the page as text only (never HTML), and labelled.
-      if (ai.summary) card.createDiv({ cls: "blyg-daily-summary", text: ai.summary });
-      card.createDiv({ cls: "blyg-daily-meta", text: `Written by ${ai.model} from ${plural(ai.posts, "post", "posts")}` });
-    }
+    const title = card.createEl("button", { cls: `blyg-daily-link blyg-daily-headline blyg-story-headline blyg-story-font-${this.host.font()}`, text: ai ? ai.headline : c.headline });
+    // Generated text: put on the page as text only (never HTML). The "Written by" label is once, under the front page.
+    if (ai?.summary) card.createDiv({ cls: "blyg-story-summary", text: ai.summary });
+    const names = c.posts.map(authorOf);
     card.createDiv({
       cls: "blyg-daily-meta",
-      text: [c.posts.length > 1 ? `${plural(c.posts.length, "post", "posts")} in ${plural(blygs, "blyg", "blygs")}` : (c.posts[0]?.authorName ?? c.posts[0]?.subscriptionTitle ?? ""), c.terms.join(" · ")].filter(Boolean).join(" · "),
+      text: [`${plural(c.posts.length, "post", "posts")} in ${plural(blygs, "blyg", "blygs")}`, authorsLine(c.posts), ai ? "" : keywordsOf(c.terms, names).join(" · ")].filter(Boolean).join(" · "),
     });
     const list = card.createDiv({ cls: "blyg-daily-members" });
     const toggle = (open: boolean): void => {
@@ -208,10 +237,7 @@ export class BlygDailyView extends ItemView {
         if (preview) row.createDiv({ cls: "blyg-daily-preview", text: preview });
       }
     };
-    if (c.posts.length === 1) title.addEventListener("click", () => void this.host.openPost(c.posts[0] as ReadingPost, this.leaf));
-    else {
-      let open = false;
-      title.addEventListener("click", () => toggle((open = !open)));
-    }
+    let open = false;
+    title.addEventListener("click", () => toggle((open = !open)));
   }
 }

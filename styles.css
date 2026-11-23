@@ -843,6 +843,21 @@ button.blyg-daily-link.blyg-daily-who { font-weight: var(--font-semibold); font-
 .blyg-daily-others { margin-top: var(--size-2-2); }
 .blyg-daily-how { margin-top: var(--size-4-3); border-top: 1px solid var(--blyg-paper-rule); padding-top: var(--size-2-2); }
 .blyg-daily-how summary { color: var(--text-muted); font-size: var(--font-ui-smaller); cursor: pointer; }
+/* The digest, second pass (src/ui/DigestView.ts): stories, Mixed bag, spinner. New class names only (a stale stylesheet must not fight them). Headlines are buttons, which do not inherit the font by themselves. */
+button.blyg-story-headline { font-family: inherit; font-size: calc(var(--font-text-size, 16px) * 1.5); line-height: 1.2; font-weight: var(--font-bold); letter-spacing: -0.005em; }
+button.blyg-story-headline.blyg-story-font-serif { font-family: ui-serif, "New York", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif; }
+button.blyg-story-headline.blyg-story-font-sans { font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+button.blyg-story-headline.blyg-story-font-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.blyg-story-summary { margin-top: var(--size-2-2); font-size: calc(var(--font-text-size, 16px) * 0.9); line-height: 1.5; color: color-mix(in srgb, var(--text-normal) 82%, var(--background-primary)); }
+.blyg-story-credit { margin-top: var(--size-4-2); font-style: italic; }
+.blyg-story-mixed { border-top: 1px solid var(--background-modifier-border); }
+button.blyg-daily-link.blyg-story-who { font-weight: var(--font-semibold); font-size: var(--font-ui-small); }
+.blyg-story-first { color: var(--text-muted); font-size: var(--font-ui-small); line-height: 1.4; overflow-wrap: anywhere; }
+.blyg-story-write { display: inline-flex; align-items: center; justify-content: center; gap: var(--size-2-2); min-width: 11.5em; }
+.blyg-story-write[disabled] { opacity: 0.7; cursor: default; }
+.blyg-story-spinner { width: 0.9em; height: 0.9em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: blyg-story-spin 0.8s linear infinite; }
+@keyframes blyg-story-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .blyg-story-spinner { animation-duration: 3s; } }
 /* the Feed / Digest switch at the top of the reader's Sort & filter */
 .blyg-reader-viewswitch { display: flex; gap: var(--size-2-2); flex: 1 0 100%; }
 .blyg-reader-viewbtn.is-active { background: var(--interactive-accent); color: var(--text-on-accent); }
