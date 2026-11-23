@@ -310,11 +310,12 @@ await runScenario({ data }, async (s) => {
   await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
   await startWith(posts);
   await page.waitForSelector(".blyg-reader-card", { timeout: 30000 });
-  const centre = (sel) => page.evaluate((q) => { const e = document.querySelector(q); e?.scrollIntoView({ block: "center" }); const r = e?.getBoundingClientRect(); return r ? { x: Math.round(r.left + Math.min(r.width / 2, 120)), y: Math.round(r.top + Math.min(r.height / 2, 20)) } : null; }, sel);
+  const centre = (sel) => page.evaluate((q) => { const e = document.querySelector(q); const r = e?.getBoundingClientRect(); if (!r) return null; const x = Math.round(r.left + Math.min(r.width / 2, 120)), y = Math.round(r.top + Math.min(r.height / 2, 20)); return { x, y, hit: !!e.contains(document.elementFromPoint(x, y)) }; }, sel);
   const touch = async (sel, { hold = 650, drift = 0 } = {}) => {
-    const c = await centre(sel);
-    if (!c) return false;
-    await wait(300);
+    await page.evaluate((q) => document.querySelector(q)?.scrollIntoView({ block: "center" }), sel);
+    await wait(600);
+    const c = await centre(sel); // measured right before the finger goes down, and the finger must land on the element
+    if (!c || !c.hit) { console.error("touch: nothing of", sel, "under", JSON.stringify(c)); return false; }
     await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: c.x, y: c.y }] });
     if (drift) for (let i = 1; i <= 4; i++) { await wait(40); await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: c.x, y: c.y + (drift * i) / 4 }] }); }
     await wait(hold);
