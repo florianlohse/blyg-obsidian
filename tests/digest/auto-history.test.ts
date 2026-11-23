@@ -56,7 +56,7 @@ vi.mock("obsidian", () => {
     contentEl = new FakeEl();
     constructor(public leaf: unknown) {}
   }
-  return { ItemView };
+  return { ItemView, setIcon: (el: { attrs?: Record<string, string> }, n: string) => void (el.attrs ??= {}, el.attrs["data-icon"] = n) };
 });
 
 import { BlygDailyView, type DigestHost } from "../../src/ui/DigestView";

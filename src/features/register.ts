@@ -14,7 +14,7 @@ export interface FeatureEntryDeps {
 }
 
 export function registerFeatureEntries(plugin: Plugin, features: Features, deps: FeatureEntryDeps): void {
-  if (features.enabled("daily")) registerDigest(plugin, features.enabled("digest-ai") ? deps.digest : { font: deps.digest.font, time: deps.digest.time, readList: deps.digest.readList, mode: deps.digest.mode, ...(deps.digest.markRead ? { markRead: deps.digest.markRead } : {}) });
+  if (features.enabled("daily")) registerDigest(plugin, features.enabled("digest-ai") ? deps.digest : { font: deps.digest.font, time: deps.digest.time, readList: deps.digest.readList, mode: deps.digest.mode, ...(deps.digest.markRead ? { markRead: deps.digest.markRead } : {}), ...(deps.digest.markUnread ? { markUnread: deps.digest.markUnread } : {}) });
   if (features.enabled("share-open")) registerShareEntry(plugin, { ...deps.share, enabled: () => features.enabled("share-open") });
   registerDevCommands(plugin, deps.contrast, (id) => features.enabled(id));
 }

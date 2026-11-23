@@ -33,6 +33,8 @@ export interface ReadingPost {
   sourceUrl: string | null;
   /** One of the owner's own posts (from the Studio's `/reading`, `source: "own"`), not a post of a blyg read: never unread, no read mark, no Reply from here. */
   own?: boolean;
+  /** The change note of the latest version, when the Studio's reading row carries one (checked 2026-11: contract 5 and 6 rows do not, so this is normally absent). */
+  changeNote?: string;
 }
 
 export const isUnread = (p: ReadingPost): boolean => !p.withdrawn && (p.readVersion === null || p.readVersion < p.version);
@@ -65,6 +67,7 @@ export function readReadingPost(row: unknown): ReadingPost | null {
     authorName: author,
     authorUrl,
     sourceUrl: str(row.sourceUrl) ?? str(row.page),
+    ...(str(row.changeNote)?.trim() ? { changeNote: (str(row.changeNote) ?? "").trim() } : {}),
   };
 }
 
