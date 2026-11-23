@@ -37,6 +37,8 @@ export interface DigestDeps {
   mode: ModeStore;
   /** The reader's own mark-read path (`reading:state`), used by the digest's "Mark read" buttons. Absent: no buttons. */
   markRead?: (post: ReadingPost) => Promise<{ ok: boolean; message?: string }>;
+  /** The reader's own reply path (the quick menu's Reply). Absent: no Reply there. */
+  replyTo?: (post: ReadingPost) => Promise<void>;
   /** The reader's own mark-unread path (same permission): the digest's read symbol puts a mark back. */
   markUnread?: (post: ReadingPost) => Promise<{ ok: boolean; message?: string }>;
   /** Reads one revised post's change notes from the Studio (`importedNotes`); absent: corrections show no note. */
@@ -135,6 +137,7 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
     ...(changeNotes ? { changeNote: (p: ReadingPost) => changeNotes.get(p) } : {}),
     ...(deps.markRead ? { markRead: deps.markRead } : {}),
     ...(deps.markUnread ? { markUnread: deps.markUnread } : {}),
+    ...(deps.replyTo ? { replyTo: deps.replyTo } : {}),
     edition: (posts) => editions.open(posts),
     font: () => deps.font(),
     showFeed: async (leaf) => void (await leaf.setViewState({ type: BLYG_READER_VIEW, active: true })),

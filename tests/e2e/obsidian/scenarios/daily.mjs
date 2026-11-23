@@ -304,6 +304,80 @@ await runScenario({ data }, async (s) => {
     await wait(1500);
     refs[w] = await layoutPass(`phone layout ${w} px`);
   }
+  // ---- The quick menu (DG13): a long press with real touch events (CDP, phone layout) on a feed card, a post of the digest and a story card opens the menu; a scroll never does;
+  // the release opens nothing; Mark read writes exactly one request. (Chromium emulation, not iOS.)
+  await cdp.send("Emulation.setDeviceMetricsOverride", { width: 393, height: 852, deviceScaleFactor: 2, mobile: true });
+  await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+  await startWith(posts);
+  await page.waitForSelector(".blyg-reader-card", { timeout: 30000 });
+  const centre = (sel) => page.evaluate((q) => { const e = document.querySelector(q); e?.scrollIntoView({ block: "center" }); const r = e?.getBoundingClientRect(); return r ? { x: Math.round(r.left + Math.min(r.width / 2, 120)), y: Math.round(r.top + Math.min(r.height / 2, 20)) } : null; }, sel);
+  const touch = async (sel, { hold = 650, drift = 0 } = {}) => {
+    const c = await centre(sel);
+    if (!c) return false;
+    await wait(300);
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: c.x, y: c.y }] });
+    if (drift) for (let i = 1; i <= 4; i++) { await wait(40); await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: c.x, y: c.y + (drift * i) / 4 }] }); }
+    await wait(hold);
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await wait(500);
+    return true;
+  };
+  const menu = () => page.evaluate(() => [...document.querySelectorAll(".menu .menu-item-title")].map((e) => e.textContent));
+  const closeMenu = async () => { await page.keyboard.press("Escape"); await wait(300); };
+  const opened = () => page.evaluate(() => !!document.querySelector(".blyg-reader-header .blyg-reader-back"));
+  const pick = async (title) => { await page.evaluate((t) => [...document.querySelectorAll(".menu .menu-item")].find((e) => e.querySelector(".menu-item-title")?.textContent === t)?.click?.(), title); await wait(1500); };
+  const marked0 = marks.length;
+  const others0 = others.length;
+  await touch(".blyg-reader-card", { drift: 40 });
+  check((await menu()).length === 0 && !(await opened()), "a press that moves (a scroll) opens no menu and no post");
+  await touch(".blyg-reader-card", { hold: 200 });
+  check((await menu()).length === 0, "a short touch opens no menu");
+  await page.evaluate(() => document.querySelector(".blyg-reader-card")?.click());
+  await page.waitForSelector(".blyg-reader-header .blyg-reader-back", { timeout: 20000 });
+  await tap(".blyg-reader-header .blyg-reader-back");
+  await page.waitForSelector(".blyg-reader-card", { timeout: 20000 });
+  await touch(".blyg-reader-card");
+  const feedMenu = await menu();
+  check(JSON.stringify(feedMenu) === JSON.stringify(["Open", "Reply", "Mark read"]) && !(await opened()), `a long press on a feed card opens the menu (${JSON.stringify(feedMenu)}) and the release did not open the post`);
+  check(marks.length === marked0 && others.length === others0, "opening the menu asked the Studio for nothing");
+  await pick("Mark read");
+  check(marks.length === marked0 + 1, `Mark read in the feed's menu wrote exactly one request (${marks.length - marked0})`);
+  await touch(".blyg-reader-card.is-read");
+  const feedMenu2 = await menu();
+  check(feedMenu2.includes("Mark unread") && !feedMenu2.includes("Mark read"), `the read card's menu says Mark unread (${JSON.stringify(feedMenu2)})`);
+  const un0 = unmarks.length;
+  await pick("Mark unread");
+  check(unmarks.length === un0 + 1, `Mark unread wrote exactly one request (${unmarks.length - un0})`);
+  await touch(".blyg-reader-card");
+  await pick("Open");
+  await page.waitForSelector(".blyg-reader-header .blyg-reader-back", { timeout: 20000 });
+  check(true, "Open in the menu opens the post in the reader");
+  await tap(".blyg-reader-header .blyg-reader-back");
+  await page.waitForSelector(".blyg-reader-card", { timeout: 20000 });
+  await page.click(".blyg-reader-card", { button: "right" });
+  await wait(500);
+  check((await menu()).includes("Mark read") || (await menu()).includes("Mark unread"), "a right click on a feed card opens the same menu");
+  await closeMenu();
+  // the digest: a post of the Mixed bag and a story card
+  await page.evaluate(() => [...document.querySelectorAll(".blyg-reader-header .blyg-modebtn")].find((b) => b.textContent === "Digest").click());
+  await page.waitForSelector(".blyg-daily .blyg-story-mixed", { timeout: 20000 });
+  await wait(1200);
+  const m1 = marks.length;
+  await touch(".blyg-daily .blyg-story-mixed");
+  const dm = await menu();
+  check(JSON.stringify(dm) === JSON.stringify(["Open", "Reply", "Mark read"]) && !(await opened()), `a long press on a digest post opens the menu (${JSON.stringify(dm)}), the release opened nothing`);
+  await pick("Mark read");
+  check(marks.length === m1 + 1 && (await page.evaluate(() => document.querySelector(".blyg-daily .blyg-story-mixed")?.classList.contains("blyg-is-read"))), `Mark read in the digest wrote exactly one request and showed at once (${marks.length - m1})`);
+  await touch(".blyg-daily .blyg-story .blyg-daily-meta");
+  const sm = await menu();
+  check(sm[0] === "Open first post" && /^Mark story (read|unread)$/.test(sm[1] ?? "") && sm.length === 2, `a long press on a story card offers Open first post and Mark story read (${JSON.stringify(sm)})`);
+  await pick("Open first post");
+  await page.waitForSelector(".blyg-reader-header .blyg-reader-back", { timeout: 20000 });
+  check(true, "Open first post opens the story's first post");
+  await tap(".blyg-reader-header .blyg-reader-back");
+  await page.waitForSelector(".blyg-daily .blyg-modeswitch", { timeout: 20000 });
+  await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: false });
+
   // the feed with nothing to show (last: a reader that has held a list is not made empty again by a file): the toggle stays where the feed with a list had it, at each width
   await startWith([]);
   for (const [w, h] of widths) {

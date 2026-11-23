@@ -941,3 +941,6 @@ button.blyg-mark.is-read { color: var(--text-accent); }
 button.blyg-mark svg { width: 20px; height: 20px; }
 .blyg-correction-note { font-weight: var(--font-bold); display: block; }
 button.blyg-daily-link.blyg-correction-headline { color: var(--text-muted); font-size: var(--font-ui-smaller); }
+
+/* DG13: a long press on a post opens the quick menu, so the system's own press menu and text selection must not start on a card or row. */
+.blyg-reader-card, .blyg-daily-row, .blyg-story { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
