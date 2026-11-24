@@ -1,5 +1,5 @@
-// The reader's two doors to following a blyg (HK7): a "Following" button in the feed's header (opens "Blygs I follow"), and, on a post of a blyg the
-// Studio does not read, a row that says so with a "Follow this blyg" button. Drawing only; the steps are in app/followFlow.ts.
+// The reader's two doors to following a blyg (HK7): a small "Sources" link in the feed's header (opens the list of followed blygs), and, on a post of a blyg the
+// Studio does not read, one muted line that says so with a "Follow" link. Drawing only; the steps are in app/followFlow.ts.
 import type { ReadingPost } from "../studio/reading";
 import { followText, type FollowOutcome } from "../app/followFlow";
 
@@ -18,18 +18,20 @@ export const isUnfollowedPost = (p: Pick<ReadingPost, "own" | "subscriptionId" |
 export const unfollowedReplyTitle = followText.replyTitleUnfollowed;
 export const selectionNotQuoted = followText.selectionNotQuoted;
 
-/** The "Following" button of the feed header. */
-export function drawFollowedButton(parent: HTMLElement, host: FollowHost): void {
-  parent.createEl("button", { cls: "blyg-reader-btn blyg-reader-followbtn", text: "Following", attr: { title: "The blygs your Studio follows: follow one, rename it, or stop" } }).addEventListener("click", () => host.openFollowed());
+/** The end of the feed header's status row: a small muted "Sources" link (the blygs your Studio follows) beside the plugin version. */
+export function drawFollowedButton(parent: HTMLElement, host: FollowHost, version: string): void {
+  const end = parent.createDiv({ cls: "blyg-reader-statusend" });
+  end.createEl("button", { cls: "blyg-linkbtn blyg-reader-sources", text: "Sources", attr: { "aria-label": "Sources: the blygs your Studio follows", title: "The blygs your Studio follows: follow one, rename it, or stop" } }).addEventListener("click", () => host.openFollowed());
+  end.createSpan({ cls: "blyg-reader-version", text: `v${version}`, attr: { title: "Version of the Blyg plugin on this device" } });
 }
 
-/** Under an open post of an unfollowed blyg: what that means, and the button that follows it. Nothing for any other post. */
+/** Under an open post of an unfollowed blyg: one small muted line that says what that means, with a "Follow" link at its end. Nothing for any other post. */
 export function drawFollowNote(parent: HTMLElement, p: ReadingPost, host: FollowHost): HTMLElement | null {
   if (!isUnfollowedPost(p) || p.origin === null) return null;
   const origin = p.origin;
-  const note = parent.createDiv({ cls: "blyg-reader-fetchnote blyg-reader-follownote" });
-  const text = note.createSpan({ text: `${followText.unfollowedNote} ` });
-  const button = note.createEl("button", { cls: "blyg-reader-btn", text: followText.followButton, attr: { title: "Ask your Studio to follow this blyg" } });
+  const note = parent.createDiv({ cls: "blyg-reader-follownote", attr: { title: followText.replyTitleUnfollowed } });
+  const text = note.createSpan({ cls: "blyg-reader-followtext", text: followText.unfollowedNote });
+  const button = note.createEl("button", { cls: "blyg-linkbtn", text: followText.followButton, attr: { "aria-label": followText.followButtonLabel, title: "Ask your Studio to follow this blyg" } });
   button.addEventListener("click", () => {
     button.disabled = true;
     void host.followBlyg(origin).then((out) => {
@@ -47,7 +49,7 @@ export function drawFollowNote(parent: HTMLElement, p: ReadingPost, host: Follow
           host.openFollowed(out.url);
           return;
         case "problem":
-          text.setText(`${out.message} `);
+          text.setText(out.message);
           button.disabled = false;
       }
     });
