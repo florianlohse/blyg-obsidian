@@ -10,6 +10,7 @@
 import type { EditionRec, StoryRec } from "../edition";
 import { hashText } from "../llm";
 import { parseHistory, type PastEdition } from "../history";
+import { localDay } from "../budget";
 
 export interface Reg<T = unknown> {
   /** Logical clock: the highest counter this device had seen, plus one. */
@@ -221,7 +222,7 @@ export function setReg(own: EdState, key: string, v: unknown, counter: number): 
  * an older concurrent change of another device is not overridden by accident. Nothing is ever removed (an old key is harmless: only posts that exist are looked up).
  * Returns true if `own` changed.
  */
-export function applyChange(own: EdState, base: EditionRec | null, next: EditionRec, counter: number): boolean {
+export function applyChange(own: EdState, base: EditionRec | null, next: EditionRec, counter: number, day = ""): boolean {
   let changed = false;
   const set = (k: string, v: unknown): void => void (changed = setReg(own, k, v, counter) || changed);
   // Only the device that makes an edition (nothing of it was known) claims it; a device that adopts an edition leaves `created` to the one who made it.
@@ -255,13 +256,40 @@ export function applyChange(own: EdState, base: EditionRec | null, next: Edition
     const mine = ownUsage(own);
     const dt = next.usage.tokens - (base?.usage?.tokens ?? 0);
     const dc = next.usage.cost === null || base?.usage?.cost === null ? null : next.usage.cost - (base?.usage?.cost ?? 0);
-    set(`usage/${own.device}`, { tokens: Math.max(0, mine.tokens + dt), cost: mine.cost === null || dc === null ? null : Math.max(0, mine.cost + dc) });
+    // `days`: this device's tokens by local day (the last few), so the daily ceiling can add up what ALL devices used on one day (`usedOnDay`).
+    const days = { ...mine.days };
+    if (day) days[day] = Math.max(0, (days[day] ?? 0) + dt);
+    set(`usage/${own.device}`, { tokens: Math.max(0, mine.tokens + dt), cost: mine.cost === null || dc === null ? null : Math.max(0, mine.cost + dc), ...(Object.keys(days).length ? { days: Object.fromEntries(Object.entries(days).sort().slice(-3)) } : {}) });
   }
   return changed;
 }
 
 /** The device's own usage of this edition is the difference between the sum it wrote and the sum now (the code adds to the sum). */
-export function ownUsage(own: EdState): { tokens: number; cost: number | null } {
+export function ownUsage(own: EdState): { tokens: number; cost: number | null; days: Record<string, number> } {
   const v = own.regs[`usage/${own.device}`]?.v;
-  return isObj(v) && fin(v.tokens) !== null ? { tokens: v.tokens as number, cost: fin(v.cost) } : { tokens: 0, cost: 0 };
+  return isObj(v) && fin(v.tokens) !== null ? { tokens: v.tokens as number, cost: fin(v.cost), days: daysOf(v) } : { tokens: 0, cost: 0, days: {} };
+}
+
+const daysOf = (v: Record<string, unknown>): Record<string, number> => {
+  const out: Record<string, number> = {};
+  if (isObj(v.days)) for (const [d, t] of Object.entries(v.days)) if (/^\d{4}-\d{2}-\d{2}$/.test(d) && fin(t) !== null && (t as number) >= 0) out[d] = t as number;
+  return out;
+};
+
+/**
+ * What each device used on the local day `day`, added up over the joined editions: the `days` of each device's `usage/<device>` register. A register from before `days` existed
+ * (no map at all) counts whole for the day the edition's newest file was written (an over-count at worst: the ceiling then errs towards refusing).
+ */
+export function usedOnDay(joined: Iterable<EdState>, day: string): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const j of joined) {
+    for (const [k, r] of Object.entries(j.regs)) {
+      if (!k.startsWith("usage/") || !isObj(r.v) || fin(r.v.tokens) === null) continue;
+      const dev = k.slice(6);
+      const days = daysOf(r.v);
+      const t = isObj(r.v.days) ? days[day] ?? 0 : localDay(j.at) === day ? (r.v.tokens as number) : 0;
+      if (t > 0) out.set(dev, (out.get(dev) ?? 0) + t);
+    }
+  }
+  return out;
 }

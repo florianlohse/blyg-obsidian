@@ -18,6 +18,7 @@ import type { BlygSettings } from "../settings/schema";
 import { DigestConfirmModal, DigestConsentModal } from "../ui/DigestModals";
 import { trailText } from "./trailText";
 import { setConsentGate } from "./consentGate";
+import { setSyncCheck } from "./syncCheck";
 import { editorIdFor, withEditor } from "./editorRun";
 import { editorFor, NEUTRAL } from "./editors";
 import { cachedSections as cachedSectionsOf, clearBodies, normaliseEndpoint } from "./llm";
@@ -57,6 +58,9 @@ export interface DigestDeps {
   ai?: { settings: () => BlygSettings["digest"]; keychain: Keychain; transport: RawTransport };
 }
 
+/** The fallback re-read of the synced files while the Daily is open (the events are the main way). */
+export const SYNC_FALLBACK_MS = 30_000;
+
 export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
   const base = (): string => plugin.manifest.dir ?? `${plugin.app.vault.configDir}/plugins/${plugin.manifest.id}`;
   // The Daily's state is shared by every device through files in the plugin folder, each device writing only its own (src/digest/sync, docs/ARCHITECTURE.md).
@@ -89,13 +93,16 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
       }
     },
   };
-  const me = { id: deviceId(local, (n) => crypto.getRandomValues(new Uint8Array(n))), label: () => deviceLabel(local, Platform) };
+  const meId = deviceId(local, (n) => crypto.getRandomValues(new Uint8Array(n)));
+  // The name set under Daily → "This device's name", else the platform's; a short suffix from the id only when another synced device has the same platform name.
+  const me = { id: meId, label: (taken?: readonly string[]) => deviceLabel(local, Platform, meId, taken) };
   const readJson = async (p: string): Promise<unknown> => ((await adapter.exists(p)) ? (JSON.parse(await adapter.read(p)) as unknown) : null);
   const sync = new SyncedDigest(fs, normalizePath(`${base()}/digest`), me, () => Date.now(), {
     editions: () => readJson(normalizePath(`${base()}/digest-editions.json`)),
     history: () => readJson(normalizePath(`${base()}/digest-history.json`)),
     entries: async () => (await loadLocal()).entries,
   });
+  setSyncCheck(() => sync.devicesSeen());
   const storePath = (): string => normalizePath(`${plugin.manifest.dir ?? `${plugin.app.vault.configDir}/plugins/${plugin.manifest.id}`}/digest-ai.json`);
   const loadLocal = async (): Promise<LlmStore> => {
     try {
@@ -166,16 +173,18 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
               const st = await loadStore();
               return editions.claimAuto((rec) => autoDue(llmSettings(), rec, st, c.length));
             },
+            sharedToday: async () => (await sync.usedToday(Date.now()))?.total ?? null,
             write: (c, singles, opts) => writeShared({ llm, settings: llmSettings, editions, history, sync, now: () => Date.now(), voiceOf: (rec, resort) => (resort && rec ? (editorFor(ai?.settings().editor, rec.id)?.id ?? NEUTRAL) : editorIdFor(rec, ai?.settings().editor)), withVoice: withEditor }, c, singles, opts),
           },
         }
       : {}),
     history: () => history.list(),
     syncLines: async (id) => (await sync.refresh().catch(() => undefined), syncLines(sync.info(id), id)),
-    // While the Daily is open, a cheap local read (list and stat of a few small files, no network) every 10 s while it is visible: a changed file is noticed even where the "raw" event is not.
+    // The Daily re-reads the synced files when the app comes to the front and on the vault's "raw" event (both below). While the Daily is open, a fallback every 30 s while it is visible
+    // (a local list and stat of a few small files, no network) catches a changed file where neither event was reported.
     watchSync: (fn) => {
       const off = sync.onChange(fn);
-      const t = window.setInterval(() => void (activeDocument.visibilityState === "visible" && sync.refresh().catch(() => undefined)), 10_000);
+      const t = window.setInterval(() => void (activeDocument.visibilityState === "visible" && sync.refresh().catch(() => undefined)), SYNC_FALLBACK_MS);
       return () => (off(), window.clearInterval(t));
     },
     loadList: () => deps.readList(),
@@ -204,7 +213,7 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
     await leaf.setViewState({ type: BLYG_DAILY_VIEW, active: true });
     await workspace.revealLeaf(leaf);
   };
-  // A file of another device changed (the synced folder is raw: Obsidian reports it as a "raw" event): read again once it has been quiet for a moment. Never polled.
+  // A file of another device changed (the synced folder is raw: Obsidian reports it as a "raw" event): read again once it has been quiet for a moment.
   let timer: number | null = null;
   const onRaw = (path: string): void => {
     if (!sync.isStateFile(path) || sync.isOwnFile(path)) return;

@@ -5,8 +5,9 @@ import type { Cluster } from "../cluster";
 import type { EditionRec } from "../edition";
 import { NEUTRAL } from "../editors";
 import type { ReadingPost } from "../../studio/reading";
-import { addUsage, ceilingRefusal } from "../autoWrite";
+import { addUsage, sharedCeilingRefusal } from "../autoWrite";
 import { Editions, cachedStories, rememberWrite } from "../editionHost";
+import { usedToday } from "../budget";
 import { buildPast, type History } from "../history";
 import { emptyStore, writeDigest, type LlmDeps, type LlmStore, type Outcome } from "../llm";
 import { existingSections } from "../sectionRecord";
@@ -56,7 +57,13 @@ export interface WriteEnv {
   voiceOf: (rec: EditionRec | null, resort: boolean) => string;
   /** The LLM deps speaking in that voice. */
   withVoice: (llm: LlmDeps, voice: string) => LlmDeps;
+  /** The short wait after this device has put its "writing" marker and before it reads the files again (default: `SETTLE_MS` of real time). Tests pass their own. */
+  settle?: () => Promise<void>;
 }
+
+/** How long a device waits, after marking "writing", for another device's marker or texts to arrive before it decides (a few seconds, once). */
+export const SETTLE_MS = 4000;
+const sleep = (ms: number): Promise<void> => new Promise((r) => window.setTimeout(r, ms));
 
 export async function writeShared(env: WriteEnv, c: readonly Cluster[], singles: readonly ReadingPost[], opts?: { resort?: boolean; auto?: boolean }): Promise<Outcome> {
   const { llm, editions, history, sync } = env;
@@ -64,13 +71,29 @@ export async function writeShared(env: WriteEnv, c: readonly Cluster[], singles:
   const busy = rec ? sync.lock(rec.id) : null;
   const voice = env.voiceOf(rec, opts?.resort === true);
   if (rec && busy) return { written: await cachedStories(env.withVoice(llm, voice), rec, c), status: "cancelled", note: `${busy.label} is writing this digest right now. Its text will appear here when it has been synced.` };
-  if (rec) await sync.setLock(rec.id, true);
+  let yielded: { label: string } | null = null;
+  if (rec) {
+    await sync.setLock(rec.id, true);
+    // Two devices opened in the same minute: both have marked "writing" and neither has seen the other's file yet. Wait a few seconds (only where other devices exist), read the
+    // files again once: the join gives both the same single marker (the higher stamp wins), so one device goes on and the other adopts what the first writes. Texts already there are reused below.
+    if (sync.knowsOthers()) {
+      await (env.settle ?? ((): Promise<void> => sleep(SETTLE_MS)))();
+      await editions.current(); // reads the synced files again
+      const other = sync.lock(rec.id);
+      if (other) yielded = other;
+    }
+  }
+  if (rec && yielded) return { written: await cachedStories(env.withVoice(llm, voice), rec, c), status: "cancelled", note: `${yielded.label} is writing this digest right now. Its text will appear here when it has been synced.` }; // its marker is the winning one: this device must not clear it
   try {
     const auto = opts?.auto === true;
     const st = auto ? await llm.load() : null;
+    // The ceiling counts what all devices used today (their usage in the synced files, read now), not this device alone; unreadable: refused.
+    const shared = auto && env.settings().dailyTokenCeiling > 0 ? await sync.usedToday(env.now()) : null;
+    const mine = auto && st ? usedToday(st.tally, env.now()) : 0;
+    const used = shared ? { total: shared.others + Math.max(shared.mine, mine) } : null;
     // An automatic run never asks (no consent: nothing is sent), never shows the confirm line, and keeps to the daily ceiling.
     const run: LlmDeps = env.withVoice(auto ? { ...llm, askConsent: () => Promise.resolve(false) } : llm, voice);
-    const o = await writeDigest(run, c, { singles, existing: existingSections(rec, c, singles), resort: opts?.resort === true, ...(auto && st ? { confirm: false, gate: (e) => ceilingRefusal(env.settings(), st, env.now(), e) } : {}) });
+    const o = await writeDigest(run, c, { singles, existing: existingSections(rec, c, singles), resort: opts?.resort === true, ...(auto && st ? { confirm: false, gate: (e) => sharedCeilingRefusal(env.settings(), used, e) } : {}) });
     if (rec) {
       await rememberWrite(run, editions, rec.id, c, o, singles);
       if (o.status === "ok") {

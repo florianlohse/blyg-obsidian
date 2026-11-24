@@ -29,6 +29,16 @@ export function ceilingRefusal(s: Pick<AutoSettings, "dailyTokenCeiling">, store
     : null;
 }
 
+/**
+ * The refusal for an automatic run when the ceiling counts every device (the synced usage of the day). `used` null: the shared usage could not be read, and with a ceiling
+ * set the run is refused (fail closed). A ceiling of 0 or less means none: nothing to read, nothing refused.
+ */
+export function sharedCeilingRefusal(s: Pick<AutoSettings, "dailyTokenCeiling">, used: { total: number } | null, e: Pick<Estimate, "tokens">): string | null {
+  if (!(s.dailyTokenCeiling > 0)) return null;
+  if (used === null) return "Not written automatically: the token use of your devices today could not be read from the synced files. “Write the digest” still works.";
+  return used.total + Math.max(0, e.tokens) > s.dailyTokenCeiling ? `Not written automatically: it would pass the daily token ceiling (${used.total} used today on all devices). “Write the digest” still works.` : null;
+}
+
 export function addUsage(prev: { tokens: number; cost: number | null } | undefined, tokens: number, cost: number | null): { tokens: number; cost: number | null } {
   const t = Math.max(0, Math.round(tokens));
   return prev ? { tokens: prev.tokens + t, cost: prev.cost === null || cost === null ? null : prev.cost + cost } : { tokens: t, cost };

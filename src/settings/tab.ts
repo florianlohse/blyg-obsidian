@@ -24,6 +24,8 @@ import { describeField, validateSettings } from "./validate";
 import { parseDigestTime } from "../digest/edition";
 import { editorRow } from "./editorRow";
 import { askConsentGate } from "../digest/consentGate";
+import { runSyncCheck } from "../digest/syncCheck";
+import { checkLines } from "../digest/sync/line";
 
 /**
  * The settings UI, declared with Obsidian 1.13's declarative settings API (so every field is searchable in
@@ -291,6 +293,21 @@ export class BlygSettingTab extends PluginSettingTab {
           render: (setting) => {
             const local = { load: (k: string) => this.app.loadLocalStorage(k) as unknown, save: (k: string, v: string | null) => this.app.saveLocalStorage(k, v) };
             setting.addText((t) => t.setPlaceholder(defaultLabel(Platform)).setValue(((v) => (typeof v === "string" ? v : ""))(local.load(DEVICE_LABEL_KEY))).onChange((v) => setDeviceLabel(local, v)));
+          },
+        },
+        {
+          name: "Sync check",
+          desc: "Which devices' Daily files this device can see in the plugin folder (so you can tell whether your sync carries them). Compare the list on two devices. Reads local files only.",
+          aliases: ["sync", "devices", "obsidian sync", "check"],
+          render: (setting) => {
+            const out = setting.infoEl.createDiv({ cls: "blyg-note" });
+            const run = async (): Promise<void> => {
+              out.empty();
+              const seen = await runSyncCheck().catch(() => null);
+              if (!seen) return void out.createDiv({ text: "The Daily is not available on this device." });
+              for (const line of checkLines(seen)) out.createDiv({ text: line });
+            };
+            setting.addButton((b) => b.setButtonText("Check").onClick(() => void run()));
           },
         },
       ],

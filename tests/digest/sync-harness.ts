@@ -75,11 +75,11 @@ export interface Device {
   write(clusters: Parameters<typeof writeShared>[1], singles?: readonly ReadingPost[], opts?: { resort?: boolean; auto?: boolean }): ReturnType<typeof writeShared>;
 }
 
-export function device(id: string, label: string, prov: Provider, start: number, opts: { legacy?: LegacyPorts; time?: string; editor?: string } = {}): Device {
+export function device(id: string, label: string | ((taken?: readonly string[]) => string), prov: Provider, start: number, opts: { legacy?: LegacyPorts; time?: string; editor?: string; ceiling?: number; settle?: () => Promise<void> } = {}): Device {
   const disk = new Disk();
   let now = start;
   const local = { store: emptyStore() };
-  const sync = new SyncedDigest(disk.fs(), DIR, { id, label: () => label }, () => now, opts.legacy);
+  const sync = new SyncedDigest(disk.fs(), DIR, { id, label: typeof label === "function" ? label : () => label }, () => now, opts.legacy);
   const editions = new Editions({ read: async () => null, write: async () => undefined, sync: { load: () => sync.load(), save: (s) => sync.save(s) }, now: () => now, time: () => opts.time ?? "07:00" });
   const history = new History({ read: async () => null, write: async () => undefined, sync: { list: () => sync.history(), put: (r) => sync.putHistory(r) } });
   const shared = sharedStore(sync, editions, { load: async () => structuredClone(local.store), save: async (s) => void (local.store = structuredClone(s)) });
@@ -93,11 +93,11 @@ export function device(id: string, label: string, prov: Provider, start: number,
     save: shared.save,
     now: () => now,
   };
-  const settings = (): BlygSettings["digest"] => ({ useAi: true, endpoint: "https://api.example.com/", model: "test-model", keySecretName: "k", dailyTokenCeiling: 0, autoWrite: false, time: "07:00" });
+  const settings = (): BlygSettings["digest"] => ({ useAi: true, endpoint: "https://api.example.com/", model: "test-model", keySecretName: "k", dailyTokenCeiling: opts.ceiling ?? 0, autoWrite: false, time: "07:00" });
   return {
     id, disk, sync, editions, history, llm, local,
     setNow: (t) => void (now = t),
-    write: (c, singles = [], o) => writeShared({ llm, settings, editions, history, sync, now: () => now, voiceOf: (rec, resort) => (resort && rec ? (editorFor(opts.editor, rec.id)?.id ?? NEUTRAL) : editorIdFor(rec, opts.editor)), withVoice: withEditor }, c, singles, o),
+    write: (c, singles = [], o) => writeShared({ llm, settings, editions, history, sync, now: () => now, settle: opts.settle ?? (async () => undefined), voiceOf: (rec, resort) => (resort && rec ? (editorFor(opts.editor, rec.id)?.id ?? NEUTRAL) : editorIdFor(rec, opts.editor)), withVoice: withEditor }, c, singles, o),
   };
 }
 
