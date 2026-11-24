@@ -297,6 +297,10 @@ await runScenario({ data }, async (s) => {
   const inView = (o) => Object.keys(CONTROLS).every((k) => o[k] && o[k].r <= o.view.vw + 0.5 && o[k].l >= 0) && o.view.sw <= o.view.cw && o.view.bsw <= o.view.bcw && o.view.dsw <= o.view.dcw;
   // The reader starts from the saved list (the stand-in Studio never answers the list): first an empty one (the feed with nothing to show), then the full one.
   const startWith = async (list) => {
+    // Nothing an earlier step left open may come back: the layout saved below is restored by the reload, and an open post or a leftover leaf there once made a LATER check
+    // ("the empty feed ... 1 cards") fail in CI only. A clean workspace first (every leaf closed, the Feed mode, no choices kept), then the saved list.
+    const clean = await s.resetWorkspace();
+    if (!clean.ok) check(false, `a clean workspace before the reader starts from the saved list (${clean.state})`);
     await page.evaluate((json) => window.app.vault.adapter.write(".obsidian/plugins/blyg/reader-cache.json", json), JSON.stringify({ v: 1, origin: `${base}/`, savedAt: Date.now(), posts: list, mentions: [] }));
     await page.evaluate(() => window.app.workspace.requestSaveLayout());
     await wait(1500);

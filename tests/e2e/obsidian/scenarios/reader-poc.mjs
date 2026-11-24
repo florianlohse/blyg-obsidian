@@ -69,6 +69,32 @@ await runScenario({ data: fixtureData() }, async (s) => {
     if (!keepChoices) await page.evaluate(() => { window.app.plugins.plugins.blyg.settings.readerPane.filter = { sort: "newest", source: null, unreadOnly: false, length: "any" }; });
     await page.evaluate(() => window.app.commands.executeCommandById("blyg:open-reader"));
     await page.waitForSelector(".blyg-reader-card", { timeout: 20000 });
+    await settled();
+  };
+  /**
+   * Wait until the reader has stopped loading: no "Loading"/"updating"/"Checking" in its status and no busy header, on two looks 400 ms apart. A reload that lands later REPLACES
+   * what the page holds (a test that changed a post's text in `view.data` then finds the old text): on a slow runner that landed after the fixed sleeps this scenario used to rely on.
+   */
+  const settled = async () => {
+    let quiet = 0;
+    const end = Date.now() + 30000;
+    while (quiet < 2 && Date.now() < end) {
+      const busy = await page.evaluate(() => /Loading|updating|Checking/.test(document.querySelector(".blyg-reader-status")?.textContent ?? "") || document.querySelector(".blyg-reader-header")?.classList.contains("is-busy") === true);
+      quiet = busy ? 0 : quiet + 1;
+      await wait(400);
+    }
+  };
+  /** Poll until `fn()` (in Node) is truthy, up to `ms`; the last value either way (a check then states what was there). */
+  const eventually = async (fn, ms = 15000) => {
+    const end = Date.now() + ms;
+    let v = await fn();
+    while (!v && Date.now() < end) { await wait(250); v = await fn(); }
+    return v;
+  };
+  /** A clean workspace at the start of a step (see `resetWorkspace` in lib.mjs): nothing an earlier step left open can change what this one finds. */
+  const cleanStart = async (what) => {
+    const clean = await s.resetWorkspace();
+    if (!clean.ok) check(false, `${what}: a clean workspace to start from (${clean.state})`);
   };
   const closeReader = () => page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader").forEach((l) => l.detach()));
   /** Show a post body in the reader's text view (a hostile or odd body put in place of a real one), as the owner would see it. */
@@ -105,7 +131,55 @@ await runScenario({ data: fixtureData() }, async (s) => {
     return false;
   }
 
+  /**
+   * The fixture this scenario needs, made here and not left to chance. A fresh Studio (a CI run) holds ONE imported post; the steps that walk the feed
+   * ("steps: the read mark shows the place in the feed", Previous / Next) need three or more, and used to get them only from the posts that `freshness` and `economy`
+   * publish on the way, so any hiccup in those (a slow runner) left two and failed a later check; a second attempt on the same Studio passed because the first had
+   * added posts. Now: publish on Blog B until the first Studio has imported `want` posts, one post per second at least (distinct publication times, so the order
+   * "newest first" is never a tie), and wait for the import (Refresh) instead of sleeping.
+   */
+  async function ensureFixture(want = 4) {
+    ADMIN ??= await mintFullToken();
+    const imported = async () => {
+      const res = await fetch(`${STUDIO}/api/reading/imported?limit=100`, { headers: { authorization: `Bearer ${ADMIN}`, Origin: STUDIO } }).catch(() => null);
+      const list = res ? await res.json().catch(() => ({})) : {};
+      return Array.isArray(list.items) ? list.items.length : -1;
+    };
+    let have = await imported();
+    const publishedIds = [];
+    // Always at least one: the NEWEST post must be one of Blog B's. Other scenarios run against the same Studio and leave posts of its own blyg (an item of "Your blyg"
+    // has no read mark): with one of those first in the feed, "tap the first card, then its read mark" found no mark (reader-poc failed on its first attempt after
+    // conflict-pull-withdraw; a retry passed because the first attempt had published newer posts).
+    for (let n = 0; have >= 0 && (publishedIds.length === 0 || have + publishedIds.length < want); n++) {
+      publishedIds.push(await publishOnBlogB(`Fixture post ${n + 1} ${Date.now().toString(36)}. Made so that the feed has enough posts to step through.`));
+      await wait(1100);
+    }
+    for (const id of publishedIds) {
+      await eventually(async () => (await fetch("http://localhost:8788/feed.xml").then((x) => x.text()).catch(() => "")).includes(id), 90000);
+    }
+    if (publishedIds.length > 0) {
+      await openReader();
+      for (let i = 0; i < 4 && (have = await imported()) < want; i++) {
+        await page.evaluate(() => { window.app.plugins.plugins.blyg.readerService.state.checkedAt = 0; });
+        await click("Refresh");
+        await eventually(async () => (await imported()) >= want, 20000);
+      }
+      // the Studio has imported the newest fixture post once the feed's first card is a Blog B card (a refresh in between may still be drawing)
+      for (let i = 0; i < 4; i++) {
+        if (await eventually(async () => (await text(".blyg-reader-card"))[0]?.includes("Blog B"), 8000)) break;
+        await page.evaluate(() => { window.app.plugins.plugins.blyg.readerService.state.checkedAt = 0; });
+        await click("Refresh");
+      }
+      const first = (await text(".blyg-reader-card"))[0] ?? "";
+      check(first.includes("Blog B"), `fixture: the newest card is a post of Blog B, which has a read mark (${first.slice(0, 60)})`);
+      await closeReader();
+    }
+    have = await imported();
+    check(have >= want, `fixture: the Studio holds at least ${want} imported posts for the steps through the feed (${have})`);
+  }
+
   async function pass(layout) {
+    await cleanStart(`${layout}: pass`);
     check(await resetReadMarks(), `${layout}: every post starts unread (housekeeping)${resetNote}`);
     await openReader();
     await wait(1500);
@@ -183,8 +257,9 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await page.evaluate(() => document.querySelector(".blyg-reader-card")?.click());
     await wait(800);
     check(await pillClick(), "refusal: the read mark can be tapped with the app's own token");
-    await wait(1500);
-    const status = (await text(".blyg-reader-status"))[0] ?? "";
+    // The Studio's refusal arrives when it arrives (on a slow runner after more than the 1.5 s this step used to sleep): wait for the words, then look at the mark.
+    const explained = async () => { const st = (await text(".blyg-reader-status"))[0] ?? ""; return /reading:state/.test(st) && (await pillState())?.read === false ? st : ""; };
+    const status = (await eventually(explained, 20000)) || (await text(".blyg-reader-status"))[0] || "";
     check(/reading:state/.test(status) && (await pillState())?.read === false, `refusal: it is explained in words and the mark is put back: "${status.slice(0, 80)}"`);
     await closeReader();
   }
@@ -244,16 +319,17 @@ await runScenario({ data: fixtureData() }, async (s) => {
 
   /** Reading time: sort and filter by it, in the panel that opens from the header. */
   async function readingTime() {
+    await cleanStart("reading time");
     await openReader();
-    await wait(1000);
-    // Make the first post a long one (about 6 minutes) and the second a short one, then choose.
-    await page.evaluate(() => {
+    // Make the first post a long one (about 6 minutes) and the second a short one, then choose. (openReader has waited for the loading to end: a later reload would put the old text back.)
+    const makeLongAndShort = () => page.evaluate(() => {
       const view = window.app.workspace.getLeavesOfType("blyg-reader")[0].view;
       view.data.posts[0].contentHtml = `<p>${"word ".repeat(1380)}</p>`; // 1380 words at 230 a minute: 6 minutes
       view.data.posts[1].contentHtml = "<p>tiny</p>";
       view.draw();
+      return [...document.querySelectorAll(".blyg-reader-card")].map((c) => (c.textContent ?? "").match(/(\d+) min read/)?.[1] ?? "?");
     });
-    await wait(300);
+    await eventually(async () => (await makeLongAndShort()).includes("6"), 10000);
     const opened = await click("Sort & filter");
     if (!opened) console.error("  (no “Sort & filter” button; the reader has:", JSON.stringify(await page.evaluate(() => [...document.querySelectorAll(".blyg-reader button")].map((b) => b.textContent?.trim()))), ")");
     check(opened, "reading time: the choices open");
@@ -265,7 +341,12 @@ await runScenario({ data: fixtureData() }, async (s) => {
       el.dispatchEvent(new Event("change", { bubbles: true }));
       return true;
     }, [label, value]);
-    const cards = () => page.evaluate(() => [...document.querySelectorAll(".blyg-reader-card")].map((c) => (c.textContent ?? "").match(/(\d+) min read/)?.[1] ?? "?"));
+    // The feed draws 30 cards and a "Show more posts" button; a Studio that holds more posts than that (a local one used for hours) would cut "shortest first" before its last
+    // card. Ask for all of them, so the order is judged on the whole list, not on its first screenful.
+    const cards = async () => {
+      for (let i = 0; i < 20 && (await page.evaluate(() => { const b = [...document.querySelectorAll(".blyg-reader button")].find((x) => /^Show more posts/.test(x.textContent?.trim() ?? "")); if (!b) return false; b.click(); return true; })); i++) await wait(200);
+      return page.evaluate(() => [...document.querySelectorAll(".blyg-reader-card")].map((c) => (c.textContent ?? "").match(/(\d+) min read/)?.[1] ?? "?"));
+    };
     check(await choose("Length", "long"), "reading time: the length can be chosen");
     await wait(300);
     check(JSON.stringify(await cards()) === '["6"]', `reading time: "Over 5 min" shows only the long post (${JSON.stringify(await cards())})`);
@@ -461,6 +542,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
 
   /** Previous / Next at the foot of an open post (a tap steps, holding Next marks read and steps), and the measured clearance for Obsidian's bottom bar. */
   async function nextPost(layout) {
+    await cleanStart(`${layout}: next`);
     await openReader();
     await wait(1000);
     check(await resetReadMarks(), `${layout}: next: every post starts unread`);
@@ -599,7 +681,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
       log.push({ status: document.querySelector(".blyg-reader-status")?.textContent, cards: document.querySelectorAll(".blyg-reader-card").length });
       return { log, total: real.data.posts.length };
     });
-    check(seen.log[0].status === "Loading… 1 post so far" && seen.log[0].cards === 1 && seen.log[1].cards === seen.total && !/Loading/.test(seen.log[2].status), `${layout}: progress: the first posts show at once and the status counts them (${JSON.stringify(seen.log)})`);
+    check(seen.log[0].status === "Loading… 1 post so far" && seen.log[0].cards === 1 && seen.log[1].cards === Math.min(seen.total, 30) && !/Loading/.test(seen.log[2].status), `${layout}: progress: the first posts show at once and the status counts them (${JSON.stringify(seen.log)})`);
     await closeReader();
   }
 
@@ -830,6 +912,8 @@ await runScenario({ data: fixtureData() }, async (s) => {
     await closeReader();
   }
 
+  await cleanStart("start");
+  await ensureFixture(); // first: refusal() taps the first card too (the fixture asks for the posts with the housekeeping token and refreshes with the app's own)
   await refusal();
   FULL = await mintFullToken();
   await useToken(FULL); // set once: the rest of the scenario uses a token with every permission
