@@ -95,6 +95,25 @@ await runScenario({ data }, async (s) => {
   const second = await open();
   check(/your digest/i.test(second.text) && second.rows > 0, "the digest page has content after a restart, with sections and lines in the record");
 
+  // DG7: a past edition written by an editor shows "Editor: <name>" under the masthead (text only); today's edition, plain here (the AI layer is off), draws no such line.
+  check(await page.evaluate(() => document.querySelectorAll(".blyg-daily .blyg-daily-editor").length) === 0, "a plain edition draws no editor line");
+  const pastId = e.id - 24 * 3600 * 1000;
+  const pastRec = { id: pastId, at: pastId + 1000, stories: [{ headline: "Harbour lanterns lit early", summary: "A calm start to the day.", posts: [] }], singles: [], sections: null, who: {}, editor: "harbour-master" };
+  await page.evaluate((json) => window.app.vault.adapter.write(".obsidian/plugins/blyg/digest-history.json", json), JSON.stringify({ v: 1, editions: [pastRec] }));
+  await page.evaluate(() => document.querySelectorAll(".notice").forEach((n) => n.remove())); // no stray toast in the way of the touch steps
+  await page.evaluate(() => window.app.workspace.detachLeavesOfType("blyg-daily"));
+  await open();
+  // the edition switcher sits in the bar's folded menu: unfold it first, fold it again at the end
+  await page.waitForSelector(".blyg-daily .blyg-daily-menu", { timeout: 20000 });
+  await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-menu").click());
+  await page.waitForSelector(".blyg-daily-select", { state: "visible", timeout: 20000 });
+  await page.selectOption(".blyg-daily-select", String(pastId));
+  const line = await page.waitForSelector(".blyg-daily .blyg-daily-editor", { timeout: 20000 }).then((el) => el.evaluate((n) => ({ text: n.textContent, kids: n.children.length })));
+  check(line.text === "Editor: Harbour Master Okafor" && line.kids === 0, `a past edition shows its editor as plain text (${JSON.stringify(line)})`);
+  await page.evaluate(() => { const m = document.querySelector(".blyg-daily .blyg-daily-menu"); if (m?.getAttribute("aria-expanded") === "true") m.click(); });
+  await page.evaluate(() => window.app.workspace.detachLeavesOfType("blyg-daily"));
+  await page.evaluate(() => window.app.vault.adapter.write(".obsidian/plugins/blyg/digest-history.json", JSON.stringify({ v: 1, editions: [] }))); // the later steps start without a past edition (no day switcher)
+
   // The page's actions, in real Obsidian: single-post lines, Mark read (one request per unread post, none by itself), a tap on a post of an unfolded story, Back.
   // (Sections, the contents and the AI lines need the AI layer, which this scenario leaves off: they are covered by unit tests only.)
   await page.evaluate((t) => window.app.secretStorage.setSecret("smoke-studio", t), TOKEN);

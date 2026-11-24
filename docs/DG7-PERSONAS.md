@@ -1,6 +1,6 @@
 # DG7: digest editors (authored personas) — plan
 
-Status: draft, nothing built. Behind the existing features `daily` / `digest-ai`.
+Status: built (selection: setting `digest.editor` = neutral | editor id | rota; no per-section columnists). See docs/ARCHITECTURE.md, "Editors (DG7)". Behind the existing features `daily` / `digest-ai`.
 
 ## Idea
 The digest's headlines and summaries are written in the voice of an **editor**: a small cast of characters written by the plugin's author and shipped with the plugin. New editors arrive in plugin updates. No user-written persona text, no persona generated from subscriptions (both would put someone's text into the system prompt).

@@ -837,7 +837,7 @@ body button.blyg-linkbtn.blyg-follow-unfollow { color: var(--text-error); }
 .blyg-daily-cluster, .blyg-daily-row { padding: var(--size-2-2) 0; }
 .blyg-daily-cluster { border-bottom: 1px solid var(--background-modifier-border); }
 .blyg-daily-members { padding-left: var(--size-4-3); }
-.blyg-daily-meta, .blyg-daily-empty, .blyg-daily-status { color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.blyg-daily-meta, .blyg-daily-empty, .blyg-daily-status, .blyg-daily-editor { color: var(--text-muted); font-size: var(--font-ui-smaller); }
 button.blyg-daily-link { background: none; box-shadow: none; border: 0; padding: 0; height: auto; text-align: left; white-space: normal; color: var(--text-normal); cursor: pointer; }
 button.blyg-daily-headline { font-weight: var(--font-semibold); font-size: var(--font-ui-medium); }
 

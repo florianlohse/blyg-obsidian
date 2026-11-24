@@ -27,6 +27,7 @@ import type { PastEdition } from "../digest/history";
 import { CAPPED_NOTE } from "../digest/history";
 import { addUsage, usageLine } from "../digest/autoWrite";
 import { drawPast, drawSwitcher } from "./DigestPast";
+import { drawEditorLine } from "./digestEditorLine";
 import type { ReaderFont } from "./readerFonts";
 
 export const BLYG_DAILY_VIEW = "blyg-daily";
@@ -37,7 +38,7 @@ export interface DigestHost {
   /** Refresh, the feed's action (src/app/readerRefresh.ts): ask the Studio to fetch, read the list once, keep it. No AI request. Absent: Refresh reads the saved list again. */
   refresh?(o: { held: { posts: ReadingPost[]; mentions: InboundMention[] } | null; alive: () => boolean; status: (text: string) => void }): Promise<{ ok: true; list: { posts: ReadingPost[]; mentions: InboundMention[] }; note?: string } | { ok: false; message: string; cancelled?: true }>;
   /** The current edition for these posts (src/digest/editionHost.ts): its window, and the stories and Mixed bag it has settled. Absent `id`/`grouped`: group the window afresh. */
-  edition(posts: readonly ReadingPost[]): Promise<{ id?: number; since: number; until: number; grouped?: Grouped; auto?: { note?: string }; usage?: { tokens: number; cost: number | null } }>;
+  edition(posts: readonly ReadingPost[]): Promise<{ id?: number; since: number; until: number; grouped?: Grouped; auto?: { note?: string }; usage?: { tokens: number; cost: number | null }; editor?: string }>;
   /** The saved past editions, newest first (src/digest/history.ts). Absent: no history. */
   history?(): Promise<{ editions: PastEdition[]; capped: boolean }>;
   /** The reader's font setting; the digest's type follows it. */
@@ -86,6 +87,8 @@ export class BlygDailyView extends ItemView {
   private usage: { tokens: number; cost: number | null } | undefined;
   private past: PastEdition[] = [];
   private pastCapped = false;
+  /** The editor that wrote today's edition (absent: neutral). */
+  private editorId: string | undefined;
   private viewing: number | null = null;
   private byId = new Map<string, ReadingPost>();
   private writeBtn: HTMLElement | null = null;
@@ -221,6 +224,7 @@ export class BlygDailyView extends ItemView {
     const win = await this.host.edition(list.posts);
     const model = buildDaily(list.posts, list.mentions, win.since, win.until, win.grouped, win.id);
     this.usage = win.usage;
+    this.editorId = win.editor;
     const ids = new Set([...model.front.flatMap((c) => c.posts.map((p) => p.remoteId)), ...model.mixed.map((p) => p.remoteId)]);
     this.added = mark && this.shown ? new Set([...ids].filter((id) => !this.shown?.has(id))) : new Set();
     this.shown = ids;
@@ -310,6 +314,7 @@ export class BlygDailyView extends ItemView {
     root.empty();
     for (const f of ["default", "serif", "sans", "mono"] as const) root.toggleClass(`is-font-${f}`, f === this.host.font());
     const bar = drawBar(root, { date: mastheadDate(this.viewing ?? model?.edition ?? model?.since ?? Date.now()), kicker: "Your digest", state: this.bar, toggle: () => void this.host.showFeed(this.leaf), refresh: { hint: REFRESH_HINT, click: () => void this.refreshNow(), made: (b) => (this.refreshBtns.push(b), this.paintRefresh(b)) } });
+    drawEditorLine(root, this.viewing !== null ? this.past.find((e) => e.id === this.viewing)?.editor : this.host.ai?.enabled() && this.written.some(Boolean) ? this.editorId : undefined, this.viewing !== null);
     const today = model?.edition ?? null;
     const pastRec = this.viewing !== null ? this.past.find((e) => e.id === this.viewing) : undefined;
     const ids = [...(today !== null ? [today] : []), ...this.past.map((e) => e.id).filter((id) => id !== today)];

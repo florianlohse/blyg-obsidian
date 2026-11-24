@@ -125,7 +125,7 @@ export interface BlygSettings {
    * The Daily's optional AI layer (src/digest/llm.ts). Off by default; optional in data.json like `webQuote` (no schema change: an older plugin ignores it).
    * `keySecretName` is the NAME of the keychain entry holding the provider's API key, never the key.
    */
-  digest: { useAi: boolean; endpoint: string; model: string; keySecretName: string; dailyTokenCeiling: number; /** "Write the digest automatically": once per edition, in the background (default off). */ autoWrite: boolean; /** "Digest time": the local clock time ("HH:MM") an edition of the Daily starts at (src/digest/edition.ts). */ time: string };
+  digest: { useAi: boolean; endpoint: string; model: string; keySecretName: string; dailyTokenCeiling: number; /** "Write the digest automatically": once per edition, in the background (default off). */ autoWrite: boolean; /** "Digest time": the local clock time ("HH:MM") an edition of the Daily starts at (src/digest/edition.ts). */ time: string; /** The editor who writes the digest's headlines and summaries (src/digest/editors.ts): "neutral" (default), an editor id or "rota". */ editor?: string };
   /** Feature switches the user has set, by feature id (src/features/registry.ts). A missing id takes the build's default; turning one off keeps the feature's stored data. */
   features: Record<string, boolean>;
   /** Development build only (ignored by the release plugin). `allowLiveStudio`: lift the test-Studio lock (studio/devLock.ts) on the owner's say. */
@@ -170,7 +170,7 @@ export function defaultSettings(flavour: "release" | "dev" = "release"): BlygSet
     mentions: { repoPath: "data/mentions.json" },
     webQuote: { ...DEFAULT_WEB_QUOTE },
     readerPane: { images: "click", font: "default", contrast: "normal", shareInbox: "", filter: { sort: "newest", source: null, unreadOnly: false, length: "any", repliesToMe: false } },
-    digest: { useAi: false, endpoint: "https://api.anthropic.com", model: "claude-sonnet-5-5", keySecretName: "", dailyTokenCeiling: 2000000, autoWrite: false, time: "07:00" },
+    digest: { useAi: false, endpoint: "https://api.anthropic.com", model: "claude-sonnet-5-5", keySecretName: "", dailyTokenCeiling: 2000000, autoWrite: false, time: "07:00", editor: "neutral" },
     features: {},
     dev: { allowLiveStudio: false },
   };

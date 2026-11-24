@@ -20,6 +20,7 @@ import { CONNECT_STEPS } from "../app/panelState";
 import { connectionCheckKey, setupProgress } from "./setup";
 import { describeField, validateSettings } from "./validate";
 import { parseDigestTime } from "../digest/edition";
+import { editorRow } from "./editorRow";
 import { askConsentGate } from "../digest/consentGate";
 
 /**
@@ -300,6 +301,7 @@ export class BlygSettingTab extends PluginSettingTab {
           aliases: ["auto", "automatic", "background"],
           control: { type: "toggle", key: "digest.autoWrite", defaultValue: false },
         },
+        ...(s.digest.useAi ? [editorRow()] : []),
         text("AI endpoint", "The provider's address. Default: the Anthropic API. Only https addresses are used.", "digest.endpoint", "https://api.anthropic.com"),
         text("AI model", "The model that writes the digest, e.g. claude-sonnet-5-5 (others: claude-haiku-5-5 cheaper, claude-opus-5-5, claude-fable-5-2).", "digest.model", "claude-sonnet-5-5"),
         {

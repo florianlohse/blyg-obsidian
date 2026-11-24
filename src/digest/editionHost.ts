@@ -24,6 +24,8 @@ export interface EditionInfo {
   /** The automatic write's note for this edition (set once it was tried), and what its runs used so far. */
   auto?: { note?: string };
   usage?: { tokens: number; cost: number | null };
+  /** The editor that wrote this edition's texts (absent: neutral). */
+  editor?: string;
 }
 
 export class Editions {
@@ -63,7 +65,7 @@ export class Editions {
       const live = livePosts(posts, win.since, win.until);
       const next = assignPosts(r.edition, live, now);
       if (r.created || next !== r.edition) await this.save({ v: 1, editions: [...r.store.editions.filter((e) => e.id !== next.id), next] });
-      return { ...win, grouped: groupOf(next, live), ...(next.auto ? { auto: next.auto } : {}), ...(next.usage ? { usage: next.usage } : {}) };
+      return { ...win, grouped: groupOf(next, live), ...(next.auto ? { auto: next.auto } : {}), ...(next.usage ? { usage: next.usage } : {}), ...(next.editor ? { editor: next.editor } : {}) };
     });
   }
 
@@ -117,7 +119,7 @@ export async function cachedStories(llm: Pick<LlmDeps, "settings" | "load">, rec
 /** After "Write the digest": remember per story the text's key and the posts it was written from, and the story's section; per single post its section. */
 export async function rememberWrite(llm: Pick<LlmDeps, "settings">, editions: Editions, id: number, clusters: readonly Cluster[], o: Outcome, singles: readonly ReadingPost[] = []): Promise<void> {
   if (o.status !== "ok") return;
-  const plan = planClusters(clusters, llm.settings().model.trim());
+  const plan = planClusters(clusters, llm.settings().model.trim(), llm.settings().editor);
   await editions.update(id, (rec) => withPostSections({
     ...rec,
     stories: rec.stories.map((s) => {
