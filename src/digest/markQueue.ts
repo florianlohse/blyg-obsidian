@@ -32,11 +32,33 @@ export const unmarkable = (posts: readonly ReadingPost[]): ReadingPost[] => post
 
 export const markable = (posts: readonly ReadingPost[]): ReadingPost[] => posts.filter((p) => isUnread(p) && !p.withdrawn && p.own !== true);
 
+/**
+ * Marks made on this device, with the time: the reader's saved list does not know them until the reader saves again (see `applyMarks`). One map for the whole plugin
+ * session, written by the digest's queue and by the reader's own mark (`noteRead`, called from app/readerWrites.ts), so a mark made in an open post shows in the digest
+ * and in a reader opened again, whichever way it was made.
+ */
+const made = new Map<string, { version: number; at: number; read: boolean }>();
+
+/** A mark was made on this device (shown at once; the Studio is being asked). */
+export const noteRead = (p: Pick<ReadingPost, "subscriptionId" | "remoteId" | "version">, read: boolean, at: number = Date.now()): void => void made.set(markKey(p), { version: p.version, at, read });
+/** The Studio refused that mark: take it away again (only if it is still the one that was noted). */
+export const forgetRead = (p: Pick<ReadingPost, "subscriptionId" | "remoteId">, read: boolean): void => {
+  if (made.get(markKey(p))?.read === read) made.delete(markKey(p));
+};
+
+/** Put the marks made here onto a list read from a saved copy (saved at `savedAt`), unless that copy is newer than the mark (then it knows). Nothing is asked of the Studio. */
+export function applyMarks(posts: readonly ReadingPost[], savedAt: number): void {
+  for (const p of posts) {
+    const m = made.get(markKey(p));
+    if (!m || m.at < savedAt || p.version > m.version) continue;
+    if (m.read && isUnread(p)) p.readVersion = p.version;
+    else if (!m.read && p.readVersion !== null) p.readVersion = null;
+  }
+}
+
 export class MarkQueue {
   private tail: Promise<void> = Promise.resolve();
   private readonly pending = new Set<string>();
-  /** Marks made on this device, with the time: the reader's saved list does not know them until the reader saves again (see `apply`). */
-  private readonly made = new Map<string, { version: number; at: number; read: boolean }>();
   constructor(private readonly deps: MarkDeps) {}
 
   /**
@@ -60,7 +82,7 @@ export class MarkQueue {
     const at = this.deps.now();
     for (const p of batch) {
       this.pending.add(keyOf(p));
-      this.made.set(keyOf(p), { version: p.version, at, read });
+      made.set(keyOf(p), { version: p.version, at, read });
       p.readVersion = read ? p.version : null;
     }
     this.deps.onChange();
@@ -80,7 +102,7 @@ export class MarkQueue {
       }
       for (const p of undone) {
         p.readVersion = before.get(keyOf(p)) ?? null;
-        this.made.delete(keyOf(p));
+        made.delete(keyOf(p));
       }
       if (undone.length > 0) this.deps.onReverted(undone, failed);
       this.deps.onChange();
@@ -89,14 +111,9 @@ export class MarkQueue {
     return run;
   }
 
-  /** Put the marks made here onto a list read from the reader's saved copy (saved at `savedAt`), unless that copy is newer than the mark (then it knows). Nothing is asked of the Studio. */
+  /** See `applyMarks`. */
   apply(posts: readonly ReadingPost[], savedAt: number): void {
-    for (const p of posts) {
-      const m = this.made.get(markKey(p));
-      if (!m || m.at < savedAt || p.version > m.version) continue;
-      if (m.read && isUnread(p)) p.readVersion = p.version;
-      else if (!m.read && p.readVersion !== null) p.readVersion = null;
-    }
+    applyMarks(posts, savedAt);
   }
 }
 
@@ -114,6 +131,7 @@ export function sharedMarks(mark: MarkDeps["mark"], sleep: MarkDeps["sleep"], no
 export const watchMarks = (l: typeof listener): void => void (listener = l);
 /** For tests. */
 export const resetMarks = (): void => {
+  made.clear();
   shared = null;
   listener = null;
 };

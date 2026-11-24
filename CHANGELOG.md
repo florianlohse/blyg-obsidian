@@ -8,6 +8,7 @@ becomes the release notes. Write entries for people who use the plugin, not for 
 
 ## [Unreleased]
 
+- **Fixes in the open post.** A post marked read in the open post, when you came from the Daily, now shows as read in the Daily and when you open it again. The header of an open post no longer shifts while it settles. A save that fails for want of a connection puts Save back with a short line, and tapping it again tries again. The feed says "Loading…" until its first list has arrived instead of "nothing to show".
 - **Save posts for later (experimental).** Press and hold a post in the feed or the Daily and choose "Save for later", or tap "Save" in an open post. Saved posts get a small "saved" mark, and a "Saved" choice under Sort & filter shows only them (the shelf holds 50 posts; when it is full the plugin says so and drops nothing). The list lives on your Studio's shelf, so your other devices and the Studio's web app share it. It needs a Studio with the shelf and a token with the permission "owner:manage"; without them the plugin says so in one line. Switch it on under Settings → Experimental features → "Save posts for later".
 - **The reader can go further back.** "Load older posts" at the end of the feed reads 200 older posts at a time from your Studio, up to 5000. Long feeds stay quick: only the cards near the screen are drawn.
 

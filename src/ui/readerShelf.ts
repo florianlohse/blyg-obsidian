@@ -1,7 +1,7 @@
 // The reader's "Save for later" (SH1): the Save button of an open post, the small "saved" mark of a card, the long-press entry (quickMenu.ts) and the Saved view of the feed.
 // The shelf itself (what is saved, shared with the owner's other devices and the Studio's web app) is the Studio's; this file draws it and asks app/shelfService.ts to change it.
 // Typographic and small, like the rest of the reader: a word, no box, no icon.
-import type { ShelfFacade } from "../app/shelfService";
+import type { ShelfFacade, ShelfResult } from "../app/shelfService";
 import type { ReadingPost } from "../studio/reading";
 import { SHELF_MAX } from "../studio/shelf";
 
@@ -59,7 +59,13 @@ export class ShelfControl {
   /** "Save" / "Saved" in the open post's button row. */
   button(parent: HTMLElement, p: ReadingPost, make: (parent: HTMLElement, text: string, run: () => void, opts: { disabled?: boolean; title?: string; cls?: string }) => HTMLButtonElement): void {
     const s = this.shelf();
-    if (!this.usable || !s || (p.subscriptionId === "" && p.own !== true) || (p.withdrawn && !this.has(p))) return;
+    if (!s || (p.subscriptionId === "" && p.own !== true) || (p.withdrawn && !this.has(p))) return;
+    if (!this.usable) {
+      // Room is kept for Save while the shelf is being read (so the row does not move when it arrives), and Save stays when the read had no connection: a tap tries again.
+      const lost = s.lost?.() === true;
+      if (lost || s.settling?.() === true) make(parent, "Save", () => void this.toggle(p), { disabled: !lost, cls: `blyg-reader-savebtn${lost ? "" : " is-pending"}`, title: "Save this post for later on your shelf, shared with your other devices" });
+      return;
+    }
     const saved = this.has(p);
     const working = this.busy.has(keyOf(p));
     const full = !saved && s.full();
@@ -82,8 +88,8 @@ export class ShelfControl {
     if (!s || this.busy.has(key)) return;
     this.busy.add(key);
     this.screen.refresh(p);
-    const done = await s.toggle(p);
-    this.busy.delete(key);
+    // Whatever goes wrong, the button comes back (a failure, a hang, a throw): the person can tap again.
+    const done = await s.toggle(p).catch((): ShelfResult => ({ ok: false, message: "Could not save, no connection. Tap Save to try again." })).finally(() => this.busy.delete(key));
     this.screen.status(done.ok ? (done.saved ? "Saved for later." : "Removed from saved.") : done.message);
     if (done.ok && !done.saved && this.view !== null) {
       this.view = this.view.filter((q) => keyOf(q) !== key);

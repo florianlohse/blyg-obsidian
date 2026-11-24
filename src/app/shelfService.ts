@@ -23,6 +23,10 @@ export interface ShelfFacade {
   opening(): Promise<void>;
   /** A new Feed opening: the next `opening()` reads again. */
   reset(): void;
+  /** The shelf could not be read for want of a connection (so `ready()` is false for now): Save is still offered, and a tap reads again first. */
+  lost?(): boolean;
+  /** The shelf has not been read yet this opening and nothing says it is absent: the reader keeps room for the Save button. */
+  settling?(): boolean;
   /** Save the post, or take it off the shelf when it is on it. One write; the answer says which state the post is in now. */
   toggle(p: ReadingPost): Promise<ShelfResult>;
   /** The shelved posts in shelf order (one read). `null`: could not be had (the cache is not touched). */
@@ -30,9 +34,18 @@ export interface ShelfFacade {
 }
 
 const OFF_MESSAGE = "Saving posts is switched off in Settings → Experimental features.";
+/** How long one save may take before it counts as a lost connection (a request on a dropped connection can hang). */
+export const SEND_TIMEOUT_MS = 20_000;
+const windowAfter = (ms: number, fn: () => void): (() => void) => {
+  if (typeof window === "undefined") return () => undefined; // no window (a test without a clock): no limit
+  const h = window.setTimeout(fn, ms);
+  return () => window.clearTimeout(h);
+};
+const noConnection = (kind: "add" | "remove"): string => (kind === "add" ? "Could not save, no connection. Tap Save to try again." : "Could not remove, no connection. Tap Saved to try again.");
 
-export function createShelf(deps: { build: () => ShelfBuild; enabled: () => boolean }): ShelfFacade {
+export function createShelf(deps: { build: () => ShelfBuild; enabled: () => boolean; timeoutMs?: number; after?: (ms: number, fn: () => void) => () => void }): ShelfFacade {
   let shelf: Shelf | null = null;
+  let lost = false;
   let fresh = false;
   let queue: Promise<unknown> = Promise.resolve();
   let pending: Promise<void> | null = null;
@@ -41,8 +54,8 @@ export function createShelf(deps: { build: () => ShelfBuild; enabled: () => bool
     const built = deps.build();
     if (!built.ok) return;
     const got = await built.studio.client.getShelf().catch(() => null);
-    if (got?.kind === "ok" && got.value !== null) shelf = got.value; // a failure, or a Studio without the shelf, leaves the cache as it was (empty at first: nothing is shown as saved)
-    else if (got?.kind === "ok") shelf = null;
+    if (got?.kind === "ok") shelf = got.value; // a Studio without the shelf: none (nothing is shown as saved)
+    lost = got?.kind !== "ok" && shelf === null; // a failure leaves the cache as it was (empty at first: nothing is shown as saved, and Save says so when tapped)
   };
   const portOf = (client: StudioClient): ShelfPort => ({ get: () => client.getShelf(), put: (entries, rev) => client.putShelf(entries, rev) });
 
@@ -55,6 +68,8 @@ export function createShelf(deps: { build: () => ShelfBuild; enabled: () => bool
     reset: () => {
       fresh = false;
     },
+    lost: () => deps.enabled() && shelf === null && lost,
+    settling: () => deps.enabled() && shelf === null && !lost && (!fresh || pending !== null),
     opening: () => {
       if (!deps.enabled() || fresh) return pending ?? Promise.resolve();
       fresh = true;
@@ -72,9 +87,16 @@ export function createShelf(deps: { build: () => ShelfBuild; enabled: () => bool
         if (!built.ok) return { ok: false, message: built.message };
         const scopes = tokenScopes(built.token);
         if (scopes !== null && !scopes.includes("owner:manage")) return { ok: false, message: shelfMessage({ kind: "no-scope", need: "owner:manage" }) };
+        if (shelf === null && lost) fresh = false; // the read that failed is tried again by this tap
         await facade.opening(); // the cache says which way this tap goes: save, or take off
         const kind = isShelved(shelf, p) ? "remove" : "add";
-        const done = await changeShelf(portOf(built.studio.client), { kind, entry }, shelf).catch(() => ({ kind: "failed", message: "The Studio could not be reached." }) as const);
+        if (shelf === null && lost) return { ok: false, message: noConnection(kind) }; // still no connection: nothing is sent
+        const gone = { kind: "lost" } as const;
+        const sending = changeShelf(portOf(built.studio.client), { kind, entry }, shelf).catch(() => gone);
+        let cancel = (): void => undefined;
+        const timer = new Promise<typeof gone>((r) => void (cancel = (deps.after ?? windowAfter)(deps.timeoutMs ?? SEND_TIMEOUT_MS, () => r(gone))));
+        const done = await Promise.race([sending, timer]).finally(cancel);
+        if (done.kind === "lost") return { ok: false, message: noConnection(kind) };
         if ("shelf" in done) shelf = done.shelf;
         if (done.kind === "done") return { ok: true, saved: kind === "add" };
         return { ok: false, message: shelfMessage(done, kind) };
