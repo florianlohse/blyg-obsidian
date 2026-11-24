@@ -196,6 +196,27 @@ describe.each(CONTRACTS)("every operation the client calls, against the $label",
     for (const [method, template] of CALLS) expect(touched.has(`${method} ${template}`), `${method} ${template} was not exercised`).toBe(true);
   });
 
+  it("the shelf (SH1): every request and answer validates against the file, on a Studio that has it", async () => {
+    const { studio, client } = setup(contractVersion);
+    studio.token = STUDIO_TOKEN;
+    studio.importItem({ remote_id: "095s4h48j67mnbf6hq8vatc2d4", content_md: "Theirs." });
+    await client.capabilities();
+    const asked = [await client.getShelf(), await client.putShelf([{ sub: "sub1", remoteId: "095s4h48j67mnbf6hq8vatc2d4" }], 0), await client.putShelf([], 0) /* stale: 409 with the current list */, await client.listShelved()];
+    if (!studio.operationsListedHasShelf()) {
+      // contract 5: nothing was asked, and the client said so
+      expect(asked.map((a) => a.kind)).toEqual(["ok", "absent", "absent", "ok"]);
+      expect(studio.seen.filter((s) => s.path.startsWith("/api/shelf") || s.path.includes("shelf=")).length).toBe(0);
+      return;
+    }
+    const problems: string[] = [];
+    for (const seen of studio.seen.filter((s) => s.path.startsWith("/api/shelf") || s.path.includes("shelf=true"))) {
+      const result = checkSeen(seen);
+      if (result.problems.length > 0) problems.push(`${result.key}: ${result.problems.join("; ")}`);
+    }
+    expect(problems).toEqual([]);
+    expect(studio.seen.filter((s) => s.path.startsWith("/api/shelf")).map((s) => `${s.method} ${s.status}`)).toEqual(["GET 200", "PUT 200", "PUT 409"]);
+  });
+
   it("the old contract-4 bodies are what the file refuses (the check would have caught the break)", () => {
     const old = { mode: "blank", kind: "fragment", content_md: "x" };
     expect(validate(pointer(["paths", "/items", "post", "requestBody", "content", "application/json", "schema"]), old).length).toBeGreaterThan(0);

@@ -606,6 +606,9 @@
 .blyg-reader-badge { font-size: var(--font-ui-smaller); color: var(--text-muted); border: 1px solid var(--background-modifier-border); border-radius: var(--radius-s); padding: 0 var(--size-4-1); }
 .blyg-reader-badge.is-new { color: var(--text-accent); border-color: var(--interactive-accent); }
 .blyg-reader-badge.is-done { color: var(--text-faint); }
+/* Save for later (SH1): a word, no box. The mark on a card is small and muted; the button of an open post is as quiet as Reply, and turns to the accent colour once saved. */
+.blyg-reader-savedmark { font-size: var(--font-ui-smaller); color: var(--text-accent); letter-spacing: 0.02em; }
+.blyg-reader-savebtn.is-saved { color: var(--text-accent); }
 .blyg-reader-quote { color: var(--text-muted); font-style: italic; border-left: 2px solid var(--background-modifier-border); padding-left: var(--size-4-2); margin-bottom: var(--size-2-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .blyg-reader-card .blyg-reader-excerpt { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
 /* something is loading: the refresh button and the status line turn a small ring, so a wait never looks stuck */

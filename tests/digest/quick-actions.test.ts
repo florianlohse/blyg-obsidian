@@ -133,8 +133,27 @@ describe("entries per context", () => {
   it("a surface without the write path has no Mark or Reply", () => {
     expect(ids(postEntries(post(), { canMark: false, canReply: false }))).toEqual(["open"]);
   });
-  it("no Bookmark entry exists (the plugin has no save path)", () => {
-    expect(postEntries(post()).some((x) => /bookmark|save|shelf/i.test(x.title + x.id))).toBe(false);
+  // Changed on purpose (SH1). This test used to pin "no Bookmark entry exists (the plugin has no save path)": a save was left out because a PUT of a stale list could undo another
+  // client's change. The save path now exists (studio/shelf.ts: read-modify-write of one change, sent with the revision, retried on a 409 from the Studio's own answer, bounded),
+  // so the menu may hold "Save for later". What stays pinned: the entry exists only where the host has a shelf, never for a post no subscription holds, and never as a second kind of save.
+  it("a Save entry exists only where the host has a shelf (SH1)", () => {
+    expect(postEntries(post()).some((x) => /bookmark|save|shelf/i.test(x.title + x.id))).toBe(false); // a surface without a shelf: none
+    expect(postEntries(post(), { shelf: { saved: false, full: false } }).find((x) => x.id === "save")).toEqual({ id: "save", title: "Save for later", icon: "bookmark" });
+    const saved = postEntries(post(), { shelf: { saved: true, full: true } }).find((x) => /save/.test(x.id));
+    expect(saved).toEqual({ id: "unsave", title: "Remove from saved", icon: "bookmark-minus" }); // removing is always possible, even on a full shelf
+  });
+  it("a full shelf shows Save disabled with the reason; the entry is not removed", () => {
+    const entry = postEntries(post(), { shelf: { saved: false, full: true } }).find((x) => x.id === "save");
+    expect(entry?.disabled).toBe(true);
+    expect(entry?.tooltip).toMatch(/shelf is full \(50 posts\)/);
+  });
+  it("no Save for a post the Studio does not hold, an unfetched one, or a withdrawn one that is not saved; an unfollowed blyg's post has none", () => {
+    const shelf = { saved: false, full: false };
+    expect(postEntries(post({ subscriptionId: "", origin: "https://other.example.com/" }), { shelf }).some((x) => x.id === "save")).toBe(false);
+    expect(postEntries(post(), { shelf, fetched: false }).some((x) => x.id === "save")).toBe(false);
+    expect(postEntries(post({ withdrawn: true }), { shelf }).some((x) => x.id === "save")).toBe(false);
+    expect(postEntries(post({ withdrawn: true }), { shelf: { saved: true, full: false } }).some((x) => x.id === "unsave")).toBe(true);
+    expect(postEntries(post({ own: true, subscriptionId: "" }), { shelf }).some((x) => x.id === "save")).toBe(true); // your own post can be saved (it is `~own` on the shelf)
   });
   it("a story: Open first post, Mark story read; all read: Mark story unread", () => {
     const posts = [post({ remoteId: "a" }), post({ remoteId: "b" })];

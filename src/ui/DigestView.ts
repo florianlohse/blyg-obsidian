@@ -28,6 +28,7 @@ import { CAPPED_NOTE } from "../digest/history";
 import { addUsage, usageLine } from "../digest/autoWrite";
 import { drawPast, drawSwitcher } from "./DigestPast";
 import { drawEditorLine } from "./digestEditorLine";
+import type { ShelfFacade } from "../app/shelfService";
 import type { ReaderFont } from "./readerFonts";
 
 export const BLYG_DAILY_VIEW = "blyg-daily";
@@ -54,6 +55,8 @@ export interface DigestHost {
   markRead?(post: ReadingPost): Promise<{ ok: boolean; message?: string }>;
   /** Reply to a post by the reader's own path (a new reply thread). Absent: the quick menu has no Reply. */
   replyTo?(post: ReadingPost): Promise<void>;
+  /** The shelf (SH1): the quick menu's "Save for later" / "Remove from saved". Absent: no such entry. */
+  shelf?: ShelfFacade;
   /** Mark one post unread again by the reader's own path (same permission). Absent: the read symbol only marks. */
   markUnread?(post: ReadingPost): Promise<{ ok: boolean; message?: string }>;
   /** The muted lines under the masthead (who made the edition, synced from n devices, waiting for sync); also reads the synced files again. */
@@ -142,6 +145,10 @@ export class BlygDailyView extends ItemView {
     setReaderMode("digest"); // this leaf shows the digest now: the reader's mode is the Digest until the person switches back
     watchMarks({ change: () => this.readPainters.forEach((f) => f()), reverted: (m) => this.say(m) });
     this.unwatchSync = this.host.watchSync?.(() => void this.redrawSynced()) ?? null;
+    if (this.host.shelf?.on()) {
+      this.host.shelf.reset(); // a Daily opening reads the shelf once (SH1)
+      void this.host.shelf.opening();
+    }
     await this.refresh();
   }
   override async onClose(): Promise<void> {
@@ -519,7 +526,10 @@ export class BlygDailyView extends ItemView {
   private quick(el: HTMLElement, p: ReadingPost, story?: { title: string; posts: readonly ReadingPost[] }): void {
     const q = this.queue();
     const host = this.host;
-    quickPost(el, () => p, { open: () => this.openEntry(p, story), ...(host.replyTo ? { reply: () => void host.replyTo?.(p) } : {}), ...(q ? { mark: (read: boolean) => void (read ? q.enqueue([p]) : q.enqueueUnread([p])) } : {}) }, this.contentEl);
+    const shelf = host.shelf;
+    // The shelf is read once per opening of the Daily (the first menu that needs it); Save and Remove are one write each, said in the line under the masthead.
+    const shelfMenu = shelf?.on() ? { shelf: { state: () => (shelf.ready() ? { saved: shelf.has(p), full: shelf.full() } : null), toggle: () => void shelf.toggle(p).then((r) => this.say(r.ok ? (r.saved ? "Saved for later." : "Removed from saved.") : r.message)) } } : {};
+    quickPost(el, () => p, { open: () => this.openEntry(p, story), ...(host.replyTo ? { reply: () => void host.replyTo?.(p) } : {}), ...(q ? { mark: (read: boolean) => void (read ? q.enqueue([p]) : q.enqueueUnread([p])) } : {}), ...shelfMenu }, this.contentEl);
   }
 
   /** The "read" look of a card or row and its read symbol (a circle to mark read, a check to mark unread again), now and after every change of a mark. `slot` holds the symbol (one for all `posts`). */

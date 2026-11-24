@@ -68,6 +68,18 @@ A Refresh tap here is the plugin's contract-6 sequence: `GET /subscriptions`, th
 5. A mark is 4 rows (read state 1, change counter 1, rate-limit counter 2). A batch of 5 is 12 instead of 20. The plugin already never marks a post that is read, and never marks a post twice (`markable()` in `src/digest/markQueue.ts`, `tests/digest/dg8.test.ts`).
 6. The Studio's own cron costs 3 rows per due blyg; a blyg is due every 30 minutes (`POLL_INTERVAL_MS`, run by the 15-minute cron), so about **48 polls and 150 rows a day per followed blyg**, whatever you do with the plugin. The every-minute cron writes nothing.
 
+### Save for later (SH1): an estimate, not measured
+
+The plugin's save is one `PUT /shelf` and nothing else: it starts from the shelf it read when the reader (or the Daily) opened (one `GET /shelf`, once per opening, never on a timer), and a stale list is answered by the Studio's own 409 with the current list, so a save needs no read of its own. A race with another device costs one more PUT (at most 3 in all, then the plugin stops and says so). Listing the Saved view is one `GET /reading?shelf=true&order=newest` per tap of the chip.
+
+| Action | Rows written (estimate) | Basis |
+| --- | ---: | --- |
+| `GET /shelf`, `GET /reading?shelf=true` | 2 | the rate-limit counter only, like every other `GET` above; whether the Shelf lens triggers the stored-order rewrite is **not measured** (the plugin asks `order=newest`, which the spec says the Shelf ignores in favour of its own order) |
+| `PUT /shelf` (a save, or a removal) | 3 to about 105 | **unmeasured.** The request is a whole-list replace of at most 50 entries. If the Studio keeps the list as one row: about 3 (the list, its revision, the rate-limit counter). If it keeps one row per entry and replaces them all: about 2 per entry plus 3, so up to about 105 at a full shelf of 50 |
+| A save that loses a race | one more of the above | the 409 itself writes only the rate-limit counter |
+
+At the upper bound a day of 100 saves would be about 10,000 rows, a tenth of the free tier's 100,000 writes a day; at the lower bound about 300. Measure it with the method of section 1 (PUT a shelf of 1, 10 and 50 entries on a throwaway Studio) before saying more.
+
 ## 3. Budget model
 
 `R = rows written in a day`. With `T` Refresh taps, `P` new posts, `M` marks (single requests), `B` followed blygs, `N` posts in the list:

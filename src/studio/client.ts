@@ -8,6 +8,7 @@ import type { StudioHttp, StudioResponse } from "./http";
 import type { StudioCapabilities, StudioCommandDone, StudioFailure, StudioHit, StudioImported, StudioHopper, StudioItem, StudioItemKind, StudioListedItem, StudioManifest, StudioMediaDone, StudioPeek, StudioPreview, StudioProblem, StudioResolvedQuote, StudioResult, StudioSubscription } from "./types";
 import { contractVerdict, incompatibleMessage, type ContractVerdict } from "./version";
 import { OPERATION, contractAtLeast, offers } from "./capabilities";
+import { readShelf, readShelvedRow, SHELF_OPERATIONS, type Shelf, type ShelfEntry, type ShelfPutResult } from "./shelf";
 import { readFollowed, readProposal, type StudioFollowAnswer, type StudioFollowed } from "./subscriptions";
 import { readInboundMention, readOwnReadingEntry, readReadingPost, type InboundMention, type ReadingPost } from "./reading";
 
@@ -111,6 +112,12 @@ export interface StudioClient {
   resyncSubscription(id: string): Promise<StudioResult<{ changed: number }>>;
   /** Increment 8b: the owner's own posts among the newest entries of the Studio's merged reading list (`GET /reading`, `owner:read`), at most `maxPages` pages of 50. */
   listOwnReading(maxPages?: number): Promise<StudioResult<{ posts: ReadingPost[] }>>;
+  /** SH1: the shelf with its revision (`GET /shelf`, `owner:read`). `ok` with null: this Studio does not list the operation (a Studio before the shelf), so nothing was asked. */
+  getShelf(): Promise<StudioResult<Shelf | null>>;
+  /** SH1: replace the shelf (`PUT /shelf`, `owner:manage`) if it is still at `expectedRevision`; a 409 answers `stale` with the list as it is now. Never sent without a revision. `absent`: no shelf here. */
+  putShelf(entries: ShelfEntry[], expectedRevision: number): Promise<ShelfPutResult>;
+  /** SH1: the shelved posts (`GET /reading?shelf=true`, `owner:read`), in the shelf's order: one page, no write. `ok` with null: no shelf on this Studio. */
+  listShelved(): Promise<StudioResult<{ posts: ReadingPost[] } | null>>;
   /** S15: the Studio's change counters (`GET /changes`, `owner:read`): cheap, to see whether the reading list moved without walking it. */
   /** `GET /changes`. `ok` with null: this Studio does not list that operation (contract 6 removed it), so nothing was asked. */
   changes(): Promise<StudioResult<{ epoch: string; domains: Record<string, number> } | null>>;
@@ -445,6 +452,36 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
       return { kind: "ok", value: { changed: typeof res.json.changed === "number" ? res.json.changed : 0 } } as const;
     },
 
+    getShelf: async (): Promise<StudioResult<Shelf | null>> => {
+      if (!offers(gateCache.get(), SHELF_OPERATIONS.get)) return { kind: "ok", value: null };
+      const res = await http.send(token, { area: "api", path: "/shelf" });
+      if (res.status !== 200) return failure(res);
+      const shelf = readShelf(res.json);
+      return shelf ? { kind: "ok", value: shelf } : unreadable(res);
+    },
+
+    putShelf: async (entries: ShelfEntry[], expectedRevision: number): Promise<ShelfPutResult> => {
+      const verdict = gateCache.get();
+      // The listed operations are those this token may call: a Studio that lists `getShelf` but not `putShelf` has the shelf and a token without `owner:manage`.
+      if (!offers(verdict, SHELF_OPERATIONS.put)) return offers(verdict, SHELF_OPERATIONS.get) ? { kind: "forbidden", message: "" } : { kind: "absent" };
+      const res = await http.send(token, { method: "PUT", area: "api", path: "/shelf", body: { entries, expectedRevision } });
+      if (res.status === 409 && codeOf(res) === "revision-conflict") {
+        const current = isRecord(res.json) && isRecord(res.json.details) ? readShelf(res.json.details.current) : null;
+        return current ? { kind: "stale", current } : unreadable(res);
+      }
+      if (res.status !== 200) return failure(res);
+      const shelf = readShelf(res.json);
+      return shelf ? { kind: "ok", value: shelf } : unreadable(res);
+    },
+
+    listShelved: async () => {
+      if (!offers(gateCache.get(), SHELF_OPERATIONS.get)) return { kind: "ok", value: null } as const;
+      // order=newest as for the own list (listOwnReading): the shelf keeps its own order, and the default order must never be what a read asks for.
+      const walked = await walk("/reading", { shelf: "true", ...(contractAtLeast(gateCache.get(), 6, 2) ? { order: "newest" } : {}) }, 50, 1, readShelvedRow);
+      if (walked.kind !== "ok") return walked;
+      return { kind: "ok", value: { posts: walked.value.rows } } as const;
+    },
+
     changes: async () => {
       // Whether the Studio has the operation is read from what it lists, not from its version (capabilities.ts). The guard has just filled the cache.
       if (!offers(gateCache.get(), OPERATION.changes)) return { kind: "ok", value: null } as const;
@@ -588,6 +625,9 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
     resyncSubscription: guard(inner.resyncSubscription),
     listOwnReading: guard(inner.listOwnReading),
     changes: guard(inner.changes),
+    getShelf: guard(inner.getShelf),
+    putShelf: async (entries: ShelfEntry[], expectedRevision: number): Promise<ShelfPutResult> => (await refusal()) ?? inner.putShelf(entries, expectedRevision),
+    listShelved: guard(inner.listShelved),
     classifyLinks: guard(inner.classifyLinks),
     peekItem: guard(inner.peekItem),
     importedNotes: guard(inner.importedNotes),

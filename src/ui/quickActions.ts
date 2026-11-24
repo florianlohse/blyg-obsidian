@@ -3,6 +3,7 @@
 import { isUnread, type ReadingPost } from "../studio/reading";
 import { markable, unmarkable } from "../digest/markQueue";
 import { isUnfollowedPost, unfollowedReplyTitle } from "./readerFollow";
+import { SHELF_MAX } from "../studio/shelf";
 
 /** How long a finger must stay down, and how far it may drift (in pixels) before the press is a scroll, not a press. */
 export const LONG_PRESS_MS = 450;
@@ -54,7 +55,7 @@ export class LongPress {
   }
 }
 
-export type QuickId = "open" | "reply" | "read" | "unread";
+export type QuickId = "open" | "reply" | "read" | "unread" | "save" | "unsave";
 export interface QuickEntry {
   id: QuickId;
   title: string;
@@ -72,6 +73,8 @@ export interface PostOpts {
   canMark?: boolean;
   /** This surface can reply. Default true. */
   canReply?: boolean;
+  /** The shelf (SH1): where the host has one, the menu holds "Save for later" (or "Remove from saved" for a post that is on it). Absent: no such entry. */
+  shelf?: { saved: boolean; full: boolean };
 }
 
 /** The menu of one post (a feed card, a post row of the digest). Reply follows the open post's own Reply button: disabled for a withdrawn or own post, plain (no quote) for a blyg you do not follow. */
@@ -85,6 +88,11 @@ export function postEntries(p: ReadingPost, o: PostOpts = {}): QuickEntry[] {
   }
   if (o.canMark !== false && p.subscriptionId !== "" && !p.withdrawn && p.own !== true && fetched) {
     out.push(isUnread(p) ? { id: "read", title: "Mark read", icon: "circle-check" } : { id: "unread", title: "Mark unread", icon: "circle" });
+  }
+  const shelved = p.own === true || (p.subscriptionId !== "" && fetched); // a post no subscription holds cannot be on the shelf
+  if (o.shelf && shelved && (o.shelf.saved || !p.withdrawn)) {
+    if (o.shelf.saved) out.push({ id: "unsave", title: "Remove from saved", icon: "bookmark-minus" });
+    else out.push({ id: "save", title: "Save for later", icon: "bookmark", ...(o.shelf.full ? { disabled: true, tooltip: `Your shelf is full (${SHELF_MAX} posts). Remove one from Saved first.` } : {}) });
   }
   return out;
 }

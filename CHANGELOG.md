@@ -8,6 +8,7 @@ becomes the release notes. Write entries for people who use the plugin, not for 
 
 ## [Unreleased]
 
+- **Save posts for later (experimental).** Press and hold a post in the feed or the Daily and choose "Save for later", or tap "Save" in an open post. Saved posts get a small "saved" mark, and a "Saved" choice under Sort & filter shows only them (the shelf holds 50 posts; when it is full the plugin says so and drops nothing). The list lives on your Studio's shelf, so your other devices and the Studio's web app share it. It needs a Studio with the shelf and a token with the permission "owner:manage"; without them the plugin says so in one line. Switch it on under Settings → Experimental features → "Save posts for later".
 - **The reader can go further back.** "Load older posts" at the end of the feed reads 200 older posts at a time from your Studio, up to 5000. Long feeds stay quick: only the cards near the screen are drawn.
 
 ## [1.0.0] — 2026-11-18

@@ -34,6 +34,7 @@ import { sharedStore, writeShared } from "./sync/aiWrite";
 import { deviceId, deviceLabel } from "./sync/device";
 import { syncLines } from "./sync/line";
 import { Platform, type EventRef } from "obsidian";
+import type { ShelfFacade } from "../app/shelfService";
 
 export interface DigestDeps {
   /** The reader's saved list (plugin storage), or null. */
@@ -52,6 +53,8 @@ export interface DigestDeps {
   replyTo?: (post: ReadingPost) => Promise<void>;
   /** The reader's own mark-unread path (same permission): the digest's read symbol puts a mark back. */
   markUnread?: (post: ReadingPost) => Promise<{ ok: boolean; message?: string }>;
+  /** The shelf (SH1): the quick menu's "Save for later". Absent: no such entry. */
+  shelf?: ShelfFacade;
   /** Reads one revised post's change notes from the Studio (`importedNotes`); absent: corrections show no note. */
   notes?: NoteDeps["fetch"];
   /** The optional AI layer. Absent: no AI. */
@@ -193,6 +196,7 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
     ...(deps.markRead ? { markRead: deps.markRead } : {}),
     ...(deps.markUnread ? { markUnread: deps.markUnread } : {}),
     ...(deps.replyTo ? { replyTo: deps.replyTo } : {}),
+    ...(deps.shelf ? { shelf: deps.shelf } : {}),
     edition: (posts) => editions.open(posts),
     font: () => deps.font(),
     showFeed: async (leaf) => void (await leaf.setViewState({ type: BLYG_READER_VIEW, active: true })),

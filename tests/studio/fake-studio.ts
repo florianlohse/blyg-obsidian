@@ -87,6 +87,11 @@ export class FakeStudio {
   readonly hoppers: Array<{ id: string; name: string; slug: string | null; public: boolean; members: Set<string> }> = [];
   /** False: the token lacks owner:manage, so hopper changes answer 403. */
   manage = true;
+  /** The shelf (SH1, contract 6): the entries in the owner's order and the revision. `PUT /api/shelf` replaces the whole list and demands the revision; an entry the Studio does not hold is dropped quietly, as the real one does. */
+  shelf: Array<{ sub: string; remoteId: string }> = [];
+  shelfRevision = 0;
+  /** False: this Studio lists no shelf operations (a Studio before the shelf). */
+  hasShelf = true;
   readonly imports: Imported[] = [];
   /** The subscriptions `/api/subscriptions` lists, creates, renames and deletes (a delete also drops that subscription's imports, as the Studio does). */
   readonly followed: Array<Record<string, unknown> & { id: string; origin: string }> = [];
@@ -333,6 +338,42 @@ export class FakeStudio {
     return this.json(200, { items: rows.slice(offset, offset + limit), page: { limit, nextCursor: next } });
   }
 
+  /** Whether this Studio lists the shelf operations (contract 6 with `hasShelf`). */
+  operationsListedHasShelf(): boolean {
+    return this.operations().includes("getShelf");
+  }
+
+  /** Whether the Studio holds the entry: an imported item under its subscription, or one of the owner's own items. */
+  private holds(e: { sub: string; remoteId: string }): boolean {
+    return e.sub === "~own" ? this.items.has(e.remoteId) : this.imports.some((i) => i.subscription_id === e.sub && i.remote_id === e.remoteId && i.state === "current");
+  }
+
+  private shelfRoute(req: RawRequest): RawResponse {
+    if (!this.operations().includes(req.method === "GET" ? "getShelf" : "putShelf")) return this.fail(req.method === "GET" ? 404 : 403, req.method === "GET" ? "not-found" : "forbidden", "not found");
+    if (req.method === "GET") return this.json(200, { entries: this.shelf, revision: this.shelfRevision });
+    const body = (req.body ? JSON.parse(req.body) : {}) as { entries?: unknown; expectedRevision?: unknown };
+    if (!Array.isArray(body.entries) || !Number.isInteger(body.expectedRevision)) return this.fail(400, "invalid-input", "entries and expectedRevision are required");
+    if (body.entries.length > 50) return this.fail(400, "invalid-input", "entries: at most 50");
+    if (body.expectedRevision !== this.shelfRevision) return this.fail(409, "revision-conflict", "the shelf changed; read it again", { current: { entries: this.shelf, revision: this.shelfRevision } });
+    const kept: Array<{ sub: string; remoteId: string }> = [];
+    for (const e of body.entries as Array<{ sub: string; remoteId: string }>) if (this.holds(e) && !kept.some((k) => k.sub === e.sub && k.remoteId === e.remoteId)) kept.push({ sub: e.sub, remoteId: e.remoteId });
+    this.shelf = kept;
+    this.shelfRevision++;
+    return this.json(200, { entries: this.shelf, revision: this.shelfRevision });
+  }
+
+  /** `GET /api/reading?shelf=true`: the shelved imported items as reading entries, in shelf order. */
+  private shelvedReading(url: URL): RawResponse {
+    const rows = this.shelf.flatMap((e) => {
+      const i = this.imports.find((x) => x.subscription_id === e.sub && x.remote_id === e.remoteId);
+      if (!i) return [];
+      return [{ key: `${e.sub}/${e.remoteId}`, source: "imported", kind: i.kind, withdrawn: false, l0: false, contentHtml: `<p>${i.content_md}</p>`, displayAt: this.now, background: { reasons: [], placement: null, blyg: false },
+        imported: { subscriptionId: i.subscription_id, subscriptionTitle: i.source_title, remoteId: i.remote_id, kind: i.kind, withdrawn: false, l0: false, updated: this.now, observedAt: this.now, contentHtml: `<p>${i.content_md}</p>`, pinnedVersionRetained: null, sourceUrl: null, version: i.version, readVersion: null } }];
+    });
+    const resp = this.page(url, rows);
+    return resp.status === 200 ? this.json(200, { ...(JSON.parse(resp.text) as Record<string, unknown>), readState: true, readStateClear: true }) : resp;
+  }
+
   private major(): number {
     return Number((this.contractVersion ?? "5").split(".")[0]);
   }
@@ -345,7 +386,9 @@ export class FakeStudio {
   /** The operation ids a Studio of this contract lists in `/capabilities` (the ones the plugin branches on; the rest of the real list is not needed here). */
   private operations(): string[] {
     const common = ["getCapabilities", "listItems", "getItem", "createItem", "updateItem", "publishItem", "listSubscriptions", "listReading", "listImportedReading"];
-    return this.operationsListed ?? (this.major() >= 6 ? common : [...common, "getChanges"]);
+    // The list is what this token may call: without owner:manage `putShelf` is not in it.
+    const shelf = this.hasShelf && this.major() >= 6 ? ["getShelf", ...(this.manage ? ["putShelf"] : [])] : [];
+    return this.operationsListed ?? (this.major() >= 6 ? [...common, ...shelf] : [...common, "getChanges"]);
   }
 
   private handle(req: RawRequest, url: URL, authorization: string | undefined): RawResponse {
@@ -363,6 +406,8 @@ export class FakeStudio {
       if (!this.operations().includes("getChanges")) return this.fail(404, "not-found", "not found");
       return this.json(200, this.changeCounters);
     }
+    if (path === "/api/shelf" && (req.method === "GET" || req.method === "PUT")) return this.shelfRoute(req);
+    if (path === "/api/reading" && req.method === "GET" && url.searchParams.get("shelf") === "true") return this.shelvedReading(url);
     if (path === "/api/media" && req.method === "POST") return this.upload(req);
     const body = req.body ? (JSON.parse(req.body) as Record<string, unknown>) : {};
     const m = /^\/api\/items\/([^/]+)(?:\/(publish|withdraw))?$/.exec(path);

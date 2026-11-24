@@ -21,6 +21,7 @@ export interface FeatureDef {
 export const FEATURES: readonly FeatureDef[] = [
   { id: "daily", title: "Daily", description: "A Daily view of what the blygs you follow posted, with a ribbon icon and the command “Open Daily”.", stage: "experimental", modules: ["src/digest/register.ts"] },
   { id: "digest-ai", title: "Daily digest with an AI model", description: "The optional AI summary in the Daily: its settings, “Write the digest” and “Show what the digest sent”. It also keeps its own opt-in.", stage: "experimental", requires: "daily", modules: ["src/digest/register.ts"] },
+  { id: "shelf", title: "Save posts for later", description: "A Save action in the reader and the Daily, and a Saved view in the feed, kept on your Studio's shelf and shared with your other devices.", stage: "experimental", modules: [] },
   { id: "marginalia", title: "Marginalia", description: "Markers in the editor where a published item was quoted, and the Reception list in the panel.", stage: "experimental", modules: [] },
   { id: "share-open", title: "Open a shared address", description: "The Share inbox folder and the command “Open post address from clipboard”.", stage: "experimental", modules: ["src/app/shareEntry.ts"] },
   { id: "author-look", title: "Author look (prototype)", description: "A chooser that switches the look of the open post.", stage: "dev", modules: ["src/dev/authorStyle.ts"] },
