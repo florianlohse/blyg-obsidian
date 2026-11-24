@@ -200,6 +200,8 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
   };
   plugin.registerEvent((plugin.app.vault as unknown as { on(name: "raw", cb: (p: string) => void): EventRef }).on("raw", onRaw));
   plugin.register(() => timer !== null && window.clearTimeout(timer));
+  // Files carried in while the app was away (a phone in the pocket) are read when it comes back, if the "raw" event did not say.
+  if (typeof activeDocument !== "undefined") plugin.registerDomEvent(activeDocument, "visibilitychange", () => activeDocument.visibilityState === "visible" && void sync.refresh().catch(() => undefined));
   // The reader being opened also starts the day's edition, if its cutoff has passed.
   plugin.registerEvent(plugin.app.workspace.on("active-leaf-change", (leaf) => void (leaf?.view.getViewType() === BLYG_READER_VIEW && editions.touch())));
   // The reader's "In the digest: <section>" chip: asks the editions held (current, then the history) and opens the Daily in the reader's own leaf, scrolled to the section.

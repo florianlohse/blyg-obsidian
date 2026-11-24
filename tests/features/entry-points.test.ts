@@ -44,6 +44,7 @@ const fakePlugin = (id: string) => {
     registerView: (t: string) => calls.push(`view:${t}`),
     registerEvent: () => {},
     register: () => {},
+    registerDomEvent: () => {},
   };
   return { calls, p: p as never };
 };

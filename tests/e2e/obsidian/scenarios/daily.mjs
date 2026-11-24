@@ -79,14 +79,20 @@ await runScenario({ data }, async (s) => {
   check(first.sw <= first.cw, `it does not scroll sideways (${first.sw} of ${first.cw})`);
 
   // a restart with the edition record the first open saved, plus sections and lines in it
-  const rec = JSON.parse(await page.evaluate(() => window.app.vault.adapter.read(".obsidian/plugins/blyg/digest-editions.json")));
-  const e = rec.editions.at(-1);
-  e.stories.forEach((st, i) => (st.section = i % 2 ? "Town" : "Garden"));
-  e.sections = ["Garden", "Town"];
-  e.sectionAbout = { Garden: "Soil and seeds" };
-  e.postSections = { [id("p", 20)]: "Garden", [id("p", 21)]: "Town" };
-  e.postLines = { [id("p", 20)]: "Cy on old oak mushrooms" };
-  await page.evaluate((json) => window.app.vault.adapter.write(".obsidian/plugins/blyg/digest-editions.json", json), JSON.stringify(rec));
+  // (the edition record lives in this device's own file of the synced folder since DG16: the sections, bylines and lines are registers of that file)
+  const dir = ".obsidian/plugins/blyg/digest";
+  const file = await page.evaluate(async (d) => (await window.app.vault.adapter.list(d)).files.find((f) => /\/ed-\d+\./.test(f)) ?? "", dir);
+  check(file !== "", `the first open left this device's edition file in ${dir} (${file})`);
+  const rec = JSON.parse(await page.evaluate((f) => window.app.vault.adapter.read(f), file));
+  const reg = (v) => ({ c: rec.clock + 1, d: rec.device, v });
+  Object.keys(rec.regs).filter((k) => k.startsWith("story/")).map((k) => k.slice(6)).forEach((sid, i) => (rec.regs[`sec/${sid}`] = reg(i % 2 ? "Town" : "Garden")));
+  rec.regs.order = reg(["Garden", "Town"]);
+  rec.regs["about/Garden"] = reg("Soil and seeds");
+  rec.regs[`pSec/${id("p", 20)}`] = reg("Garden");
+  rec.regs[`pSec/${id("p", 21)}`] = reg("Town");
+  rec.regs[`pLine/${id("p", 20)}`] = reg("Cy on old oak mushrooms");
+  rec.clock += 1;
+  await page.evaluate(([f, json]) => window.app.vault.adapter.write(f, json), [file, JSON.stringify(rec)]);
   await page.evaluate(() => window.app.workspace.requestSaveLayout());
   await wait(2000);
   await page.evaluate(() => window.app.commands.executeCommandById("app:reload")).catch(() => {});
