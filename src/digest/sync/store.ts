@@ -29,6 +29,16 @@ export interface SharedCache {
   sections: LlmStore["sections"];
 }
 
+export interface DeviceSeen {
+  device: string;
+  label: string;
+  /** The newest edition cutoff (ms) in the device's files; null: it has written none yet. */
+  newestEdition: number | null;
+  /** When its newest file was modified on this device (the file system's time); null: no file. */
+  modified: number | null;
+  mine: boolean;
+}
+
 export interface SyncInfo {
   /** The creator of the edition: the device that made it, its name and when. null: no edition. */
   made: { device: string; label: string; at: number; mine: boolean } | null;
@@ -50,7 +60,7 @@ const isJson = (p: string): boolean => p.endsWith(".json") && FILE_RE.test(p.sli
 export class SyncedDigest {
   /** This device's own states, in memory: the truth for its own file (a failed write is retried at the next change). */
   private own = new Map<number, EdState>();
-  private parsed = new Map<string, { sig: string; state: EdState | null }>();
+  private parsed = new Map<string, { sig: string; mtime: number; state: EdState | null }>();
   private snap: Snapshot | null = null;
   /** The editions as the code was given them by `load()`: what `save()` measures its changes against. */
   private loaded: EditionStore = { v: 1, editions: [] };
@@ -101,13 +111,14 @@ export class SyncedDigest {
         const sig = st ? `${st.mtime}:${st.size}` : "?";
         const hit = this.parsed.get(p);
         if (hit && hit.sig === sig && st) return void (hit.state && out.push(hit.state));
+        const mtime = st?.mtime ?? 0;
         let state: EdState | null = null;
         try {
           state = parseState(await this.fs.read(p));
         } catch {
           state = null;
         }
-        this.parsed.set(p, { sig, state });
+        this.parsed.set(p, { sig, mtime, state });
         if (state) out.push(state);
       }),
     );
@@ -291,6 +302,30 @@ export class SyncedDigest {
     let others = 0;
     for (const [d, t] of usedOnDay(this.snapshot.joined.values(), localDay(now))) d === this.me.id ? (mine += t) : (others += t);
     return { total: mine + others, mine, others };
+  }
+
+  /**
+   * The "Sync check": the devices whose files this device can see (reads the folder fresh, local only). Per device: its name, the newest edition cutoff in its files, when its newest
+   * file was modified here, and whether it is this device. This device is always listed (its own files, or none yet).
+   */
+  async devicesSeen(): Promise<DeviceSeen[]> {
+    await this.refresh().catch(() => undefined);
+    const by = new Map<string, DeviceSeen>();
+    for (const v of this.parsed.values()) {
+      if (!v.state) continue;
+      const cur = by.get(v.state.device);
+      const mtime = v.mtime;
+      if (!cur) by.set(v.state.device, { device: v.state.device, label: v.state.label || "unnamed device", newestEdition: v.state.id, modified: mtime, mine: v.state.device === this.me.id });
+      else {
+        cur.newestEdition = Math.max(cur.newestEdition ?? 0, v.state.id);
+        cur.modified = Math.max(cur.modified ?? 0, mtime);
+        if (v.state.label) cur.label = v.state.label;
+      }
+    }
+    if (!by.has(this.me.id)) by.set(this.me.id, { device: this.me.id, label: this.name(), newestEdition: null, modified: null, mine: true });
+    const mine = by.get(this.me.id);
+    if (mine) mine.label = this.name();
+    return [...by.values()].sort((a, b) => Number(b.mine) - Number(a.mine) || (b.modified ?? 0) - (a.modified ?? 0));
   }
 
   /** What the masthead line says: who made the edition, how many other devices carry it, and whether a file is still arriving. */

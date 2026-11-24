@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { cachedStories } from "../../src/digest/editionHost";
 import { LOCK_TTL_MS } from "../../src/digest/sync/state";
 import { defaultLabel, deviceId, deviceLabel, setDeviceLabel } from "../../src/digest/sync/device";
-import { syncLines } from "../../src/digest/sync/line";
+import { checkLines, syncLines } from "../../src/digest/sync/line";
 import { sharedCeilingRefusal } from "../../src/digest/autoWrite";
 import { usedOnDay, parseState } from "../../src/digest/sync/state";
 import { T0, device, mkPost, provider, ship, world, DIR } from "./sync-harness";
@@ -370,6 +370,29 @@ describe("the daily token ceiling counts all devices (DG17)", () => {
     expect(sharedCeilingRefusal({ dailyTokenCeiling: 100 }, null, { tokens: 5 })).toMatch(/could not be read/);
     expect(sharedCeilingRefusal({ dailyTokenCeiling: 100 }, { total: 90 }, { tokens: 5 })).toBeNull();
     expect(sharedCeilingRefusal({ dailyTokenCeiling: 100 }, { total: 98 }, { tokens: 5 })).toMatch(/98 used today on all devices/);
+  });
+});
+
+describe("the Sync check (DG17)", () => {
+  it("lists this device, then the devices whose files it sees, with the newest edition and file time; says so when only its own are there", async () => {
+    const prov = provider();
+    const w = world();
+    const a = device("devA", "iPhone", prov, T0);
+    const b = device("devB", "iPad", prov, T0 + 3600_000);
+    expect((await a.sync.devicesSeen()).map((d) => [d.label, d.mine, d.newestEdition])).toEqual([["iPhone", true, null]]);
+    expect(checkLines(await a.sync.devicesSeen())).toEqual([expect.stringMatching(/^iPhone \(this device\) · newest edition none yet · file none yet$/), "No other device's files seen yet."]);
+    const ia = await a.editions.open(w.items);
+    expect(checkLines(await a.sync.devicesSeen()).at(-1)).toBe("No other device's files seen yet.");
+    ship(a, b);
+    await b.editions.open(w.items);
+    const seen = await b.sync.devicesSeen();
+    expect(seen.map((d) => [d.label, d.mine, d.newestEdition])).toEqual([["iPad", true, null], ["iPhone", false, ia.id]]);
+    expect(seen[1]?.modified).toBeGreaterThan(0);
+    const lines = checkLines(seen);
+    expect(lines.length).toBe(2);
+    expect(lines[0]).toMatch(/^iPad \(this device\)/);
+    expect(lines[1]).toMatch(/^iPhone · newest edition .+ · file .+/);
+    expect(lines.join("\n")).not.toMatch(/No other device/);
   });
 });
 

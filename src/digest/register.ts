@@ -18,6 +18,7 @@ import type { BlygSettings } from "../settings/schema";
 import { DigestConfirmModal, DigestConsentModal } from "../ui/DigestModals";
 import { trailText } from "./trailText";
 import { setConsentGate } from "./consentGate";
+import { setSyncCheck } from "./syncCheck";
 import { editorIdFor, withEditor } from "./editorRun";
 import { editorFor, NEUTRAL } from "./editors";
 import { cachedSections as cachedSectionsOf, clearBodies, normaliseEndpoint } from "./llm";
@@ -101,6 +102,7 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
     history: () => readJson(normalizePath(`${base()}/digest-history.json`)),
     entries: async () => (await loadLocal()).entries,
   });
+  setSyncCheck(() => sync.devicesSeen());
   const storePath = (): string => normalizePath(`${plugin.manifest.dir ?? `${plugin.app.vault.configDir}/plugins/${plugin.manifest.id}`}/digest-ai.json`);
   const loadLocal = async (): Promise<LlmStore> => {
     try {
