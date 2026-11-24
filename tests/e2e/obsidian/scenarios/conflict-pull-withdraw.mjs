@@ -47,6 +47,7 @@ await runScenario({ data }, async (s) => {
     if (process.env.E2E_DEBUG) console.error("CONFLICT WINDOW", JSON.stringify(conflict));
     await s.clearNotices();
     await s.clickModal("Cancel");
+    await s.modalClosed(20000); // a window just closed stays in the DOM while it fades out (longer on a slow machine): the next step must not mistake it for the window it opens next
     check(Boolean(await s.waitNotice("Cancelled — the working copy")), `${layout}: Cancel says the Studio's copy was left as it is`);
     const kept = await s.studioItem(id);
     check(kept.json?.contentMd === "Typed in the Studio.", `${layout}: the Studio still holds what was typed there`);
@@ -74,6 +75,7 @@ await runScenario({ data }, async (s) => {
     if (process.env.E2E_DEBUG) console.error("PULL WINDOW", JSON.stringify(pullSheet));
     await s.clearNotices();
     await s.clickModal("Cancel");
+    await s.modalClosed(20000); // a window just closed stays in the DOM while it fades out (longer on a slow machine): the next step must not mistake it for the window it opens next
     check(Boolean(await s.waitNotice("Cancelled — the note was left as it is")), `${layout}: Cancel leaves the note as it is`);
     check((await body(path)).includes("Added in the note."), `${layout}: ... and it does`);
     check(await s.clickPanel("Replace note from Studio"), `${layout}: pull again`);

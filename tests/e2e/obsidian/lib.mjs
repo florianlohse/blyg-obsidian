@@ -16,8 +16,9 @@ import { spawn, execFileSync } from "node:child_process";
 import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir, tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { writeArtifacts } from "./artifacts.mjs";
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const VERSION = process.env.OBSIDIAN_E2E_VERSION ?? "1.14.5";
@@ -28,6 +29,10 @@ export const BUILD = resolve(process.env.OBSIDIAN_SMOKE_BUILD ?? join(ROOT, "dis
 export const DEV_BUILD = resolve(process.env.OBSIDIAN_SMOKE_DEV_BUILD ?? join(ROOT, "dist", "blyg-dev"));
 const FILES = ["main.js", "manifest.json", "styles.css"];
 export const DEV = FILES.every((f) => existsSync(join(DEV_BUILD, f)));
+
+// Set by run-scenarios.mjs (all optional): E2E_FAIL_DIR = where a failed attempt writes its artifacts, E2E_SCENARIO / E2E_ATTEMPT = their names, E2E_RESULT_FILE = where the failing checks go.
+const SCENARIO = process.env.E2E_SCENARIO ?? basename(process.argv[1] ?? "run", ".mjs");
+const ATTEMPT = process.env.E2E_ATTEMPT ?? "1";
 
 export const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -106,12 +111,27 @@ export async function launch({ data = fixtureData(), withDev = false } = {}) {
   // E2E_TIMING=1 puts the seconds since the start and since the previous check in front of every line (to find what a scenario spends its time on)
   const started = Date.now();
   let last = started;
+  s.consoleLog = []; // every console line of the page (last 400), for the failure artifacts
+  let capturing = Promise.resolve();
+  /** Write the artifacts of this moment (screenshots, page state, redacted settings, console) into E2E_FAIL_DIR/<scenario>-attempt<n>/<name>. No-op without E2E_FAIL_DIR. */
+  s.capture = (name) => {
+    const base = process.env.E2E_FAIL_DIR;
+    if (!base || !page) return capturing;
+    capturing = capturing.then(() => writeArtifacts({
+      dir: join(base, `${SCENARIO}-attempt${ATTEMPT}`, name), browser, page, failures: [...failures], consoleLog: s.consoleLog, pageErrors: s.pageErrors, secrets: [TOKEN],
+      dataFile: join(s.vault, ".obsidian", "plugins", "blyg", "data.json"), read: (f) => readFileSync(f, "utf8"),
+    })).catch((e) => console.error("  (could not write the failure artifacts:", String(e), ")"));
+    return capturing;
+  };
   s.check = (ok, what) => {
     const now = Date.now();
     const timing = process.env.E2E_TIMING ? `[${((now - started) / 1000).toFixed(1).padStart(5)}s +${((now - last) / 1000).toFixed(1).padStart(4)}] ` : "";
     last = now;
     console.log(`${ok ? "ok  " : "FAIL"} ${timing}${what}`);
-    if (!ok) failures.push(what);
+    if (!ok) {
+      failures.push(what);
+      if (failures.length === 1) s.capture("at-first-failure"); // the page as it is when the first check fails: later steps may change it
+    }
     return ok;
   };
   s.until = async (fn, ms, what) => {
@@ -128,11 +148,13 @@ export async function launch({ data = fixtureData(), withDev = false } = {}) {
 
   s.close = async () => { await browser?.close().catch(() => {}); try { process.kill(-child.pid, "SIGKILL"); } catch { /* gone */ } rmSync(root, { recursive: true, force: true }); };
   s.finish = async () => {
+    if (failures.length) { await s.capture("at-end"); }
+    if (process.env.E2E_RESULT_FILE) { try { writeFileSync(process.env.E2E_RESULT_FILE, JSON.stringify({ failures })); } catch { /* the runner falls back to the exit code */ } }
     await s.close();
     console.log(failures.length ? `${failures.length} failure(s)` : "all checks passed");
     process.exit(failures.length ? 1 : 0);
   };
-  s.crash = (e) => { failures.push(String(e)); console.error(e); };
+  s.crash = (e) => { failures.push(String(e)); console.error(e); if (failures.length === 1) s.capture("at-first-failure"); };
 
   let page;
   for (let i = 0; i < 120 && !page; i++) {
@@ -141,8 +163,13 @@ export async function launch({ data = fixtureData(), withDev = false } = {}) {
   }
   if (!page) { await s.close(); throw new Error("Obsidian did not start"); }
   s.page = page;
+  // One CDP session for the whole run (throttling, screenshots). E2E_CPU_THROTTLE=4 makes the page run 4x slower (a slow runner or a phone), to try the timing.
+  s.cdp = await page.context().newCDPSession(page);
+  if (process.env.E2E_CPU_THROTTLE) await s.cdp.send("Emulation.setCPUThrottlingRate", { rate: Number(process.env.E2E_CPU_THROTTLE) });
   page.on("pageerror", (e) => s.pageErrors.push(String(e)));
   page.on("console", (m) => {
+    s.consoleLog.push(`[${m.type()}] ${m.text().slice(0, 400)}`);
+    if (s.consoleLog.length > 400) s.consoleLog.shift();
     if (m.type() === "error") s.consoleErrors.push(m.text());
     if (/blyg/i.test(m.text())) s.pluginLog.push(`[${m.type()}] ${m.text().slice(0, 300)}`);
   });
@@ -413,9 +440,53 @@ export async function launch({ data = fixtureData(), withDev = false } = {}) {
     return done.status;
   };
 
+  // ---- state: a pattern for scenarios whose steps share one Obsidian (a step that leaves something open breaks a LATER step: see docs/TESTING.md)
+  /** One line of what is on screen (leaves, mode, counts), for a message that says where a wait gave up. */
+  s.stateLine = async () => {
+    try { return JSON.stringify(await page.evaluate(stateNow)); } catch (e) { return `(state unavailable: ${e})`; }
+  };
+  /**
+   * Poll `probe()` (runs in Node, may use page.evaluate) until `ok(value)`; on timeout print the last value and the page state, and return { ok: false, value }.
+   * Use it instead of a fixed `wait` before a count: the message then says what was there, not only that it was wrong.
+   */
+  s.pollUntil = async (what, probe, ok, ms = 15000) => {
+    const end = Date.now() + ms;
+    let value;
+    for (;;) {
+      value = await probe();
+      if (ok(value)) return { ok: true, value };
+      if (Date.now() > end) break;
+      await wait(250);
+    }
+    console.error(`  (gave up waiting for ${what}; last value: ${JSON.stringify(value)}; page: ${await s.stateLine()})`);
+    return { ok: false, value };
+  };
+  /** Wait until the number of elements matching `selector` is `want` (a number, or a function of the count); { ok, value: count }. */
+  s.waitCount = (selector, want, ms = 15000) => s.pollUntil(`${selector} to be ${typeof want === "function" ? "right" : want}`,
+    () => page.evaluate((q) => document.querySelectorAll(q).length, selector), typeof want === "function" ? want : (n) => n === want, ms);
+  /**
+   * Back to a clean workspace: every leaf closed, the reader on its Feed with its choices at the start values (`readerPane` filter; the Feed | Digest mode),
+   * no window or menu open, and zero reader cards on screen. Call it at the start of a scenario step that must not depend on what an earlier step left open.
+   * The mode in memory follows the toggle, not the setting: when the Digest is on screen its Feed button is pressed first. Returns { ok, state }.
+   */
+  s.resetWorkspace = async () => {
+    await page.keyboard.press("Escape").catch(() => {});
+    await page.evaluate(() => { const b = [...document.querySelectorAll(".blyg-modebtn")].find((x) => x.textContent?.trim() === "Feed" && !x.classList.contains("is-active")); b?.click(); });
+    await wait(300);
+    await page.evaluate(() => {
+      const leaves = [];
+      window.app.workspace.iterateAllLeaves((l) => leaves.push(l));
+      leaves.forEach((l) => l.detach());
+      const rp = window.app.plugins.plugins.blyg?.settings?.readerPane;
+      if (rp) { rp.mode = "feed"; rp.filter = { sort: "newest", source: null, unreadOnly: false, length: "any", repliesToMe: false }; }
+    });
+    const zero = await s.waitCount(".blyg-reader-card, .blyg-story, .blyg-daily", 0, 8000);
+    return { ok: zero.ok, state: await s.stateLine() };
+  };
+
   // ---- layout: Chromium emulation of Obsidian's mobile UI (NOT iOS)
   s.phone = async () => {
-    const cdp = await page.context().newCDPSession(page);
+    const cdp = s.cdp;
     await cdp.send("Emulation.setDeviceMetricsOverride", { width: 393, height: 852, deviceScaleFactor: 2, mobile: true });
     await page.evaluate(() => window.app.emulateMobile(true));
     await wait(3000);
@@ -443,6 +514,14 @@ export async function launch({ data = fixtureData(), withDev = false } = {}) {
     s.check(ours.length === 0, `no console error that names the plugin${ours.length ? `: ${ours[0]}` : ""}`);
   };
   return s;
+}
+
+/** Runs in the page: a short picture of what is on screen (kept small: it goes into a message). */
+function stateNow() {
+  const leaves = [];
+  window.app.workspace.iterateAllLeaves((l) => leaves.push(l.view?.getViewType?.() ?? "?"));
+  const q = (sel) => document.querySelectorAll(sel).length;
+  return { leaves, mode: window.app.plugins.plugins.blyg?.settings?.readerPane?.mode ?? "feed", cards: q(".blyg-reader-card"), stories: q(".blyg-story"), modals: activeDocument.querySelectorAll(".modal-container .modal").length };
 }
 
 /** A scenario file's main: run `body(session)` in a fresh Obsidian, report, exit. */

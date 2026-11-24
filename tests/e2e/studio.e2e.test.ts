@@ -32,6 +32,19 @@ const TOKEN = process.env.STUDIO_E2E_TOKEN;
 const MOUNT = process.env.STUDIO_E2E_MOUNT ?? "";
 const run = URL_ && TOKEN ? describe : describe.skip;
 
+/** How long a 429 asks us to wait: its Retry-After (seconds), else 15 s; never more than 60 s. */
+const retryAfterMs = (res: Response): number => { const s = Number(res.headers.get("retry-after")); return Number.isFinite(s) && s > 0 ? Math.min(s, 60) * 1000 : 15_000; };
+
+/** `fetch` for a call the suite makes itself, outside the plugin's transport: waits and tries again on 429 like `transport` does (a raw call once failed `expected 429 to be 201` when the suite had used the token's per-minute budget). */
+async function apiFetch(url: string, init: RequestInit): Promise<Response> {
+  for (let attempt = 1; ; attempt++) {
+    const res = await fetch(url, init);
+    if (res.status !== 429 || attempt > 4) return res;
+    await res.text();
+    await sleep(retryAfterMs(res));
+  }
+}
+
 /** The plugin's transport contract, over Node's fetch (the plugin itself uses Obsidian's requestUrl). */
 async function transport(req: RawRequest): Promise<RawResponse> {
   // The Studio gives a token a work budget per minute (`429 API work budget exceeded`); the whole suite together can use it up. A person would
@@ -42,7 +55,7 @@ async function transport(req: RawRequest): Promise<RawResponse> {
     res.headers.forEach((value, key) => (headers[key] = value));
     const text = await res.text();
     if (res.status === 429 && attempt <= 4) {
-      await sleep(15_000);
+      await sleep(retryAfterMs(res));
       continue;
     }
     return { status: res.status, headers, text };
@@ -529,7 +542,7 @@ run("against a real Studio", { timeout: 120_000 }, () => {
   it("hoppers (S13): a note's hoppers are applied after the text, taken out when removed from the note, and a removal made in the Studio stands", async () => {
     // A hopper made "in the Studio" (the plugin itself never creates one, D4).
     const stamp = Date.now().toString(36);
-    const made = await fetch(`${URL_ ?? ""}${MOUNT}/api/hoppers`, { method: "POST", headers: { Authorization: `Bearer ${TOKEN ?? ""}`, "content-type": "application/json" }, body: JSON.stringify({ name: `E2E hopper ${stamp}` }) });
+    const made = await apiFetch(`${URL_ ?? ""}${MOUNT}/api/hoppers`, { method: "POST", headers: { Authorization: `Bearer ${TOKEN ?? ""}`, "content-type": "application/json" }, body: JSON.stringify({ name: `E2E hopper ${stamp}` }) });
     expect(made.status).toBe(201);
     const hopper = (await made.json()) as { id: string; name: string };
     const path = `studio/E2E hopper note ${stamp}.md`;

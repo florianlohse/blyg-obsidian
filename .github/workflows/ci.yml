@@ -164,6 +164,8 @@ jobs:
           path: ~/.cache/obsidian-e2e
           key: obsidian-e2e-1.14.5
       - name: Local Studio, then the UI scenarios
+        env:
+          E2E_FAIL_DIR: ${{ runner.temp }}/e2e-failures   # a failed attempt writes screenshots, page state, redacted settings and the console log here
         run: |
           OUT=$(WITH_REMOTE=1 bash scripts/local-studio.sh start "$RUNNER_TEMP/studio")
           export STUDIO_E2E_URL=$(echo "$OUT" | sed -n 's/^export STUDIO_E2E_URL=//p')
@@ -172,6 +174,14 @@ jobs:
           npm run test:obsidian:ui; RC=$?
           bash scripts/local-studio.sh stop "$RUNNER_TEMP/studio" >/dev/null 2>&1
           exit $RC
+      - name: Failure artifacts (screenshots, page state, redacted settings, console)
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02   # v4.6.2
+        with:
+          name: obsidian-ui-failures
+          path: ${{ runner.temp }}/e2e-failures
+          if-no-files-found: ignore
+          retention-days: 7
 
   # P6 slice E (decision D1): the same scenarios against the NEWEST public Obsidian, so a change in Obsidian shows here before it reaches a device.
   # ADVISORY and staying so (continue-on-error): the required legs run the pinned Obsidian above. A red leg here is a warning to look at, not a failure of the change.
