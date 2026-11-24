@@ -795,7 +795,23 @@
 .blyg-reader-window { overflow-anchor: none; }
 .blyg-reader-olderrow { text-align: center; padding: var(--size-4-3) 0; }
 /* "Blygs I follow" (HK7) */
-.blyg-reader-followbtn { flex: 0 0 auto; }
+/* A text link that is a real button (keyboard, screen reader): no box, no fill, small and muted, like the status line next to it. */
+body button.blyg-linkbtn { background: transparent; border: 0; box-shadow: none; height: auto; min-height: 0; padding: 0; margin: 0; color: var(--text-muted); font-size: var(--font-ui-smaller); font-weight: var(--font-normal); text-decoration: underline; text-decoration-color: var(--background-modifier-border); text-underline-offset: 2px; cursor: pointer; }
+body button.blyg-linkbtn:hover, body button.blyg-linkbtn:focus-visible { color: var(--text-normal); background: transparent; box-shadow: none; text-decoration-color: currentColor; }
+body button.blyg-linkbtn:disabled { opacity: 0.5; cursor: default; }
+.blyg-reader-statusend { grid-column: 3; grid-row: 1; justify-self: end; display: flex; align-items: baseline; gap: var(--size-4-2); min-width: 0; white-space: nowrap; }
+/* Under a post of a blyg that is not followed: one small muted line, cut at its end when the screen is narrow; the link stays. */
+.blyg-reader-follownote { display: flex; align-items: baseline; gap: var(--size-4-1); margin-top: var(--size-2-1); color: var(--text-muted); font-size: var(--font-ui-smaller); line-height: 1.4; white-space: nowrap; min-width: 0; }
+.blyg-reader-follownote .blyg-reader-followtext { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.blyg-reader-follownote .blyg-linkbtn { flex: none; }
+.blyg-follow-fresh { min-height: 1.4em; color: var(--text-muted); font-size: var(--font-ui-smaller); margin: var(--size-2-1) 0 var(--size-4-2); }
+.blyg-follow-row { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--size-4-3); padding: var(--size-4-2) 0; }
+.blyg-follow-row + .blyg-follow-row { border-top: 1px solid var(--background-modifier-border); }
+.blyg-follow-main { flex: 1 1 0; min-width: 0; }
+.blyg-follow-name { font-weight: var(--font-normal); overflow-wrap: anywhere; }
+.blyg-follow-addr, .blyg-follow-status { color: var(--text-muted); font-size: var(--font-ui-smaller); overflow-wrap: anywhere; }
+.blyg-follow-acts { flex: 0 1 auto; display: flex; flex-direction: column; align-items: flex-end; gap: var(--size-4-1); text-align: right; max-width: 45%; }
+body button.blyg-linkbtn.blyg-follow-unfollow { color: var(--text-error); }
 .blyg-follow-desc { white-space: pre-line; overflow-wrap: anywhere; }
 .blyg-follow-message { color: var(--text-warning); }
 

@@ -28,7 +28,7 @@ describe("replyPlan", () => {
   });
   it("the words the reader shows say what Reply does and that a selection is not quoted", () => {
     expect(followText.unfollowedNote).toContain("Reply sends a link without a quote");
-    expect(followText.unfollowedNote).toContain("Follow it to reply with a quote");
+    expect(followText.unfollowedNote).toContain("Not followed"); // was "…Follow it to reply with a quote": the row is one line now, the Follow link says the rest
     expect(unfollowedReplyTitle).toContain("without a quote");
     expect(selectionNotQuoted).toContain("not quoted");
   });
