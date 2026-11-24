@@ -67,8 +67,18 @@ await runScenario({ data }, async (s) => {
   await page.waitForFunction(() => window.app?.workspace?.layoutReady && window.app.plugins.plugins.blyg, undefined, { timeout: 90000 });
   await seed();
 
+  // Where the kept list is read: never when the feed opens, only when the Sources screen opens (a read of it also looks the Studio's token up).
+  const countReads = () => page.evaluate(() => {
+    window.__followedReads = 0;
+    const a = window.app.vault.adapter;
+    if (!a.__counted) { const read = a.read.bind(a); a.read = (p, ...r) => { if (String(p).endsWith("followed-cache.json")) window.__followedReads++; return read(p, ...r); }; a.__counted = true; }
+  })
   const pass = async (label) => {
+    await countReads();
+    await page.evaluate(() => { window.__followedReads = 0; });
     await reopenReader();
+    await wait(2500);
+    check((await page.evaluate(() => window.__followedReads)) === 0, `${label}: opening the feed does not read the kept Sources list (nor look up the token for it)`);
     // ---- the header: a small muted text link, no box, in the status row; the toggle does not move for it
     const link = await page.evaluate(() => { const l = document.querySelector(".blyg-reader-header .blyg-reader-sources"); const st = document.querySelector(".blyg-reader-header .blyg-reader-status"); if (!l) return null; const c = getComputedStyle(l); const sc = getComputedStyle(st); const r = l.getBoundingClientRect(); return { text: l.textContent, tag: l.tagName, label: l.getAttribute("aria-label"), bg: c.backgroundColor, border: c.borderTopWidth, fs: parseFloat(c.fontSize), sfs: parseFloat(sc.fontSize), h: r.height, inRow: !!l.closest(".blyg-reader-statusrow"), tab: l.tabIndex }; });
     const slot = await box(".blyg-reader-header .blyg-modeslot");
@@ -91,6 +101,8 @@ await runScenario({ data }, async (s) => {
     await page.evaluate(() => document.querySelector(".blyg-reader-sources").click());
     await page.waitForSelector(".modal-container .blyg-follow-row", { timeout: 10000 });
     const early = await page.evaluate(() => ({ names: [...activeDocument.querySelectorAll(".modal-container .blyg-follow-name")].map((e) => e.textContent), fresh: activeDocument.querySelector(".modal-container .blyg-follow-fresh")?.textContent ?? "" }));
+    const reads = await page.evaluate(() => window.__followedReads);
+    check(reads === 1, `${label}: opening the Sources screen reads the kept list once (${reads})`);
     check(early.names[0] === "Kept title" && early.names.length === 2 && answered === ans0, `${label}: the list is there at once from what was kept, before the Studio has answered (${JSON.stringify(early.names)}, answered ${answered - ans0})`);
     check(/^updated 5 min ago/.test(early.fresh), `${label}: a small muted line says how old it is (${JSON.stringify(early.fresh)})`);
     await page.evaluate(() => { activeDocument.querySelector(".modal-container .modal-content").scrollTop = 0; });
