@@ -37,6 +37,15 @@ export function deviceId(store: LocalStore, random: (n: number) => Uint8Array): 
   return id;
 }
 
-/** The name the person set for this device, else the platform's. */
-export const deviceLabel = (store: LocalStore, p: PlatformLike): string => clean(store.load(DEVICE_LABEL_KEY)) || defaultLabel(p);
+/**
+ * The name the person set for this device (kept as it is), else the platform's. Only the platform's name gets a short suffix from the device id, and only when another device
+ * of the synced files already carries that very name (`taken`), so "iPhone" stays "iPhone" until a second one appears. The suffix is the same on every call (it comes from the id).
+ */
+export function deviceLabel(store: LocalStore, p: PlatformLike, id = "", taken: readonly string[] = []): string {
+  const own = clean(store.load(DEVICE_LABEL_KEY));
+  if (own) return own;
+  const base = defaultLabel(p);
+  const same = (a: string): boolean => a.trim().toLowerCase() === base.toLowerCase();
+  return id && taken.some(same) ? `${base} ${id.slice(0, 4)}` : base;
+}
 export const setDeviceLabel = (store: LocalStore, name: string): void => store.save(DEVICE_LABEL_KEY, clean(name) || null);

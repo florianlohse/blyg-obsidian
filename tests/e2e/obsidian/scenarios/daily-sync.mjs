@@ -107,7 +107,7 @@ await runScenario({ data }, async (s) => {
   await ad((d) => { window.__rawSeen = []; window.__rawRef = window.app.vault.on("raw", (p) => window.__rawSeen.push(`${Date.now()} ${p}`)); window.__dir = d; }, DIR);
   const wroteAt = Date.now();
   await writeForeign(foreign(heads(" (updated)"), "Soil, seeds and rain"));
-  const followed = await s.pollUntil("the page to follow the changed file", () => ad(() => document.querySelector(".view-content.blyg-daily")?.innerText ?? ""), (t) => /Foreign headline 0 \(updated\)/.test(t) && /Soil, seeds and rain/.test(t), 30000);
+  const followed = await s.pollUntil("the page to follow the changed file", () => ad(() => document.querySelector(".view-content.blyg-daily")?.innerText ?? ""), (t) => /Foreign headline 0 \(updated\)/.test(t) && /Soil, seeds and rain/.test(t), 45000); // the "raw" event or the app coming to the front normally says so at once; the page's own fallback re-read is every 30 s
   const diag = await ad(async (d) => {
     const st = await window.app.vault.adapter.stat(d);
     const files = await window.app.vault.adapter.list(d);

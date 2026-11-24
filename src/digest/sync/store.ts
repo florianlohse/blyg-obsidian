@@ -3,7 +3,8 @@
 import { EDITIONS_KEPT, parseEditions, pruneEditions, type EditionRec, type EditionStore } from "../edition";
 import { parseHistory, trimHistory, type PastEdition } from "../history";
 import { hashText, parseStore, type LlmStore } from "../llm";
-import { FILE_RE, LOCK_TTL_MS, applyChange, emptyState, fileName, joinAll, lockOf, parseState, projectEdition, projectHistory, setReg, storyIdFor, type EdState, type Lock } from "./state";
+import { localDay } from "../budget";
+import { FILE_RE, LOCK_TTL_MS, applyChange, emptyState, fileName, joinAll, lockOf, parseState, projectEdition, projectHistory, setReg, storyIdFor, usedOnDay, type EdState, type Lock } from "./state";
 
 export interface SyncFs {
   /** The file paths in the folder (not recursive); [] when it does not exist. */
@@ -58,10 +59,18 @@ export class SyncedDigest {
   constructor(
     private readonly fs: SyncFs,
     private readonly dir: string,
-    private readonly me: { id: string; label: () => string },
+    /** `label(taken)`: this device's name, given the names the other devices of the synced files carry (so a default name can be made unique). */
+    private readonly me: { id: string; label: (taken?: readonly string[]) => string },
     private readonly now: () => number,
     private readonly legacy?: LegacyPorts,
   ) {}
+
+  /** This device's name now: the platform's or the set one, with a short suffix only when another device of the files has the same default name. */
+  private name(): string {
+    const taken: string[] = [];
+    for (const [d, v] of this.snap?.devices ?? []) if (d !== this.me.id && v.label) taken.push(v.label);
+    return this.me.label(taken);
+  }
 
   /** Called when a refresh read something different from before (a file of another device changed). */
   onChange(fn: () => void): () => void {
@@ -78,8 +87,11 @@ export class SyncedDigest {
     return path.startsWith(`${this.dir}/`) && isJson(path);
   }
 
+  /** True when the last read could not list the folder (not "empty": an error): what the files hold is then unknown. */
+  private listFailed = false;
   private async read(): Promise<EdState[]> {
-    const names = (await this.fs.list(this.dir).catch(() => [])).filter(isJson);
+    this.listFailed = false;
+    const names = (await this.fs.list(this.dir).catch(() => ((this.listFailed = true), []))).filter(isJson);
     const live = new Set(names);
     for (const k of [...this.parsed.keys()]) if (!live.has(k)) this.parsed.delete(k);
     const out: EdState[] = [];
@@ -130,7 +142,7 @@ export class SyncedDigest {
       if (s.device !== this.me.id) continue;
       const mine = this.own.get(s.id);
       const j = mine ? joinAll([mine, s]).get(s.id) : s;
-      if (j) this.own.set(s.id, { ...j, device: this.me.id, label: this.me.label() });
+      if (j) this.own.set(s.id, { ...j, device: this.me.id, label: this.name() });
     }
     if (!this.migrated) {
       this.migrated = true;
@@ -153,8 +165,8 @@ export class SyncedDigest {
   }
   private stateFor(id: number): EdState {
     let s = this.own.get(id);
-    if (!s) this.own.set(id, (s = emptyState(id, this.me.id, this.me.label(), this.now())));
-    s.label = this.me.label();
+    if (!s) this.own.set(id, (s = emptyState(id, this.me.id, this.name(), this.now())));
+    s.label = this.name();
     return s;
   }
   private async persist(s: EdState): Promise<void> {
@@ -181,7 +193,7 @@ export class SyncedDigest {
     const touched: EdState[] = [];
     for (const e of next.editions) {
       const s = this.stateFor(e.id);
-      if (applyChange(s, base.get(e.id) ?? null, e, counter)) touched.push(s);
+      if (applyChange(s, base.get(e.id) ?? null, e, counter, localDay(this.now()))) touched.push(s);
     }
     for (const s of touched) await this.persist(s);
     this.snap = this.build([...this.parsedStates()]);
@@ -255,8 +267,30 @@ export class SyncedDigest {
   }
   async setLock(editionId: number, on: boolean): Promise<void> {
     const s = this.stateFor(editionId);
-    if (setReg(s, "lock", { device: this.me.id, label: this.me.label(), since: this.now(), done: !on }, this.counter())) await this.persist(s);
+    if (setReg(s, "lock", { device: this.me.id, label: this.name(), since: this.now(), done: !on }, this.counter())) await this.persist(s);
     this.snap = this.build(this.parsedStates());
+  }
+
+  // ---- the shared daily token ceiling: what all devices used today, from the usage registers of the synced files
+  /** True when another device's files are known (so a second device may be writing too). */
+  knowsOthers(): boolean {
+    return [...this.snapshot.devices.keys()].some((d) => d !== this.me.id);
+  }
+  /**
+   * The tokens used on the local day of `now` by every device (the sum of the per-device usage in the synced editions), read fresh. null: it cannot be read (the folder cannot be
+   * listed, or a file of another device is still arriving and may hold usage): the caller refuses (fail closed). `mine` is this device's own part, `others` the rest.
+   */
+  async usedToday(now: number): Promise<{ total: number; mine: number; others: number } | null> {
+    try {
+      await this.refresh();
+    } catch {
+      return null;
+    }
+    if (this.listFailed || this.snapshot.unreadable > 0) return null;
+    let mine = 0;
+    let others = 0;
+    for (const [d, t] of usedOnDay(this.snapshot.joined.values(), localDay(now))) d === this.me.id ? (mine += t) : (others += t);
+    return { total: mine + others, mine, others };
   }
 
   /** What the masthead line says: who made the edition, how many other devices carry it, and whether a file is still arriving. */
@@ -265,7 +299,7 @@ export class SyncedDigest {
     const j = editionId === null ? undefined : snap.joined.get(editionId);
     const label = (d: string): string => snap.devices.get(d)?.label || "another device";
     const others = [...snap.devices.entries()].filter(([d, v]) => d !== this.me.id && editionId !== null && v.ids.has(editionId)).length;
-    return { made: j?.created ? { device: j.created.d, label: j.created.d === this.me.id ? this.me.label() : label(j.created.d), at: j.created.at, mine: j.created.d === this.me.id } : null, others, waiting: snap.unreadable > 0 };
+    return { made: j?.created ? { device: j.created.d, label: j.created.d === this.me.id ? this.name() : label(j.created.d), at: j.created.at, mine: j.created.d === this.me.id } : null, others, waiting: snap.unreadable > 0 };
   }
 
   // ---- migration of this device's old files (read once; the old files stay)

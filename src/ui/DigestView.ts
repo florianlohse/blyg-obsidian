@@ -67,6 +67,8 @@ export interface DigestHost {
     /** The sections kept for these stories and single posts (the Mixed bag). */
     /** True once, when the digest should write itself now (setting on, consent given, not tried for this edition); it also marks the edition as tried. */
     autoDue?(clusters: readonly Cluster[]): Promise<boolean>;
+    /** The tokens all devices used today (the synced usage); null: not readable. Shown in the footer next to this edition's usage. */
+    sharedToday?(): Promise<number | null>;
     cachedSections?(clusters: readonly Cluster[], singles: readonly ReadingPost[]): Promise<Section[] | null>;
     /** Write the digest. `resort`: sort every story and single post into sections again (otherwise only new ones are added to the existing sections). */
     write(clusters: readonly Cluster[], singles: readonly ReadingPost[], opts?: { resort?: boolean; auto?: boolean }): Promise<Outcome>;
@@ -89,6 +91,8 @@ export class BlygDailyView extends ItemView {
   private note = "";
   private busy = false;
   private usage: { tokens: number; cost: number | null } | undefined;
+  /** Tokens all devices used today, from the synced files (the daily ceiling counts this); null: not known. */
+  private sharedToday: number | null = null;
   private past: PastEdition[] = [];
   private pastCapped = false;
   /** The editor that wrote today's edition (absent: neutral). */
@@ -251,6 +255,7 @@ export class BlygDailyView extends ItemView {
     const win = await this.host.edition(list.posts);
     const model = buildDaily(list.posts, list.mentions, win.since, win.until, win.grouped, win.id);
     this.usage = win.usage;
+    this.sharedToday = (await this.host.ai?.sharedToday?.().catch(() => null)) ?? null;
     this.syncText = (await this.host.syncLines?.(win.id ?? null).catch(() => [])) ?? [];
     this.editorId = win.editor;
     const ids = new Set([...model.front.flatMap((c) => c.posts.map((p) => p.remoteId)), ...model.mixed.map((p) => p.remoteId)]);
@@ -309,6 +314,7 @@ export class BlygDailyView extends ItemView {
         this.written = o.written;
         this.sections = o.sections ?? null;
         if (o.status === "ok" && o.tokens) this.usage = addUsage(this.usage, o.tokens, o.cost ?? null);
+        if (o.status === "ok" && o.tokens && this.sharedToday !== null) this.sharedToday += o.tokens; // this write is now part of today's total
         this.note = o.note ?? nothingToWriteNote(o, before, model.front.length, model.mixed.length);
         if (o.status === "failed") this.note = auto ? `The automatic write did not work: ${o.note ?? "no reason given"}` : `${o.note ?? "The digest could not be written."} Showing the list made on your device.`;
       })
@@ -394,7 +400,8 @@ export class BlygDailyView extends ItemView {
   /** The Write button: "Write the digest", or, while a run is going, disabled with a spinner. Same width either way. */
   /** The estimate after a write: " · about N tokens, under 1 cent". */
   private footer(): string {
-    return this.usage ? ` · ${usageLine(this.usage)}` : "";
+    const today = this.sharedToday !== null && this.sharedToday > 0 ? ` · ${this.sharedToday} tokens today on all your devices` : "";
+    return this.usage ? ` · ${usageLine(this.usage)}${today}` : "";
   }
 
   private paintWrite(btn: HTMLElement): void {

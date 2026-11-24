@@ -6,6 +6,8 @@ import { cachedStories } from "../../src/digest/editionHost";
 import { LOCK_TTL_MS } from "../../src/digest/sync/state";
 import { defaultLabel, deviceId, deviceLabel, setDeviceLabel } from "../../src/digest/sync/device";
 import { syncLines } from "../../src/digest/sync/line";
+import { sharedCeilingRefusal } from "../../src/digest/autoWrite";
+import { usedOnDay, parseState } from "../../src/digest/sync/state";
 import { T0, device, mkPost, provider, ship, world, DIR } from "./sync-harness";
 
 const DAY = 24 * 3600_000;
@@ -214,12 +216,160 @@ describe("this device's name and the lines under the masthead", () => {
     expect(deviceLabel(m, { isMacOS: true })).toBe("Mac");
     expect([defaultLabel({ isIosApp: true }), defaultLabel({ isWin: true }), defaultLabel({})]).toEqual(["iPhone", "Windows PC", "Device"]);
   });
+  it("names the device from the platform, with a short suffix from its id only when another device of the files has that very name; a set name is never changed", () => {
+    const m = mem();
+    expect(deviceLabel(m, { isIosApp: true }, "abcd1234", [])).toBe("iPhone");
+    expect(deviceLabel(m, { isIosApp: true }, "abcd1234", ["iPad", "Mac"])).toBe("iPhone");
+    expect(deviceLabel(m, { isIosApp: true }, "abcd1234", ["iPhone"])).toBe("iPhone abcd");
+    expect(deviceLabel(m, { isIosApp: true }, "abcd1234", ["iPhone"])).toBe("iPhone abcd"); // stable
+    expect([deviceLabel(m, { isMacOS: true }), deviceLabel(m, { isWin: true }), deviceLabel(m, { isAndroidApp: true, isPhone: true }), deviceLabel(m, { isLinux: true })]).toEqual(["Mac", "Windows PC", "Android phone", "Linux PC"]);
+    setDeviceLabel(m, "Kitchen");
+    expect(deviceLabel(m, { isIosApp: true }, "abcd1234", ["Kitchen", "iPhone"])).toBe("Kitchen");
+  });
+  it("two devices of one platform end up with different names in the files, the first one keeping the plain name", async () => {
+    const prov = provider();
+    const w = world();
+    const store = (): { load: (k: string) => unknown; save: (k: string, v: string | null) => void } => ({ load: () => null, save: () => undefined });
+    const a = device("devAaaa", (t) => deviceLabel(store(), { isIosApp: true }, "devAaaa", t), prov, T0);
+    const b = device("devBbbb", (t) => deviceLabel(store(), { isIosApp: true }, "devBbbb", t), prov, T0 + 60_000);
+    const ia = await a.editions.open(w.items);
+    expect(a.sync.info(ia.id).made?.label).toBe("iPhone");
+    ship(a, b);
+    await b.editions.open(w.items);
+    await b.write((await b.editions.open(w.items)).grouped.clusters, []); // b writes something: its file carries its name
+    ship(b, a);
+    await a.editions.open(w.items);
+    expect(b.sync.info(ia.id).made?.label).toBe("iPhone"); // the creator's name as the creator has it
+    const bFile = JSON.parse(b.disk.files.get(`${DIR}/ed-${ia.id}.devBbbb.json`)?.text ?? "{}") as { label: string };
+    expect(bFile.label).toBe("iPhone devB");
+  });
   it("says who made the edition, from how many devices it is synced, and when a file is still arriving", () => {
     const made = { device: "d", label: "iPad", at: T0, mine: false };
     expect(syncLines({ made, others: 2, waiting: false }, T0)[0]).toMatch(/^Edition of .+, made on iPad at .+ · Synced from 2 devices$/);
     expect(syncLines({ made: { ...made, mine: true }, others: 0, waiting: false }, T0)[0]).not.toMatch(/Synced/);
     expect(syncLines({ made: null, others: 0, waiting: true }, null)).toEqual(["Waiting for sync: a file from another device is still arriving."]);
     expect(syncLines({ made: null, others: 0, waiting: false }, null)).toEqual([]);
+  });
+});
+
+describe("two devices open in the same minute (DG17)", () => {
+  /** Both devices have exchanged an older edition (so each knows the other exists); today's edition is made by each before any file of today arrives. */
+  async function pair(prov: ReturnType<typeof provider>, extra: { ceiling?: number } = {}) {
+    const w = world();
+    let arrived = 0;
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => (release = r));
+    const settle = (): Promise<void> => {
+      if (++arrived === 2) {
+        ship(a, b);
+        ship(b, a);
+        release();
+      }
+      return gate;
+    };
+    const a: ReturnType<typeof device> = device("devA", "iPhone", prov, T0 - DAY, { settle, ...extra });
+    const b: ReturnType<typeof device> = device("devB", "iPad", prov, T0 - DAY, { settle, ...extra });
+    await a.editions.open(w.items);
+    ship(a, b);
+    await b.editions.open(w.items);
+    await b.sync.setLock((await b.editions.current())?.id ?? 0, false); // b has a file of its own now
+    ship(b, a);
+    a.setNow(T0);
+    b.setNow(T0 + 20_000);
+    return { w, a, b };
+  }
+  it("waits a moment, reads the files again, and only one of them writes: one write in all, the other adopts it", async () => {
+    const prov = provider();
+    const { w, a, b } = await pair(prov);
+    const ia = await a.editions.open(w.items);
+    const ib = await b.editions.open(w.items);
+    expect(ia.id).toBe(ib.id);
+    const [oa, ob] = await Promise.all([a.write(ia.grouped.clusters, ia.grouped.mixed), b.write(ib.grouped.clusters, ib.grouped.mixed)]);
+    expect([oa.status, ob.status].sort()).toEqual(["cancelled", "ok"]);
+    expect(prov.requests.length).toBe(2); // the stories and the sections, once
+    const loser = oa.status === "cancelled" ? oa : ob;
+    expect(loser.note).toMatch(/is writing this digest/);
+    // the loser did not clear the winner's marker, and adopts the texts once they have arrived
+    const [win, lose] = oa.status === "ok" ? [a, b] : [b, a];
+    ship(win, lose);
+    const il = await lose.editions.open(w.items);
+    const again = await lose.write(il.grouped.clusters, il.grouped.mixed);
+    expect(again.status).toBe("ok");
+    expect(prov.requests.length).toBe(2); // reused: no request
+  });
+  it("a device alone (no other device known) does not wait", async () => {
+    const prov = provider();
+    const w = world();
+    let waited = 0;
+    const a = device("devA", "iPhone", prov, T0, { settle: async () => void waited++ });
+    const ia = await a.editions.open(w.items);
+    expect((await a.write(ia.grouped.clusters, ia.grouped.mixed)).status).toBe("ok");
+    expect(waited).toBe(0);
+  });
+});
+
+describe("the daily token ceiling counts all devices (DG17)", () => {
+  const FIVE = (n: number): number => n;
+  it("adds up what every device used on the day: the other device's tokens count, an older day does not", async () => {
+    const prov = provider();
+    const w = world();
+    const a = device("devA", "iPhone", prov, T0);
+    const b = device("devB", "iPad", prov, T0 + 3600_000, { ceiling: 400 });
+    const ia = await a.editions.open(w.items);
+    expect((await a.write(ia.grouped.clusters, ia.grouped.mixed)).status).toBe("ok"); // 2 requests x 150 tokens
+    ship(a, b);
+    const ub = await b.sync.usedToday(T0 + 3600_000);
+    expect(ub).toEqual({ total: 300, mine: 0, others: 300 });
+    expect(await b.sync.usedToday(T0 + 2 * DAY)).toEqual({ total: 0, mine: 0, others: 0 });
+    expect(FIVE(ub?.total ?? 0)).toBe(300);
+    // an automatic run on b: its own tally is empty, but together the devices would pass 400
+    const post = mkPost("A brand new subject about quarry bells and rope.", { at: T0 + 3000_000 });
+    const reply = mkPost("Yes, the bells.", { isReply: true, stubTarget: { origin: "https://one.example.com/", id: post.remoteId }, authorName: "Bo", at: T0 + 3100_000 });
+    b.local.store.consent = { host: "api.example.com", model: "test-model", at: T0 };
+    b.setNow(T0 + 3600_000);
+    const ib = await b.editions.open([...w.items, post, reply]);
+    const before = prov.requests.length;
+    const o = await b.write(ib.grouped.clusters, ib.grouped.mixed, { auto: true });
+    expect(o.status).toBe("cancelled");
+    expect(o.note).toMatch(/daily token ceiling \(300 used today on all devices\)/);
+    expect(prov.requests.length).toBe(before);
+  });
+  it("fails closed when the synced usage cannot be read, and not when no ceiling is set", async () => {
+    const prov = provider();
+    const w = world();
+    const a = device("devA", "iPhone", prov, T0);
+    const b = device("devB", "iPad", prov, T0 + 3600_000, { ceiling: 2_000_000 });
+    const c = device("devC", "Mac", prov, T0 + 3600_000, { ceiling: 0 });
+    const ia = await a.editions.open(w.items);
+    await a.write(ia.grouped.clusters, ia.grouped.mixed);
+    ship(a, b);
+    ship(a, c);
+    for (const d of [b, c]) {
+      d.disk.put(`${DIR}/ed-${ia.id}.devA.2.json`, '{"v":2,"id":'); // a file of another device that is still arriving
+      d.local.store.consent = { host: "api.example.com", model: "test-model", at: T0 };
+    }
+    expect(await b.sync.usedToday(T0 + 3600_000)).toBeNull();
+    const post = mkPost("Another new subject about copper kettles.", { at: T0 + 3000_000 });
+    const r = mkPost("Kettles, yes.", { isReply: true, stubTarget: { origin: "https://one.example.com/", id: post.remoteId }, authorName: "Bo", at: T0 + 3100_000 });
+    const ib = await b.editions.open([...w.items, post, r]);
+    const n = prov.requests.length;
+    const o = await b.write(ib.grouped.clusters, ib.grouped.mixed, { auto: true });
+    expect(o.status).toBe("cancelled");
+    expect(o.note).toMatch(/could not be read/);
+    expect(prov.requests.length).toBe(n);
+    const ic = await c.editions.open([...w.items, post, r]);
+    expect((await c.write(ic.grouped.clusters, ic.grouped.mixed, { auto: true })).status).toBe("ok"); // no ceiling: nothing to read, nothing refused
+  });
+  it("the pure pieces: usage by day, an old register without days counts for the day it was written, and the refusal text", () => {
+    const st = (regs: Record<string, unknown>, at: number): NonNullable<ReturnType<typeof parseState>> => parseState(JSON.stringify({ v: 2, id: 1, device: "d1", label: "", at, posts: {}, regs, clock: 1 }))!;
+    const reg = (v: unknown): { c: number; d: string; v: unknown } => ({ c: 1, d: "d1", v });
+    const j = [st({ "usage/d1": reg({ tokens: 500, cost: 0, days: { "2030-03-11": 200, "2030-03-12": 300 } }), "usage/d2": reg({ tokens: 70, cost: null }) }, T0)];
+    expect([...usedOnDay(j, "2030-03-12")]).toEqual([["d1", 300], ["d2", 70]]);
+    expect([...usedOnDay(j, "2030-03-11")]).toEqual([["d1", 200]]);
+    expect(sharedCeilingRefusal({ dailyTokenCeiling: 0 }, null, { tokens: 5 })).toBeNull();
+    expect(sharedCeilingRefusal({ dailyTokenCeiling: 100 }, null, { tokens: 5 })).toMatch(/could not be read/);
+    expect(sharedCeilingRefusal({ dailyTokenCeiling: 100 }, { total: 90 }, { tokens: 5 })).toBeNull();
+    expect(sharedCeilingRefusal({ dailyTokenCeiling: 100 }, { total: 98 }, { tokens: 5 })).toMatch(/98 used today on all devices/);
   });
 });
 
