@@ -440,8 +440,11 @@ await runScenario({ data }, async (s) => {
   const touch = async (sel, { hold = 650, drift = 0 } = {}) => {
     await page.evaluate((q) => document.querySelector(q)?.scrollIntoView({ block: "center" }), sel);
     await wait(600);
+    // Environment noise, not part of what is tested: the CI machine has no keyring, so Obsidian floats a "Secrets are stored without encryption" toast over the
+    // feed for a few seconds, and it can sit on the card under the finger. Dismiss any toast before measuring; every assertion below stays as it was.
+    await page.evaluate(() => { for (const n of activeDocument.querySelectorAll(".notice-container .notice, .notice")) n.remove(); });
     const c = await centre(sel); // measured right before the finger goes down, and the finger must land on the element
-    if (!c || !c.hit) { console.error("touch: nothing of", sel, "under", JSON.stringify(c)); return false; }
+    if (!c || !c.hit) { console.error("touch: nothing of", sel, "under", JSON.stringify(c), "found there:", JSON.stringify(c ? await page.evaluate(([x, y]) => { const e = document.elementFromPoint(x, y); const h = document.querySelector(".blyg-reader-header")?.getBoundingClientRect(); const k = document.querySelector(".blyg-reader-card")?.getBoundingClientRect(); return { tag: e?.tagName, cls: String(e?.className ?? "").slice(0, 80), text: (e?.textContent ?? "").slice(0, 40), hdrBottom: h?.bottom, cardTop: k?.top, fs: getComputedStyle(document.body).fontSize }; }, [c.x, c.y]) : null)); return false; }
     await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: c.x, y: c.y }] });
     if (drift) for (let i = 1; i <= 4; i++) { await wait(40); await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: c.x, y: c.y + (drift * i) / 4 }] }); }
     await wait(hold);

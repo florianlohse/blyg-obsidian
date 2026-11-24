@@ -1007,7 +1007,7 @@ export default class BlygPlugin extends Plugin {
 
   private readerHost(): ReaderHost {
     return {
-      version: this.manifest.version, ...createFollowHost({ app: this.app, build: () => buildStudio(this.env()) }),
+      version: this.manifest.version, ...createFollowHost({ app: this.app, build: () => buildStudio(this.env()), manifest: this.manifest }),
       imageMode: () => this.settings.readerPane.images,
       font: () => this.settings.readerPane.font,
       setFont: async (font) => {
