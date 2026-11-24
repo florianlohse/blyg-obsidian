@@ -113,7 +113,7 @@ await runScenario({ data }, async (s) => {
     };
     requestAnimationFrame(tick);
   });
-  await page.click(".blyg-daily .blyg-story-mixed .blyg-story-line");
+  await page.click(".blyg-daily .blyg-story-mixed .blyg-story-main");
   await page.waitForSelector(".blyg-reader-header .blyg-reader-back", { timeout: 20000 });
   await wait(1800);
   const frames = await page.evaluate(() => window.__frames);
@@ -135,7 +135,7 @@ await runScenario({ data }, async (s) => {
   await wait(1500);
   const after = await single();
   check(after.read && after.label === "Mark unread", `back in the digest the post shows as read (${JSON.stringify(after)})`);
-  await page.click(".blyg-daily .blyg-story-mixed .blyg-story-line");
+  await page.click(".blyg-daily .blyg-story-mixed .blyg-story-main");
   await page.waitForSelector(".blyg-reader-header .blyg-reader-back", { timeout: 20000 });
   await wait(800);
   check(await page.evaluate(() => !!document.querySelector(".blyg-reader-header .blyg-reader-check.is-read")), "opened again, the post is still read");
@@ -169,7 +169,7 @@ await runScenario({ data }, async (s) => {
   check(marks.length === s0 + 2 && unmarks.length === 0, "the Studio saw exactly the marks made in the open posts, no more");
 
   // ---- 3. Save, with the connection lost mid-request: the button returns to Save with one line; the next tap saves
-  await page.click(".blyg-daily .blyg-story-mixed .blyg-story-line");
+  await page.click(".blyg-daily .blyg-story-mixed .blyg-story-main");
   await page.waitForSelector(".blyg-reader-header .blyg-reader-back", { timeout: 20000 });
   await wait(800);
   const saveText = () => page.evaluate(() => ({ text: document.querySelector(".blyg-reader-header .blyg-reader-savebtn")?.textContent?.trim() ?? "", disabled: !!document.querySelector(".blyg-reader-header .blyg-reader-savebtn")?.disabled }));
