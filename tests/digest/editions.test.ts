@@ -2,6 +2,7 @@
 process.env.TZ = "Europe/Berlin";
 import { describe, expect, it } from "vitest";
 import { EDITION_MS, EDITIONS_KEPT, ensureEdition, emptyEditions, latestCutoff, nextCutoff, parseDigestTime, parseEditions, type EditionStore } from "../../src/digest/edition";
+import { storyIdFor } from "../../src/digest/sync/state";
 import { Editions, cachedStories, recordSections, rememberWrite } from "../../src/digest/editionHost";
 import { emptyStore, writeDigest, type LlmDeps, type LlmStore } from "../../src/digest/llm";
 import type { RawRequest, RawResponse } from "../../src/platform/http";
@@ -117,6 +118,8 @@ function store() {
   const ed = new Editions({ read: async () => (text ? (JSON.parse(text) as unknown) : null), write: async (t) => void (text = t), now: () => now, time: () => "07:00" });
   return { ed, raw: () => text, setNow: (t: number) => (now = t) };
 }
+// A story's id comes from its oldest post (DG16: the same on every device); in these worlds the lead post is the oldest of its story.
+const sid = (p: ReadingPost): string => storyIdFor(p.remoteId);
 const idsOf = (g: { clusters: Array<{ id?: string; posts: ReadingPost[] }> }): Record<string, string[]> => Object.fromEntries(g.clusters.map((c) => [c.id as string, c.posts.map((p) => p.remoteId)]));
 
 describe("stable stories", () => {
@@ -124,7 +127,7 @@ describe("stable stories", () => {
     const w = world();
     const s = store();
     const first = await s.ed.open(w.items);
-    expect(first.grouped.clusters.map((c) => c.id)).toEqual(["s1", "s2", "s3", "s4", "s5", "s6"]);
+    expect(first.grouped.clusters.map((c) => c.id)).toEqual(w.leads.map(sid));
     expect(first.grouped.mixed.map((p) => p.remoteId)).toEqual([w.lone.remoteId]);
     const again = await s.ed.open(w.items);
     expect(idsOf(again.grouped)).toEqual(idsOf(first.grouped));
@@ -141,13 +144,14 @@ describe("stable stories", () => {
     const info = await s.ed.open([...w.items, reply, sameQuote, alike, loner]);
     const now = idsOf(info.grouped);
     expect(Object.keys(now).sort()).toEqual(Object.keys(before).sort()); // no new top-level story (the same set; the order is the page's order now, not the record's)
-    expect(now["s1"]).toContain(reply.remoteId); // by reply
-    expect(now["s3"]).toContain(sameQuote.remoteId); // by the same quoted item
-    expect(now["s4"]).toContain(alike.remoteId); // by similarity
+    const [s1, s2, s3, s4, s5, s6] = w.leads.map(sid) as [string, string, string, string, string, string];
+    expect(now[s1]).toContain(reply.remoteId); // by reply
+    expect(now[s3]).toContain(sameQuote.remoteId); // by the same quoted item
+    expect(now[s4]).toContain(alike.remoteId); // by similarity
     expect(Object.values(now).flat()).not.toContain(loner.remoteId);
     expect(info.grouped.mixed.map((p) => p.remoteId)).toContain(loner.remoteId); // no match: Mixed bag
-    for (const k of ["s2", "s5", "s6"]) expect(now[k]).toEqual(before[k]);
-    expect(now["s1"]?.slice(0, 2)).toEqual(before["s1"]); // the old members keep their places
+    for (const k of [s2, s5, s6]) expect(now[k]).toEqual(before[k]);
+    expect(now[s1]?.slice(0, 2)).toEqual(before[s1]); // the old members keep their places
   });
   it("lets two new posts that match each other (and no story) form a story", async () => {
     const w = world();
@@ -157,8 +161,8 @@ describe("stable stories", () => {
     const b = post({ text: "Replying about the kiln.", isReply: true, stubTarget: { origin: "https://one.example.com/", id: a.remoteId }, authorName: "Bo" });
     const info = await s.ed.open([...w.items, a, b]);
     expect(info.grouped.clusters).toHaveLength(7);
-    expect(idsOf(info.grouped)["s7"]).toEqual([a.remoteId, b.remoteId]);
-    expect(info.grouped.clusters.slice(0, 6).map((c) => c.id)).toEqual(["s1", "s2", "s3", "s4", "s5", "s6"]);
+    expect(idsOf(info.grouped)[sid(a)]).toEqual([a.remoteId, b.remoteId]);
+    expect(info.grouped.clusters.slice(0, 6).map((c) => c.id)).toEqual(w.leads.map(sid));
   });
   it("keeps only ids in its record, and the next edition is the 24 hours before its own cutoff, with posts added late appearing again", async () => {
     const w = world();

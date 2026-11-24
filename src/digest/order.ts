@@ -1,5 +1,5 @@
 // The order of the digest page, in one place. The rule (also said in the page's "How this is grouped" note):
-//   - Top stories lead and the plain Top stories: the biggest stories first (most posts), then the one with the newest post, then by id.
+//   - Top stories lead and the plain Top stories: the biggest stories first (most posts), then the one with the newest post, then by the lowest post id in it.
 //   - Within a section: stories by the time of their NEWEST post, newest first; single posts newest first.
 //   - Read posts sink: inside a section a story or post you have already read comes after the unread ones (the relative order is kept otherwise).
 //   - Window: a post belongs to an edition by `postTime` (when the Studio first saw it), not by its published date, so a post imported late can show an older date.
@@ -13,10 +13,13 @@ import { OTHER_NAME, type Section } from "./sections";
 
 const text = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
-/** Biggest story first, then the newest post, then the id. */
-export const bySize = (a: Cluster, b: Cluster): number => b.posts.length - a.posts.length || b.newest - a.newest || text(a.id ?? a.headline, b.id ?? b.headline);
+/** The last tie-break between stories: the lowest post id in it (a story id is a hash of its oldest post, so it says nothing about order; the post ids are the same on every device). */
+const firstPostId = (c: Cluster): string => c.posts.reduce((m, p) => (p.remoteId < m ? p.remoteId : m), c.posts[0]?.remoteId ?? c.id ?? c.headline);
+const tie = (a: Cluster, b: Cluster): number => text(firstPostId(a), firstPostId(b)) || text(a.id ?? a.headline, b.id ?? b.headline);
+/** Biggest story first, then the newest post, then the lowest post id. */
+export const bySize = (a: Cluster, b: Cluster): number => b.posts.length - a.posts.length || b.newest - a.newest || tie(a, b);
 /** Newest post first (a story by its newest post). */
-export const byNewestStory = (a: Cluster, b: Cluster): number => b.newest - a.newest || text(a.id ?? a.headline, b.id ?? b.headline);
+export const byNewestStory = (a: Cluster, b: Cluster): number => b.newest - a.newest || tie(a, b);
 export const byNewestPost = (a: ReadingPost, b: ReadingPost): number => postTime(b) - postTime(a) || text(a.remoteId, b.remoteId);
 
 /** A section as it is drawn: the stories (positions in `front`) and single posts it holds, in page order. */

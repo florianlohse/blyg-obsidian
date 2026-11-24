@@ -14,6 +14,8 @@ export interface EditionPorts {
   now: () => number;
   /** The setting "Digest time", "HH:MM". */
   time: () => string;
+  /** The synced store (src/digest/sync): when present it replaces `read`/`write`: every device's files are read and joined, only this device's are written. */
+  sync?: { load: () => Promise<EditionStore>; save: (store: EditionStore) => Promise<void> };
 }
 
 export interface EditionInfo {
@@ -37,12 +39,14 @@ export class Editions {
   }
   private async load(): Promise<EditionStore> {
     try {
+      if (this.ports.sync) return await this.ports.sync.load();
       return parseEditions(await this.ports.read());
     } catch {
       return parseEditions(null);
     }
   }
   private async save(store: EditionStore): Promise<void> {
+    if (this.ports.sync) return void (await this.ports.sync.save(store).catch(() => undefined));
     await this.ports.write(JSON.stringify(store)).catch(() => undefined);
   }
 

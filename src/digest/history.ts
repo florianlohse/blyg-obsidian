@@ -125,6 +125,8 @@ export const CAPPED_NOTE = "Some older editions were dropped to keep the saved h
 export interface HistoryPorts {
   read: () => Promise<unknown>;
   write: (text: string) => Promise<void>;
+  /** The synced store (src/digest/sync): the history of all devices, derived from the joined editions. Replaces `read`/`write` when present. */
+  sync?: { list: () => Promise<{ editions: PastEdition[]; capped: boolean }>; put: (rec: PastEdition) => Promise<void> };
 }
 
 export class History {
@@ -145,6 +147,7 @@ export class History {
   /** The stored editions, newest first, and whether the size cap dropped some. */
   list(): Promise<{ editions: PastEdition[]; capped: boolean }> {
     return this.queue(async () => {
+      if (this.ports.sync) return this.ports.sync.list();
       const s = await this.load();
       return { editions: [...s.editions].reverse(), capped: s.capped === true };
     });
@@ -152,6 +155,7 @@ export class History {
   /** Keep this edition's record (replacing an earlier one of the same edition). */
   put(rec: PastEdition): Promise<void> {
     return this.queue(async () => {
+      if (this.ports.sync) return void (await this.ports.sync.put(rec).catch(() => undefined));
       const s = await this.load();
       const next = trimHistory({ ...s, editions: [...s.editions.filter((e) => e.id !== rec.id), rec] });
       await this.ports.write(JSON.stringify(next)).catch(() => undefined);

@@ -4,8 +4,7 @@ import { normalizePath, type Plugin } from "obsidian";
 import { BLYG_READER_VIEW, BlygReaderView } from "../ui/ReaderView";
 import { BLYG_DAILY_VIEW, BlygDailyView, type DigestHost } from "../ui/DigestView";
 import type { InboundMention, ReadingPost } from "../studio/reading";
-import { Editions, cachedStories, recordSections, rememberWrite } from "./editionHost";
-import { existingSections } from "./sectionRecord";
+import { Editions, cachedStories, recordSections } from "./editionHost";
 import { useReaderMode, type ModeStore } from "../ui/readerMode";
 import { placedSection } from "./placement";
 import { setDigestChips } from "../ui/readerDigestChip";
@@ -21,12 +20,17 @@ import { trailText } from "./trailText";
 import { setConsentGate } from "./consentGate";
 import { cachedSections as cachedSectionsOf, clearBodies, normaliseEndpoint } from "./llm";
 import { TextModal } from "../ui/TextModal";
-import { emptyStore, parseStore, writeDigest, type LlmDeps, type LlmStore } from "./llm";
-import { History, buildPast } from "./history";
+import { emptyStore, parseStore, type LlmDeps, type LlmStore } from "./llm";
+import { History } from "./history";
 import { ChangeNotes, type NoteDeps } from "./changeNotes";
-import { addUsage, autoDue, ceilingRefusal } from "./autoWrite";
+import { autoDue } from "./autoWrite";
 import { createDigestRefresh, type DigestReader } from "../app/readerRefresh";
 import { noteListLoaded, sessionSync } from "../ui/readerStart";
+import { SyncedDigest, type SyncFs } from "./sync/store";
+import { sharedStore, writeShared } from "./sync/aiWrite";
+import { deviceId, deviceLabel } from "./sync/device";
+import { syncLines } from "./sync/line";
+import { Platform, type EventRef } from "obsidian";
 
 export interface DigestDeps {
   /** The reader's saved list (plugin storage), or null. */
@@ -52,27 +56,64 @@ export interface DigestDeps {
 }
 
 export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
+  const base = (): string => plugin.manifest.dir ?? `${plugin.app.vault.configDir}/plugins/${plugin.manifest.id}`;
+  // The Daily's state is shared by every device through files in the plugin folder, each device writing only its own (src/digest/sync, docs/ARCHITECTURE.md).
+  const adapter = plugin.app.vault.adapter;
+  const fs: SyncFs = {
+    list: async (dir) => ((await adapter.exists(dir)) ? (await adapter.list(dir)).files : []),
+    read: (p) => adapter.read(p),
+    write: (p, t) => adapter.write(p, t),
+    mkdir: async (dir) => void ((await adapter.exists(dir)) || (await adapter.mkdir(dir))),
+    remove: (p) => adapter.remove(p),
+    stat: async (p) => {
+      const st = await adapter.stat(p);
+      return st ? { mtime: st.mtime, size: st.size } : null;
+    },
+  };
+  // This device's own storage (never synced). Where it is not there the id lasts for the session only.
+  const local = {
+    load: (k: string): unknown => {
+      try {
+        return plugin.app.loadLocalStorage(k) as unknown;
+      } catch {
+        return null;
+      }
+    },
+    save: (k: string, v: string | null): void => {
+      try {
+        plugin.app.saveLocalStorage(k, v);
+      } catch {
+        /* session only */
+      }
+    },
+  };
+  const me = { id: deviceId(local, (n) => crypto.getRandomValues(new Uint8Array(n))), label: () => deviceLabel(local, Platform) };
+  const readJson = async (p: string): Promise<unknown> => ((await adapter.exists(p)) ? (JSON.parse(await adapter.read(p)) as unknown) : null);
+  const sync = new SyncedDigest(fs, normalizePath(`${base()}/digest`), me, () => Date.now(), {
+    editions: () => readJson(normalizePath(`${base()}/digest-editions.json`)),
+    history: () => readJson(normalizePath(`${base()}/digest-history.json`)),
+    entries: async () => (await loadLocal()).entries,
+  });
   const storePath = (): string => normalizePath(`${plugin.manifest.dir ?? `${plugin.app.vault.configDir}/plugins/${plugin.manifest.id}`}/digest-ai.json`);
-  const loadStore = async (): Promise<LlmStore> => {
+  const loadLocal = async (): Promise<LlmStore> => {
     try {
-      const adapter = plugin.app.vault.adapter;
       return (await adapter.exists(storePath())) ? parseStore(JSON.parse(await adapter.read(storePath())) as unknown) : emptyStore();
     } catch {
       return emptyStore();
     }
   };
-  const editionsPath = (): string => normalizePath(`${plugin.manifest.dir ?? `${plugin.app.vault.configDir}/plugins/${plugin.manifest.id}`}/digest-editions.json`);
   const editions = new Editions({
-    read: async () => ((await plugin.app.vault.adapter.exists(editionsPath())) ? (JSON.parse(await plugin.app.vault.adapter.read(editionsPath())) as unknown) : null),
-    write: (text) => plugin.app.vault.adapter.write(editionsPath(), text),
+    read: async () => null, // the synced store replaces it; the old digest-editions.json is read once by the migration and stays where it is
+    write: () => Promise.resolve(),
+    sync: { load: () => sync.load(), save: (s) => sync.save(s) },
     now: () => Date.now(),
     time: () => deps.time(),
   });
-  const historyPath = (): string => normalizePath(`${plugin.manifest.dir ?? `${plugin.app.vault.configDir}/plugins/${plugin.manifest.id}`}/digest-history.json`);
-  const history = new History({
-    read: async () => ((await plugin.app.vault.adapter.exists(historyPath())) ? (JSON.parse(await plugin.app.vault.adapter.read(historyPath())) as unknown) : null),
-    write: (text) => plugin.app.vault.adapter.write(historyPath(), text),
-  });
+  const history = new History({ read: async () => null, write: () => Promise.resolve(), sync: { list: () => sync.history(), put: (r) => sync.putHistory(r) } });
+  // The AI texts (and the sections cache) are content-keyed: what any device wrote is used by every device, so a text is paid for once (sync/aiWrite.ts).
+  const shared = sharedStore(sync, editions, { load: loadLocal, save: (st) => adapter.write(storePath(), JSON.stringify(st)) });
+  const loadStore = shared.load;
+  const saveStore = shared.save;
   const notesPath = (): string => normalizePath(`${plugin.manifest.dir ?? `${plugin.app.vault.configDir}/plugins/${plugin.manifest.id}`}/digest-notes.json`);
   const changeNotes = deps.notes
     ? new ChangeNotes({ fetch: deps.notes, load: async () => ((await plugin.app.vault.adapter.exists(notesPath())) ? (JSON.parse(await plugin.app.vault.adapter.read(notesPath())) as unknown) : null), save: (t) => plugin.app.vault.adapter.write(notesPath(), t) })
@@ -90,7 +131,7 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
         confirm: (estimate) => new Promise<boolean>((resolve) => new DigestConfirmModal(plugin.app, estimate, resolve).open()),
         askConsent: (hostName) => new Promise<boolean>((resolve) => new DigestConsentModal(plugin.app, hostName, resolve).open()),
         load: loadStore,
-        save: (store) => plugin.app.vault.adapter.write(storePath(), JSON.stringify(store)),
+        save: saveStore,
         now: () => Date.now(),
       }
     : null;
@@ -117,26 +158,13 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
               const st = await loadStore();
               return editions.claimAuto((rec) => autoDue(llmSettings(), rec, st, c.length));
             },
-            write: async (c, singles, opts) => {
-              const rec = await editions.current();
-              const auto = opts?.auto === true;
-              const st = auto ? await loadStore() : null;
-              // An automatic run never asks (no consent: nothing is sent), never shows the confirm line, and keeps to the daily ceiling.
-              const run: LlmDeps = auto ? { ...llm, askConsent: () => Promise.resolve(false) } : llm;
-              const o = await writeDigest(run, c, { singles, existing: existingSections(rec, c, singles), resort: opts?.resort === true, ...(auto && st ? { confirm: false, gate: (e) => ceilingRefusal(llmSettings(), st, Date.now(), e) } : {}) });
-              if (rec) {
-                await rememberWrite(llm, editions, rec.id, c, o, singles);
-                if (o.status === "ok") {
-                  if (o.tokens) await editions.update(rec.id, (e) => ({ ...e, usage: addUsage(e.usage, o.tokens ?? 0, o.cost ?? null) }));
-                  if (o.written.some(Boolean)) await history.put(buildPast(rec.id, c, o, singles, Date.now()));
-                } else if (auto) await editions.update(rec.id, (e) => ({ ...e, auto: { note: o.status === "failed" ? `The automatic write did not work: ${o.note ?? "no reason given"}` : (o.note ?? "Not written automatically.") } }));
-              }
-              return o;
-            },
+            write: (c, singles, opts) => writeShared({ llm, settings: llmSettings, editions, history, sync, now: () => Date.now() }, c, singles, opts),
           },
         }
       : {}),
     history: () => history.list(),
+    syncLines: async (id) => (await sync.refresh().catch(() => undefined), syncLines(sync.info(id), id)),
+    watchSync: (fn) => sync.onChange(fn),
     loadList: () => deps.readList(),
     ...(deps.reader ? { refresh: createDigestRefresh(deps.reader, Date.now, (l, origin, at) => noteListLoaded({ posts: l.posts, mentions: l.mentions, savedAt: at, studioOrigin: origin }), sessionSync) } : {}),
     ...(changeNotes ? { changeNote: (p: ReadingPost) => changeNotes.get(p) } : {}),
@@ -163,6 +191,15 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
     await leaf.setViewState({ type: BLYG_DAILY_VIEW, active: true });
     await workspace.revealLeaf(leaf);
   };
+  // A file of another device changed (the synced folder is raw: Obsidian reports it as a "raw" event): read again once it has been quiet for a moment. Never polled.
+  let timer: number | null = null;
+  const onRaw = (path: string): void => {
+    if (!sync.isStateFile(path) || sync.isOwnFile(path)) return;
+    if (timer !== null) window.clearTimeout(timer);
+    timer = window.setTimeout(() => ((timer = null), void sync.refresh().catch(() => undefined)), 700);
+  };
+  plugin.registerEvent((plugin.app.vault as unknown as { on(name: "raw", cb: (p: string) => void): EventRef }).on("raw", onRaw));
+  plugin.register(() => timer !== null && window.clearTimeout(timer));
   // The reader being opened also starts the day's edition, if its cutoff has passed.
   plugin.registerEvent(plugin.app.workspace.on("active-leaf-change", (leaf) => void (leaf?.view.getViewType() === BLYG_READER_VIEW && editions.touch())));
   // The reader's "In the digest: <section>" chip: asks the editions held (current, then the history) and opens the Daily in the reader's own leaf, scrolled to the section.
