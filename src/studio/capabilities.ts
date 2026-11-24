@@ -15,3 +15,10 @@ export const OPERATION = {
 export function offers(verdict: ContractVerdict | undefined, operation: string): boolean {
   return verdict !== undefined && verdict.kind === "ok" && verdict.operations !== null && verdict.operations.has(operation);
 }
+
+/** Is the Studio's announced contract at least `major.minor`? False when the verdict is not "ok": what cannot be shown is treated as absent. */
+export function contractAtLeast(verdict: ContractVerdict | undefined, major: number, minor: number): boolean {
+  if (verdict === undefined || verdict.kind !== "ok") return false;
+  const announced = Number(verdict.contract.split(".")[1]);
+  return verdict.major > major || (verdict.major === major && announced >= minor);
+}

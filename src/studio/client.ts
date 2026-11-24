@@ -7,7 +7,7 @@ import { readWireStub, stubForWire, type StubTarget } from "./stub";
 import type { StudioHttp, StudioResponse } from "./http";
 import type { StudioCapabilities, StudioCommandDone, StudioFailure, StudioHit, StudioImported, StudioHopper, StudioItem, StudioItemKind, StudioListedItem, StudioManifest, StudioMediaDone, StudioPeek, StudioPreview, StudioProblem, StudioResolvedQuote, StudioResult, StudioSubscription } from "./types";
 import { contractVerdict, incompatibleMessage, type ContractVerdict } from "./version";
-import { OPERATION, offers } from "./capabilities";
+import { OPERATION, contractAtLeast, offers } from "./capabilities";
 import { readFollowed, readProposal, type StudioFollowAnswer, type StudioFollowed } from "./subscriptions";
 import { readInboundMention, readOwnReadingEntry, readReadingPost, type InboundMention, type ReadingPost } from "./reading";
 
@@ -430,7 +430,10 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
     },
 
     listOwnReading: async (maxPages = 2) => {
-      const walked = await walk("/reading", {}, 50, maxPages, readOwnReadingEntry);
+      // Contract 6.2 (Studio 0.69.0; 6.0.0 answers the parameter with a 400, so it is not sent there): the Studio's default order (pace-layered) rewrites its whole stored reading order, two rows a post, on the first read after any change, and every poll is one.
+      // The plugin sorts the list itself, so it asks for "newest", which writes nothing (measured: docs/CLOUDFLARE-LOAD.md). Contract 5 has no such order and is asked as before.
+      const verdict = gateCache.get();
+      const walked = await walk("/reading", contractAtLeast(verdict, 6, 2) ? { order: "newest" } : {}, 50, maxPages, readOwnReadingEntry);
       if (walked.kind !== "ok") return walked;
       return { kind: "ok", value: { posts: walked.value.rows } } as const;
     },

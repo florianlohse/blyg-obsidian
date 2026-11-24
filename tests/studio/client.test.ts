@@ -14,6 +14,24 @@ function setup() {
   return { studio, client };
 }
 
+describe("studio client: the own-posts read does not make the Studio rewrite its reading order (Cloudflare budget, docs/CLOUDFLARE-LOAD.md)", () => {
+  const readings = (studio: FakeStudio) => studio.seen.filter((s) => s.method === "GET" && s.path.startsWith("/api/reading?")).map((s) => s.path);
+
+  it("contract 6: GET /reading asks for the order newest (the default order rewrites the stored order, 2 rows a post, on every read after a poll)", async () => {
+    const { client, studio } = setup();
+    studio.contractVersion = "6.2.0";
+    await client.listOwnReading();
+    expect(readings(studio)).toEqual(["/api/reading?order=newest&limit=50"]);
+  });
+
+  it.each(["5.14.0", "6.0.0", "6.1.0"])("contract %s: asked as before, no order (Studio 0.67.0, contract 6.0.0, answers the parameter with a 400)", async (v) => {
+    const { client, studio } = setup();
+    studio.contractVersion = v;
+    await client.listOwnReading();
+    expect(readings(studio)).toEqual(["/api/reading?limit=50"]);
+  });
+});
+
 describe("studio client: contract 5 and 6 side by side (E1)", () => {
   const counters = (studio: FakeStudio) => studio.seen.filter((s) => s.path === "/api/changes");
 
