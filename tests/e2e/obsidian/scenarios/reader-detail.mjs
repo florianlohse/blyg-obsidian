@@ -115,7 +115,7 @@ await runScenario({ data }, async (s) => {
   });
   const where = await page.evaluate(() => { const out = []; for (let n = document.querySelector(".blyg-daily .blyg-story-mixed .blyg-story-main"); n && n !== document.body && out.length < 9; n = n.parentElement) { const r = n.getBoundingClientRect(); const cs = getComputedStyle(n); out.push(`${n.tagName}.${String(n.className).slice(0, 40)} ${Math.round(r.width)}x${Math.round(r.height)} ${cs.display} ${cs.visibility}`); } return out; });
   console.error("diagnostic: first single post and its parents:", JSON.stringify(where), "viewport", JSON.stringify(await page.evaluate(() => [innerWidth, innerHeight])));
-  await page.click(".blyg-daily .blyg-story-mixed .blyg-story-main");
+  await page.click(".blyg-daily .blyg-story-mixed .blyg-story-main", { timeout: 5000 }).catch((e) => { check(false, `the first single post could not be clicked: ${JSON.stringify(where)}`); throw e; });
   await page.waitForSelector(".blyg-reader-header .blyg-reader-back", { timeout: 20000 });
   await wait(1800);
   const frames = await page.evaluate(() => window.__frames);
