@@ -6,12 +6,13 @@
 import http from "node:http";
 import { STUDIO, TOKEN, fixtureData, runScenario, wait } from "../lib.mjs";
 
-const live = { rows: [], subs: 0, counts: {} };
+const live = { rows: [], subs: 0, counts: {}, writes: [] };   // writes: every non-GET request but the Refresh poll, kept across reset() (Cloudflare budget guard, docs/CLOUDFLARE-LOAD.md)
 const bump = (k) => (live.counts[k] = (live.counts[k] ?? 0) + 1);
 const json = (res, body) => { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
 const stub = http.createServer((req, res) => {
   const url = new URL(req.url ?? "/", "http://x");
   const path = url.pathname.replace(/^\/(api\/)?/, "/");
+  if (req.method !== "GET" && req.method !== "HEAD" && !(req.method === "POST" && path === "/subscriptions/poll")) live.writes.push(`${req.method} ${path}`);
   if (req.method === "POST" && path === "/subscriptions/poll") { req.resume(); bump("poll"); return json(res, { polling: 1 }); }
   if (req.method === "GET" && path === "/changes") { bump("changes"); return json(res, { epoch: "e1", domains: { reading: live.rows.length, subscriptions: live.subs++ } }); }
   if (req.method === "GET" && path === "/reading/imported") { bump("list"); return json(res, { items: live.rows, page: { nextCursor: null } }); }
@@ -150,5 +151,7 @@ await runScenario({ data }, async (s) => {
   await wait(1500);
   const afterCancel = await page.evaluate(() => ({ modal: !!activeDocument.querySelector(".modal-container .modal"), busy: document.querySelector(".blyg-daily .blyg-story-write")?.getAttribute("aria-busy") }));
   check(!afterCancel.modal && afterCancel.busy !== "true" && llmRequests.length === 0 && !Object.keys(snap()).some((k) => /^other/.test(k)), `declining sends nothing and starts nothing (${llmRequests.length} AI requests, ${JSON.stringify(snap())})`);
+  // Cloudflare budget guard: opening the reader, the digest, two Refresh taps and the pause caused no Studio write request at all (a read mark would be a PUT, a follow a POST); every poll above was the Refresh's one POST
+  check(live.writes.length === 0, `opening the reader and the digest and tapping Refresh sent no write request to the Studio (${JSON.stringify(live.writes)})`);
   check(errors.length === 0, `no error was thrown on the page ${errors.join(" | ")}`);
 });
