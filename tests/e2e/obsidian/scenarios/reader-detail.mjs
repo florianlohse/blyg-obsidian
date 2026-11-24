@@ -3,7 +3,7 @@
 //  2. the header of the open post does not change while it settles: its children and the place of Save are the same in every frame of the first 1.5 s;
 //  3. a save that loses its connection puts Save back with one line, and a second tap saves;
 //  4. the feed opened for the first time says "Loading…" while its first list is on its way, never "nothing to show".
-// (Chromium emulation of a phone layout, not iOS.)
+// (Chromium emulation of a desktop layout, not iOS.)
 //   STUDIO_E2E_URL=… STUDIO_E2E_TOKEN=… node tests/e2e/obsidian/scenarios/reader-detail.mjs
 import http from "node:http";
 import { fixtureData, runScenario, wait } from "../lib.mjs";
@@ -58,8 +58,6 @@ await runScenario({ data }, async (s) => {
   const dropToasts = () => page.evaluate(() => { for (const n of activeDocument.querySelectorAll(".notice")) n.remove(); });
   await page.evaluate((t) => window.app.secretStorage.setSecret("smoke-studio", t), WITH_MANAGE);
   for (let i = 0; i < 40; i++) { if ((await page.evaluate(() => window.app.secretStorage.getSecret("smoke-studio"))) === WITH_MANAGE) break; await wait(100); }
-  const cdp = await page.context().newCDPSession(page);
-  await cdp.send("Emulation.setDeviceMetricsOverride", { width: 393, height: 852, deviceScaleFactor: 2, mobile: true });
 
   // ---- 4. the feed opened for the first time (no saved list, the Studio does not answer yet): "Loading…", never "nothing to show"
   await page.evaluate(() => window.app.commands.executeCommandById("blyg:open-reader"));
