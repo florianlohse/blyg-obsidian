@@ -2,7 +2,7 @@
 // same shapes it always had (an EditionStore, PastEdition records, the AI text cache), so the edition rules, stories and sections are unchanged. Plugin storage only.
 import { EDITIONS_KEPT, parseEditions, pruneEditions, type EditionRec, type EditionStore } from "../edition";
 import { parseHistory, trimHistory, type PastEdition } from "../history";
-import { parseStore, type LlmStore } from "../llm";
+import { hashText, parseStore, type LlmStore } from "../llm";
 import { FILE_RE, LOCK_TTL_MS, applyChange, emptyState, fileName, joinAll, lockOf, parseState, projectEdition, projectHistory, setReg, storyIdFor, type EdState, type Lock } from "./state";
 
 export interface SyncFs {
@@ -140,7 +140,7 @@ export class SyncedDigest {
     if (before !== "" && before !== this.fingerprint(this.snap)) this.listeners.forEach((f) => f());
   }
   private fingerprint(s: Snapshot): string {
-    return JSON.stringify([[...s.joined.values()].map((j) => [j.id, j.clock, Object.keys(j.posts).length, j.created]), s.unreadable]);
+    return hashText(JSON.stringify([[...s.joined.values()].map((j) => [j.id, j.clock, j.posts, j.created, j.regs]), s.unreadable])); // by content: a file that changed a value without raising a counter is still seen
   }
   private get snapshot(): Snapshot {
     return this.snap ?? { joined: new Map(), editions: { v: 1, editions: [] }, devices: new Map(), unreadable: 0 };

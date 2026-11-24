@@ -222,3 +222,67 @@ describe("this device's name and the lines under the masthead", () => {
     expect(syncLines({ made: null, others: 0, waiting: false }, null)).toEqual([]);
   });
 });
+
+describe("the editor (DG7) is carried by the sync", () => {
+  it("the edition keeps the editor that wrote it on every device: the record, the history and the reused texts are in that voice; the other device's own setting does not change it", async () => {
+    const prov = provider();
+    const w = world();
+    const a = device("devA", "iPhone", prov, T0, { editor: "harbour-master" });
+    const b = device("devB", "iPad", prov, T0 + 3600_000, { editor: "neutral" });
+    const ia = await a.editions.open(w.items);
+    await a.write(ia.grouped.clusters, ia.grouped.mixed);
+    expect((await a.editions.current())?.editor).toBe("harbour-master");
+    ship(a, b);
+    const ib = await b.editions.open(w.items);
+    expect(ib.editor).toBe("harbour-master"); // "Today's editor" line: from the merged record
+    expect((await b.editions.current())?.editor).toBe("harbour-master");
+    expect((await b.history.list()).editions[0]?.editor).toBe("harbour-master");
+    const n = prov.requests.length;
+    const ob = await b.write(ib.grouped.clusters, ib.grouped.mixed); // B's setting is neutral, but the edition keeps its editor: the same keys, so reused
+    expect(ob.status).toBe("ok");
+    expect(prov.requests.length).toBe(n);
+    expect((await b.editions.current())?.editor).toBe("harbour-master");
+  });
+  it("a manual re-sort on the other device in another voice changes the editor for both, once the file arrives", async () => {
+    const prov = provider();
+    const w = world();
+    const a = device("devA", "iPhone", prov, T0, { editor: "harbour-master" });
+    const b = device("devB", "iPad", prov, T0 + 3600_000, { editor: "neutral" });
+    const ia = await a.editions.open(w.items);
+    await a.write(ia.grouped.clusters, ia.grouped.mixed);
+    ship(a, b);
+    const ib = await b.editions.open(w.items);
+    await b.write(ib.grouped.clusters, ib.grouped.mixed, { resort: true });
+    expect((await b.editions.current())?.editor).toBeUndefined();
+    ship(b, a);
+    a.setNow(T0 + 7200_000);
+    const ra = await a.editions.open(w.items);
+    expect(ra.editor).toBeUndefined();
+    expect((await a.history.list()).editions[0]?.editor).toBeUndefined();
+  });
+});
+
+describe("a change in another device's file is noticed", () => {
+  it("tells the listeners when the joined state changed, also when a value changed and no counter did, and not for a re-read of the same files", async () => {
+    const prov = provider();
+    const w = world();
+    const a = device("devA", "iPhone", prov, T0);
+    const b = device("devB", "iPad", prov, T0 + 3600_000);
+    const ia = await a.editions.open(w.items);
+    await a.write(ia.grouped.clusters, ia.grouped.mixed);
+    ship(a, b);
+    await b.editions.open(w.items);
+    let n = 0;
+    b.sync.onChange(() => n++);
+    await b.sync.refresh();
+    expect(n).toBe(0);
+    const file = `${DIR}/ed-${ia.id}.devA.json`;
+    const st = JSON.parse(a.disk.files.get(file)?.text ?? "{}") as { regs: Record<string, { v: unknown }> };
+    const key = Object.keys(st.regs).find((k) => k.startsWith("ai/")) as string;
+    (st.regs[key] as { v: { headline: string } }).v.headline = "Changed on the other device";
+    b.disk.put(file, JSON.stringify(st)); // same counters, a different value
+    await b.sync.refresh();
+    expect(n).toBe(1);
+    expect((await b.sync.cache()).entries[key.slice(3)]?.headline).toBe("Changed on the other device");
+  });
+});

@@ -59,7 +59,7 @@ await runScenario({ data }, async (s) => {
   const cutoff = await ad(() => { const n = new Date(); const t = new Date(n.getFullYear(), n.getMonth(), n.getDate(), 7, 0).getTime(); return t <= n.getTime() ? t : t - 24 * 3600e3; });
   const reg = (c, v) => ({ c, d: FOREIGN, v });
   const foreign = (headlines, about) => {
-    const f = { v: 2, id: cutoff, device: FOREIGN, label: "Test iPad", at: Date.now(), created: { at: cutoff, d: FOREIGN }, posts: {}, regs: {}, clock: 5 };
+    const f = { v: 2, id: cutoff, device: FOREIGN, label: "Test iPad", at: Date.now(), created: { at: cutoff, d: FOREIGN }, posts: {}, regs: {}, clock: about === "" ? 5 : 6 };
     for (const p of posts) f.posts[p.remoteId] = cutoff + 1000;
     for (let k = 0; k < 4; k++) {
       const key = `fk${k}|3|test-model`;
@@ -68,7 +68,7 @@ await runScenario({ data }, async (s) => {
       f.regs[`place/${id("p", k * 2 + 1)}`] = reg(1, `sf${k}`);
       f.regs[`sec/sf${k}`] = reg(2, k % 2 ? "Town" : "Garden");
       f.regs[`txt/sf${k}`] = reg(3, { key, posts: [id("p", k * 2), id("p", k * 2 + 1)] });
-      f.regs[`ai/${key}`] = reg(headlines[k] === "" ? 3 : 4, { headline: headlines[k], summary: `Summary written on the other device ${k}.`, at: Date.now(), posts: 2 });
+      f.regs[`ai/${key}`] = reg(about === "" ? 3 : 4, { headline: headlines[k], summary: `Summary written on the other device ${k}.`, at: Date.now(), posts: 2 });
     }
     f.regs[`place/${id("p", 20)}`] = reg(1, "");
     f.regs.order = reg(2, ["Garden", "Town"]);
@@ -103,9 +103,21 @@ await runScenario({ data }, async (s) => {
   // ---- 2. the other device's file changes while the Daily is open: the page follows, by itself
   await s.clearNotices();
   const before = await ad(() => { window.__sync = document.querySelector(".view-content.blyg-daily"); return document.querySelectorAll(".blyg-daily .blyg-story-headline").length; });
+  // what Obsidian reports about the folder, so that a failure says what happened (the "raw" event is not in Obsidian's typed API)
+  await ad((d) => { window.__rawSeen = []; window.__rawRef = window.app.vault.on("raw", (p) => window.__rawSeen.push(`${Date.now()} ${p}`)); window.__dir = d; }, DIR);
+  const wroteAt = Date.now();
   await writeForeign(foreign(heads(" (updated)"), "Soil, seeds and rain"));
-  const followed = await s.pollUntil("the page to follow the changed file", () => ad(() => document.querySelector(".view-content.blyg-daily")?.innerText ?? ""), (t) => /Foreign headline 0 \(updated\)/.test(t) && /Soil, seeds and rain/.test(t), 20000);
-  check(followed.ok, `the open Daily shows the changed headlines and byline without a tap`);
+  const followed = await s.pollUntil("the page to follow the changed file", () => ad(() => document.querySelector(".view-content.blyg-daily")?.innerText ?? ""), (t) => /Foreign headline 0 \(updated\)/.test(t) && /Soil, seeds and rain/.test(t), 30000);
+  const diag = await ad(async (d) => {
+    const st = await window.app.vault.adapter.stat(d);
+    const files = await window.app.vault.adapter.list(d);
+    const stats = await Promise.all(files.files.map(async (f) => `${f} ${JSON.stringify(await window.app.vault.adapter.stat(f))}`));
+    const leaf = window.app.workspace.getLeavesOfType("blyg-daily")[0];
+    return { raw: window.__rawSeen, dir: st, files: stats, visibility: document.visibilityState, hasLeaf: !!leaf, text: (document.querySelector(".view-content.blyg-daily")?.innerText ?? "").slice(0, 400) };
+  }, DIR);
+  await ad(() => window.app.vault.offref(window.__rawRef));
+  console.error(`  (sync diagnostics: wrote at ${wroteAt}; ${JSON.stringify(diag)})`);
+  check(followed.ok, `the open Daily shows the changed headlines and byline without a tap (raw events seen: ${JSON.stringify(diag.raw)}; files: ${JSON.stringify(diag.files)}; visibility: ${diag.visibility})`);
   const after = await ad(() => ({ same: window.__sync === document.querySelector(".view-content.blyg-daily"), n: document.querySelectorAll(".blyg-daily .blyg-story-headline").length }));
   check(after.same && after.n === before, `... in the same page, with the same number of stories (${before} -> ${after.n})`);
   await wait(1500);

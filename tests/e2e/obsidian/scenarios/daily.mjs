@@ -101,6 +101,25 @@ await runScenario({ data }, async (s) => {
   const second = await open();
   check(/your digest/i.test(second.text) && second.rows > 0, "the digest page has content after a restart, with sections and lines in the record");
 
+  // DG7: a past edition written by an editor shows "Editor: <name>" under the masthead (text only); today's edition, plain here (the AI layer is off), draws no such line.
+  check(await page.evaluate(() => document.querySelectorAll(".blyg-daily .blyg-daily-editor").length) === 0, "a plain edition draws no editor line");
+  const pastId = e.id - 24 * 3600 * 1000;
+  const pastRec = { id: pastId, at: pastId + 1000, stories: [{ headline: "Harbour lanterns lit early", summary: "A calm start to the day.", posts: [] }], singles: [], sections: null, who: {}, editor: "harbour-master" };
+  await page.evaluate((json) => window.app.vault.adapter.write(".obsidian/plugins/blyg/digest-history.json", json), JSON.stringify({ v: 1, editions: [pastRec] }));
+  await page.evaluate(() => document.querySelectorAll(".notice").forEach((n) => n.remove())); // no stray toast in the way of the touch steps
+  await page.evaluate(() => window.app.workspace.detachLeavesOfType("blyg-daily"));
+  await open();
+  // the edition switcher sits in the bar's folded menu: unfold it first, fold it again at the end
+  await page.waitForSelector(".blyg-daily .blyg-daily-menu", { timeout: 20000 });
+  await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-menu").click());
+  await page.waitForSelector(".blyg-daily-select", { state: "visible", timeout: 20000 });
+  await page.selectOption(".blyg-daily-select", String(pastId));
+  const line = await page.waitForSelector(".blyg-daily .blyg-daily-editor", { timeout: 20000 }).then((el) => el.evaluate((n) => ({ text: n.textContent, kids: n.children.length })));
+  check(line.text === "Editor: Harbour Master Okafor" && line.kids === 0, `a past edition shows its editor as plain text (${JSON.stringify(line)})`);
+  await page.evaluate(() => { const m = document.querySelector(".blyg-daily .blyg-daily-menu"); if (m?.getAttribute("aria-expanded") === "true") m.click(); });
+  await page.evaluate(() => window.app.workspace.detachLeavesOfType("blyg-daily"));
+  await page.evaluate(() => window.app.vault.adapter.write(".obsidian/plugins/blyg/digest-history.json", JSON.stringify({ v: 1, editions: [] }))); // the later steps start without a past edition (no day switcher)
+
   // The page's actions, in real Obsidian: single-post lines, Mark read (one request per unread post, none by itself), a tap on a post of an unfolded story, Back.
   // (Sections, the contents and the AI lines need the AI layer, which this scenario leaves off: they are covered by unit tests only.)
   await page.evaluate((t) => window.app.secretStorage.setSecret("smoke-studio", t), TOKEN);
@@ -446,8 +465,11 @@ await runScenario({ data }, async (s) => {
   const touch = async (sel, { hold = 650, drift = 0 } = {}) => {
     await page.evaluate((q) => document.querySelector(q)?.scrollIntoView({ block: "center" }), sel);
     await wait(600);
+    // Environment noise, not part of what is tested: the CI machine has no keyring, so Obsidian floats a "Secrets are stored without encryption" toast over the
+    // feed for a few seconds, and it can sit on the card under the finger. Dismiss any toast before measuring; every assertion below stays as it was.
+    await page.evaluate(() => { for (const n of activeDocument.querySelectorAll(".notice-container .notice, .notice")) n.remove(); });
     const c = await centre(sel); // measured right before the finger goes down, and the finger must land on the element
-    if (!c || !c.hit) { console.error("touch: nothing of", sel, "under", JSON.stringify(c)); return false; }
+    if (!c || !c.hit) { console.error("touch: nothing of", sel, "under", JSON.stringify(c), "found there:", JSON.stringify(c ? await page.evaluate(([x, y]) => { const e = document.elementFromPoint(x, y); const h = document.querySelector(".blyg-reader-header")?.getBoundingClientRect(); const k = document.querySelector(".blyg-reader-card")?.getBoundingClientRect(); return { tag: e?.tagName, cls: String(e?.className ?? "").slice(0, 80), text: (e?.textContent ?? "").slice(0, 40), hdrBottom: h?.bottom, cardTop: k?.top, fs: getComputedStyle(document.body).fontSize }; }, [c.x, c.y]) : null)); return false; }
     await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: c.x, y: c.y }] });
     if (drift) for (let i = 1; i <= 4; i++) { await wait(40); await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: c.x, y: c.y + (drift * i) / 4 }] }); }
     await wait(hold);

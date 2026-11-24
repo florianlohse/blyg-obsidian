@@ -2,6 +2,8 @@
 // content key) are reused, so nothing is requested for them; a "writing by <device> since <time>" marker (two minutes) makes a second device wait instead of paying in parallel;
 // what this device writes is kept in the files of the edition so the others get it; the cost is added once, to this device's own usage of the shared edition.
 import type { Cluster } from "../cluster";
+import type { EditionRec } from "../edition";
+import { NEUTRAL } from "../editors";
 import type { ReadingPost } from "../../studio/reading";
 import { addUsage, ceilingRefusal } from "../autoWrite";
 import { Editions, cachedStories, rememberWrite } from "../editionHost";
@@ -50,26 +52,32 @@ export interface WriteEnv {
   history: History;
   sync: SyncedDigest;
   now: () => number;
+  /** The editor's id for this write (src/digest/editorRun.ts): the edition keeps its editor; a manual re-sort takes the setting's pick again. */
+  voiceOf: (rec: EditionRec | null, resort: boolean) => string;
+  /** The LLM deps speaking in that voice. */
+  withVoice: (llm: LlmDeps, voice: string) => LlmDeps;
 }
 
 export async function writeShared(env: WriteEnv, c: readonly Cluster[], singles: readonly ReadingPost[], opts?: { resort?: boolean; auto?: boolean }): Promise<Outcome> {
   const { llm, editions, history, sync } = env;
   const rec = await editions.current(); // reads the synced files again
   const busy = rec ? sync.lock(rec.id) : null;
-  if (rec && busy) return { written: await cachedStories(llm, rec, c), status: "cancelled", note: `${busy.label} is writing this digest right now. Its text will appear here when it has been synced.` };
+  const voice = env.voiceOf(rec, opts?.resort === true);
+  if (rec && busy) return { written: await cachedStories(env.withVoice(llm, voice), rec, c), status: "cancelled", note: `${busy.label} is writing this digest right now. Its text will appear here when it has been synced.` };
   if (rec) await sync.setLock(rec.id, true);
   try {
     const auto = opts?.auto === true;
     const st = auto ? await llm.load() : null;
     // An automatic run never asks (no consent: nothing is sent), never shows the confirm line, and keeps to the daily ceiling.
-    const run: LlmDeps = auto ? { ...llm, askConsent: () => Promise.resolve(false) } : llm;
+    const run: LlmDeps = env.withVoice(auto ? { ...llm, askConsent: () => Promise.resolve(false) } : llm, voice);
     const o = await writeDigest(run, c, { singles, existing: existingSections(rec, c, singles), resort: opts?.resort === true, ...(auto && st ? { confirm: false, gate: (e) => ceilingRefusal(env.settings(), st, env.now(), e) } : {}) });
     if (rec) {
-      await rememberWrite(llm, editions, rec.id, c, o, singles);
+      await rememberWrite(run, editions, rec.id, c, o, singles);
       if (o.status === "ok") {
+        if (o.written.some(Boolean)) await editions.update(rec.id, ({ editor: _was, ...e }) => (voice === NEUTRAL ? e : { ...e, editor: voice }));
         if (o.tokens) await editions.update(rec.id, (e) => ({ ...e, usage: addUsage(e.usage, o.tokens ?? 0, o.cost ?? null) }));
         // The history record is made when something was written, not when the texts were only read from the files of another device.
-        if (o.written.some(Boolean) && (o.tokens || !(await history.list()).editions.some((e) => e.id === rec.id))) await history.put(buildPast(rec.id, c, o, singles, env.now()));
+        if (o.written.some(Boolean) && (o.tokens || !(await history.list()).editions.some((e) => e.id === rec.id))) await history.put({ ...buildPast(rec.id, c, o, singles, env.now()), ...(voice === NEUTRAL ? {} : { editor: voice }) });
       } else if (auto) await editions.update(rec.id, (e) => ({ ...e, auto: { note: o.status === "failed" ? `The automatic write did not work: ${o.note ?? "no reason given"}` : (o.note ?? "Not written automatically.") } }));
     }
     return o;

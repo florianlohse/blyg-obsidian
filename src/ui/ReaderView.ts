@@ -819,8 +819,7 @@ export class BlygReaderView extends ItemView {
     this.addIcon(refresh, "refresh-cw");
     refresh.disabled = this.busyCount > 0;
     this.refreshEl = refresh;
-    drawFollowedButton(bar, this.host);
-    bar.createSpan({ cls: "blyg-reader-version", text: `v${this.host.version}`, attr: { title: "Version of the Blyg plugin on this device" } });
+    drawFollowedButton(bar, this.host, this.host.version);
     if (!canFilter || !this.filtersOpen || !this.data) return;
 
     // Two rows: the three choices side by side, then the two switches as chips and "Clear" at the end.

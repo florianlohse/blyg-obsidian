@@ -18,6 +18,8 @@ import type { BlygSettings } from "../settings/schema";
 import { DigestConfirmModal, DigestConsentModal } from "../ui/DigestModals";
 import { trailText } from "./trailText";
 import { setConsentGate } from "./consentGate";
+import { editorIdFor, withEditor } from "./editorRun";
+import { editorFor, NEUTRAL } from "./editors";
 import { cachedSections as cachedSectionsOf, clearBodies, normaliseEndpoint } from "./llm";
 import { TextModal } from "../ui/TextModal";
 import { emptyStore, parseStore, type LlmDeps, type LlmStore } from "./llm";
@@ -152,19 +154,30 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
       ? {
           ai: {
             enabled: () => ai?.settings().useAi === true,
-            cached: async (c) => cachedStories(llm, await editions.current(), c),
-            cachedSections: async (c, singles) => recordSections(await editions.current(), c, singles) ?? (await cachedSectionsOf(llm, c, singles)),
+            cached: async (c) => {
+              const rec = await editions.current();
+              return cachedStories(withEditor(llm, editorIdFor(rec, ai?.settings().editor)), rec, c);
+            },
+            cachedSections: async (c, singles) => {
+              const rec = await editions.current();
+              return recordSections(rec, c, singles) ?? (await cachedSectionsOf(withEditor(llm, editorIdFor(rec, ai?.settings().editor)), c, singles));
+            },
             autoDue: async (c) => {
               const st = await loadStore();
               return editions.claimAuto((rec) => autoDue(llmSettings(), rec, st, c.length));
             },
-            write: (c, singles, opts) => writeShared({ llm, settings: llmSettings, editions, history, sync, now: () => Date.now() }, c, singles, opts),
+            write: (c, singles, opts) => writeShared({ llm, settings: llmSettings, editions, history, sync, now: () => Date.now(), voiceOf: (rec, resort) => (resort && rec ? (editorFor(ai?.settings().editor, rec.id)?.id ?? NEUTRAL) : editorIdFor(rec, ai?.settings().editor)), withVoice: withEditor }, c, singles, opts),
           },
         }
       : {}),
     history: () => history.list(),
     syncLines: async (id) => (await sync.refresh().catch(() => undefined), syncLines(sync.info(id), id)),
-    watchSync: (fn) => sync.onChange(fn),
+    // While the Daily is open, a cheap local read (list and stat of a few small files, no network) every 10 s while it is visible: a changed file is noticed even where the "raw" event is not.
+    watchSync: (fn) => {
+      const off = sync.onChange(fn);
+      const t = window.setInterval(() => void (activeDocument.visibilityState === "visible" && sync.refresh().catch(() => undefined)), 10_000);
+      return () => (off(), window.clearInterval(t));
+    },
     loadList: () => deps.readList(),
     ...(deps.reader ? { refresh: createDigestRefresh(deps.reader, Date.now, (l, origin, at) => noteListLoaded({ posts: l.posts, mentions: l.mentions, savedAt: at, studioOrigin: origin }), sessionSync) } : {}),
     ...(changeNotes ? { changeNote: (p: ReadingPost) => changeNotes.get(p) } : {}),

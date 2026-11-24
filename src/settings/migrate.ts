@@ -1,5 +1,6 @@
 import { readFilter } from "../ui/readerFeed";
 import { parseDigestTime } from "../digest/edition";
+import { editorSetting } from "../digest/editors";
 import { isReaderFont } from "../ui/readerFonts";
 import { isReaderContrast } from "../ui/readerLook";
 import { defaultSettings, SCHEMA_VERSION, type BlygSettings, type Route } from "./schema";
@@ -114,7 +115,7 @@ export function migrateSettings(raw: unknown, flavour: "release" | "dev" = "rele
     // Anything but "always" is the safe default: a typo or a value from a later version never turns images on by accident.
     readerPane: { images: rp.images === "always" ? "always" : "click", font: isReaderFont(rp.font) ? rp.font : "default", contrast: isReaderContrast(rp.contrast) ? rp.contrast : "normal", shareInbox: typeof rp.shareInbox === "string" ? rp.shareInbox.trim() : "", ...(rp.mode === "digest" ? { mode: "digest" as const } : {}), filter: readFilter(rp.filter) },
     // Only a literal true turns the AI layer on; a missing or odd value leaves it off.
-    digest: { useAi: dg.useAi === true, endpoint: str(dg.endpoint, d.digest.endpoint).trim() || d.digest.endpoint, model: str(dg.model, d.digest.model).trim() || d.digest.model, keySecretName: str(dg.keySecretName, d.digest.keySecretName), dailyTokenCeiling: typeof dg.dailyTokenCeiling === "number" && Number.isFinite(dg.dailyTokenCeiling) && dg.dailyTokenCeiling >= 0 && dg.dailyTokenCeiling !== 60000 ? Math.round(dg.dailyTokenCeiling) : d.digest.dailyTokenCeiling, autoWrite: dg.autoWrite === true, time: parseDigestTime(dg.time) },
+    digest: { useAi: dg.useAi === true, endpoint: str(dg.endpoint, d.digest.endpoint).trim() || d.digest.endpoint, model: str(dg.model, d.digest.model).trim() || d.digest.model, keySecretName: str(dg.keySecretName, d.digest.keySecretName), dailyTokenCeiling: typeof dg.dailyTokenCeiling === "number" && Number.isFinite(dg.dailyTokenCeiling) && dg.dailyTokenCeiling >= 0 && dg.dailyTokenCeiling !== 60000 ? Math.round(dg.dailyTokenCeiling) : d.digest.dailyTokenCeiling, autoWrite: dg.autoWrite === true, time: parseDigestTime(dg.time), editor: editorSetting(dg.editor) },
     features: cleanFeatureFlags(raw.features),
     // Only a literal true lifts the lock: anything else, or a missing key, keeps the dev build on test Studios.
     dev: { allowLiveStudio: dv.allowLiveStudio === true },

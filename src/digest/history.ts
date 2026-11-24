@@ -47,6 +47,8 @@ export interface PastEdition {
   who: Record<string, string>;
   /** The AI line of a single post, by post id (absent: none). */
   lines?: Record<string, string>;
+  /** The editor whose voice the texts are in (src/digest/editors.ts); absent: neutral. */
+  editor?: string;
 }
 export interface HistoryStore {
   v: 1;
@@ -103,7 +105,8 @@ export function parseHistory(raw: unknown): HistoryStore {
     for (const [k, v] of Object.entries((o.who as Record<string, unknown> | undefined) ?? {})) if (typeof v === "string") who[k] = v.slice(0, MAX_NAME);
     const lines: Record<string, string> = {};
     for (const [k, v] of Object.entries((o.lines as Record<string, unknown> | undefined) ?? {})) if (typeof v === "string" && v !== "") lines[k] = v.slice(0, 80);
-    out.editions.push({ id: o.id, at: o.at, stories, singles: strs(o.singles, MAX_SINGLES), sections, who, ...(Object.keys(lines).length ? { lines } : {}) });
+    const editor = typeof o.editor === "string" && /^[a-z0-9-]{1,40}$/.test(o.editor) ? o.editor : "";
+    out.editions.push({ id: o.id, at: o.at, stories, singles: strs(o.singles, MAX_SINGLES), sections, who, ...(Object.keys(lines).length ? { lines } : {}), ...(editor ? { editor } : {}) });
   }
   if (r.capped === true) out.capped = true;
   return trimHistory(out);

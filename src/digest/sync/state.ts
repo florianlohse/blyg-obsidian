@@ -160,6 +160,7 @@ export function projectEdition(j: EdState): EditionRec | null {
   const sectionAbout = strMap(j, "about/", 90);
   const names = j.regs.order && Array.isArray(j.regs.order.v) ? (j.regs.order.v as unknown[]).filter((x): x is string => typeof x === "string") : [];
   const au = j.regs.auto?.v;
+  const ed = j.regs.editor?.v;
   let tokens = 0;
   let cost: number | null = 0;
   let used = false;
@@ -176,6 +177,7 @@ export function projectEdition(j: EdState): EditionRec | null {
     stories,
     mixed: mixed.sort(order),
     seen: { ...j.posts },
+    ...(typeof ed === "string" && /^[a-z0-9-]{1,40}$/.test(ed) ? { editor: ed } : {}),
     ...(au !== undefined && au !== null && isObj(au) ? { auto: typeof au.note === "string" ? { note: au.note.slice(0, 200) } : {} } : {}),
     ...(used ? { usage: { tokens, cost } } : {}),
     ...(Object.keys(postSections).length ? { postSections } : {}),
@@ -247,6 +249,8 @@ export function applyChange(own: EdState, base: EditionRec | null, next: Edition
   for (const [prefix, n, b] of maps) for (const [k, v] of Object.entries(n ?? {})) if (b?.[k] !== v) set(`${prefix}${k}`, v);
   if (next.sections && JSON.stringify(next.sections) !== JSON.stringify(base?.sections)) set("order", next.sections);
   if (next.auto && !base?.auto) set("auto", next.auto);
+  // The editor whose voice the texts are in: one register; "" = neutral again (a re-sort in another voice). A write keeps the edition's editor, so the value only changes on purpose.
+  if ((next.editor ?? "") !== (base?.editor ?? "")) set("editor", next.editor ?? "");
   if (next.usage && next.usage.tokens !== (base?.usage?.tokens ?? 0)) {
     const mine = ownUsage(own);
     const dt = next.usage.tokens - (base?.usage?.tokens ?? 0);

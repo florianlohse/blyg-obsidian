@@ -38,7 +38,8 @@ describe("the follow row", () => {
   it("is drawn for a post of an unfollowed blyg, with the line and the button", () => {
     const { note } = draw(post(), { kind: "already" });
     expect(note?.children[0]?.text).toContain(followText.unfollowedNote);
-    expect(note?.children[1]?.text).toBe(followText.followButton);
+    expect(note?.children[1]?.text).toBe("Follow"); // was "Follow this blyg": a small link at the end of one muted line now
+    expect(followText.followButtonLabel).toBe("Follow this blyg"); // the accessible name keeps the full words
   });
   it("is not drawn for a post that is held, or your own", () => {
     expect(draw(post({ subscriptionId: "s1" }), { kind: "already" }).note).toBeNull();

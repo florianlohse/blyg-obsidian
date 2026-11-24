@@ -61,6 +61,8 @@ export interface EditionRec {
   auto?: { note?: string };
   /** The tokens (as counted) and rough cost of the runs of this edition, for the footer. cost null: unknown price. */
   usage?: { tokens: number; cost: number | null };
+  /** The editor (src/digest/editors.ts) whose voice the stories' texts are in; absent: neutral (also every record from before editors). */
+  editor?: string;
 }
 
 export interface EditionStore {
@@ -110,7 +112,7 @@ export function parseEditions(raw: unknown): EditionStore {
     const au = r.auto as { note?: unknown } | undefined;
     const us = r.usage as { tokens?: unknown; cost?: unknown } | undefined;
     const tokens = num(us?.tokens);
-    out.editions.push({ id, createdAt, n: num(r.n) ?? stories.length + 1, stories, mixed: strs(r.mixed), seen, ...(au && typeof au === "object" ? { auto: typeof au.note === "string" ? { note: au.note.slice(0, 200) } : {} } : {}), ...(tokens !== null && tokens >= 0 ? { usage: { tokens, cost: num(us?.cost) } } : {}), ...(Object.keys(postSections).length ? { postSections } : {}), ...(names.length ? { sections: names } : {}), ...(Object.keys(sectionAbout).length ? { sectionAbout } : {}), ...(Object.keys(postLines).length ? { postLines } : {}) });
+    out.editions.push({ id, createdAt, n: num(r.n) ?? stories.length + 1, stories, mixed: strs(r.mixed), seen, ...(au && typeof au === "object" ? { auto: typeof au.note === "string" ? { note: au.note.slice(0, 200) } : {} } : {}), ...(typeof r.editor === "string" && /^[a-z0-9-]{1,40}$/.test(r.editor) ? { editor: r.editor } : {}), ...(tokens !== null && tokens >= 0 ? { usage: { tokens, cost: num(us?.cost) } } : {}), ...(Object.keys(postSections).length ? { postSections } : {}), ...(names.length ? { sections: names } : {}), ...(Object.keys(sectionAbout).length ? { sectionAbout } : {}), ...(Object.keys(postLines).length ? { postLines } : {}) });
   }
   out.editions.sort((a, b) => a.id - b.id);
   return pruneEditions(out);
