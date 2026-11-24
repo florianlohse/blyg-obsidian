@@ -103,10 +103,14 @@ await runScenario({ data }, async (s) => {
   await page.evaluate(() => document.querySelectorAll(".notice").forEach((n) => n.remove())); // no stray toast in the way of the touch steps
   await page.evaluate(() => window.app.workspace.detachLeavesOfType("blyg-daily"));
   await open();
-  await page.waitForSelector(".blyg-daily-select", { timeout: 20000 });
+  // the edition switcher sits in the bar's folded menu: unfold it first, fold it again at the end
+  await page.waitForSelector(".blyg-daily .blyg-daily-menu", { timeout: 20000 });
+  await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-menu").click());
+  await page.waitForSelector(".blyg-daily-select", { state: "visible", timeout: 20000 });
   await page.selectOption(".blyg-daily-select", String(pastId));
   const line = await page.waitForSelector(".blyg-daily .blyg-daily-editor", { timeout: 20000 }).then((el) => el.evaluate((n) => ({ text: n.textContent, kids: n.children.length })));
   check(line.text === "Editor: Harbour Master Okafor" && line.kids === 0, `a past edition shows its editor as plain text (${JSON.stringify(line)})`);
+  await page.evaluate(() => { const m = document.querySelector(".blyg-daily .blyg-daily-menu"); if (m?.getAttribute("aria-expanded") === "true") m.click(); });
   await page.evaluate(() => window.app.workspace.detachLeavesOfType("blyg-daily"));
   await page.evaluate(() => window.app.vault.adapter.write(".obsidian/plugins/blyg/digest-history.json", JSON.stringify({ v: 1, editions: [] }))); // the later steps start without a past edition (no day switcher)
 
