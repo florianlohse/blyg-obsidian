@@ -52,8 +52,8 @@ import { drawPreview, type PreviewDeps } from "./ui/replyPreview";
 import { limiter, postFromPeek, postOfMention } from "./ui/readerMentions";
 import { parseReaderCache, readerCacheOf } from "./ui/readerCache";
 import { registerFeatureEntries } from "./features/register"; import { createFeatures } from "./features/registry";
-import { reopenInLastMode } from "./ui/readerMode"; import { BLYG_READER_VIEW, BlygReaderView, excerptOf, type ReaderHost, type ReadResult } from "./ui/ReaderView"; import { createMarginalia } from "./marginalia/wire";
-import { createReaderService } from "./app/readerService";
+import { reopenInLastMode } from "./ui/readerMode"; import { BLYG_READER_VIEW, BlygReaderView, excerptOf, type ReaderHost } from "./ui/ReaderView"; import { createMarginalia } from "./marginalia/wire";
+import { createReaderService } from "./app/readerService"; import { createShelf } from "./app/shelfService"; import { createReaderWrites } from "./app/readerWrites";
 import { createFollowHost, replyPlan } from "./app/followHost";
 import type { InboundMention, ReadingPost } from "./studio/reading";
 import { confirmWithModal } from "./ui/WritePreviewModal";
@@ -125,7 +125,7 @@ export default class BlygPlugin extends Plugin {
     this.addCommand({ id: "open-reader", name: "Open reader", callback: () => void this.openReader() });
     this.addCommand({ id: "open-reader-sidebar", name: "Open reader in the sidebar", callback: () => void this.openReader("sidebar") });
     // The switchable features (the Daily and its AI layer, the share entry, the dev commands) register here, each only when features/registry.ts says it is on.
-    registerFeatureEntries(this, this.features, { digest: { font: () => this.settings.readerPane.font, time: () => this.settings.digest.time, readList: () => this.readReaderCache(), reader: { ...this.readerService, writeCache: (data) => this.writeReaderCache(data) }, mode: { get: () => this.settings.readerPane.mode ?? "feed", set: (m) => { this.settings.readerPane.mode = m; void this.saveSettings(); } }, markRead: (post) => this.readerMark(post, true), markUnread: (post) => this.readerMark(post, false), replyTo: (post) => this.readerHost().replyTo(post), notes: async (sub, id) => { const b = buildStudio(this.env()); return b.ok ? b.studio.client.importedNotes(sub, id) : { kind: "error", status: 0, message: b.message }; }, ai: { settings: () => this.settings.digest, keychain: obsidianKeychain(this.app), transport: obsidianTransport } }, share: { settings: () => this.settings, build: () => buildStudio(this.env()), openReader: () => this.openReader() }, contrast: () => this.settings.readerPane.contrast });
+    registerFeatureEntries(this, this.features, { digest: { font: () => this.settings.readerPane.font, time: () => this.settings.digest.time, readList: () => this.readReaderCache(), reader: { ...this.readerService, writeCache: (data) => this.writeReaderCache(data) }, mode: { get: () => this.settings.readerPane.mode ?? "feed", set: (m) => { this.settings.readerPane.mode = m; void this.saveSettings(); } }, markRead: (post) => this.writes.mark(post, true), markUnread: (post) => this.writes.mark(post, false), shelf: this.shelf, replyTo: (post) => this.readerHost().replyTo(post), notes: async (sub, id) => { const b = buildStudio(this.env()); return b.ok ? b.studio.client.importedNotes(sub, id) : { kind: "error", status: 0, message: b.message }; }, ai: { settings: () => this.settings.digest, keychain: obsidianKeychain(this.app), transport: obsidianTransport } }, share: { settings: () => this.settings, build: () => buildStudio(this.env()), openReader: () => this.openReader() }, contrast: () => this.settings.readerPane.contrast });
     this.addCommand({
       id: "clear-reader-cache",
       name: "Clear the reader's saved list",
@@ -997,6 +997,9 @@ export default class BlygPlugin extends Plugin {
     });
   }
 
+  /** The reader's small writes (dismiss a mention, mark read: app/readerWrites.ts) and Save for later (the Studio's shelf: app/shelfService.ts, off unless the feature "shelf" is on). */
+  private readonly writes = createReaderWrites(() => buildStudio(this.env()));
+  private readonly shelf = createShelf({ build: () => buildStudio(this.env()), enabled: () => this.features.enabled("shelf") });
   /** The reader's conversation with the Studio (pause, back-off, listing): app/readerService.ts. */
   private readonly readerService = createReaderService({
     build: () => buildStudio(this.env()),
@@ -1007,7 +1010,7 @@ export default class BlygPlugin extends Plugin {
 
   private readerHost(): ReaderHost {
     return {
-      version: this.manifest.version, ...createFollowHost({ app: this.app, build: () => buildStudio(this.env()), manifest: this.manifest }),
+      version: this.manifest.version, shelf: this.shelf, ...createFollowHost({ app: this.app, build: () => buildStudio(this.env()), manifest: this.manifest }),
       imageMode: () => this.settings.readerPane.images,
       font: () => this.settings.readerPane.font,
       setFont: async (font) => {
@@ -1131,39 +1134,10 @@ export default class BlygPlugin extends Plugin {
         const text = got.value.published?.contentHtml ? excerptOf(got.value.published.contentHtml, 90) : excerptOf(`<p>${got.value.contentMd.replace(/[<>&]/g, " ")}</p>`, 90);
         return text || null;
       },
-      hideMention: (m) => this.readerHideMention(m),
-      markRead: (post) => this.readerMark(post, true),
-      markUnread: (post) => this.readerMark(post, false),
+      hideMention: (m) => this.writes.hideMention(m),
+      markRead: (post) => this.writes.mark(post, true),
+      markUnread: (post) => this.writes.mark(post, false),
     };
-  }
-
-  /** Hide an inbound mention in the Studio. The answer is a result the reader can act on (the mention comes back on a refusal). */
-  private async readerHideMention(m: InboundMention): Promise<ReadResult> {
-    try {
-      const built = buildStudio(this.env());
-      if (!built.ok) return { ok: false, message: built.message };
-      const done = await built.studio.client.hideMention(m.id, true);
-      if (done.kind === "ok") return { ok: true };
-      if (done.kind === "forbidden") return { ok: false, message: "Your token cannot dismiss mentions. It needs the permission “owner:manage”: make a new token with every permission." };
-      return { ok: false, message: "message" in done ? done.message : "Could not dismiss the mention." };
-    } catch {
-      return { ok: false, message: "The Studio could not be reached, so the mention was not dismissed." };
-    }
-  }
-
-  /** Mark a post read or unread in the Studio; the answer is a result the reader can act on (it shows the change first and puts it back on a refusal). */
-  private async readerMark(post: ReadingPost, read: boolean): Promise<ReadResult> {
-    try {
-      const built = buildStudio(this.env());
-      if (!built.ok) return { ok: false, message: built.message };
-      const { client } = built.studio;
-      const done = read ? await client.markRead(post.subscriptionId, post.remoteId, post.version) : await client.markUnread(post.subscriptionId, post.remoteId);
-      if (done.kind === "ok") return { ok: true };
-      if (done.kind === "forbidden") return { ok: false, message: "Your token cannot mark posts read. It needs the permission “reading:state”: make a new token with every permission." };
-      return { ok: false, message: "message" in done ? done.message : "Could not change the read mark." };
-    } catch {
-      return { ok: false, message: "The Studio could not be reached, so the read mark was not changed." };
-    }
   }
 
   private async openPanel(): Promise<void> {

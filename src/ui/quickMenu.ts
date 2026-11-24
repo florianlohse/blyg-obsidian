@@ -62,13 +62,15 @@ export interface PostActions {
   mark?(read: boolean): void;
   /** False: the Studio has not fetched the post (Reply and the mark are left out or disabled). */
   fetched?(): boolean;
+  /** The shelf (SH1): `state` is read when the menu opens (null: no Save entry); `toggle` saves the post or takes it off. Absent: no Save entry. */
+  shelf?: { state(): { saved: boolean; full: boolean } | null; toggle(): void };
 }
 
-/** A long press or right click on a post's card or row: Open, Reply, Mark read / unread. `post` is read when the menu opens, so the label follows the live read state. */
+/** A long press or right click on a post's card or row: Open, Reply, Mark read / unread, Save for later. `post` is read when the menu opens, so the label follows the live read state. */
 export function quickPost(el: HTMLElement, post: () => ReadingPost, a: PostActions, scroller?: HTMLElement | null): void {
   attachQuick(el, (x, y) => {
-    const entries = postEntries(post(), { fetched: a.fetched?.() ?? true, canMark: a.mark !== undefined, canReply: a.reply !== undefined });
-    showQuickMenu(entries, { x, y }, (id) => (id === "open" ? a.open() : id === "reply" ? a.reply?.() : a.mark?.(id === "read")));
+    const entries = postEntries(post(), { fetched: a.fetched?.() ?? true, canMark: a.mark !== undefined, canReply: a.reply !== undefined, ...((s) => (s ? { shelf: s } : {}))(a.shelf?.state() ?? null) });
+    showQuickMenu(entries, { x, y }, (id) => (id === "open" ? a.open() : id === "reply" ? a.reply?.() : id === "save" || id === "unsave" ? a.shelf?.toggle() : a.mark?.(id === "read")));
   }, scroller);
 }
 

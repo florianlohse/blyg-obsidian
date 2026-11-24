@@ -26,6 +26,8 @@ import { bottomClearance } from "./readerBottom";
 import { hostOf, limiter, mentionBadge, postOfMention, visibleMentions } from "./readerMentions";
 import { drawDigestChip } from "./readerDigestChip";
 import { drawFollowedButton, drawFollowNote, isUnfollowedPost, selectionNotQuoted, unfollowedReplyTitle, type FollowHost } from "./readerFollow";
+import { ShelfControl, type ShelfHost } from "./readerShelf";
+import { markedMoment } from "./readerMoment";
 
 export const BLYG_READER_VIEW = "blyg-reader";
 
@@ -57,7 +59,7 @@ export interface ChangeMarks {
   subscriptions: number;
 }
 
-export interface ReaderHost extends FollowHost {
+export interface ReaderHost extends FollowHost, ShelfHost {
   /** The plugin's own version, shown at the foot of the feed so you can tell which build a device runs. */
   version: string;
   /** Load the stream and the mentions, or say in words why not. */
@@ -178,6 +180,8 @@ export class BlygReaderView extends ItemView {
   private readFailure = "";
   /** Read-state changes of one post go to the Studio one after the other, in the order they were made. */
   private readonly readChain = new Map<string, Promise<void>>();
+  /** Save for later (readerShelf.ts): the Save button, the saved mark and the Saved view. */
+  private readonly shelfUi = new ShelfControl(() => this.host.shelf, { status: (l) => this.setStatus(l), refresh: (p) => this.refreshPost(p), body: () => void (this.shown === null && this.drawBody()), posts: () => this.data?.posts ?? [] });
 
   constructor(leaf: WorkspaceLeaf, private readonly host: ReaderHost) {
     super(leaf);
@@ -214,6 +218,7 @@ export class BlygReaderView extends ItemView {
   private start(): Promise<void> {
     const forPost = (): boolean => this.shown !== null || this.returnTo.active;
     if (!forPost()) setReaderMode("feed");
+    this.shelfUi.opening(); // the shelf is read once per opening of the reader
     return startReader({
       alive: () => this.contentEl.isConnected, // closed while Obsidian was still starting
       forPost,
@@ -524,23 +529,6 @@ export class BlygReaderView extends ItemView {
   /** True while the "marked read" moment plays, so a second tap or pull does not start a second one. */
   private moving = false;
 
-  /** The short moment between two posts: the text fades, a centred "Marked read" appears and goes again. (Reduced motion: no waiting.) */
-  private async markedMoment(wasUnread: boolean): Promise<void> {
-    const reduce = activeWindow.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const body = this.bodyEl;
-    if (!body || reduce) return;
-    const pause = (ms: number): Promise<void> => new Promise((resolve) => window.setTimeout(resolve, ms));
-    body.addClass("is-leaving");
-    const note = wasUnread ? body.createDiv({ cls: "blyg-reader-done", text: "✓ Marked read" }) : null;
-    await pause(30);
-    note?.addClass("is-in");
-    await pause(wasUnread ? 520 : 200);
-    note?.removeClass("is-in");
-    await pause(wasUnread ? 220 : 0);
-    note?.remove();
-    body.removeClass("is-leaving");
-  }
-
   /**
    * Obsidian's bottom bar floats over the pane on a phone and its height is not something we can read from a CSS variable we know: measure where it
    * is and keep the pane's last line above it. Nothing to do where there is no such bar (a desktop).
@@ -627,6 +615,7 @@ export class BlygReaderView extends ItemView {
   /** The order the feed has now (without "unread only"), kept while the list and the order choices stay as they are: the open post and its buttons ask for the next unread post often. */
   /** Lift every restriction of the feed (blyg, length, unread, replies to my posts) and keep the order: a remembered choice must never leave the feed looking empty with no way out. */
   private clearFilters(): void {
+    this.shelfUi.view = null;
     this.filter = { ...this.filter, source: null, unreadOnly: false, length: "any", repliesToMe: false };
     this.saveFilter();
     this.drawHeader();
@@ -665,7 +654,7 @@ export class BlygReaderView extends ItemView {
     try {
       const wasUnread = markRead && isUnread(this.live(p)) && !p.withdrawn && p.own !== true;
       if (wasUnread) void this.setRead(p, true);
-      if (markRead) await this.markedMoment(wasUnread);
+      if (markRead) await markedMoment(this.bodyEl, wasUnread);
       this.openPost(target, "step");
     } finally {
       this.moving = false;
@@ -855,6 +844,7 @@ export class BlygReaderView extends ItemView {
     };
     chip("Unread only", this.filter.unreadOnly, "Show only posts you have not read", (v) => { this.filter.unreadOnly = v; });
     chip("Replies to my posts", this.filter.repliesToMe, "Show only replies to your own posts", (v) => { this.filter.repliesToMe = v; });
+    if (this.shelfUi.usable) chip(`Saved (${this.shelfUi.count})`, this.shelfUi.view !== null, "Show only the posts you saved for later (your shelf)", (v) => void this.shelfUi.show(v));
     if (activeFilters({ ...this.filter, sort: "newest" }) > 0) this.button(chips, "Clear filter", () => this.clearFilters(), { cls: "blyg-reader-chip-clear", title: "Lift every choice again (the order stays)" });
   }
 
@@ -915,6 +905,7 @@ export class BlygReaderView extends ItemView {
       if (where) stepCount(row, where);
     }
     row.createDiv({ cls: "blyg-reader-spacer" });
+    this.shelfUi.button(row, p, (...a) => this.button(...a));
     this.replyBtn = this.button(row, "Reply", () => {
       const sel = this.replySelection();
       void this.host.replyTo(p, sel.trim() !== "" ? sel : undefined);
@@ -989,14 +980,15 @@ export class BlygReaderView extends ItemView {
   private drawStream(col: HTMLElement, posts: ReadingPost[]): void {
     this.cardEls.clear();
     if (posts.length === 0) return void col.createDiv({ cls: "blyg-reader-note", text: "Nothing to read yet. Follow a blyg with the Following button." });
-    const shown = arrange(posts, this.filter, this.mineIds);
-    if (shown.length === 0) {
+    const shown = this.shelfUi.view?.map((p) => this.live(p)) ?? arrange(posts, this.filter, this.mineIds); // the Saved view keeps the shelf's own order
+    if (shown.length === 0 && this.shelfUi.view !== null) col.createDiv({ cls: "blyg-reader-note", text: "Nothing saved yet. Press and hold a post, then choose “Save for later”." });
+    else if (shown.length === 0) {
       const restricted = this.filter.source !== null || this.filter.unreadOnly || this.filter.length !== "any" || this.filter.repliesToMe;
       const note = col.createDiv({ cls: "blyg-reader-note", text: restricted ? "No post matches the choices in Sort & filter." : "No post matches." });
       if (restricted) this.button(note, "Clear filters", () => this.clearFilters(), { title: "Show every post again (the order stays)" });
     }
     // Only a stretch of the feed is built, and it moves as you scroll (readerWindow.ts): Obsidian's start must not pay for 200 cards, and 5000 loaded posts must not mean 5000 cards.
-    restartWindow(this.win, JSON.stringify(this.filter));
+    restartWindow(this.win, JSON.stringify([this.filter, this.shelfUi.view !== null]));
     new StreamWindow({
       into: col.createDiv({ cls: "blyg-reader-window" }),
       scroller: this.scrollEl,
@@ -1009,7 +1001,7 @@ export class BlygReaderView extends ItemView {
         this.cardEls.set(keyOf(p), card);
         this.fillCard(card, p);
         card.addEventListener("click", () => (activeWindow.getSelection()?.toString() ?? "") === "" && this.openPost(p)); // a press that selected some text is a selection, not a tap
-        quickPost(card, () => this.live(p), { open: () => this.openPost(p), reply: () => void this.host.replyTo(p), mark: (read) => void this.setRead(p, read), fetched: () => !this.notFetched.has(keyOf(p)) }, this.scrollEl);
+        quickPost(card, () => this.live(p), { open: () => this.openPost(p), reply: () => void this.host.replyTo(p), mark: (read) => void this.setRead(p, read), fetched: () => !this.notFetched.has(keyOf(p)), shelf: this.shelfUi.actions(p) }, this.scrollEl);
         return card;
       },
       dropped: (key) => this.cardEls.delete(key),
@@ -1050,6 +1042,7 @@ export class BlygReaderView extends ItemView {
     else if (p.isReply) badges.createSpan({ cls: "blyg-reader-badge", text: "reply" });
     else if (p.kind === "thread") badges.createSpan({ cls: "blyg-reader-badge", text: "thread" });
     if (p.withdrawn) badges.createSpan({ cls: "blyg-reader-badge", text: "withdrawn" });
+    this.shelfUi.mark(badges, p);
     if (unread) badges.createSpan({ cls: "blyg-reader-badge is-new", text: p.readVersion !== null ? "updated" : "unread" });
     else if (tracked && !p.withdrawn && p.own !== true) badges.createSpan({ cls: "blyg-reader-badge is-done", text: "✓ read" });
     // The replies you can see (same rule as in an open post): green when one of them is yours.

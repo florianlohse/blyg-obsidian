@@ -24,6 +24,9 @@ const CALLED: Array<[string, string]> = [
 /** Contract 6.0.0 (Studio 0.67.0) removed exactly this, and said so. */
 const REMOVED_IN_6: Array<[string, string]> = [["get", "/changes"]];
 
+/** SH1: operations only a newer Studio has (the shelf, Studio 0.61 and later). The client calls them only when the Studio's own `GET /capabilities` lists them (`getShelf`, `putShelf`), so a Studio without them is never asked. */
+const GATED: Array<[string, string]> = [["get", "/shelf"], ["put", "/shelf"]];
+
 const norm = (path: string): string => path.replace(/\{[^}]+\}/g, "{}");
 const isObj = (v: Json | undefined): v is Obj => typeof v === "object" && v !== null && !Array.isArray(v);
 
@@ -103,9 +106,19 @@ function breakages(method: string, path: string): string[] {
 describe("contract 6.2.0 against contract 5.2.0, for every operation the client calls", () => {
   it("the list is not stale: every operation client.ts names is in it", () => {
     const client = readFileSync(new URL("../../src/studio/client.ts", import.meta.url), "utf8");
-    const named = new Set(CALLED.map(([, p]) => p.split("/")[1]));
+    const named = new Set([...CALLED, ...GATED].map(([, p]) => p.split("/")[1]));
     for (const m of client.matchAll(/area: "api", path: [`"]\/([a-z-]+)/g)) expect(named.has(m[1] ?? ""), `/${m[1]} is called by client.ts but not listed here`).toBe(true);
     for (const m of client.matchAll(/walk\(`?"?\/([a-z-]+)/g)) expect(named.has(m[1] ?? ""), `/${m[1]} is walked by client.ts but not listed here`).toBe(true);
+  });
+
+  it("the shelf operations are not in the contract 5 file, are in the 6.2 file, and the client asks the Studio's list first (SH1)", () => {
+    for (const [m, p] of GATED) {
+      expect(operation(v5, m, p), `${m} ${p} in the 0.51.0 file`).toBeNull();
+      expect(operation(v6, m, p), `${m} ${p} in the 0.69.0 file`).not.toBeNull();
+    }
+    const client = readFileSync(new URL("../../src/studio/client.ts", import.meta.url), "utf8");
+    expect(client).toMatch(/getShelf: async[\s\S]{0,200}offers\(gateCache\.get\(\), SHELF_OPERATIONS\.get\)/);
+    expect(client).toMatch(/putShelf: async[\s\S]{0,400}offers\(verdict, SHELF_OPERATIONS\.put\)/);
   });
 
   it("the only operation gone is GET /changes (announced in 6.0.0)", () => {
