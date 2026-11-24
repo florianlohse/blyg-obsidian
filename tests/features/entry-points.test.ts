@@ -38,11 +38,13 @@ const fakePlugin = (id: string) => {
   const calls: string[] = [];
   const p = {
     manifest: { id },
-    app: { workspace: { onLayoutReady: () => {}, on: () => ({}) }, vault: {} },
+    app: { workspace: { onLayoutReady: () => {}, on: () => ({}) }, vault: { on: () => ({}), adapter: {}, configDir: ".obsidian" } },
     addCommand: (c: { id: string }) => calls.push(`cmd:${c.id}`),
     addRibbonIcon: (_i: string, t: string) => calls.push(`ribbon:${t}`),
     registerView: (t: string) => calls.push(`view:${t}`),
     registerEvent: () => {},
+    register: () => {},
+    registerDomEvent: () => {},
   };
   return { calls, p: p as never };
 };

@@ -56,6 +56,10 @@ export interface DigestHost {
   replyTo?(post: ReadingPost): Promise<void>;
   /** Mark one post unread again by the reader's own path (same permission). Absent: the read symbol only marks. */
   markUnread?(post: ReadingPost): Promise<{ ok: boolean; message?: string }>;
+  /** The muted lines under the masthead (who made the edition, synced from n devices, waiting for sync); also reads the synced files again. */
+  syncLines?(editionId: number | null): Promise<string[]>;
+  /** Called when a file of another device changed what the Daily would show; returns the unsubscribe. */
+  watchSync?(fn: () => void): () => void;
   /** The optional AI layer (src/digest/llm.ts); absent or `enabled()` false: the Daily is the deterministic list only. */
   ai?: {
     enabled(): boolean;
@@ -114,6 +118,9 @@ export class BlygDailyView extends ItemView {
   private working = false;
   private runs = 0;
   private refreshBtns: HTMLElement[] = [];
+  /** The lines under the masthead about the synced files, and the unsubscribe of the watch on them. */
+  private syncText: string[] = [];
+  private unwatchSync: (() => void) | null = null;
   constructor(leaf: WorkspaceLeaf, private readonly host: DigestHost) {
     super(leaf);
   }
@@ -130,10 +137,13 @@ export class BlygDailyView extends ItemView {
     this.contentEl.addClass("blyg-daily");
     setReaderMode("digest"); // this leaf shows the digest now: the reader's mode is the Digest until the person switches back
     watchMarks({ change: () => this.readPainters.forEach((f) => f()), reverted: (m) => this.say(m) });
+    this.unwatchSync = this.host.watchSync?.(() => void this.redrawSynced()) ?? null;
     await this.refresh();
   }
   override async onClose(): Promise<void> {
     this.runs++;
+    this.unwatchSync?.();
+    this.unwatchSync = null;
     watchMarks(null);
     return Promise.resolve();
   }
@@ -207,6 +217,23 @@ export class BlygDailyView extends ItemView {
     }
   }
 
+  /** A file of another device changed (DG16): read the edition, the history and the texts again and draw them in place. Nothing is asked of the Studio or the AI. */
+  private async redrawSynced(): Promise<void> {
+    if (this.working || this.busy || !this.list || !this.contentEl.isConnected) return;
+    const run = ++this.runs;
+    try {
+      const { model } = await this.makeModel(this.list, Date.now());
+      const h = await (this.host.history?.() ?? Promise.resolve(null)).catch(() => null);
+      if (run !== this.runs) return;
+      this.past = h?.editions ?? this.past;
+      this.written = model && this.host.ai?.enabled() ? await this.host.ai.cached(model.front).catch(() => []) : [];
+      this.sections = model && this.written.length > 0 && this.host.ai?.enabled() ? await (this.host.ai.cachedSections?.(model.front, model.mixed) ?? Promise.resolve(null)).catch(() => null) : null;
+      if (run === this.runs) this.render(model);
+    } catch {
+      /* the page stays as it was */
+    }
+  }
+
   /** Without a Studio conversation (a host that cannot ask): read the saved list again, in place. */
   private async refreshSaved(run: number): Promise<void> {
     const list = await this.host.loadList();
@@ -224,6 +251,7 @@ export class BlygDailyView extends ItemView {
     const win = await this.host.edition(list.posts);
     const model = buildDaily(list.posts, list.mentions, win.since, win.until, win.grouped, win.id);
     this.usage = win.usage;
+    this.syncText = (await this.host.syncLines?.(win.id ?? null).catch(() => [])) ?? [];
     this.editorId = win.editor;
     const ids = new Set([...model.front.flatMap((c) => c.posts.map((p) => p.remoteId)), ...model.mixed.map((p) => p.remoteId)]);
     this.added = mark && this.shown ? new Set([...ids].filter((id) => !this.shown?.has(id))) : new Set();
@@ -314,6 +342,7 @@ export class BlygDailyView extends ItemView {
     root.empty();
     for (const f of ["default", "serif", "sans", "mono"] as const) root.toggleClass(`is-font-${f}`, f === this.host.font());
     const bar = drawBar(root, { date: mastheadDate(this.viewing ?? model?.edition ?? model?.since ?? Date.now()), kicker: "Your digest", state: this.bar, toggle: () => void this.host.showFeed(this.leaf), refresh: { hint: REFRESH_HINT, click: () => void this.refreshNow(), made: (b) => (this.refreshBtns.push(b), this.paintRefresh(b)) } });
+    if (this.syncText.length > 0) for (const t of this.syncText) root.createDiv({ cls: "blyg-daily-meta blyg-daily-sync", text: t });
     drawEditorLine(root, this.viewing !== null ? this.past.find((e) => e.id === this.viewing)?.editor : this.host.ai?.enabled() && this.written.some(Boolean) ? this.editorId : undefined, this.viewing !== null);
     const today = model?.edition ?? null;
     const pastRec = this.viewing !== null ? this.past.find((e) => e.id === this.viewing) : undefined;

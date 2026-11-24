@@ -7,6 +7,7 @@ import { clusterPosts, docSimilarity, finishCluster, postTime, prepareDocs, SIMI
 import { quotedIdsOf } from "./quotes";
 import type { EditionRec, StoryRec } from "./edition";
 import { bySize, byNewestPost } from "./order";
+import { storyIdFor } from "./sync/state";
 
 const touched = (p: ReadingPost): string[] => [p.remoteId, ...(p.stubTarget ? [p.stubTarget.id] : []), ...quotedIdsOf(p)];
 
@@ -53,7 +54,12 @@ export function assignPosts(rec: EditionRec, posts: readonly ReadingPost[], now:
   }
   // Left over: two or more that match each other form a story; the rest go to the Mixed bag. (With no story yet, this is the ordinary grouping.)
   for (const c of clusterPosts(leftOver)) {
-    if (c.posts.length >= 2) out.stories.push({ id: `s${out.n++}`, posts: c.posts.map((p) => p.remoteId) });
+    // The id comes from the story's OLDEST post, not from a counter: devices that group the same posts name the story alike (src/digest/sync).
+    if (c.posts.length >= 2) {
+      const oldest = [...c.posts].sort((a, b) => postTime(a) - postTime(b) || (a.remoteId < b.remoteId ? -1 : 1))[0] as ReadingPost;
+      out.stories.push({ id: storyIdFor(oldest.remoteId), posts: c.posts.map((p) => p.remoteId) });
+      out.n++;
+    }
     else out.mixed.push(...c.posts.map((p) => p.remoteId));
   }
   return out;
