@@ -1,6 +1,7 @@
 // What the reader does when it opens, in one place, so it can be tested without Obsidian. The rule (DG8): the Studio is asked for the list only when the reader opens from
 // nothing for the first time in this session (nothing was read yet, and no post is being opened), and when the person presses Refresh. A reader made again to show a post (from
 // the digest, from a share) or again for the feed, or Back, reads the list saved on this device and asks nothing: no walk, no check, no list of your own posts.
+import { applyMarks } from "../digest/markQueue";
 import type { InboundMention, ReadingPost } from "../studio/reading";
 import type { SyncMemory } from "./readerSync";
 
@@ -22,6 +23,16 @@ export const sessionSync = (): SyncMemory => memory.sync;
 export function noteListLoaded(list?: Saved): void {
   memory.loaded = true;
   if (list) memory.list = list;
+}
+/** The list a reader view would start from now (this session's last, else nothing): what a post opened from another page uses at once, so its header is drawn with its place in the feed already known. */
+export function heldList(): Saved | null {
+  if (memory.list) applyMarks(memory.list.posts, memory.list.savedAt);
+  return memory.list;
+}
+/** The digest read the saved list: a reader made for a post starts from it too (never marks the session as asked). */
+export function seedSaved(list: Saved | null): Saved | null {
+  if (list && !memory.list) memory.list = list;
+  return list;
 }
 export const listLoadedThisSession = (): boolean => memory.loaded;
 /** For tests. */
@@ -51,6 +62,7 @@ export async function startReader(p: StartPorts): Promise<void> {
     const ask = !p.forPost() && !listLoadedThisSession();
     p.mine(ask);
     const saved = memory.list ?? (await p.readCache().catch(() => null));
+    if (saved) applyMarks(saved.posts, saved.savedAt); // a mark made in an open post since that list was saved
     if (saved && !p.hasData()) {
       p.showSaved(saved, ask);
       if (ask) {
@@ -68,3 +80,6 @@ export async function startReader(p: StartPorts): Promise<void> {
     p.failed();
   }
 }
+
+/** What the feed's body says while it has no list: "Loading…" until the first answer (the saved list or the Studio's) is in, "nothing to show" only for a real empty one. */
+export const emptyFeedNote = (busy: boolean, loadingFirst: boolean): string => (busy || loadingFirst ? "Loading…" : "The reader has nothing to show yet.");

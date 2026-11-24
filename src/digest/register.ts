@@ -33,6 +33,7 @@ import { SyncedDigest, type SyncFs } from "./sync/store";
 import { sharedStore, writeShared } from "./sync/aiWrite";
 import { deviceId, deviceLabel } from "./sync/device";
 import { syncLines } from "./sync/line";
+import { seedSaved } from "../ui/readerStart";
 import { Platform, type EventRef } from "obsidian";
 import type { ShelfFacade } from "../app/shelfService";
 
@@ -42,7 +43,7 @@ export interface DigestDeps {
   font: () => ReaderFont;
   /** The setting "Digest time" ("HH:MM", the device's clock). */
   time: () => string;
-  readList: () => Promise<{ posts: ReadingPost[]; mentions: InboundMention[]; savedAt: number } | null>;
+  readList: () => Promise<{ posts: ReadingPost[]; mentions: InboundMention[]; savedAt: number; studioOrigin: string } | null>;
   /** The reader's Studio conversation, so the digest's Refresh is the feed's Refresh (app/readerRefresh.ts). Absent: Refresh only reads the saved list again. */
   reader?: DigestReader;
   /** The reader's mode (Feed or Digest), kept in the settings (ui/readerMode.ts). */
@@ -190,7 +191,7 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
       const t = window.setInterval(() => void (activeDocument.visibilityState === "visible" && sync.refresh().catch(() => undefined)), SYNC_FALLBACK_MS);
       return () => (off(), window.clearInterval(t));
     },
-    loadList: () => deps.readList(),
+    loadList: async () => seedSaved(await deps.readList()),
     ...(deps.reader ? { refresh: createDigestRefresh(deps.reader, Date.now, (l, origin, at) => noteListLoaded({ posts: l.posts, mentions: l.mentions, savedAt: at, studioOrigin: origin }), sessionSync) } : {}),
     ...(changeNotes ? { changeNote: (p: ReadingPost) => changeNotes.get(p) } : {}),
     ...(deps.markRead ? { markRead: deps.markRead } : {}),

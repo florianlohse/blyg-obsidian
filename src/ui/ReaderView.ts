@@ -13,7 +13,8 @@ import { activeFilters, arrange, isReplyToMine, OWN_SOURCE, readFilter, cardOf, 
 import { type ReaderFont } from "./readerFonts";
 import { ReturnPoint, whenIdle } from "./readerExtras";
 import { drawModeToggle, setReaderMode, switchMode } from "./readerMode";
-import { noteListLoaded, sessionSync, startReader } from "./readerStart";
+import { askStudioToFetch } from "./readerFetch";
+import { emptyFeedNote, heldList, noteListLoaded, sessionSync, startReader, type Saved } from "./readerStart";
 import { askAndWait } from "../app/readerRefresh";
 import { drawSteps, StoryWalk, stepCount, type Step } from "./readerSteps";
 import { CONTRASTS, type ReaderContrast } from "./readerLook";
@@ -144,6 +145,8 @@ export class BlygReaderView extends ItemView {
   private status = "";
   /** How many things are loading right now: the refresh button and the status line show a spinner while it is above zero. */
   private busyCount = 0;
+  /** True from opening until the reader's first start is over: the feed says "Loading…", not "nothing to show". */
+  private loadingFirst = false;
   /** Bumped by every check for new posts, so an older check stops when a newer one starts. */
   private checking = 0;
   private headerEl: HTMLElement | null = null;
@@ -208,6 +211,7 @@ export class BlygReaderView extends ItemView {
     this.registerDomEvent(activeWindow, "resize", () => this.clearBottom());
     // The reader's own window (a popout has its own document; `activeDocument` can be another window than the one the reader is in).
     this.registerDomEvent(this.contentEl.ownerDocument, "selectionchange", () => this.noteSelection());
+    this.loadingFirst = true; // until the first answer (the saved list or the Studio's): "nothing to show" is for a real empty one
     this.draw();
     // Obsidian waits for a view to finish opening before it finishes restoring the layout, so a reader tab left open would hold up the start of the whole app
     // for as long as the Studio takes to answer. Opening ends here, with the empty shell; the disk and the network are used after the layout is ready.
@@ -226,9 +230,7 @@ export class BlygReaderView extends ItemView {
       readCache: () => this.host.readCache(),
       mine: (ask) => this.loadMine(ask ? "ask" : "cached"),
       showSaved: (saved, updating) => {
-        this.data = { posts: saved.posts, mentions: saved.mentions, note: "", studioOrigin: saved.studioOrigin, fromCache: true };
-        this.dropGoneSource(saved.posts);
-        this.updatedAt = saved.savedAt; // the age of the saved list, then (when the Studio has answered) "just now"
+        this.useSaved(saved);
         this.setStatus(updating ? `${this.updatedText()} · updating…` : this.updatedText());
         this.draw();
       },
@@ -243,7 +245,18 @@ export class BlygReaderView extends ItemView {
       },
       load: () => this.reload(),
       failed: () => this.setStatus("The reader could not start. Press Refresh to try again."),
+    }).finally(() => {
+      this.loadingFirst = false;
+      if (!this.shown && !this.data) this.drawBody(); // a real empty answer: "nothing to show" now
     });
+  }
+
+  /** Start from a saved list (this device's last, or the one the digest read), without drawing; the age of it is "Updated …" until the Studio has answered. */
+  private useSaved(saved: Saved | null): void {
+    if (!saved) return;
+    this.data = { posts: saved.posts, mentions: saved.mentions, note: "", studioOrigin: saved.studioOrigin, fromCache: true };
+    this.dropGoneSource(saved.posts);
+    this.updatedAt = saved.savedAt;
   }
 
   override async onClose(): Promise<void> {
@@ -691,6 +704,7 @@ export class BlygReaderView extends ItemView {
     if (via === "quote" && this.shown) this.trail.push(this.shown);
     else if (via === "feed" || via === "step" || via === "digest") this.trail = [];
     if (via === "feed") this.walk.clear();
+    if (!this.data) this.useSaved(heldList()); // the place in the feed is known when the header is first drawn: nothing moves when the list arrives
     if (via === "feed" || via === "digest") this.stepKeys = null; // the order to step through is taken from the feed as it is when a post is opened from it
     this.responsesEl = null;
     this.shown = p;
@@ -713,26 +727,9 @@ export class BlygReaderView extends ItemView {
     });
   }
 
-  /** "Ask Studio to fetch": the Studio fetches that blyg, then the post is looked for again a few times. */
-  private async askToFetch(p: ReadingPost): Promise<void> {
-    const key = keyOf(p);
-    this.setStatus("Asking your Studio to fetch this blyg…");
-    const done = await this.host.resyncBlyg(p);
-    if (!done.ok) {
-      this.setStatus(done.message);
-      return;
-    }
-    for (let i = 0; i < 4; i++) {
-      await new Promise((r) => window.setTimeout(r, 2500));
-      if (!this.contentEl.isConnected) return;
-      if ((await this.host.isImported(p)) === true) {
-        this.notFetched.delete(key);
-        this.setStatus("Your Studio has fetched this post.");
-        if (this.shown && keyOf(this.shown) === key) this.drawHeader();
-        return;
-      }
-    }
-    this.setStatus("The Studio has not fetched this post yet. Try again in a minute.");
+  /** "Ask Studio to fetch": the Studio fetches that blyg, then the post is looked for again a few times (ui/readerFetch.ts). */
+  private askToFetch(p: ReadingPost): Promise<void> {
+    return askStudioToFetch(this.host, p, { say: (t) => this.setStatus(t), alive: () => this.contentEl.isConnected, fetched: () => (this.notFetched.delete(keyOf(p)), this.shown && keyOf(this.shown) === keyOf(p) && this.drawHeader()) });
   }
 
   /** What is selected inside the open post's text now (not in its header or its replies); "" when nothing. */
@@ -962,7 +959,7 @@ export class BlygReaderView extends ItemView {
     this.scrollEl = scroll;
     const col = scroll.createDiv({ cls: "blyg-reader-column" });
     if (!this.data) {
-      col.createDiv({ cls: "blyg-reader-note", text: this.busyCount > 0 ? "" : "The reader has nothing to show yet." });
+      col.createDiv({ cls: "blyg-reader-note", text: emptyFeedNote(this.busyCount > 0, this.loadingFirst) });
     } else if (this.tab === "stream") this.drawStream(col, this.data.posts);
     else this.drawMentions(col, this.data.mentions);
     col.createDiv({ cls: "blyg-reader-foot", text: `Blyg reader · plugin ${this.host.version}` });

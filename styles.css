@@ -998,3 +998,4 @@ button.blyg-daily-refresh { height: var(--clickable-icon-size, 32px); min-width:
 .blyg-daily-hint { font-size: var(--font-ui-smaller); color: var(--text-muted); margin-top: var(--size-4-1); }
 .blyg-story-newtag { margin-right: var(--size-4-1); font-size: var(--font-ui-smaller); text-transform: uppercase; }
 @media (prefers-reduced-motion: reduce) { .blyg-daily-refresh.is-busy svg, .blyg-daily-refreshbtn.is-busy svg { animation: none; } }
+.blyg-reader-savebtn.is-pending { visibility: hidden; }
