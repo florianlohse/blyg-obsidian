@@ -103,9 +103,11 @@ await runScenario({ data }, async (s) => {
 
   // DG7: a past edition written by an editor shows "Editor: <name>" under the masthead (text only); today's edition, plain here (the AI layer is off), draws no such line.
   check(await page.evaluate(() => document.querySelectorAll(".blyg-daily .blyg-daily-editor").length) === 0, "a plain edition draws no editor line");
-  const pastId = e.id - 24 * 3600 * 1000;
+  const pastId = rec.id - 24 * 3600 * 1000;
   const pastRec = { id: pastId, at: pastId + 1000, stories: [{ headline: "Harbour lanterns lit early", summary: "A calm start to the day.", posts: [] }], singles: [], sections: null, who: {}, editor: "harbour-master" };
-  await page.evaluate((json) => window.app.vault.adapter.write(".obsidian/plugins/blyg/digest-history.json", json), JSON.stringify({ v: 1, editions: [pastRec] }));
+  // (the history is the `hist` register of an edition's file since DG16: a file of another device that carries only that, so it can be removed again below)
+  const pastFile = `${dir}/ed-${pastId}.e2epast.json`;
+  await page.evaluate(([f, json]) => window.app.vault.adapter.write(f, json), [pastFile, JSON.stringify({ v: 2, id: pastId, device: "e2epast", label: "Test", at: Date.now(), posts: {}, regs: { hist: { c: 1, d: "e2epast", v: pastRec } }, clock: 1 })]);
   await page.evaluate(() => document.querySelectorAll(".notice").forEach((n) => n.remove())); // no stray toast in the way of the touch steps
   await page.evaluate(() => window.app.workspace.detachLeavesOfType("blyg-daily"));
   await open();
@@ -118,7 +120,7 @@ await runScenario({ data }, async (s) => {
   check(line.text === "Editor: Harbour Master Okafor" && line.kids === 0, `a past edition shows its editor as plain text (${JSON.stringify(line)})`);
   await page.evaluate(() => { const m = document.querySelector(".blyg-daily .blyg-daily-menu"); if (m?.getAttribute("aria-expanded") === "true") m.click(); });
   await page.evaluate(() => window.app.workspace.detachLeavesOfType("blyg-daily"));
-  await page.evaluate(() => window.app.vault.adapter.write(".obsidian/plugins/blyg/digest-history.json", JSON.stringify({ v: 1, editions: [] }))); // the later steps start without a past edition (no day switcher)
+  await page.evaluate((f) => window.app.vault.adapter.remove(f), pastFile); // the later steps start without a past edition (no day switcher)
 
   // The page's actions, in real Obsidian: single-post lines, Mark read (one request per unread post, none by itself), a tap on a post of an unfolded story, Back.
   // (Sections, the contents and the AI lines need the AI layer, which this scenario leaves off: they are covered by unit tests only.)
