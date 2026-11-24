@@ -17,10 +17,11 @@ import { estimateCost, formatCost } from "./prices";
 import { authorOf } from "./storyMeta";
 import { cutAtBoundary } from "./truncate";
 import { buildSectionsRequest, parseSectionsCache, singleOf, type Section, type SectionsEntry } from "./sections";
+import { EDITORS_VERSION, editorById, NEUTRAL, voiceLine } from "./editors";
 import { cachedPass, estimatePass, runSectionPass, sectionsPrecheck, type ExistingSections, type PassEstimate, type PassSpec } from "./sectionPass";
 
 /** Raise when the prompt or the answer format changes: old cached results no longer apply. */
-export const PROMPT_VERSION = "3";
+export const PROMPT_VERSION = "4";
 /** Anthropic API version header value (claude-api skill, curl/examples.md, checked 2026-11-22). */
 export const API_VERSION = "2026-10-21";
 /** Stories per request. A front page is sent in several requests of at most this many stories. */
@@ -55,6 +56,8 @@ export const SYSTEM_PROMPT =
 export interface DigestAiSettings {
   endpoint: string;
   model: string;
+  /** The editor id for this run's story texts (src/digest/editorRun.ts sets it); absent, "neutral" or unknown: no voice line. Not the setting itself ("rota" is neutral here). */
+  editor?: string;
 }
 
 export interface Written {
@@ -187,19 +190,21 @@ export interface PlanItem {
   headline: string;
 }
 
-export function cacheKeyOf(inner: string, model: string): string {
-  return `${hashText(inner)}|${PROMPT_VERSION}|${model}`;
+/** The key of one story's text: its words, the prompt version, the model and (not neutral) the editor and the cast's version, so another voice never shows the old text. */
+export function cacheKeyOf(inner: string, model: string, editor: string = NEUTRAL): string {
+  const id = editorById(editor)?.id;
+  return `${hashText(inner)}|${PROMPT_VERSION}|${model}${id ? `|${id}@${EDITORS_VERSION}` : ""}`;
 }
 
 /** The clusters that may be sent, in order, each with the text that would go. Capped by MAX_GROUPS (the front page) and MAX_POSTS_PER_CLUSTER. */
-export function planClusters(clusters: readonly Cluster[], model: string): PlanItem[] {
+export function planClusters(clusters: readonly Cluster[], model: string, editor: string = NEUTRAL): PlanItem[] {
   const items: PlanItem[] = [];
   clusters.slice(0, MAX_GROUPS).forEach((c, index) => {
     const used: ReadingPost[] = c.posts.slice(0, MAX_POSTS_PER_CLUSTER);
     const inner = used.map((p) => `<post${authorAttr(authorOf(p))}>${neutralise(graphemePrefix(ownWords(p), MAX_POST_CHARS))}</post>`).join("\n");
     // A stable story (it has an id) is keyed by its id and its whole post set, so a post that joins it, even beyond the ones sent, asks again.
     const scope = c.id ? `${c.id}|${c.posts.map((p) => p.remoteId).sort().join(",")}\n` : "";
-    items.push({ index, cacheKey: cacheKeyOf(scope + inner, model), postIds: used.map((p) => p.remoteId), posts: used.length, inner, headline: c.headline });
+    items.push({ index, cacheKey: cacheKeyOf(scope + inner, model, editor), postIds: used.map((p) => p.remoteId), posts: used.length, inner, headline: c.headline });
   });
   return items;
 }
@@ -215,6 +220,8 @@ export interface BuiltRequest {
   items: PlanItem[];
   /** The user message's length in characters. */
   chars: number;
+  /** The system prompt as sent (with the editor's voice line, if any). */
+  system?: string;
 }
 
 export class LlmError extends Error {
@@ -258,11 +265,12 @@ export function buildRequest(items: readonly PlanItem[], settings: DigestAiSetti
     kept.push(it);
     content += block;
   }
+  const system = SYSTEM_PROMPT + voiceLine(editorById(settings.editor));
   const body = JSON.stringify({
     model: settings.model.trim(),
     max_tokens: MAX_OUTPUT_TOKENS,
     output_config: { effort: "low" },
-    system: SYSTEM_PROMPT,
+    system,
     messages: [{ role: "user", content }],
   });
   return {
@@ -272,6 +280,7 @@ export function buildRequest(items: readonly PlanItem[], settings: DigestAiSetti
     body,
     items: kept,
     chars: content.length,
+    system,
   };
 }
 
@@ -310,7 +319,7 @@ export function estimateRun(reqs: readonly BuiltRequest[], model: string, pass: 
   const m = model.trim();
   const stories = reqs.reduce((n, r) => n + r.items.length, 0);
   const extra = pass ?? { requests: 0, inputTokens: 0, outputTokens: 0, singles: 0 };
-  const inputTokens = reqs.reduce((n, r) => n + Math.ceil((SYSTEM_PROMPT.length + r.chars) / 4), 0) + extra.inputTokens;
+  const inputTokens = reqs.reduce((n, r) => n + Math.ceil(((r.system ?? SYSTEM_PROMPT).length + r.chars) / 4), 0) + extra.inputTokens;
   const outputTokens = reqs.reduce((n, r) => n + Math.min(MAX_OUTPUT_TOKENS, r.items.length * OUT_TOKENS_PER_GROUP + 30), 0) + extra.outputTokens;
   return {
     host: reqs[0]?.host ?? host,
@@ -456,7 +465,7 @@ function fromStore(store: LlmStore, plan: readonly PlanItem[], model: string, si
 /** The sections already in the cache for the cached headlines of these clusters and these single posts. No request, no key. */
 export async function cachedSections(deps: Pick<LlmDeps, "settings" | "load">, clusters: readonly Cluster[], singles: readonly ReadingPost[] = []): Promise<Section[] | null> {
   const model = deps.settings().model.trim();
-  const plan = planClusters(clusters, model);
+  const plan = planClusters(clusters, model, deps.settings().editor);
   const store = await deps.load();
   const w = fromStore(store, plan, model, clusters.length);
   return cachedPass(store, plan.map((it) => w[it.index] ?? null), singles.map(singleOf), model);
@@ -465,7 +474,7 @@ export async function cachedSections(deps: Pick<LlmDeps, "settings" | "load">, c
 /** What the cache already holds for these clusters. No request, no key, nothing sent. */
 export async function cachedDigest(deps: Pick<LlmDeps, "settings" | "load">, clusters: readonly Cluster[]): Promise<Array<Written | null>> {
   const model = deps.settings().model.trim();
-  return fromStore(await deps.load(), planClusters(clusters, model), model, clusters.length);
+  return fromStore(await deps.load(), planClusters(clusters, model, deps.settings().editor), model, clusters.length);
 }
 
 /** The provider's own token count from an answer, or null when it gave none. */
@@ -498,7 +507,7 @@ export async function writeDigest(deps: LlmDeps, clusters: readonly Cluster[], o
   const settings = deps.settings();
   const model = settings.model.trim();
   const store = await deps.load();
-  const plan = planClusters(clusters, model);
+  const plan = planClusters(clusters, model, settings.editor);
   const written = fromStore(store, plan, model, clusters.length);
   const missing = plan.filter((it) => !written[it.index]);
   const storyList = (): Array<Written | null> => plan.map((it) => written[it.index] ?? null);
@@ -566,7 +575,7 @@ export async function writeDigest(deps: LlmDeps, clusters: readonly Cluster[], o
         throw new LlmError("offline", "The provider could not be reached. Are you offline?");
       }
       if (res.status < 200 || res.status >= 300) throw mapFailure(res.status, res.headers, key);
-      usedTokens += usageOf(res.text) ?? Math.ceil((SYSTEM_PROMPT.length + req.chars) / 4) + req.items.length * OUT_TOKENS_PER_GROUP;
+      usedTokens += usageOf(res.text) ?? Math.ceil(((req.system ?? SYSTEM_PROMPT).length + req.chars) / 4) + req.items.length * OUT_TOKENS_PER_GROUP;
       const got = readResponse(res.text, req);
       answered += got.size;
       for (const it of req.items) {

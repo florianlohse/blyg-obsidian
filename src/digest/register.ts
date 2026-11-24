@@ -19,6 +19,8 @@ import type { BlygSettings } from "../settings/schema";
 import { DigestConfirmModal, DigestConsentModal } from "../ui/DigestModals";
 import { trailText } from "./trailText";
 import { setConsentGate } from "./consentGate";
+import { editorIdFor, withEditor } from "./editorRun";
+import { editorFor, NEUTRAL } from "./editors";
 import { cachedSections as cachedSectionsOf, clearBodies, normaliseEndpoint } from "./llm";
 import { TextModal } from "../ui/TextModal";
 import { emptyStore, parseStore, writeDigest, type LlmDeps, type LlmStore } from "./llm";
@@ -111,8 +113,14 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
       ? {
           ai: {
             enabled: () => ai?.settings().useAi === true,
-            cached: async (c) => cachedStories(llm, await editions.current(), c),
-            cachedSections: async (c, singles) => recordSections(await editions.current(), c, singles) ?? (await cachedSectionsOf(llm, c, singles)),
+            cached: async (c) => {
+              const rec = await editions.current();
+              return cachedStories(withEditor(llm, editorIdFor(rec, ai?.settings().editor)), rec, c);
+            },
+            cachedSections: async (c, singles) => {
+              const rec = await editions.current();
+              return recordSections(rec, c, singles) ?? (await cachedSectionsOf(withEditor(llm, editorIdFor(rec, ai?.settings().editor)), c, singles));
+            },
             autoDue: async (c) => {
               const st = await loadStore();
               return editions.claimAuto((rec) => autoDue(llmSettings(), rec, st, c.length));
@@ -122,13 +130,16 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
               const auto = opts?.auto === true;
               const st = auto ? await loadStore() : null;
               // An automatic run never asks (no consent: nothing is sent), never shows the confirm line, and keeps to the daily ceiling.
-              const run: LlmDeps = auto ? { ...llm, askConsent: () => Promise.resolve(false) } : llm;
+              // The edition keeps its editor; a manual re-sort takes the setting's pick again (everything is then written in that one voice).
+              const voice = opts?.resort === true && rec ? (editorFor(ai?.settings().editor, rec.id)?.id ?? NEUTRAL) : editorIdFor(rec, ai?.settings().editor);
+              const run: LlmDeps = withEditor(auto ? { ...llm, askConsent: () => Promise.resolve(false) } : llm, voice);
               const o = await writeDigest(run, c, { singles, existing: existingSections(rec, c, singles), resort: opts?.resort === true, ...(auto && st ? { confirm: false, gate: (e) => ceilingRefusal(llmSettings(), st, Date.now(), e) } : {}) });
               if (rec) {
-                await rememberWrite(llm, editions, rec.id, c, o, singles);
+                await rememberWrite(run, editions, rec.id, c, o, singles);
                 if (o.status === "ok") {
+                  if (o.written.some(Boolean)) await editions.update(rec.id, ({ editor: _was, ...e }) => (voice === NEUTRAL ? e : { ...e, editor: voice }));
                   if (o.tokens) await editions.update(rec.id, (e) => ({ ...e, usage: addUsage(e.usage, o.tokens ?? 0, o.cost ?? null) }));
-                  if (o.written.some(Boolean)) await history.put(buildPast(rec.id, c, o, singles, Date.now()));
+                  if (o.written.some(Boolean)) await history.put({ ...buildPast(rec.id, c, o, singles, Date.now()), ...(voice === NEUTRAL ? {} : { editor: voice }) });
                 } else if (auto) await editions.update(rec.id, (e) => ({ ...e, auto: { note: o.status === "failed" ? `The automatic write did not work: ${o.note ?? "no reason given"}` : (o.note ?? "Not written automatically.") } }));
               }
               return o;
