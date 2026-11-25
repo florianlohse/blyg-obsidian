@@ -176,6 +176,11 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
               const rec = await editions.current();
               return recordSections(rec, c, singles) ?? (await cachedSectionsOf(withEditor(llm, editorIdFor(rec, ai?.settings().editor)), c, singles));
             },
+            autoOn: async () => {
+              const s = llmSettings();
+              const h = normaliseEndpoint(s.endpoint)?.host;
+              return s.useAi && s.autoWrite && !!h && (await loadStore()).consent?.host === h;
+            },
             autoDue: async (c) => {
               const st = await loadStore();
               return editions.claimAuto((rec) => autoDue(llmSettings(), rec, st, c.length));
@@ -204,11 +209,11 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
     edition: (posts) => editions.open(posts),
     font: () => deps.font(),
     showFeed: async (leaf) => void (await leaf.setViewState({ type: BLYG_READER_VIEW, active: true })),
-    openPost: async (post, leaf, story) => {
+    openPost: async (post, leaf, order) => {
       await leaf.setViewState({ type: BLYG_READER_VIEW, active: true });
       if (!(leaf.view instanceof BlygReaderView)) return;
       leaf.view.returnTo.set(() => void leaf.setViewState({ type: BLYG_DAILY_VIEW, active: true }));
-      leaf.view.walk.set(story ?? null); // Next and Previous walk that story (a single post: the feed's order, as before)
+      leaf.view.walk.set(order ?? null); // Next and Previous walk the Daily's order, top to bottom (one rule for a story's post and a single post alike)
       leaf.view.openPost(post, "digest");
     },
     openWeb: (url) => window.open(url, "_blank"),

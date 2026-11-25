@@ -1,4 +1,4 @@
-// DG8 part B (reader integration): the reader's mode in one place, a reader that asks the Studio for nothing when it is made to show a post, Next / Previous walking a story,
+// DG8 part B (reader integration): the reader's mode in one place, a reader that asks the Studio for nothing when it is made to show a post, Next / Previous walking the digest's whole order,
 // and "In the digest: <section>" naming the heading the current post is really under. Fake DOM, fake clock, fake Studio; invented names only.
 process.env.TZ = "Europe/Berlin";
 import { readFileSync } from "node:fs";
@@ -46,7 +46,7 @@ vi.mock("obsidian", () => {
 
 import { digestAvailable, drawModeToggle, DIGEST_VIEW, FEED_VIEW, readerMode, reopenInLastMode, setReaderMode, switchMode, useReaderMode, type ReaderMode } from "../../src/ui/readerMode";
 import { forgetSession, noteListLoaded, startReader, type Saved, type StartPorts } from "../../src/ui/readerStart";
-import { stepCount, StoryWalk } from "../../src/ui/readerSteps";
+import { stepCount, DigestWalk } from "../../src/ui/readerSteps";
 import { placedSection, publishPlacement } from "../../src/digest/placement";
 import { sectionOfPost } from "../../src/digest/postSection";
 import { drawDigestChip, setDigestChips } from "../../src/ui/readerDigestChip";
@@ -192,26 +192,30 @@ describe("a reader that asks the Studio for nothing when it is made to show a po
   });
 });
 
-describe("Next and Previous in a story", () => {
+describe("Next and Previous in the digest", () => {
   const ps = [post("one", "Ann"), post("two", "Bo"), post("three", "Cy"), post("four", "Di")];
-  it("walk the posts of that story in the order given, with a counter naming it", () => {
-    const w = new StoryWalk();
-    w.set({ title: "Harbour lights", posts: ps });
+  it("walk every post of the list handed over, in its order, and the counter names the mode", () => {
+    const w = new DigestWalk();
+    w.set(ps);
     const at = w.where(ps[1]!);
-    expect(at).toMatchObject({ at: 1, story: "Harbour lights" });
+    expect(at).toMatchObject({ at: 1, mode: "digest" });
     expect(at!.keys).toHaveLength(4);
     expect(w.post(at!.keys[2]!)).toBe(ps[2]);
     const host = new (BlygDailyView as unknown as new (l: unknown, h: unknown) => { contentEl: El })({}, {}).contentEl;
     stepCount(host as never, at!);
-    expect(textOf(host)).toBe("Story: Harbour lights · 2 of 4");
+    expect(textOf(host)).toBe("Digest 2 of 4");
+    const feed = new (BlygDailyView as unknown as new (l: unknown, h: unknown) => { contentEl: El })({}, {}).contentEl;
+    stepCount(feed as never, { keys: ["a", "b", "c"], at: 2, mode: "feed" });
+    expect(textOf(feed)).toBe("Feed 3 of 3");
     w.clear();
-    expect(w.where(ps[1]!)).toBeNull(); // from a single post or the feed: the feed's order, as before
+    expect(w.where(ps[1]!)).toBeNull(); // no digest list held: the feed's order
   });
-  it("a post that is not in the story, or a story of one, has no walk", () => {
-    const w = new StoryWalk();
-    w.set({ title: "Alone", posts: [ps[0]!] });
-    expect(w.where(ps[0]!)).toBeNull();
-    w.set({ title: "Two", posts: [ps[0]!, ps[1]!] });
+  it("a list of one is still a walk, a post that is not on the list has none, a post listed twice counts once", () => {
+    const w = new DigestWalk();
+    w.set([ps[0]!]);
+    expect(w.where(ps[0]!)).toMatchObject({ at: 0, mode: "digest" });
+    w.set([ps[0]!, ps[1]!, ps[0]!]);
+    expect(w.where(ps[0]!)!.keys).toHaveLength(2);
     expect(w.where(ps[2]!)).toBeNull();
   });
 });
@@ -273,33 +277,62 @@ describe("the digest chip names the heading the current post is under", () => {
   });
 });
 
-describe("opening a post from a story", () => {
-  it("hands the reader the story's posts in the unfolded order and its title; a single post hands none", async () => {
-    const a = post("Shared topic about gardens and tomatoes in spring, quite long.", "Ann");
-    const b = post("Reply about tomatoes.", "Bo", { isReply: true, stubTarget: { id: a.remoteId } as never });
-    const lone = post("A lone post nobody answers.", "Cy");
-    const given: Array<{ id: string; story?: { title: string; posts: readonly ReadingPost[] } }> = [];
+describe("opening a post from the digest", () => {
+  const harness = (posts: ReadingPost[], over: Partial<DigestHost> = {}): { view: BlygDailyView; root: El; given: Array<{ id: string; order: string[] }> } => {
+    const given: Array<{ id: string; order: string[] }> = [];
     const host: DigestHost = {
-      loadList: () => Promise.resolve({ posts: [a, b, lone], mentions: [], savedAt: NOW }),
+      loadList: () => Promise.resolve({ posts, mentions: [], savedAt: NOW }),
       edition: () => Promise.resolve({ id: 7, since: NOW - 6 * 3600_000, until: NOW }),
       font: () => "serif",
       showFeed: () => Promise.resolve(),
-      openPost: (p, _l, story) => Promise.resolve(void given.push({ id: p.remoteId, ...(story ? { story } : {}) })),
+      openPost: (p, _l, order) => Promise.resolve(void given.push({ id: p.remoteId, order: (order ?? []).map((q) => q.remoteId) })),
       openWeb: () => undefined,
+      ...over,
     };
     const view = new BlygDailyView({} as never, host);
+    return { view, root: (view as unknown as { contentEl: El }).contentEl, given };
+  };
+  it("hands the reader the whole page's order, the same for a story's post and a single post (one rule, not one per entry point)", async () => {
+    const a = post("Shared topic about gardens and tomatoes in spring, quite long.", "Ann");
+    const b = post("Reply about tomatoes.", "Bo", { isReply: true, stubTarget: { id: a.remoteId } as never });
+    const lone = post("A lone post nobody answers.", "Cy");
+    const { view, root, given } = harness([a, b, lone]);
     await view.onOpen();
     expect(readerMode()).toBe("digest"); // the Daily is shown: the mode is the Digest
-    const root = (view as unknown as { contentEl: El }).contentEl;
     root.all().find((e) => has(e, "blyg-daily-headline"))?.click();
     root.all().filter((e) => has(e, "blyg-daily-member"))[1]!.click(); // the whole row, the second post
     root.all().find((e) => has(e, "blyg-story-line"))?.click(); // the single post
-    expect(given[0]?.id).toBe(b.remoteId);
-    expect(given[0]?.story?.posts.map((p) => p.remoteId)).toEqual([a.remoteId, b.remoteId]);
-    expect(given[0]?.story?.title).toBeTruthy();
-    expect(given[1]).toEqual({ id: lone.remoteId });
+    const whole = [a.remoteId, b.remoteId, lone.remoteId];
+    expect(given.map((g) => g.id)).toEqual([b.remoteId, lone.remoteId]);
+    expect(given[0]!.order).toEqual(whole);
+    expect(given[1]!.order).toEqual(whole); // a single post walks the same list as a story's post
     // the masthead has the small Feed | Digest switch, not a row of buttons
     expect(root.all().filter((e) => has(e, "blyg-modebtn")).map((e) => e.text)).toEqual(["Feed", "Digest"]);
     expect(root.all().some((e) => e.tag === "button" && e.text === "Feed")).toBe(true);
+  });
+  it("lists the posts in the order the sections page shows them, folded stories included, read posts too", async () => {
+    const stories = ["alpha", "beta", "gamma", "delta"].map((t, i) => {
+      const a = post(`Wholly distinct ${t} subject only here ${i}.`, "Ann");
+      const r = post(`Reply ${t}.`, "Bo", { isReply: true, stubTarget: { id: a.remoteId } as never, readVersion: 1 });
+      return [a, r];
+    });
+    const lone = post("A lone post nobody answers.", "Cy");
+    const loose = post("Another lone post with its own words.", "Di");
+    const posts = [...stories.flat(), lone, loose];
+    const ai: DigestHost["ai"] = {
+      enabled: () => true,
+      cached: async (c) => c.map((_, i): Written => ({ headline: `Story ${i}`, summary: `Summary ${i}.`, model: "m", posts: 2 })),
+      cachedSections: async (_c, singles) => [{ name: "Garden", ids: [2, 3], posts: [singles.find((x) => x.remoteId === lone.remoteId)!.remoteId] }, { name: "Town", ids: [0, 1] }],
+      write: async () => ({ written: [], status: "ok" }),
+    };
+    const { view, root, given } = harness(posts, { ai });
+    await view.onOpen();
+    // the order the page was drawn in: what the reader's walk must be, top to bottom
+    const drawn = (view as unknown as { order: ReadingPost[] }).order.map((p) => p.remoteId);
+    root.all().find((e) => has(e, "blyg-story-line"))?.click();
+    expect(given[0]!.order).toEqual(drawn);
+    expect(new Set(drawn).size).toBe(drawn.length);
+    expect([...drawn].sort()).toEqual(posts.map((p) => p.remoteId).sort()); // every post once, whichever section holds it, read or not
+    expect(drawn.indexOf(lone.remoteId)).toBeGreaterThan(drawn.indexOf(stories[2]![1]!.remoteId)); // Garden's stories come before its single post
   });
 });

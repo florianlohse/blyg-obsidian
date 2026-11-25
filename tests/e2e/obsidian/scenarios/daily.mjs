@@ -168,11 +168,15 @@ await runScenario({ data }, async (s) => {
   const set = await page.evaluate(() => { const v = document.querySelector(".view-content.blyg-daily"); const max = v.scrollHeight - v.clientHeight; v.scrollTop = Math.min(max, 120); return { top: v.scrollTop, max }; });
   await wait(300);
   const asked = others.length;
+  const digestOrder = await page.evaluate(() => [...new Set(window.app.workspace.getLeavesOfType("blyg-daily")[0].view.order.map((p) => p.remoteId))]); // the posts of the page, top to bottom (what the reader walks)
   await page.click(".blyg-daily .blyg-daily-member .blyg-daily-preview");
   await page.waitForSelector(".blyg-reader-header .blyg-reader-back", { timeout: 20000 });
   await wait(1500);
-  // Next and Previous walk the story, and the counter names it
+  // DG18: Next and Previous walk ALL posts of the digest, top to bottom, read ones included, and the counter counts that same list and names it
   const counter = () => page.evaluate(() => document.querySelector(".blyg-reader-header .blyg-reader-stepcount")?.textContent ?? "");
+  const shownId = () => page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader")[0].view.shown?.remoteId ?? "");
+  const start = await shownId();
+  const at0 = digestOrder.indexOf(start);
   const c1 = await counter();
   await page.click(".blyg-reader-header .blyg-reader-step-next");
   await wait(600);
@@ -180,7 +184,23 @@ await runScenario({ data }, async (s) => {
   await page.click(".blyg-reader-header .blyg-reader-step-prev");
   await wait(600);
   const c3 = await counter();
-  check(/^Story: .+ · 1 of 2$/.test(c1) && /^Story: .+ · 2 of 2$/.test(c2) && c3 === c1, `Next and Previous walk the story: "${c1}", then "${c2}", then "${c3}"`);
+  check(digestOrder.length >= 8 && at0 >= 0 && c1 === `Digest ${at0 + 1} of ${digestOrder.length}` && c2 === `Digest ${at0 + 2} of ${digestOrder.length}` && c3 === c1, `Next and Previous count the digest's whole list and name it: "${c1}", then "${c2}", then "${c3}" (the page holds ${digestOrder.length} posts)`);
+  // all the way to the end: every post of the page once, in the page's order, across the stories and into the singles
+  const seenForward = [await shownId()];
+  for (let i = at0; i < digestOrder.length - 1; i++) {
+    await page.click(".blyg-reader-header .blyg-reader-step-next");
+    await s.pollUntil("the next post of the digest", shownId, (id) => id !== seenForward.at(-1), 8000);
+    seenForward.push(await shownId());
+  }
+  const endState = await page.evaluate(() => ({ next: document.querySelector(".blyg-reader-header .blyg-reader-step-next")?.disabled, prev: document.querySelector(".blyg-reader-header .blyg-reader-step-prev")?.disabled, count: document.querySelector(".blyg-reader-header .blyg-reader-stepcount")?.textContent ?? "" }));
+  check(JSON.stringify(seenForward) === JSON.stringify(digestOrder.slice(at0)) && endState.next === true && endState.prev === false && endState.count === `Digest ${digestOrder.length} of ${digestOrder.length}`, `Next goes through the page's posts in order to the end, across stories and singles, and stops there (${JSON.stringify({ seenForward: seenForward.length, expected: digestOrder.length - at0, endState })})`);
+  // back to the first one: the same list the other way
+  for (let i = digestOrder.length - 1; i > at0; i--) {
+    const before = await shownId();
+    await page.click(".blyg-reader-header .blyg-reader-step-prev");
+    await s.pollUntil("the previous post of the digest", shownId, (id) => id !== before, 8000);
+  }
+  check((await shownId()) === start && (await counter()) === c1, `Previous walks the same list back to where it started ("${await counter()}")`);
   await page.click(".blyg-reader-header .blyg-reader-back");
   await page.waitForSelector(".view-content.blyg-daily .blyg-daily-member", { state: "attached", timeout: 20000 });
   await wait(1500);
@@ -188,6 +208,16 @@ await runScenario({ data }, async (s) => {
   check(back.members === 2 && Math.abs(back.top - set.top) <= 2, `Back from a post of an unfolded story: still unfolded (${back.members}) at the same place (${back.top} of ${set.top})`);
   await wait(3000);
   check(others.length === asked, `opening a post from the digest, stepping, and Back asked the Studio for nothing (${others.slice(asked).join(", ") || "0 requests"})`);
+  // a single post opened from the digest walks the same list (one rule for every entry point, not the feed's order)
+  await page.click(".blyg-daily .blyg-story-mixed .blyg-story-line");
+  await page.waitForSelector(".blyg-reader-header .blyg-reader-stepcount", { timeout: 20000 });
+  await wait(800);
+  const singleId = await shownId();
+  const singleCount = await counter();
+  check(digestOrder.includes(singleId) && singleCount === `Digest ${digestOrder.indexOf(singleId) + 1} of ${digestOrder.length}`, `a single post opened from the digest walks the same ${digestOrder.length} posts, at its place in the page's order ("${singleCount}")`);
+  await page.click(".blyg-reader-header .blyg-reader-back");
+  await page.waitForSelector(".view-content.blyg-daily .blyg-story-mixed", { state: "attached", timeout: 20000 });
+  await wait(1500);
   const storyAt = marks.length;
   await page.click(".blyg-daily .blyg-story .blyg-mark");
   await wait(2500);
@@ -273,6 +303,37 @@ await runScenario({ data }, async (s) => {
     check(c.headContrast >= 4.5 && (c.sumContrast === null || c.sumContrast >= 4.5) && c.metaContrast >= 4.5 && c.accentContrast >= 3 && +c.sectionRule.replace("px", "") >= 2 && c.sw, `the ${c.theme} theme: contrast of headline, summary and meta at least 4.5, accent at least 3 (large text), a heavier rule under the section heading, no sideways scroll (${JSON.stringify(c)})`);
   }
   check(lookLight.stories >= 2 && lookLight.ruleBetween === true, `the page holds at least two stories in a row and a rule sits between them (${lookLight.stories} stories, rule ${lookLight.ruleBetween})`);
+  // DG18: posts already read are dimmed in place: a muted colour (not opacity, not struck through), still readable and tappable; a story whose posts are all read has its headline lighter too; unread ones are unchanged. Both themes.
+  const readLook = (theme) => page.evaluate(async (theme) => {
+    document.body.classList.toggle("theme-dark", theme === "dark"); document.body.classList.toggle("theme-light", theme !== "dark"); await new Promise((r) => setTimeout(r, 400));
+    const num = (c) => (c.match(/[\d.]+/g) ?? []).slice(0, 4).map(Number);
+    const lum = (c) => { const [r, g, b] = num(c).map((v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+    const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m); return +((x + 0.05) / (y + 0.05)).toFixed(1); };
+    const colour = (v) => { const probe = document.createElement("span"); probe.style.color = `var(${v})`; document.body.appendChild(probe); const c = getComputedStyle(probe).color; probe.remove(); return c; };
+    const ground = getComputedStyle(document.querySelector(".view-content.blyg-daily")).backgroundColor;
+    const pick = (q) => document.querySelector(q);
+    const readHead = pick(".blyg-daily .blyg-story.blyg-is-read > .blyg-story-headline");
+    const unreadHead = pick(".blyg-daily .blyg-story:not(.blyg-is-read) > .blyg-story-headline");
+    const readLine = pick(".blyg-daily .blyg-story-mixed.blyg-is-read .blyg-story-line");
+    const unreadLine = pick(".blyg-daily .blyg-story-mixed:not(.blyg-is-read) .blyg-story-line");
+    const st = (el) => (el ? getComputedStyle(el) : null);
+    const solid = (c) => (/rgba\(.*, 0\)$/.test(c) || c === "transparent" ? getComputedStyle(document.body).backgroundColor : c);
+    return {
+      theme, muted: colour("--text-muted"), normal: colour("--text-normal"),
+      readHead: st(readHead)?.color ?? null, unreadHead: st(unreadHead)?.color ?? null, readLine: st(readLine)?.color ?? null, unreadLine: st(unreadLine)?.color ?? null,
+      opacity: [readHead, readLine].map((el) => (el ? getComputedStyle(el).opacity + "/" + getComputedStyle(el.closest(".blyg-story, .blyg-story-mixed")).opacity : null)),
+      decoration: [readHead, readLine].map((el) => (el ? getComputedStyle(el).textDecorationLine : null)),
+      tappable: [readHead, readLine].map((el) => !!el && !el.disabled && getComputedStyle(el).pointerEvents !== "none"),
+      contrast: [readHead, readLine].map((el) => (el ? ratio(getComputedStyle(el).color, solid(ground)) : null)),
+    };
+  }, theme);
+  await page.mouse.move(0, 0); // (a pointer resting on a headline would show its hover colour)
+  for (const theme of ["dark", "light"]) {
+    const r = await readLook(theme);
+    check(r.readHead !== null && r.readLine !== null && r.unreadHead !== null && r.unreadLine !== null, `the ${theme} theme: the page holds a read story and a read single post, and unread ones to compare (${JSON.stringify(r)})`);
+    check(r.readHead === r.muted && r.readLine === r.muted && r.unreadHead === r.normal && r.unreadLine === r.normal, `the ${theme} theme: a read story's headline and a read post's line are the muted colour, unread ones are unchanged (${JSON.stringify(r)})`);
+    check(r.opacity.every((o) => o === "1/1") && r.decoration.every((d) => d === "none") && r.tappable.every(Boolean) && r.contrast.every((c) => c >= 4.5), `the ${theme} theme: read text is not made see-through or struck through, stays tappable, contrast at least 4.5 (${JSON.stringify(r)})`);
+  }
   const lead = await page.evaluate(() => { const s = [...document.querySelectorAll(".blyg-daily .blyg-daily-cluster.blyg-story")]; const f = (el) => parseFloat(getComputedStyle(el.querySelector(":scope > .blyg-story-headline")).fontSize); const lead = s.find((e) => !(e.previousElementSibling?.classList.contains("blyg-story"))); const next = s.find((e) => e.previousElementSibling?.classList.contains("blyg-story")); return lead && next ? { lead: f(lead), next: f(next) } : null; });
   check(lead && lead.lead > lead.next, `the first story of a block is set larger than the next (${JSON.stringify(lead)})`);
   const rot = async () => page.evaluate(async () => { await new Promise((r) => setTimeout(r, 150)); const c = document.querySelector(".blyg-daily .blyg-daily-cluster.blyg-story"); return { open: c.classList.contains("is-open"), expanded: c.querySelector(".blyg-story-headline").getAttribute("aria-expanded"), members: c.querySelectorAll(".blyg-daily-member").length, ruled: c.querySelector(".blyg-daily-members") ? getComputedStyle(c.querySelector(".blyg-daily-members")).borderLeftWidth : null }; });

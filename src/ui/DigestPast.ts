@@ -34,6 +34,8 @@ export function drawSwitcher(into: HTMLElement, ids: readonly number[], current:
 /** A past edition, read-only: sections with their stories (headline, summary, posts) and single posts. */
 export interface PastHooks {
   open: (p: ReadingPost) => void;
+  /** A post the edition shows (held by the reader), in the order drawn: the list Next and Previous walk. */
+  seen?: (p: ReadingPost) => void;
   /** A section's box was drawn (so the table of contents and the reader's chip can scroll to it). */
   section: (name: string, el: HTMLElement) => void;
   go: (name: string) => void;
@@ -60,6 +62,10 @@ export function drawPast(root: HTMLElement, rec: PastEdition, byId: ReadonlyMap<
   const story = (into: HTMLElement, i: number): number => {
     const s = rec.stories[i];
     if (!s) return 0;
+    for (const id of s.posts) {
+      const q = byId.get(id);
+      if (q) hooks.seen?.(q);
+    }
     const card = into.createDiv({ cls: "blyg-daily-cluster blyg-story" });
     const title = card.createEl("button", { cls: "blyg-daily-link blyg-daily-headline blyg-story-headline", text: s.headline });
     const summary = s.summary ? card.createEl("button", { cls: "blyg-daily-link blyg-story-summary", text: s.summary }) : null;
@@ -81,6 +87,7 @@ export function drawPast(root: HTMLElement, rec: PastEdition, byId: ReadonlyMap<
   /** A single post, as on today's page: the content line in bold, "by <Author>" in italics; a post the reader no longer holds is told so. */
   const single = (into: HTMLElement, id: string): number => {
     const p = byId.get(id);
+    if (p) hooks.seen?.(p);
     const r = into.createDiv({ cls: "blyg-daily-row blyg-story-mixed" });
     const main = r.createDiv({ cls: "blyg-story-main" });
     const line = rec.lines?.[id];
