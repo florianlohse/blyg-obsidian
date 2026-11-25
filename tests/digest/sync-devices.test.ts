@@ -245,10 +245,11 @@ describe("this device's name and the lines under the masthead", () => {
   });
   it("says who made the edition, from how many devices it is synced, and when a file is still arriving", () => {
     const made = { device: "d", label: "iPad", at: T0, mine: false };
-    expect(syncLines({ made, others: 2, waiting: false }, T0)[0]).toMatch(/^Edition of .+, made on iPad at .+ · Synced from 2 devices$/);
-    expect(syncLines({ made: { ...made, mine: true }, others: 0, waiting: false }, T0)[0]).not.toMatch(/Synced/);
-    expect(syncLines({ made: null, others: 0, waiting: true }, null)).toEqual(["Waiting for sync: a file from another device is still arriving."]);
-    expect(syncLines({ made: null, others: 0, waiting: false }, null)).toEqual([]);
+    expect(syncLines({ made, others: 2, waiting: false, me: "iPhone" }, T0)[0]).toMatch(/^Edition of .+, made on iPad at .+ · Synced from 2 devices$/);
+    expect(syncLines({ made: { ...made, mine: true }, others: 0, waiting: false, me: "iPad" }, T0)[0]).not.toMatch(/Synced/);
+    // DG20: the line is always there: alone it still says where the edition was made, and that no other device has it
+    expect(syncLines({ made: null, others: 0, waiting: false, me: "iPad" }, T0)[0]).toMatch(/^Edition of .+, made on iPad · Not synced from another device yet$/);
+    expect(syncLines({ made: null, others: 0, waiting: true, me: "iPad" }, null)).toEqual(["This device: iPad · Not synced from another device yet", "Waiting for sync: a file from another device is still arriving."]);
   });
 });
 
@@ -380,7 +381,7 @@ describe("the Sync check (DG17)", () => {
     const a = device("devA", "iPhone", prov, T0);
     const b = device("devB", "iPad", prov, T0 + 3600_000);
     expect((await a.sync.devicesSeen()).map((d) => [d.label, d.mine, d.newestEdition])).toEqual([["iPhone", true, null]]);
-    expect(checkLines(await a.sync.devicesSeen())).toEqual([expect.stringMatching(/^iPhone \(this device\) · newest edition none yet · file none yet$/), "No other device's files seen yet."]);
+    expect(checkLines(await a.sync.devicesSeen())).toEqual([expect.stringMatching(/^iPhone \(this device\) · nothing seen yet · newest edition none yet · file none yet$/), "This device's key in the settings file: not written yet.", "No other device's files seen yet."]);
     const ia = await a.editions.open(w.items);
     expect(checkLines(await a.sync.devicesSeen()).at(-1)).toBe("No other device's files seen yet.");
     ship(a, b);
@@ -389,9 +390,9 @@ describe("the Sync check (DG17)", () => {
     expect(seen.map((d) => [d.label, d.mine, d.newestEdition])).toEqual([["iPad", true, null], ["iPhone", false, ia.id]]);
     expect(seen[1]?.modified).toBeGreaterThan(0);
     const lines = checkLines(seen);
-    expect(lines.length).toBe(2);
+    expect(lines.length).toBe(3); // two devices and the line about this device's key
     expect(lines[0]).toMatch(/^iPad \(this device\)/);
-    expect(lines[1]).toMatch(/^iPhone · newest edition .+ · file .+/);
+    expect(lines[1]).toMatch(/^iPhone · via digest folder · newest edition .+ · file .+/);
     expect(lines.join("\n")).not.toMatch(/No other device/);
   });
 });

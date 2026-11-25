@@ -297,7 +297,7 @@ export class BlygSettingTab extends PluginSettingTab {
         },
         {
           name: "Sync check",
-          desc: "Which devices' Daily files this device can see in the plugin folder (so you can tell whether your sync carries them). Compare the list on two devices. Reads local files only.",
+          desc: "Which devices' Daily editions this device can see, in the settings file (data.json) and in the plugin's digest folder, and how big this device's own entry in the settings file is. Compare the list on two devices. Reads local files only.",
           aliases: ["sync", "devices", "obsidian sync", "check"],
           render: (setting) => {
             const out = setting.infoEl.createDiv({ cls: "blyg-note" });
@@ -305,7 +305,7 @@ export class BlygSettingTab extends PluginSettingTab {
               out.empty();
               const seen = await runSyncCheck().catch(() => null);
               if (!seen) return void out.createDiv({ text: "The Daily is not available on this device." });
-              for (const line of checkLines(seen)) out.createDiv({ text: line });
+              for (const line of checkLines(seen.devices, seen.ownKeyBytes)) out.createDiv({ text: line });
             };
             setting.addButton((b) => b.setButtonText("Check").onClick(() => void run()));
           },

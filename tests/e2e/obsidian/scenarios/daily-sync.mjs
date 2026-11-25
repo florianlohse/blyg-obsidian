@@ -1,3 +1,4 @@
+// (DG20 adds a third part: the other device's edition arrives as a top-level key of data.json, and a settings save keeps it.)
 // The Daily on a second device (DG16), in real Obsidian: another device's edition file is put into the plugin's synced folder BEFORE the Daily is opened, and the Daily
 // shows THAT edition: its story headlines (the other device's AI texts), its sections and bylines, "made on <the other device>", no second edition record of this device,
 // and no AI request (automatic writing is on, with consent and a key, and still nothing is sent: the texts are already there). Then the foreign file is changed while the Daily is open
@@ -124,9 +125,34 @@ await runScenario({ data }, async (s) => {
   check(llm.length === 0 && !others.some((r) => /^(PUT|POST|DELETE|PATCH)/.test(r)), `the redraw asked nothing of the AI or the Studio (${llm.length} AI requests)`);
   check(errors.length === 0, `no error on the page (${JSON.stringify(errors.slice(0, 2))})`);
 
+  // ---- 3. the second transport (DG20): another device's edition arrives as a top-level key of data.json while the plugin runs, and a settings save after that does not delete it
+  const DATA = ".obsidian/plugins/blyg/data.json";
+  const KEY = "digestSync_e2edata";
+  const readData = () => ad(async (p) => JSON.parse(await window.app.vault.adapter.read(p)), DATA);
+  const viaData = foreign(heads(" (updated)"), "Soil, seeds and rain");
+  viaData.device = "e2edata"; viaData.label = "Test Android"; viaData.at = Date.now() + 1000; viaData.clock = 9;
+  for (const r of Object.values(viaData.regs)) r.d = "e2edata";
+  viaData.regs = Object.fromEntries(Object.entries(viaData.regs).filter(([k]) => k === "order" || k.startsWith("about/")));
+  viaData.regs["about/Town"] = { c: 9, d: "e2edata", v: "Roofs and rain from the settings file" };
+  const payload = { v: 1, device: "e2edata", label: "Test Android", at: Date.now(), editions: [viaData] };
+  await ad(async ([p, k, v]) => { const a = window.app.vault.adapter; const d = JSON.parse(await a.read(p)); d[k] = v; await a.write(p, JSON.stringify(d)); }, [DATA, KEY, payload]); // what Sync would do to the file
+  const viaOk = await s.pollUntil("the edition that arrived through data.json", () => ad(() => document.querySelector(".view-content.blyg-daily")?.innerText ?? ""), (t) => /Roofs and rain from the settings file/.test(t), 45000);
+  check(viaOk.ok, "the open Daily shows what another device wrote into its data.json key, without a tap");
+  check(/Synced from 2 devices/.test(await ad(() => document.querySelector(".blyg-daily-sync")?.textContent ?? "")), "... and the masthead counts it as a second synced device");
+  // a settings save (the plugin's in-memory settings object never held that key)
+  await ad(async () => { const pl = window.app.plugins.plugins.blyg; pl.settings.digest.time = "07:05"; await pl.saveSettings(); pl.settings.digest.time = "07:00"; await pl.saveSettings(); });
+  const afterSave = await readData();
+  check(JSON.stringify(afterSave[KEY]) === JSON.stringify(payload), `a settings save does not delete or change the other device's key (${Object.keys(afterSave).filter((k) => k.startsWith("digestSync_"))})`);
+  check(afterSave.digest?.time === "07:00", "... and the settings change itself was written");
+  await wait(1500);
+  const ownKeys = Object.keys(await readData()).filter((k) => k.startsWith("digestSync_") && k !== KEY);
+  check(ownKeys.length <= 1, `this device writes at most its own key (${JSON.stringify(ownKeys)})`);
+  check(llm.length === 0, `still no AI request (${llm.length})`);
+
   // ---- end state
   await s.resetWorkspace();
   await ad(async (d) => { for (const f of (await window.app.vault.adapter.list(d)).files) await window.app.vault.adapter.remove(f); }, DIR);
+  await ad(async (p) => { const a = window.app.vault.adapter; const d = JSON.parse(await a.read(p)); for (const k of Object.keys(d)) if (k.startsWith("digestSync_")) delete d[k]; await a.write(p, JSON.stringify(d)); }, DATA);
   const left = await ad(async (d) => (await window.app.vault.adapter.list(d)).files.length, DIR);
-  check(left === 0, `the end state is reset: the synced folder is empty (${left})`);
+  check(left === 0, `the end state is reset: the synced folder is empty and data.json holds no sync key (${left})`);
 });

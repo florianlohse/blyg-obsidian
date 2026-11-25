@@ -4,6 +4,8 @@ import { EDITIONS_KEPT, parseEditions, pruneEditions, type EditionRec, type Edit
 import { parseHistory, trimHistory, type PastEdition } from "../history";
 import { hashText, parseStore, type LlmStore } from "../llm";
 import { localDay } from "../budget";
+import { buildPayload, keyOf, readKeys } from "./dataKey";
+import type { DataPort } from "./dataPort";
 import { FILE_RE, LOCK_TTL_MS, applyChange, emptyState, fileName, joinAll, lockOf, parseState, projectEdition, projectHistory, setReg, storyIdFor, usedOnDay, type EdState, type Lock } from "./state";
 
 export interface SyncFs {
@@ -37,6 +39,8 @@ export interface DeviceSeen {
   /** When its newest file was modified on this device (the file system's time); null: no file. */
   modified: number | null;
   mine: boolean;
+  /** Where its editions were found: its key in the settings file (data.json), its files in the digest folder, or both. */
+  via: Array<"settings" | "folder">;
 }
 
 export interface SyncInfo {
@@ -46,6 +50,8 @@ export interface SyncInfo {
   others: number;
   /** Files of other devices that are there but cannot be read yet (still arriving). */
   waiting: boolean;
+  /** This device's name now (the masthead names it when the creator is not known). */
+  me: string;
 }
 
 interface Snapshot {
@@ -65,6 +71,13 @@ export class SyncedDigest {
   /** The editions as the code was given them by `load()`: what `save()` measures its changes against. */
   private loaded: EditionStore = { v: 1, editions: [] };
   private migrated = false;
+  /** What the other devices' keys in data.json held at the last read (and this device's own, read back): joined with the folder files. */
+  private dataStates: EdState[] = [];
+  private keyInfo = new Map<string, { label: string; at: number; bytes: number; ids: number[] }>();
+  /** True when data.json could not be read at the last refresh: what the other devices wrote there is then unknown (fail closed for the shared ceiling). */
+  private dataFailed = false;
+  /** The size of this device's own key as last written or read back, in bytes. */
+  private ownBytes: number | null = null;
   private readonly listeners = new Set<() => void>();
   constructor(
     private readonly fs: SyncFs,
@@ -73,6 +86,8 @@ export class SyncedDigest {
     private readonly me: { id: string; label: (taken?: readonly string[]) => string },
     private readonly now: () => number,
     private readonly legacy?: LegacyPorts,
+    /** The second transport: this device's key in data.json and the other devices' keys. Absent: the folder only. */
+    private readonly data?: DataPort,
   ) {}
 
   /** This device's name now: the platform's or the set one, with a short suffix only when another device of the files has the same default name. */
@@ -122,7 +137,52 @@ export class SyncedDigest {
         if (state) out.push(state);
       }),
     );
+    await this.readData();
+    out.push(...this.dataStates);
     return out;
+  }
+
+  /** The other devices' keys (and this device's own, read back) from data.json, read from DISK now, not from what the plugin loaded at start. */
+  private async readData(): Promise<void> {
+    if (!this.data) return;
+    const disk = await this.data.read();
+    this.dataFailed = disk === null;
+    if (disk === null) return; // unknown: what was last read stays in use
+    const keys = readKeys(disk);
+    this.dataStates = keys.flatMap((k) => k.states);
+    this.keyInfo = new Map(keys.map((k) => [k.device, { label: k.label, at: k.at, bytes: k.bytes, ids: k.states.map((s) => s.id) }]));
+    this.ownBytes = this.keyInfo.get(this.me.id)?.bytes ?? null;
+  }
+
+  /** This device's own key, written when it differs from what is on disk (so a failed write is tried again at the next read, and an unchanged key is not rewritten). */
+  private keyWrite: Promise<void> | null = null;
+  private keyAgain = false;
+  private writeKey(): Promise<void> {
+    if (!this.data) return Promise.resolve();
+    if (this.keyWrite) return ((this.keyAgain = true), this.keyWrite); // a change made while a write runs is written right after it
+    const once = async (): Promise<void> => {
+      const built = buildPayload([...this.own.values()], this.me.id, this.name());
+      if (!built) return;
+      const disk = await this.data?.read();
+      if (!disk) return; // damaged or mid-write: not written now
+      const have = disk[keyOf(this.me.id)];
+      if (have !== undefined && JSON.stringify(have) === JSON.stringify(built.payload)) return;
+      await this.data?.writeOwn(keyOf(this.me.id), built.payload);
+      this.ownBytes = built.bytes;
+    };
+    const run = async (): Promise<void> => {
+      do {
+        this.keyAgain = false;
+        await once().catch(() => undefined);
+      } while (this.keyAgain);
+    };
+    this.keyWrite = run().finally(() => void (this.keyWrite = null));
+    return this.keyWrite;
+  }
+
+  /** The size of this device's own key in data.json (bytes); null: none written yet or no settings-file transport. */
+  ownKeyBytes(): number | null {
+    return this.ownBytes;
   }
 
   private build(files: readonly EdState[]): Snapshot {
@@ -161,6 +221,7 @@ export class SyncedDigest {
     }
     this.snap = this.build(files);
     if (before !== "" && before !== this.fingerprint(this.snap)) this.listeners.forEach((f) => f());
+    await this.writeKey();
   }
   private fingerprint(s: Snapshot): string {
     return hashText(JSON.stringify([[...s.joined.values()].map((j) => [j.id, j.clock, j.posts, j.created, j.regs]), s.unreadable])); // by content: a file that changed a value without raising a counter is still seen
@@ -188,6 +249,7 @@ export class SyncedDigest {
     } catch {
       /* kept in memory; written with the next change */
     }
+    await this.writeKey();
   }
 
   /** The editions of all devices, joined (reads the files first). */
@@ -212,7 +274,7 @@ export class SyncedDigest {
     await this.prune();
   }
   private parsedStates(): EdState[] {
-    return [...this.parsed.values()].flatMap((v) => (v.state ? [v.state] : []));
+    return [...this.parsed.values()].flatMap((v) => (v.state ? [v.state] : [])).concat(this.dataStates);
   }
 
   /** Own files of editions older than the kept ones are removed (never another device's file). */
@@ -297,7 +359,7 @@ export class SyncedDigest {
     } catch {
       return null;
     }
-    if (this.listFailed || this.snapshot.unreadable > 0) return null;
+    if (this.listFailed || this.dataFailed || this.snapshot.unreadable > 0) return null;
     let mine = 0;
     let others = 0;
     for (const [d, t] of usedOnDay(this.snapshot.joined.values(), localDay(now))) d === this.me.id ? (mine += t) : (others += t);
@@ -311,18 +373,17 @@ export class SyncedDigest {
   async devicesSeen(): Promise<DeviceSeen[]> {
     await this.refresh().catch(() => undefined);
     const by = new Map<string, DeviceSeen>();
-    for (const v of this.parsed.values()) {
-      if (!v.state) continue;
-      const cur = by.get(v.state.device);
-      const mtime = v.mtime;
-      if (!cur) by.set(v.state.device, { device: v.state.device, label: v.state.label || "unnamed device", newestEdition: v.state.id, modified: mtime, mine: v.state.device === this.me.id });
-      else {
-        cur.newestEdition = Math.max(cur.newestEdition ?? 0, v.state.id);
-        cur.modified = Math.max(cur.modified ?? 0, mtime);
-        if (v.state.label) cur.label = v.state.label;
-      }
-    }
-    if (!by.has(this.me.id)) by.set(this.me.id, { device: this.me.id, label: this.name(), newestEdition: null, modified: null, mine: true });
+    const at = (device: string, label: string, id: number | null, modified: number | null, via: "settings" | "folder"): void => {
+      const cur = by.get(device);
+      if (!cur) return void by.set(device, { device, label: label || "unnamed device", newestEdition: id, modified, mine: device === this.me.id, via: [via] });
+      cur.newestEdition = id === null ? cur.newestEdition : Math.max(cur.newestEdition ?? 0, id);
+      cur.modified = modified === null ? cur.modified : Math.max(cur.modified ?? 0, modified);
+      if (label) cur.label = label;
+      if (!cur.via.includes(via)) cur.via.push(via);
+    };
+    for (const v of this.parsed.values()) if (v.state) at(v.state.device, v.state.label, v.state.id, v.mtime, "folder");
+    for (const [device, k] of this.keyInfo) at(device, k.label, k.ids.length > 0 ? Math.max(...k.ids) : null, k.at || null, "settings");
+    if (!by.has(this.me.id)) by.set(this.me.id, { device: this.me.id, label: this.name(), newestEdition: null, modified: null, mine: true, via: [] });
     const mine = by.get(this.me.id);
     if (mine) mine.label = this.name();
     return [...by.values()].sort((a, b) => Number(b.mine) - Number(a.mine) || (b.modified ?? 0) - (a.modified ?? 0));
@@ -334,7 +395,7 @@ export class SyncedDigest {
     const j = editionId === null ? undefined : snap.joined.get(editionId);
     const label = (d: string): string => snap.devices.get(d)?.label || "another device";
     const others = [...snap.devices.entries()].filter(([d, v]) => d !== this.me.id && editionId !== null && v.ids.has(editionId)).length;
-    return { made: j?.created ? { device: j.created.d, label: j.created.d === this.me.id ? this.name() : label(j.created.d), at: j.created.at, mine: j.created.d === this.me.id } : null, others, waiting: snap.unreadable > 0 };
+    return { made: j?.created ? { device: j.created.d, label: j.created.d === this.me.id ? this.name() : label(j.created.d), at: j.created.at, mine: j.created.d === this.me.id } : null, others, waiting: snap.unreadable > 0, me: this.name() };
   }
 
   // ---- migration of this device's old files (read once; the old files stay)
