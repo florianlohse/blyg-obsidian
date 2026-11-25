@@ -1,6 +1,8 @@
 // One Refresh, in real Obsidian: the feed's Refresh and the digest's Refresh are the same action. One tap asks the (stand-in, counted) Studio to fetch once and reads the
 // list once, in both; nothing is requested without a tap; the digest takes the new posts into its edition WITHOUT redrawing the page (the page element and its scroll position
 // stay, no "Reading your list…" blank page, one draw), marked new; "Write the digest" sends nothing and starts nothing without consent; the 60 s pause holds.
+// DG18: with the automatic write OFF, Refresh sends nothing to the AI and says in one line that the new posts are grouped but not written; the menu holds one update action and the
+// manual writes sit under "Advanced"; with the automatic write ON (and consent recorded), the same Refresh also tries the missing texts, by the automatic rules, with the same Studio requests.
 // The stand-in answers the poll, the change counters and the list itself, so every request is counted by kind.
 //   STUDIO_E2E_URL=… STUDIO_E2E_TOKEN=… node tests/e2e/obsidian/scenarios/daily-refresh.mjs
 import http from "node:http";
@@ -81,7 +83,17 @@ await runScenario({ data }, async (s) => {
   await wait(3000);
   check(Object.keys(snap()).length === 0, `the digest asks the Studio for nothing by itself (${JSON.stringify(snap())})`);
   const icon = await page.evaluate(() => { const b = document.querySelector(".blyg-daily .blyg-daily-barrow .blyg-daily-refresh"); const e = document.querySelector(".blyg-daily .blyg-daily-panel .blyg-daily-refreshbtn"); return { bar: !!b?.querySelector("svg"), label: b?.getAttribute("aria-label"), entry: e?.textContent, hint: document.querySelector(".blyg-daily .blyg-daily-hint")?.textContent, panel: document.querySelector(".blyg-daily .blyg-daily-panel")?.textContent }; });
-  check(icon.bar && icon.label === "Refresh" && icon.entry === "Refresh" && /Fetches new posts from your blygs, no AI, no cost/.test(icon.hint ?? "") && /Writes headlines and summaries with your AI model, uses tokens/.test(icon.panel ?? ""), `the bar has a Refresh icon and the menu explains Refresh and Write in words (${JSON.stringify(icon)})`);
+  check(icon.bar && icon.label === "Refresh" && icon.entry === "Refresh" && /^Fetches new posts from your blygs and groups them\. Writes the missing texts only if “Write the digest automatically” is on/.test(icon.hint ?? "") && /Writes headlines and summaries with your AI model, uses tokens/.test(icon.panel ?? ""), `the bar has a Refresh icon and the menu explains Refresh and Write in words (${JSON.stringify(icon)})`);
+
+  // DG18: one update action in the menu; "Write the digest" and "Re-sort sections" are under a labelled "Advanced" part
+  const menu = await page.evaluate(() => {
+    const panel = document.querySelector(".blyg-daily .blyg-daily-panel");
+    const adv = panel?.querySelector("details.blyg-daily-advanced");
+    const entries = [...(panel?.querySelectorAll(".blyg-daily-entry") ?? [])];
+    const outside = entries.filter((e) => !adv?.contains(e)).map((e) => e.querySelector("button")?.textContent ?? "");
+    return { label: adv?.querySelector("summary")?.textContent ?? null, outside, inside: [...(adv?.querySelectorAll("button") ?? [])].map((b) => b.textContent), writeIn: !!adv?.querySelector(".blyg-story-write"), mainWrite: !!panel?.querySelector(":scope > .blyg-daily-entry .blyg-story-write") };
+  });
+  check(menu.label === "Advanced" && JSON.stringify(menu.outside) === JSON.stringify(["Refresh"]) && menu.writeIn && !menu.mainWrite && menu.inside.includes("Write the digest"), `the main menu has one update action (Refresh); "Write the digest" (and "Re-sort sections" once there are sections) are under "Advanced" (${JSON.stringify(menu)})`);
 
   // new posts arrive on the blyg: a reply that joins the first story, and an unrelated post
   live.rows = [...posts, mk(30, "Alpha harbour tide lantern story body number 0 follow up from the quay.", "Late", { isReply: true, stubTarget: { origin: "https://one.example.com/", id: posts[0].remoteId } }), mk(31, "Zebra crossing paint dries slowly on the new bridge deck.", "Zed")].map(wire);
@@ -127,6 +139,7 @@ await runScenario({ data }, async (s) => {
   check(after.draws.bars === 1 && after.draws.reading === 0, `the page is drawn once and never shows "Reading your list…" (${JSON.stringify(after.draws)})`);
   check(/2 new posts/.test(after.status ?? "") && after.tags.includes("new") && after.updated.some((t) => /\+1 new post/.test(t)) && after.newRows >= 1, `the new posts are marked: "+1 new post" on its story, a "new" tag on the post in the Mixed bag, "2 new posts" in the status (${JSON.stringify({ status: after.status, tags: after.tags, updated: after.updated, newRows: after.newRows })})`);
   check(!after.busy && llmRequests.length === 0, `the button is free again and Refresh made no AI request (${llmRequests.length})`);
+  check(/grouped, texts not written \(automatic writing is off\)/.test(after.status ?? "") && (after.status ?? "").split("\n").length === 1, `with the automatic write off, one plain line says the new posts are grouped and their texts are not written (${after.status})`);
   // the same tap again inside the 60 s pause: the Studio is not asked to fetch again (one read of the list), "Nothing new"
   reset();
   await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-refresh")?.click());
@@ -151,6 +164,24 @@ await runScenario({ data }, async (s) => {
   await wait(1500);
   const afterCancel = await page.evaluate(() => ({ modal: !!activeDocument.querySelector(".modal-container .modal"), busy: document.querySelector(".blyg-daily .blyg-story-write")?.getAttribute("aria-busy") }));
   check(!afterCancel.modal && afterCancel.busy !== "true" && llmRequests.length === 0 && !Object.keys(snap()).some((k) => /^other/.test(k)), `declining sends nothing and starts nothing (${llmRequests.length} AI requests, ${JSON.stringify(snap())})`);
+  // ---- DG18: with the automatic write ON and consent recorded, the same Refresh also tries the missing texts, by the automatic rules (the provider here does not exist: the try fails, which is the proof it was made)
+  await page.evaluate(async () => {
+    const f = ".obsidian/plugins/blyg/digest-ai.json";
+    const cur = (await window.app.vault.adapter.exists(f)) ? JSON.parse(await window.app.vault.adapter.read(f)) : { v: 1, entries: {}, trail: [], consent: null, tally: null, sections: {} };
+    cur.consent = { host: "llm.example.invalid", model: "test-model", at: Date.now() };
+    await window.app.vault.adapter.write(f, JSON.stringify(cur));
+    window.app.plugins.plugins.blyg.settings.digest.autoWrite = true;
+  });
+  live.rows = [...live.rows, wire(mk(40, "Quince jelly sets best with the skins left in the pot.", "Quin"))];
+  await pause();
+  reset();
+  await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-refresh")?.click());
+  await page.waitForFunction(() => /automatic|Written by/i.test(document.querySelector(".blyg-daily-markstatus")?.textContent ?? ""), null, { timeout: 60000 }).catch(() => {});
+  await wait(1500);
+  const auto = await page.evaluate(() => ({ status: document.querySelector(".blyg-daily-markstatus")?.textContent ?? "", modal: !!activeDocument.querySelector(".modal-container .modal") }));
+  const autoTap = snap();
+  check(/1 new post/.test(auto.status) && /The automatic write did not work|Not written automatically|Written by/.test(auto.status) && !/automatic writing is off/.test(auto.status) && !auto.modal, `with the automatic write on, Refresh also tried the missing texts by the automatic rules, asked nothing, and did not say they are unwritten (${JSON.stringify(auto)})`);
+  check(autoTap.poll === 1 && autoTap.list === 1 && !Object.keys(autoTap).some((k) => /^other/.test(k)), `the Refresh that writes made the same Studio requests as one without (${JSON.stringify(autoTap)})`);
   // Cloudflare budget guard: opening the reader, the digest, two Refresh taps and the pause caused no Studio write request at all (a read mark would be a PUT, a follow a POST); every poll above was the Refresh's one POST
   check(live.writes.length === 0, `opening the reader and the digest and tapping Refresh sent no write request to the Studio (${JSON.stringify(live.writes)})`);
   check(errors.length === 0, `no error was thrown on the page ${errors.join(" | ")}`);

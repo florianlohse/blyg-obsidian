@@ -1,33 +1,35 @@
-// Previous / Next in an open post, and the counter next to the read mark. Kept out of ReaderView.ts (its size is capped). A post opened from a story of the digest walks the
-// posts of THAT story, in the order of its unfolded list; any other post walks the feed's order, as before.
+// Previous / Next in an open post, and the counter next to the read mark. Kept out of ReaderView.ts (its size is capped). One rule: Next and Previous walk ALL the posts of the list
+// the open post was opened from, in that list's order, whatever the entry point. From the digest that list is the Daily's page top to bottom (every story's posts, then the
+// singles, read ones included); from the feed it is the feed as it is shown (its order, filter or Saved view). The counter counts that same list and names it ("Digest 4 of 12").
 import { setIcon } from "obsidian";
 import type { ReadingPost } from "../studio/reading";
 
 const keyOf = (p: ReadingPost): string => `${p.subscriptionId}/${p.remoteId}`;
 
+export type StepMode = "digest" | "feed";
+
 export interface Step {
   keys: string[];
   at: number;
-  /** The story the walk is in ("Story: <headline>"), absent for the feed's order. */
-  story?: string;
+  /** Which list the walk is in: the Daily's order or the feed's. */
+  mode: StepMode;
 }
 
-/** The posts of one story as the digest listed them, handed to the reader when a post is opened from that story. */
-export class StoryWalk {
-  private title = "";
+/** The Daily's posts in the order the page shows them, handed to the reader when a post is opened from the digest. */
+export class DigestWalk {
   private posts: ReadingPost[] = [];
-  set(w: { title: string; posts: readonly ReadingPost[] } | null): void {
-    this.title = w?.title ?? "";
-    this.posts = w ? [...w.posts] : [];
+  set(posts: readonly ReadingPost[] | null): void {
+    const seen = new Set<string>();
+    this.posts = (posts ?? []).filter((p) => !seen.has(keyOf(p)) && !!seen.add(keyOf(p)));
   }
   clear(): void {
     this.set(null);
   }
-  /** Where `p` is in the story, or null when this is not a story's walk or `p` is not in it. */
+  /** Where `p` is in the digest's order, or null when no digest list is held or `p` is not on it. */
   where(p: ReadingPost): Step | null {
     const keys = this.posts.map(keyOf);
     const at = keys.indexOf(keyOf(p));
-    return at < 0 || this.posts.length < 2 ? null : { keys, at, story: this.title };
+    return at < 0 ? null : { keys, at, mode: "digest" };
   }
   post(key: string): ReadingPost | null {
     return this.posts.find((q) => keyOf(q) === key) ?? null;
@@ -45,7 +47,7 @@ const LONG_PRESS_MS = 500;
 
 /** Previous and Next, in the corner of the thumb row. A tap steps; holding Next marks the open post read and goes on. */
 export function drawSteps(row: HTMLElement, where: Step, h: StepHooks): void {
-  const what = where.story !== undefined ? "story" : "feed";
+  const what = where.mode === "digest" ? "digest" : "feed";
   const steps = row.createDiv({ cls: "blyg-reader-steps" });
   const prev = h.button(steps, "", () => h.step(-1, false), { cls: "blyg-reader-step blyg-reader-step-prev", disabled: where.at <= 0, title: `The post before this one in the ${what}` });
   h.addIcon(prev, "chevron-left");
@@ -73,12 +75,12 @@ export function drawSteps(row: HTMLElement, where: Step, h: StepHooks): void {
   next.addEventListener("contextmenu", (e) => e.preventDefault());
 }
 
-/** "3 of 24", or in a story "Story: <headline> · 2 of 4": where the open post is in what Next and Previous walk. */
+/** "Feed 3 of 24" or "Digest 4 of 12": where the open post is in what Next and Previous walk (the mode word is the existing title span, kept short). */
 export function stepCount(parent: HTMLElement, where: Step): void {
   const count = parent.createSpan({ cls: "blyg-reader-stepcount" });
-  if (where.story !== undefined) count.createSpan({ cls: "blyg-reader-steptitle", text: `Story: ${where.story}` }).setAttr("title", where.story);
+  count.createSpan({ cls: "blyg-reader-steptitle", text: where.mode === "digest" ? "Digest" : "Feed" });
   const num = count.createSpan({ cls: "blyg-reader-stepnum" });
-  if (where.story !== undefined) num.appendText(" · ");
+  num.appendText(" ");
   num.createEl("strong", { text: String(where.at + 1) });
   num.appendText(` of ${where.keys.length}`);
 }

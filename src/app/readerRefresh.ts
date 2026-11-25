@@ -86,7 +86,7 @@ export type DigestRefreshResult = { ok: true; list: ListSnapshot; studioOrigin: 
 
 /**
  * The digest's Refresh: the same action as the feed's (askAndWait, then one read of the list; the same pause and back-off), nothing else. No AI request is made here
- * (the AI layer is only reached by "Write the digest"). The list read is kept for the next session like the feed's, so the digest and the feed start from the same list.
+ * (the Daily writes the missing texts after it, by the automatic-write rules only; see `writeMissing` in ui/DigestView.ts). The list read is kept for the next session like the feed's, so the digest and the feed start from the same list.
  */
 export function createDigestRefresh(reader: DigestReader, now: () => number = Date.now, after: (list: ListSnapshot, origin: string, at: number) => void = () => undefined, memory: () => SyncMemory = () => ({ lastFullAt: 0, readingMoved: false, movedWithoutNew: false })) {
   let last: ChangeMarks | null = null;
