@@ -18,7 +18,6 @@ export const isSyncKey = (k: string): boolean => k.startsWith(KEY_PREFIX);
 export interface KeyPayload {
   v: 1;
   device: string;
-  label: string;
   /** The writer's clock when it last changed. */
   at: number;
   editions: EdState[];
@@ -27,7 +26,7 @@ export interface KeyPayload {
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
 /** A copy that carries only the fields the join knows (by name), so nothing else can ride along into the synced file. */
-const strip = (s: EdState): EdState => ({ v: 2, id: s.id, device: s.device, label: s.label, at: s.at, ...(s.created ? { created: { at: s.created.at, d: s.created.d } } : {}), posts: { ...s.posts }, regs: { ...s.regs }, clock: s.clock });
+const strip = (s: EdState): EdState => ({ v: 2, id: s.id, device: s.device, label: "", at: s.at, ...(s.created ? { created: { at: s.created.at, d: s.created.d } } : {}), posts: { ...s.posts }, regs: { ...s.regs }, clock: s.clock });
 
 const without = (s: EdState, drop: (k: string) => boolean): EdState => ({ ...s, regs: Object.fromEntries(Object.entries(s.regs).filter(([k]) => !drop(k))) });
 
@@ -36,10 +35,10 @@ const without = (s: EdState, drop: (k: string) => boolean): EdState => ({ ...s, 
  * records and AI texts (the story texts are rewritten on demand), then whole old editions; the newest edition is always kept as it is. null: even the newest alone is too big
  * (the key is not written; the folder files still carry it).
  */
-export function buildPayload(own: readonly EdState[], device: string, label: string): { payload: KeyPayload; bytes: number } | null {
+export function buildPayload(own: readonly EdState[], device: string): { payload: KeyPayload; bytes: number } | null {
   const newest = [...own].filter((s) => s.device === device).sort((a, b) => b.id - a.id).slice(0, KEY_EDITIONS).map(strip);
   if (newest.length === 0) return null;
-  const make = (eds: EdState[]): KeyPayload => ({ v: 1, device, label: label.slice(0, 40), at: Math.max(...eds.map((e) => e.at)), editions: eds });
+  const make = (eds: EdState[]): KeyPayload => ({ v: 1, device, at: Math.max(...eds.map((e) => e.at)), editions: eds });
   const size = (p: KeyPayload): number => JSON.stringify(p).length;
   let eds = newest;
   const steps: Array<(s: EdState, i: number) => EdState> = [
@@ -59,7 +58,6 @@ export function buildPayload(own: readonly EdState[], device: string, label: str
 
 export interface KeyRead {
   device: string;
-  label: string;
   at: number;
   bytes: number;
   states: EdState[];
@@ -75,7 +73,7 @@ export function readKeys(data: Record<string, unknown>): KeyRead[] {
       const st = parseState(JSON.stringify(e));
       if (st && st.device === v.device) states.push(st);
     }
-    out.push({ device: v.device, label: typeof v.label === "string" ? v.label.slice(0, 40) : "", at: typeof v.at === "number" && Number.isFinite(v.at) ? v.at : 0, bytes: JSON.stringify(v).length, states });
+    out.push({ device: v.device, at: typeof v.at === "number" && Number.isFinite(v.at) ? v.at : 0, bytes: JSON.stringify(v).length, states });
   }
   return out;
 }

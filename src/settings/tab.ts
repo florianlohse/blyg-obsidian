@@ -1,10 +1,8 @@
 import { importFolderChoices } from "../studio/import";
-import { DEVICE_LABEL_KEY, defaultLabel, setDeviceLabel } from "../digest/sync/device";
 import { DEV_STUDIO_RULE, isDevStudioLock } from "../studio/devLock";
 import {
   debounce,
   Notice,
-  Platform,
   PluginSettingTab,
   SecretComponent,
   type App,
@@ -284,15 +282,6 @@ export class BlygSettingTab extends PluginSettingTab {
             setting.addText((t) => t.setPlaceholder("07:00").setValue(s.digest.time).onChange((v) => {
               if (/^\s*([01]?\d|2[0-3]):[0-5]\d\s*$/.test(v)) this.setControlValue("digest.time", parseDigestTime(v));
             }));
-          },
-        },
-        {
-          name: "This device's name",
-          desc: "Shown under the Daily's masthead (\"made on …\") when the digest is synced between your devices. Kept on this device only, not in the synced settings. Empty: the platform's name.",
-          aliases: ["device", "sync", "name"],
-          render: (setting) => {
-            const local = { load: (k: string) => this.app.loadLocalStorage(k) as unknown, save: (k: string, v: string | null) => this.app.saveLocalStorage(k, v) };
-            setting.addText((t) => t.setPlaceholder(defaultLabel(Platform)).setValue(((v) => (typeof v === "string" ? v : ""))(local.load(DEVICE_LABEL_KEY))).onChange((v) => setDeviceLabel(local, v)));
           },
         },
         {

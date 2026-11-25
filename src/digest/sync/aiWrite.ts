@@ -70,7 +70,7 @@ export async function writeShared(env: WriteEnv, c: readonly Cluster[], singles:
   const rec = await editions.current(); // reads the synced files again
   const busy = rec ? sync.lock(rec.id) : null;
   const voice = env.voiceOf(rec, opts?.resort === true);
-  if (rec && busy) return { written: await cachedStories(env.withVoice(llm, voice), rec, c), status: "cancelled", note: `${busy.label} is writing this digest right now. Its text will appear here when it has been synced.` };
+  if (rec && busy) return { written: await cachedStories(env.withVoice(llm, voice), rec, c), status: "cancelled", note: `Another device is writing this digest right now. Its text will appear here when it has been synced.` };
   let yielded: { label: string } | null = null;
   if (rec) {
     await sync.setLock(rec.id, true);
@@ -83,7 +83,7 @@ export async function writeShared(env: WriteEnv, c: readonly Cluster[], singles:
       if (other) yielded = other;
     }
   }
-  if (rec && yielded) return { written: await cachedStories(env.withVoice(llm, voice), rec, c), status: "cancelled", note: `${yielded.label} is writing this digest right now. Its text will appear here when it has been synced.` }; // its marker is the winning one: this device must not clear it
+  if (rec && yielded) return { written: await cachedStories(env.withVoice(llm, voice), rec, c), status: "cancelled", note: `Another device is writing this digest right now. Its text will appear here when it has been synced.` }; // its marker is the winning one: this device must not clear it
   try {
     const auto = opts?.auto === true;
     const st = auto ? await llm.load() : null;

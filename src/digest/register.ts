@@ -32,10 +32,10 @@ import { noteListLoaded, sessionSync } from "../ui/readerStart";
 import { SyncedDigest, type SyncFs } from "./sync/store";
 import { dataPort, type DataIo } from "./sync/dataPort";
 import { sharedStore, writeShared } from "./sync/aiWrite";
-import { deviceId, deviceLabel } from "./sync/device";
+import { deviceId } from "./sync/device";
 import { syncLines } from "./sync/line";
 import { seedSaved } from "../ui/readerStart";
-import { Platform, type EventRef } from "obsidian";
+import { type EventRef } from "obsidian";
 import type { ShelfFacade } from "../app/shelfService";
 
 export interface DigestDeps {
@@ -101,8 +101,7 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
     },
   };
   const meId = deviceId(local, (n) => crypto.getRandomValues(new Uint8Array(n)));
-  // The name set under Daily → "This device's name", else the platform's; a short suffix from the id only when another synced device has the same platform name.
-  const me = { id: meId, label: (taken?: readonly string[]) => deviceLabel(local, Platform, meId, taken) };
+  const me = { id: meId };
   const readJson = async (p: string): Promise<unknown> => ((await adapter.exists(p)) ? (JSON.parse(await adapter.read(p)) as unknown) : null);
   const sync = new SyncedDigest(fs, normalizePath(`${base()}/digest`), me, () => Date.now(), {
     editions: () => readJson(normalizePath(`${base()}/digest-editions.json`)),

@@ -34,10 +34,10 @@ describe("the key", () => {
   });
   it("is pruned to the newest three editions, by this device only", () => {
     const states: EdState[] = [1, 2, 3, 4, 5].map((i) => emptyState(i * DAY, "devAaaa", "iPhone", i));
-    const built = buildPayload(states, "devAaaa", "iPhone");
+    const built = buildPayload(states, "devAaaa");
     expect(built?.payload.editions.map((e) => e.id)).toEqual([5, 4, 3].map((i) => i * DAY));
     expect(built?.payload.editions.length).toBe(KEY_EDITIONS);
-    expect(buildPayload([emptyState(1, "devBbbb", "x", 1)], "devAaaa", "iPhone")).toBeNull(); // states of other devices are never put in this device's key
+    expect(buildPayload([emptyState(1, "devBbbb", "x", 1)], "devAaaa")).toBeNull(); // states of other devices are never put in this device's key
   });
   it("keeps its size under the cap: old editions are thinned first, the newest stays whole", () => {
     const big = (id: number): EdState => {
@@ -46,14 +46,14 @@ describe("the key", () => {
       return s;
     };
     const eds = [big(1), big(2), big(3)];
-    const built = buildPayload(eds, "devAaaa", "iPhone");
+    const built = buildPayload(eds, "devAaaa");
     expect(built).not.toBeNull();
     expect(built?.bytes).toBeLessThanOrEqual(MAX_KEY_BYTES);
     expect(built?.payload.editions[0]?.id).toBe(3);
     expect(Object.keys(built?.payload.editions[0]?.regs ?? {}).length).toBe(600); // the newest is whole
     const huge = emptyState(9, "devAaaa", "iPhone", 9);
     for (let i = 0; i < 20_000; i++) setReg(huge, `ai/k${i}`, { headline: "h".repeat(40), summary: "s".repeat(120), at: 1, posts: 2 }, i + 1);
-    expect(buildPayload([huge], "devAaaa", "iPhone")).toBeNull(); // too big alone: not written
+    expect(buildPayload([huge], "devAaaa")).toBeNull(); // too big alone: not written
   });
 });
 
@@ -134,7 +134,7 @@ describe("two devices through data.json only", () => {
     db.arrive(da, "devAaaa");
     const ib = await b.editions.open(w.items);
     expect(ib.id).toBe(ia.id);
-    expect(b.sync.info(ia.id).made?.label).toBe("iPhone");
+    expect(b.sync.info(ia.id).made?.device).toBe("devAaaa");
     expect(b.sync.info(ia.id).others).toBe(1);
     expect((await b.write(ib.grouped.clusters, ib.grouped.mixed)).status).toBe("ok");
     expect(prov.requests.length).toBe(2); // the texts came through data.json: reused
@@ -142,9 +142,9 @@ describe("two devices through data.json only", () => {
     await a.sync.refresh();
     expect(await b.editions.current()).toEqual(await a.editions.current());
     const seen = await b.sync.devicesSeen();
-    expect(seen.map((d) => [d.label, d.mine, d.via])).toEqual([["iPad", true, ["folder", "settings"]], ["iPhone", false, ["settings"]]]);
+    expect(seen.map((d) => [d.device, d.mine, d.via])).toEqual([["devBbbb", true, ["folder", "settings"]], ["devAaaa", false, ["settings"]]]);
     const lines = checkLines(seen, b.sync.ownKeyBytes());
-    expect(lines.join("\n")).toMatch(/iPhone · via settings file/);
+    expect(lines.join("\n")).toMatch(/Another device devA · via settings file/);
     expect(lines.join("\n")).toMatch(/This device's key in the settings file: \d+\.\d KB/);
     expect(lines.join("\n")).not.toMatch(/No other device/);
   });

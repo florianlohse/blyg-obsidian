@@ -4,7 +4,7 @@ process.env.TZ = "Europe/Berlin";
 import { describe, expect, it } from "vitest";
 import { cachedStories } from "../../src/digest/editionHost";
 import { LOCK_TTL_MS } from "../../src/digest/sync/state";
-import { defaultLabel, deviceId, deviceLabel, setDeviceLabel } from "../../src/digest/sync/device";
+import { deviceId } from "../../src/digest/sync/device";
 import { checkLines, syncLines } from "../../src/digest/sync/line";
 import { sharedCeilingRefusal } from "../../src/digest/autoWrite";
 import { usedOnDay, parseState } from "../../src/digest/sync/state";
@@ -38,8 +38,8 @@ describe("one edition for all devices", () => {
     expect((await b.history.list()).editions.map((e) => e.id)).toEqual((await a.history.list()).editions.map((e) => e.id));
     expect(await b.editions.current()).toEqual(await a.editions.current()); // the whole record: sections, bylines, lines, texts' keys, usage, creator
     expect((await b.history.list()).editions).toEqual((await a.history.list()).editions);
-    expect(b.sync.info(ib.id)).toMatchObject({ made: { label: "iPhone", mine: false }, others: 1 });
-    expect(a.sync.info(ia.id)).toMatchObject({ made: { label: "iPhone", mine: true } });
+    expect(b.sync.info(ib.id)).toMatchObject({ made: { device: "devA", mine: false }, others: 1 });
+    expect(a.sync.info(ia.id)).toMatchObject({ made: { device: "devA", mine: true } });
   });
 
   it("two devices that make the edition at the same time before any file arrives are one edition afterwards, with one creator", async () => {
@@ -125,7 +125,7 @@ describe("one edition for all devices", () => {
     const ib = await b.editions.open(w.items);
     const refused = await b.write(ib.grouped.clusters, ib.grouped.mixed);
     expect(refused.status).toBe("cancelled");
-    expect(refused.note).toMatch(/iPhone is writing/);
+    expect(refused.note).toMatch(/Another device is writing/);
     expect(prov.requests.length).toBe(0);
     b.setNow(T0 + 30_000 + LOCK_TTL_MS + 1);
     const ok = await b.write(ib.grouped.clusters, ib.grouped.mixed);
@@ -204,52 +204,34 @@ describe("this device's name and the lines under the masthead", () => {
     const data = new Map<string, string>();
     return { data, load: (k) => data.get(k) ?? null, save: (k, v) => void (v === null ? data.delete(k) : data.set(k, v)) };
   };
-  it("makes an id once and keeps it on this device; the label is the platform's until the person sets one", () => {
+  it("makes an id once and keeps it on this device (no device names any more)", () => {
     const m = mem();
     const id = deviceId(m, (n) => new Uint8Array(n).fill(171));
     expect(id).toBe("abababababab");
     expect(deviceId(m, () => new Uint8Array(6))).toBe(id);
-    expect(deviceLabel(m, { isIosApp: true, isTablet: true })).toBe("iPad");
-    setDeviceLabel(m, "  Kitchen   iPad ");
-    expect(deviceLabel(m, { isMacOS: true })).toBe("Kitchen iPad");
-    setDeviceLabel(m, "");
-    expect(deviceLabel(m, { isMacOS: true })).toBe("Mac");
-    expect([defaultLabel({ isIosApp: true }), defaultLabel({ isWin: true }), defaultLabel({})]).toEqual(["iPhone", "Windows PC", "Device"]);
   });
-  it("names the device from the platform, with a short suffix from its id only when another device of the files has that very name; a set name is never changed", () => {
-    const m = mem();
-    expect(deviceLabel(m, { isIosApp: true }, "abcd1234", [])).toBe("iPhone");
-    expect(deviceLabel(m, { isIosApp: true }, "abcd1234", ["iPad", "Mac"])).toBe("iPhone");
-    expect(deviceLabel(m, { isIosApp: true }, "abcd1234", ["iPhone"])).toBe("iPhone abcd");
-    expect(deviceLabel(m, { isIosApp: true }, "abcd1234", ["iPhone"])).toBe("iPhone abcd"); // stable
-    expect([deviceLabel(m, { isMacOS: true }), deviceLabel(m, { isWin: true }), deviceLabel(m, { isAndroidApp: true, isPhone: true }), deviceLabel(m, { isLinux: true })]).toEqual(["Mac", "Windows PC", "Android phone", "Linux PC"]);
-    setDeviceLabel(m, "Kitchen");
-    expect(deviceLabel(m, { isIosApp: true }, "abcd1234", ["Kitchen", "iPhone"])).toBe("Kitchen");
-  });
-  it("two devices of one platform end up with different names in the files, the first one keeping the plain name", async () => {
+  it("the creator of the edition is known by its device id on every device, and no name is written into the files", async () => {
     const prov = provider();
     const w = world();
-    const store = (): { load: (k: string) => unknown; save: (k: string, v: string | null) => void } => ({ load: () => null, save: () => undefined });
-    const a = device("devAaaa", (t) => deviceLabel(store(), { isIosApp: true }, "devAaaa", t), prov, T0);
-    const b = device("devBbbb", (t) => deviceLabel(store(), { isIosApp: true }, "devBbbb", t), prov, T0 + 60_000);
+    const a = device("devAaaa", "", prov, T0);
+    const b = device("devBbbb", "", prov, T0 + 60_000);
     const ia = await a.editions.open(w.items);
-    expect(a.sync.info(ia.id).made?.label).toBe("iPhone");
+    expect(a.sync.info(ia.id).made).toMatchObject({ device: "devAaaa", mine: true });
     ship(a, b);
     await b.editions.open(w.items);
-    await b.write((await b.editions.open(w.items)).grouped.clusters, []); // b writes something: its file carries its name
+    await b.write((await b.editions.open(w.items)).grouped.clusters, []); // b writes something
     ship(b, a);
     await a.editions.open(w.items);
-    expect(b.sync.info(ia.id).made?.label).toBe("iPhone"); // the creator's name as the creator has it
+    expect(b.sync.info(ia.id).made).toMatchObject({ device: "devAaaa", mine: false });
     const bFile = JSON.parse(b.disk.files.get(`${DIR}/ed-${ia.id}.devBbbb.json`)?.text ?? "{}") as { label: string };
-    expect(bFile.label).toBe("iPhone devB");
+    expect(bFile.label).toBe(""); // an old file with a name still parses; the name is ignored
   });
-  it("says who made the edition, from how many devices it is synced, and when a file is still arriving", () => {
-    const made = { device: "d", label: "iPad", at: T0, mine: false };
-    expect(syncLines({ made, others: 2, waiting: false, me: "iPhone" }, T0)[0]).toMatch(/^Edition of .+, made on iPad at .+ · Synced from 2 devices$/);
-    expect(syncLines({ made: { ...made, mine: true }, others: 0, waiting: false, me: "iPad" }, T0)[0]).not.toMatch(/Synced/);
-    // DG20: the line is always there: alone it still says where the edition was made, and that no other device has it
-    expect(syncLines({ made: null, others: 0, waiting: false, me: "iPad" }, T0)[0]).toMatch(/^Edition of .+, made on iPad · Not synced from another device yet$/);
-    expect(syncLines({ made: null, others: 0, waiting: true, me: "iPad" }, null)).toEqual(["This device: iPad · Not synced from another device yet", "Waiting for sync: a file from another device is still arriving."]);
+  it("the masthead says only how many devices carry the edition, and only when there is more than this one; a file still arriving is said", () => {
+    const made = { device: "d", at: T0, mine: false };
+    expect(syncLines({ made, others: 2, waiting: false }, T0)).toEqual(["Synced from 3 devices"]);
+    expect(syncLines({ made, others: 1, waiting: false }, T0)).toEqual(["Synced from 2 devices"]);
+    expect(syncLines({ made: { ...made, mine: true }, others: 0, waiting: false }, T0)).toEqual([]);
+    expect(syncLines({ made: null, others: 0, waiting: true }, null)).toEqual(["Waiting for sync: a file from another device is still arriving."]);
   });
 });
 
@@ -380,19 +362,19 @@ describe("the Sync check (DG17)", () => {
     const w = world();
     const a = device("devA", "iPhone", prov, T0);
     const b = device("devB", "iPad", prov, T0 + 3600_000);
-    expect((await a.sync.devicesSeen()).map((d) => [d.label, d.mine, d.newestEdition])).toEqual([["iPhone", true, null]]);
-    expect(checkLines(await a.sync.devicesSeen())).toEqual([expect.stringMatching(/^iPhone \(this device\) · nothing seen yet · newest edition none yet · file none yet$/), "This device's key in the settings file: not written yet.", "No other device's files seen yet."]);
+    expect((await a.sync.devicesSeen()).map((d) => [d.mine, d.newestEdition])).toEqual([[true, null]]);
+    expect(checkLines(await a.sync.devicesSeen())).toEqual([expect.stringMatching(/^This device · nothing seen yet · newest edition none yet · file none yet$/), "This device's key in the settings file: not written yet.", "No other device's files seen yet."]);
     const ia = await a.editions.open(w.items);
     expect(checkLines(await a.sync.devicesSeen()).at(-1)).toBe("No other device's files seen yet.");
     ship(a, b);
     await b.editions.open(w.items);
     const seen = await b.sync.devicesSeen();
-    expect(seen.map((d) => [d.label, d.mine, d.newestEdition])).toEqual([["iPad", true, null], ["iPhone", false, ia.id]]);
+    expect(seen.map((d) => [d.device, d.mine, d.newestEdition])).toEqual([["devB", true, null], ["devA", false, ia.id]]);
     expect(seen[1]?.modified).toBeGreaterThan(0);
     const lines = checkLines(seen);
     expect(lines.length).toBe(3); // two devices and the line about this device's key
-    expect(lines[0]).toMatch(/^iPad \(this device\)/);
-    expect(lines[1]).toMatch(/^iPhone · via digest folder · newest edition .+ · file .+/);
+    expect(lines[0]).toMatch(/^This device/);
+    expect(lines[1]).toMatch(/^Another device devA · via digest folder · newest edition .+ · file .+/);
     expect(lines.join("\n")).not.toMatch(/No other device/);
   });
 });

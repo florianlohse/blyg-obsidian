@@ -1,6 +1,6 @@
 // (DG20 adds a third part: the other device's edition arrives as a top-level key of data.json, and a settings save keeps it.)
 // The Daily on a second device (DG16), in real Obsidian: another device's edition file is put into the plugin's synced folder BEFORE the Daily is opened, and the Daily
-// shows THAT edition: its story headlines (the other device's AI texts), its sections and bylines, "made on <the other device>", no second edition record of this device,
+// shows THAT edition: its story headlines (the other device's AI texts), its sections and bylines, the masthead line "Synced from 2 devices", no second edition record of this device,
 // and no AI request (automatic writing is on, with consent and a key, and still nothing is sent: the texts are already there). Then the foreign file is changed while the Daily is open
 // and the page redraws by itself, without a tap and without a request to the Studio or the AI. The end state is reset (the folder emptied, no leaf open).
 // NOT two real devices and not a real sync service: one Obsidian, a file written the way a sync service would drop it.
@@ -94,7 +94,7 @@ await runScenario({ data }, async (s) => {
   });
   check([0, 1, 2, 3].every((k) => first.heads.includes(`Foreign headline ${k}`)), `the Daily shows the other device's four story headlines (${JSON.stringify(first.heads)})`);
   check(/Soil and seeds/.test(first.text) && /Garden/.test(first.text) && /Town/.test(first.text), `... under the sections and the byline of the other device's file`);
-  check(/made on Test iPad/.test(first.sync) && /Synced from 1 device/.test(first.sync), `the masthead line says where it was made and that it is synced (${JSON.stringify(first.sync)})`);
+  check(/^Synced from 2 devices$/.test(first.sync.trim()), `the masthead line says only that the edition is synced from 2 devices (no device names) (${JSON.stringify(first.sync)})`);
   await wait(2500); // an automatic write, if it were going to happen, has started by now
   const files = await ad(async (d) => (await window.app.vault.adapter.list(d)).files, DIR);
   check(files.length === 1 && files[0].endsWith(`ed-${cutoff}.${FOREIGN}.json`), `no second edition was made: the folder holds the one file of the other device (${JSON.stringify(files)})`);
