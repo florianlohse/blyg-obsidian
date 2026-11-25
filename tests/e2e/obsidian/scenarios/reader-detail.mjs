@@ -260,6 +260,7 @@ await runScenario({ data }, async (s) => {
     return { role: m.getAttribute("role"), label: m.getAttribute("aria-label"), words: m.textContent.trim(), size: `${Math.round(r.width)}x${Math.round(r.height)}`, colour: getComputedStyle(m).color, fill: getComputedStyle(sv).fill, svg: sv.innerHTML.length, first: m.parentElement.firstElementChild === m || m.parentElement.firstChild === m };
   }, sel);
   const inPost = await markSig(".blyg-reader-header .blyg-reader-postrest .blyg-savedmark");
+  await dropToasts(); // (the phone layout's reload brings the "secrets are stored without encryption" toast back; it sits over the Back button)
   await page.click(".blyg-reader-header .blyg-reader-back");
   await page.waitForSelector(".view-content.blyg-daily .blyg-story-mixed", { state: "attached", timeout: 20000 });
   await eventually(() => page.evaluate(() => !!document.querySelector(".blyg-daily .blyg-story-mixed .blyg-savedmark")));
