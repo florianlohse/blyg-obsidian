@@ -168,7 +168,7 @@ await runScenario({ data }, async (s) => {
   const set = await page.evaluate(() => { const v = document.querySelector(".view-content.blyg-daily"); const max = v.scrollHeight - v.clientHeight; v.scrollTop = Math.min(max, 120); return { top: v.scrollTop, max }; });
   await wait(300);
   const asked = others.length;
-  const digestOrder = await page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-daily")[0].view.order.map((p) => p.remoteId)); // the posts of the page, top to bottom (what the reader walks)
+  const digestOrder = await page.evaluate(() => [...new Set(window.app.workspace.getLeavesOfType("blyg-daily")[0].view.order.map((p) => p.remoteId))]); // the posts of the page, top to bottom (what the reader walks)
   await page.click(".blyg-daily .blyg-daily-member .blyg-daily-preview");
   await page.waitForSelector(".blyg-reader-header .blyg-reader-back", { timeout: 20000 });
   await wait(1500);

@@ -148,7 +148,7 @@ describe("one Refresh", () => {
     const m = await setup(false, (c) => c.map(() => null));
     await press(m);
     expect(m.writes).toEqual([]);
-    expect(m.note()).toMatch(/1 new post · New posts are grouped, but their texts are not written \(automatic writing is off\)\. “Write the digest” under Advanced writes them\.$/);
+    expect(m.note()).toMatch(/^1 new post · grouped, texts not written \(automatic writing is off\)$/);
   });
   it("with everything written and nothing new, there is nothing to write and nothing is sent", async () => {
     const writes: unknown[] = [];

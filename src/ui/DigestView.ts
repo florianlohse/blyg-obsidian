@@ -83,7 +83,7 @@ export interface DigestHost {
 /** What each button of the menu does and costs (shown under it). */
 const REFRESH_HINT = "Fetches new posts from your blygs, no AI, no cost";
 const REFRESH_AI_HINT = "Fetches new posts from your blygs and groups them. Writes the missing texts only if “Write the digest automatically” is on (uses tokens).";
-const NOT_WRITTEN = "New posts are grouped, but their texts are not written (automatic writing is off). “Write the digest” under Advanced writes them.";
+const NOT_WRITTEN = "grouped, texts not written (automatic writing is off)"; // one short line: the status must not wrap and push the page down
 const WRITE_HINT = "Writes headlines and summaries with your AI model, uses tokens";
 const RESORT_HINT = "Sorts every story and post into sections again, uses tokens";
 const stamp = (t: number): string => new Date(t).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });

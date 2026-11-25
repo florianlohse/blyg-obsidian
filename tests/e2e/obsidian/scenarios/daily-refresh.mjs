@@ -139,7 +139,7 @@ await runScenario({ data }, async (s) => {
   check(after.draws.bars === 1 && after.draws.reading === 0, `the page is drawn once and never shows "Reading your list…" (${JSON.stringify(after.draws)})`);
   check(/2 new posts/.test(after.status ?? "") && after.tags.includes("new") && after.updated.some((t) => /\+1 new post/.test(t)) && after.newRows >= 1, `the new posts are marked: "+1 new post" on its story, a "new" tag on the post in the Mixed bag, "2 new posts" in the status (${JSON.stringify({ status: after.status, tags: after.tags, updated: after.updated, newRows: after.newRows })})`);
   check(!after.busy && llmRequests.length === 0, `the button is free again and Refresh made no AI request (${llmRequests.length})`);
-  check(/new posts are grouped, but their texts are not written \(automatic writing is off\)/i.test(after.status ?? "") && (after.status ?? "").split("\n").length === 1, `with the automatic write off, one plain line says the new posts are grouped and their texts are not written (${after.status})`);
+  check(/grouped, texts not written \(automatic writing is off\)/.test(after.status ?? "") && (after.status ?? "").split("\n").length === 1, `with the automatic write off, one plain line says the new posts are grouped and their texts are not written (${after.status})`);
   // the same tap again inside the 60 s pause: the Studio is not asked to fetch again (one read of the list), "Nothing new"
   reset();
   await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-refresh")?.click());
