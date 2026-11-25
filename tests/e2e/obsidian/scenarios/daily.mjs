@@ -378,12 +378,12 @@ await runScenario({ data }, async (s) => {
   const folded = await storyLook();
   check(!folded.open && folded.mark === "+" && folded.markExpanded === "false" && folded.markAtRight && folded.metaWithMark === folded.metaWithout, `a folded story has "+" at the right end of its meta line, which has the same height with and without it (${JSON.stringify(folded)})`);
   check(!folded.kids.includes("blyg-story-markrow") && !folded.listShown && folded.members === 0, `a folded story has no line of its own under it (${JSON.stringify(folded.kids)}, list shown ${folded.listShown})`);
-  check(folded.headColour === folded.normal && folded.headColour !== folded.accent, `a folded story's headline is in the normal text colour, not the accent (${folded.headColour}, accent ${folded.accent})`);
+  check(folded.headColour !== folded.accent, `a folded story's headline is in its text colour (normal, or the muted read colour once its posts are read), never the accent (${folded.headColour}, accent ${folded.accent})`);
   await page.click(".blyg-daily .blyg-daily-cluster.blyg-story .blyg-story-more");
   await wait(300);
   const unfoldedLook = await storyLook();
   check(unfoldedLook.open && unfoldedLook.mark === "−" && unfoldedLook.markExpanded === "true" && unfoldedLook.markAtRight && unfoldedLook.metaWithMark === unfoldedLook.metaWithout, `tapping the marker unfolds the story and the marker becomes "−" at the same place, same height (${JSON.stringify(unfoldedLook)})`);
-  check(unfoldedLook.headColour === unfoldedLook.normal && unfoldedLook.markColour !== unfoldedLook.accent, `an open story's headline and marker do not take the accent colour (${unfoldedLook.headColour} against text ${unfoldedLook.normal}, accent ${unfoldedLook.accent}, marker ${unfoldedLook.markColour})`);
+  check(unfoldedLook.headColour !== unfoldedLook.accent && unfoldedLook.markColour !== unfoldedLook.accent, `an open story's headline and marker do not take the accent colour (${unfoldedLook.headColour} against text ${unfoldedLook.normal}, accent ${unfoldedLook.accent}, marker ${unfoldedLook.markColour})`);
   check(unfoldedLook.members >= 2 && unfoldedLook.marksInRows === unfoldedLook.members, `every post of the unfolded story has the read mark at the right of its row (${unfoldedLook.marksInRows} of ${unfoldedLook.members})`);
   check(unfoldedLook.lastIsStoryMark && unfoldedLook.lastQuiet.italic === "italic" && unfoldedLook.lastQuiet.bg === "rgba(0, 0, 0, 0)" && unfoldedLook.lastQuiet.colour !== unfoldedLook.accent && unfoldedLook.lastQuiet.rightGap <= 2, `"Mark story read" is the last item of the unfolded list, quiet italic text without a box, right-aligned (${JSON.stringify(unfoldedLook.lastQuiet)})`);
   // a press: underlined and lighter, never the accent, and the browser's own tap highlight is off
@@ -393,7 +393,7 @@ await runScenario({ data }, async (s) => {
   const pressed = await page.evaluate(() => { const h = document.querySelector(".blyg-daily .blyg-daily-cluster.blyg-story .blyg-story-headline"); const c = getComputedStyle(h); return { colour: c.color, deco: c.textDecorationLine, highlight: c.webkitTapHighlightColor }; });
   await page.mouse.move(2, 2);
   await page.mouse.up();
-  check(pressed.deco === "underline" && pressed.colour !== unfoldedLook.accent && pressed.colour !== unfoldedLook.normal && /rgba\(0, 0, 0, 0\)|transparent/.test(pressed.highlight), `a pressed headline is underlined and lighter, not the accent, with no tap highlight (${JSON.stringify(pressed)})`);
+  check(pressed.deco === "underline" && pressed.colour !== unfoldedLook.accent && /rgba\(0, 0, 0, 0\)|transparent/.test(pressed.highlight), `a pressed headline is underlined and lighter, not the accent, with no tap highlight (${JSON.stringify(pressed)})`);
   await page.click(".blyg-daily .blyg-daily-cluster.blyg-story .blyg-story-more"); // fold it again with the marker
   await wait(300);
   check(!(await storyLook()).open, "the marker folds the story again");

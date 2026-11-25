@@ -73,7 +73,7 @@ await runScenario({ data }, async (s) => {
       spin = await page.evaluate(() => { const sp = document.querySelector(".blyg-reader-column .blyg-reader-loading .blyg-reader-spinner"); const h = document.querySelector(".blyg-reader-header"); const v = document.querySelector(".view-content.blyg-reader"); if (!sp || !h || !v) return null; const r = sp.getBoundingClientRect(); const vr = v.getBoundingClientRect(); return { size: Math.round(r.width), underHeader: r.top >= h.getBoundingClientRect().bottom, centred: Math.abs(r.left + r.width / 2 - (vr.left + vr.width / 2)) <= 2, anim: getComputedStyle(sp).animationName, role: document.querySelector(".blyg-reader-loading")?.getAttribute("role") }; });
       await s.cdp.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
       await wait(60);
-      still = await page.evaluate(() => { const sp = document.querySelector(".blyg-reader-spinner"); return sp ? getComputedStyle(sp).animationName : "gone"; });
+      still = await page.evaluate(() => { const sp = document.createElement("span"); sp.className = "blyg-reader-spinner"; document.querySelector(".view-content.blyg-reader").appendChild(sp); const n = getComputedStyle(sp).animationName; sp.remove(); return n; }); // (a probe with the same class: the real one may be gone by now)
       await s.cdp.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "no-preference" }] });
     }
     await wait(100);
@@ -200,7 +200,13 @@ await runScenario({ data }, async (s) => {
   check(await eventually(async () => (await saveText()).text === "Saved"), `tapping Save again saves it (${JSON.stringify(await saveText())}, ${state.shelf.length} on the shelf)`);
   check(state.shelf.length === 1 && [id("p", 20), id("p", 21)].includes(state.shelf[0].remoteId), "the Studio's shelf holds exactly that one post");
 
-  // ---- 5. the open post's header, geometry at 393, 360 and 320 px (the open post is the one just saved)
+  // ---- 5. the open post's header, geometry at 393, 360 and 320 px: the phone layout (the page reloads), the Daily, the first single post (the one just saved)
+  await s.phone();
+  await openDaily();
+  await page.click(".blyg-daily .blyg-story-mixed .blyg-story-main");
+  await page.waitForSelector(".blyg-reader-header .blyg-reader-back", { timeout: 20000 });
+  await eventually(() => page.evaluate(() => document.querySelector(".blyg-reader-header .blyg-reader-savebtn")?.getAttribute("aria-label") === "Saved"));
+  await wait(800);
   const bookmark = await page.evaluate(() => { const b = document.querySelector(".blyg-reader-header .blyg-reader-savebtn"); const r = b.getBoundingClientRect(); const sv = b.querySelector("svg"); return { w: Math.round(r.width), h: Math.round(r.height), saved: b.classList.contains("is-saved"), pressed: b.getAttribute("aria-pressed"), filled: getComputedStyle(sv).fill !== "none", colour: getComputedStyle(b).color, bg: getComputedStyle(b).backgroundColor, border: getComputedStyle(b).borderTopWidth }; });
   check(bookmark.w >= 32 && bookmark.h >= 32 && bookmark.saved && bookmark.pressed === "true" && bookmark.filled && bookmark.bg === "rgba(0, 0, 0, 0)" && bookmark.border === "0px", `the saved bookmark is a quiet 32 px control, filled, with no grey box (${JSON.stringify(bookmark)})`);
   const headerLook = (w) => page.evaluate((w) => {
