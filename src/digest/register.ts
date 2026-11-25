@@ -184,7 +184,6 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
               const st = await loadStore();
               return editions.claimAuto((rec) => autoDue(llmSettings(), rec, st, c.length));
             },
-            sharedToday: async () => (await sync.usedToday(Date.now()))?.total ?? null,
             write: (c, singles, opts) => writeShared({ llm, settings: llmSettings, editions, history, sync, now: () => Date.now(), voiceOf: (rec, resort) => (resort && rec ? (editorFor(ai?.settings().editor, rec.id)?.id ?? NEUTRAL) : editorIdFor(rec, ai?.settings().editor)), withVoice: withEditor }, c, singles, opts),
           },
         }

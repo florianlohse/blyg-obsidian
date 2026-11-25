@@ -1,5 +1,7 @@
 // SH1 follow-up: a save that fails for want of a connection leaves the button usable (it returns to Save, with one line saying so), and tapping again tries again.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("../../src/ui/savedMark", () => ({ drawSavedMark: () => undefined, SAVED_MARK_CLASS: "blyg-savedmark" })); // Obsidian's setIcon is not here
 import { createShelf } from "../../src/app/shelfService";
 import type { ShelfFacade } from "../../src/app/shelfService";
 import { studioAddress } from "../../src/studio/address";
@@ -30,8 +32,8 @@ function setup(timeoutMs?: number) {
   return { studio, shelf };
 }
 const parent = () => {
-  const made: Array<{ text: string; disabled?: boolean; cls?: string; run: () => void }> = [];
-  const make = (_p: HTMLElement, text: string, run: () => void, o: { disabled?: boolean; cls?: string }) => (made.push({ text, run, ...o }), {} as HTMLButtonElement);
+  const made: Array<{ text: string; disabled?: boolean; cls?: string; label?: string; run: () => void }> = [];
+  const make = (_p: HTMLElement, text: string, run: () => void, o: { disabled?: boolean; cls?: string; label?: string }) => (made.push({ text, run, ...o }), {} as HTMLButtonElement);
   return { made, make };
 };
 
@@ -84,7 +86,7 @@ describe("the Save button after a failure", () => {
     expect(status.at(-1)).toBe(LOST_SAVE);
     const { made, make } = parent();
     ui.button({} as HTMLElement, post("a"), make);
-    expect(made[0]).toMatchObject({ text: "Save", disabled: false });
+    expect(made[0]).toMatchObject({ label: "Save for later", disabled: false });
     await ui.toggle(post("a"));
     expect(status.at(-1)).toBe("Saved for later.");
   });
@@ -96,7 +98,7 @@ describe("the Save button after a failure", () => {
     expect(status.at(-1)).toBe(LOST_SAVE);
     const { made, make } = parent();
     ui.button({} as HTMLElement, post("a"), make);
-    expect(made[0]).toMatchObject({ text: "Save", disabled: false });
+    expect(made[0]).toMatchObject({ label: "Save for later", disabled: false });
   });
   it("keeps room for Save while the shelf is being read, and offers it when the read had no connection", () => {
     let state: "settling" | "lost" | "absent" = "settling";

@@ -83,3 +83,14 @@ export async function startReader(p: StartPorts): Promise<void> {
 
 /** What the feed's body says while it has no list: "Loading…" until the first answer (the saved list or the Studio's) is in, "nothing to show" only for a real empty one. */
 export const emptyFeedNote = (busy: boolean, loadingFirst: boolean): string => (busy || loadingFirst ? "Loading…" : "The reader has nothing to show yet.");
+
+/** The feed's body while it has no list (mockup 6A): a thin spinner under the header, with an accessible label, until the first answer is in; the plain note only for a real empty answer. */
+export function drawFeedStart(col: HTMLElement, busy: boolean, loadingFirst: boolean): void {
+  const text = emptyFeedNote(busy, loadingFirst);
+  if (!busy && !loadingFirst) {
+    col.createDiv({ cls: "blyg-reader-note", text });
+    return;
+  }
+  const box = col.createDiv({ cls: "blyg-reader-loading", attr: { role: "status", "aria-label": text, "aria-busy": "true" } });
+  box.createSpan({ cls: "blyg-reader-spinner", attr: { "aria-hidden": "true" } });
+}

@@ -50,12 +50,28 @@ await runScenario({ data: fixtureData() }, async (s) => {
   const pillClick = () => page.evaluate(() => { const b = document.querySelector(".blyg-reader-header .blyg-reader-check"); if (!b || b.disabled) return false; b.click(); return true; });
   const pillState = () => page.evaluate(() => { const b = document.querySelector(".blyg-reader-header .blyg-reader-check"); return b ? { read: b.classList.contains("is-read"), label: b.getAttribute("aria-label") ?? "", disabled: b.disabled } : null; });
   const text = (sel) => page.evaluate((q) => [...document.querySelectorAll(q)].map((e) => e.textContent?.trim() ?? ""), sel);
+  // (DG19: "Sort & filter", "Sources" and "Settings" are rows of the hamburger menu in the feed header: the menu is opened first, and the row's click folds it again.)
   const click = (label) => page.evaluate((l) => {
-    const b = [...document.querySelectorAll(".blyg-reader button")].find((x) => x.textContent?.trim() === l);
+    const menuRow = () => [...document.querySelectorAll(".blyg-reader-header .blyg-menurow")].find((x) => x.querySelector(".blyg-menurow-label")?.textContent === l);
+    if (!menuRow() && ["Sort & filter", "Sources", "Settings"].includes(l)) {
+      const m = document.querySelector(".blyg-reader-header .blyg-reader-menubtn");
+      if (m?.getAttribute("aria-expanded") !== "true") m?.click();
+    }
+    const b = menuRow() ?? [...document.querySelectorAll(".blyg-reader button")].find((x) => x.textContent?.trim() === l);
     if (!b || b.disabled) return false;
     b.click();
     return true;
   }, label);
+  /** The Sort & filter row of the menu as a person reads it: its label and its value (the order, or how many choices are made). The menu is opened and folded again. */
+  const filterRow = () => page.evaluate(async () => {
+    const m = document.querySelector(".blyg-reader-header .blyg-reader-menubtn");
+    m?.click();
+    await new Promise((r) => setTimeout(r, 100));
+    const row = document.querySelector(".blyg-reader-header .blyg-reader-filterbtn");
+    const out = { label: row?.querySelector(".blyg-menurow-label")?.textContent ?? null, value: row?.querySelector(".blyg-menurow-value")?.textContent ?? null };
+    document.querySelector(".blyg-reader-header .blyg-reader-menubtn")?.click();
+    return out;
+  });
   /** Put a token in the app's secret store, and wait until it reads back: the store settles a moment after a write, and a tap in between would find it empty. */
   const useToken = async (t) => {
     await page.evaluate((v) => window.app.secretStorage.setSecret("smoke-studio", v), t);
@@ -186,7 +202,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
     const cards = await text(".blyg-reader-card");
     check(cards.length > 0 && cards.some((c) => c.includes("Blog B")), `${layout}: the feed shows cards naming the blyg (${cards.length} cards)`);
     check((await text(".blyg-reader-card.is-unread .blyg-reader-badge.is-new")).length > 0, `${layout}: an unread post carries an "unread" badge`);
-    check((await page.$(".blyg-reader-controls")) === null && (await text(".blyg-reader-filterbtn"))[0] === "Sort & filter", `${layout}: the sort and filter choices start closed, so the header stays slim`);
+    check((await page.$(".blyg-reader-controls")) === null && (await filterRow()).label === "Sort & filter", `${layout}: the sort and filter choices start closed (the menu has the row "Sort & filter"), so the header stays slim`);
     check(await click("Sort & filter"), `${layout}: "Sort & filter" opens them`);
     await wait(300);
     const options = await page.evaluate(() => [...document.querySelectorAll(".blyg-reader-controls select")].map((x) => [...x.options].map((o) => o.textContent)));
@@ -209,7 +225,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
     const body = (await text(".blyg-reader-body"))[0] ?? "";
     check(body.length > 0 && (await page.$(".blyg-reader-frame")) === null, `${layout}: tapping a post shows it as text, never in a frame (${body.length} characters)`);
     const buttons = await text(".blyg-reader-header button");
-    check(["Reader", "Reply", "Next"].every((b) => buttons.includes(b)) && (await pillState())?.label === "Mark read" && !buttons.includes("Browser") && !buttons.includes("As text") && !buttons.includes("As web page"), `${layout}: the post's buttons are in the header (way out, read mark, Reply, Previous / Next), with no switch to a web page: ${buttons.join(", ")}`);
+    check(["Reader", "Reply"].every((b) => buttons.includes(b)) && (await page.$('.blyg-reader-header .blyg-reader-step-next[aria-label="Next"]')) !== null && (await page.$('.blyg-reader-header .blyg-reader-step-prev[aria-label="Previous"]')) !== null && (await pillState())?.label === "Mark read" && !buttons.includes("Browser") && !buttons.includes("As text") && !buttons.includes("As web page"), `${layout}: the post's buttons are in the header (way out, read mark, Reply, Previous / Next as icons with labels), with no switch to a web page: ${buttons.join(", ")}`);
     const links = await page.evaluate(() => [...document.querySelectorAll(".blyg-reader-postmeta a.blyg-reader-link")].map((a) => a.getAttribute("href")));
     check(links.length >= 1 && links[0].startsWith("http://localhost:8788"), `${layout}: the post's blyg is a link to its page (${links.join(", ")})`);
     check((await text(".blyg-reader-postmeta")).some((t) => /^.+·\s*\d+ min read/.test(t)) && !(await text(".blyg-reader-postmeta")).some((t) => /unread|✓ read/.test(t)) && await page.evaluate(() => { const r = document.querySelector(".blyg-reader-postmeta .blyg-reader-readtime"); return !!r && Number(getComputedStyle(r).fontWeight) >= 600; }), `${layout}: the post's one line of small print puts the reading time first and in bold, and does not repeat the read state`);
@@ -350,7 +366,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
     check(await choose("Length", "long"), "reading time: the length can be chosen");
     await wait(300);
     check(JSON.stringify(await cards()) === '["6"]', `reading time: "Over 5 min" shows only the long post (${JSON.stringify(await cards())})`);
-    check((await text(".blyg-reader-filterbtn"))[0] === "Sort & filter (1)", `reading time: the button says how many choices are made (${(await text(".blyg-reader-filterbtn"))[0]})`);
+    check((await filterRow()).value === "1 choice", `reading time: the Sort & filter row says how many choices are made (${JSON.stringify(await filterRow())})`);
     await choose("Length", "short");
     await wait(300);
     check((await cards()).every((m) => m === "1") && (await cards()).length >= 1, `reading time: "Under 2 min" shows only short posts (${JSON.stringify(await cards())})`);
@@ -552,7 +568,7 @@ await runScenario({ data: fixtureData() }, async (s) => {
     check((await page.$(".blyg-reader-header .blyg-reader-steps .blyg-reader-step-next")) !== null && (await page.$(".blyg-reader-stepbar")) === null && (await page.$(".blyg-reader-nextbtn")) === null, `${layout}: next: previous / next are in the header's thumb row, there is no bar of their own, and there is no "Read & next" button`);
     check((await page.$(".blyg-reader-postfoot")) === null, `${layout}: next: no bar below the post's text`);
     // Previous / Next through the feed (a tap steps, a long press on Next marks the post read and steps).
-    const steps = () => page.evaluate(() => { const c = document.querySelector(".blyg-reader-stepcount")?.textContent ?? ""; const m = /^Feed (\d+) of (\d+)$/.exec(c); const nx = document.querySelector(".blyg-reader-step-next"); return { i: m ? Number(m[1]) : 0, n: m ? Number(m[2]) : 0, prevOff: document.querySelector(".blyg-reader-step-prev")?.disabled, nextOff: nx?.disabled, h: nx?.getBoundingClientRect().height ?? 0, inHeader: !!nx && !!nx.closest(".blyg-reader-header") }; });
+    const steps = () => page.evaluate(() => { const c = document.querySelector(".blyg-reader-stepcount")?.textContent ?? ""; const m = /^Feed · (\d+) of (\d+)$/.exec(c); const nx = document.querySelector(".blyg-reader-step-next"); return { i: m ? Number(m[1]) : 0, n: m ? Number(m[2]) : 0, prevOff: document.querySelector(".blyg-reader-step-prev")?.disabled, nextOff: nx?.disabled, h: nx?.getBoundingClientRect().height ?? 0, inHeader: !!nx && !!nx.closest(".blyg-reader-header") }; });
     const shownId = () => page.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader")[0].view.shown?.remoteId);
     const s0 = await steps();
     check(s0.n >= 3 && s0.i >= 1 && s0.inHeader && s0.h >= 28 && s0.nextOff === false, `${layout}: steps: the read mark shows the place in the feed (${s0.i} of ${s0.n}), the buttons are in the header, tall enough to tap (${Math.round(s0.h)} px)`);

@@ -79,7 +79,7 @@ await runScenario({ data }, async (s) => {
     await eventually(() => pg.evaluate(() => !/Loading|updating|Checking/.test(document.querySelector(".blyg-reader-status")?.textContent ?? "")));
     await wait(800);
   };
-  const cards = () => pg.evaluate(() => [...document.querySelectorAll(".blyg-reader-card")].map((c) => ({ text: c.textContent ?? "", saved: c.querySelector(".blyg-reader-savedmark")?.textContent ?? "" })));
+  const cards = () => pg.evaluate(() => [...document.querySelectorAll(".blyg-reader-card")].map((c) => ({ text: c.textContent ?? "", saved: c.querySelector(".blyg-savedmark")?.getAttribute("aria-label") ?? "", word: /\bsaved\b/i.test(c.querySelector(".blyg-reader-badges")?.textContent ?? ""), firstInMeta: c.querySelector(".blyg-reader-cardmeta")?.firstElementChild?.classList.contains("blyg-savedmark") ?? false })));
   const menu = () => pg.evaluate(() => [...activeDocument.querySelectorAll(".menu .menu-item")].map((e) => ({ title: e.querySelector(".menu-item-title")?.textContent ?? "", disabled: e.classList.contains("is-disabled") })));
   const status = () => pg.evaluate(() => document.querySelector(".blyg-reader-status")?.textContent ?? "");
   const pick = async (title) => { await pg.evaluate((t) => [...activeDocument.querySelectorAll(".menu .menu-item")].find((e) => e.querySelector(".menu-item-title")?.textContent === t)?.click?.(), title); await wait(1200); };
@@ -110,8 +110,9 @@ await runScenario({ data }, async (s) => {
   check(state.gets === 1, `the shelf was read once when the reader opened (${state.gets})`);
   const first = await cards();
   check(first.length === 4, `the feed holds the four posts (${first.length})`);
-  check(first.filter((c) => c.saved === "saved").length === 1 && first.find((c) => c.text.includes("Glacier"))?.saved === "saved", `only the post saved on the other device has the saved mark (${JSON.stringify(first.map((c) => c.saved))})`);
+  check(first.filter((c) => c.saved === "Saved").length === 1 && first.find((c) => c.text.includes("Glacier"))?.saved === "Saved", `only the post saved on the other device has the saved mark (${JSON.stringify(first.map((c) => c.saved))})`);
   check(state.puts.length === 0 && state.savedLists.length === 0, "opening the reader wrote nothing and listed no Saved view");
+  check(first.every((c) => !c.word) && first.filter((c) => c.saved === "Saved").every((c) => c.firstInMeta), `the card says it with the bookmark mark, first in its meta line, and no longer with the word "saved" (${JSON.stringify(first.map((c) => [c.saved, c.word, c.firstInMeta]))})`);
 
   // ---- a long press offers Save for later; one tap is one PUT that names the revision; the card shows the mark
   await longPress("Harbour");
@@ -122,15 +123,15 @@ await runScenario({ data }, async (s) => {
   check(state.puts.length === 1 && state.puts[0].status === 200 && state.puts[0].expectedRevision === 3, `one PUT, carrying the revision it was made from (${JSON.stringify(state.puts.map((p) => [p.status, p.expectedRevision]))})`);
   check(state.shelf[0].remoteId === "p0" && state.shelf.length === 3, `the shelf holds the new post first and the others still (${state.shelf.map((e) => e.remoteId)})`);
   check(state.gets === 1, "the save needed no read of the shelf of its own");
-  check((await cards()).find((c) => c.text.includes("Harbour"))?.saved === "saved", "the card shows the saved mark");
+  check((await cards()).find((c) => c.text.includes("Harbour"))?.saved === "Saved", "the card shows the saved mark");
   check(/Saved for later/.test(await status()), `the status line says so (${await status()})`);
 
   // ---- the open post: Save / Saved
   await pg.evaluate(() => [...document.querySelectorAll(".blyg-reader-card")].find((x) => x.textContent?.includes("Orchard"))?.click());
   await pg.waitForSelector(".blyg-reader-header .blyg-reader-back", { timeout: 15000 });
-  const saveBtn = () => pg.evaluate(() => { const b = document.querySelector(".blyg-reader-header .blyg-reader-savebtn"); return b ? { text: b.textContent, disabled: b.disabled, saved: b.classList.contains("is-saved"), title: b.getAttribute("title") } : null; });
+  const saveBtn = () => pg.evaluate(() => { const b = document.querySelector(".blyg-reader-header .blyg-reader-savebtn"); return b ? { text: b.getAttribute("aria-label"), glyph: !!b.querySelector("svg"), words: b.textContent?.trim() ?? "", disabled: b.disabled, saved: b.classList.contains("is-saved"), title: b.getAttribute("title") } : null; });
   const b1 = await saveBtn();
-  check(b1?.text === "Save" && !b1.disabled, `the open post has a Save button (${JSON.stringify(b1)})`);
+  check(b1?.text === "Save for later" && b1.glyph && b1.words === "" && !b1.disabled, `the open post has a Save button (${JSON.stringify(b1)})`);
   // another device saves a post first: this device's cache is stale, so the PUT is answered with a 409 and the one change is applied to the current list
   state.beforePut = () => { state.shelf = [{ sub: "s1", remoteId: "p3" }, ...state.shelf]; state.revision++; };
   const putsBefore = state.puts.length;
@@ -143,11 +144,12 @@ await runScenario({ data }, async (s) => {
   check(state.puts.slice(putsBefore).every((p) => Number.isInteger(p.expectedRevision)), "every send named a revision");
   await eventually(async () => (await saveBtn())?.text === "Saved");
   const b2 = await saveBtn();
-  check(b2?.text === "Saved" && b2.saved, `the button says Saved afterwards (${JSON.stringify(b2)})`);
+  check(b2?.text === "Saved" && b2.saved && b2.glyph, `the button says Saved afterwards (${JSON.stringify(b2)})`);
 
   // ---- back to the feed, the Saved view: one read, no write, an older post the feed did not load, in the shelf's order
   await pg.click(".blyg-reader-header .blyg-reader-back");
   await pg.waitForSelector(".blyg-reader-card", { timeout: 15000 });
+  await pg.click(".blyg-reader-menubtn"); // (DG19: Sort & filter is a row of the header's menu)
   await pg.click(".blyg-reader-filterbtn");
   await pg.waitForSelector(".blyg-reader-chip", { timeout: 10000 });
   const reads0 = state.savedLists.length;
@@ -161,7 +163,7 @@ await runScenario({ data }, async (s) => {
   check(state.savedLists.length === reads0 + 1 && state.puts.length === puts0, `the Saved view is one read and no write (${state.savedLists.length - reads0} reads, ${state.puts.length - puts0} writes)`);
   check(/order=newest/.test(state.savedLists.at(-1) ?? ""), `it asks with order=newest, which writes nothing on the Studio (${state.savedLists.at(-1)})`);
   check(view.length === 5 && view.some((c) => c.text.includes("older post that the feed never loaded")), `it shows all five saved posts, the older one included (${view.length})`);
-  check(view.every((c) => c.saved === "saved"), "every card in the Saved view has the mark");
+  check(view.every((c) => c.saved === "Saved"), "every card in the Saved view has the mark");
   const order = view.map((c) => ["Orchard", "Market", "Harbour", "Glacier", "older post"].findIndex((w) => c.text.includes(w)));
   check(JSON.stringify(order) === JSON.stringify([0, 1, 2, 3, 4]), `the Saved view keeps the shelf's order (${JSON.stringify(order)})`);
 

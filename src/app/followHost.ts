@@ -37,6 +37,12 @@ export function followedStore(deps: { app: App; build: () => ReaderStudio; manif
 export function createFollowHost(deps: { app: App; build: () => ReaderStudio; manifest: { id: string; dir?: string } }): FollowHost {
   const store = followedStore(deps);
   return {
+    openSettings: () => {
+      // Obsidian's own settings window, on this plugin's tab (an internal handle: when it is absent nothing happens, the entry is then not offered).
+      const setting = (deps.app as unknown as { setting?: { open(): void; openTabById(id: string): void } }).setting;
+      setting?.open();
+      setting?.openTabById(deps.manifest.id);
+    },
     openFollowed: (prefill) => openSubscriptions(deps.app, { build: deps.build, store, ...(prefill !== undefined ? { prefill } : {}) }),
     followBlyg: async (origin) => {
       const built = deps.build();

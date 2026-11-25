@@ -55,7 +55,6 @@ const p = (over: Partial<ReadingPost>): ReadingPost => ({
 });
 type El = { text: string; tag: string; cls: Set<string>; children: El[]; click(): void; all(): El[] };
 const has = (e: El, c: string): boolean => e.cls.has(c);
-const textOf = (e: El): string => e.text + e.children.map(textOf).join("");
 const story = (read: [boolean, boolean]): ReadingPost[] => {
   const a = p({ contentHtml: "<p>Shared topic about gardens and tomatoes in spring.</p>", authorName: "Ann", ...(read[0] ? { readVersion: 1 } : {}) });
   const b = p({ isReply: true, stubTarget: { id: a.remoteId } as never, contentHtml: "<p>My tomatoes did badly this spring.</p>", authorName: "Bo", ...(read[1] ? { readVersion: 1 } : {}) });
@@ -106,7 +105,7 @@ describe("posts already read, dimmed in place", () => {
     expect(await order(true)).toEqual(await order(false));
     expect(await order(true)).toEqual([a!.remoteId, b!.remoteId, lone.remoteId]);
   });
-  it("is a muted colour, never opacity or a strike-through, and the hover colour still wins", () => {
+  it("is a muted colour, never opacity or a strike-through, and the pressed look (DG19: underline, lighter, never the accent) still comes after it", () => {
     const css = readFileSync("styles.css", "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
     const rules = [...css.matchAll(/[^{}]*blyg-is-read[^{}]*\{[^}]*\}/g)].map((m) => m[0]);
     expect(rules.length).toBeGreaterThan(0);
@@ -114,7 +113,7 @@ describe("posts already read, dimmed in place", () => {
       expect(r).not.toMatch(/opacity|line-through|display: none/);
       expect(r).toMatch(/color: var\(--text-muted\)/);
     }
-    expect(css.indexOf("blyg-story.blyg-is-read > button.blyg-story-headline")).toBeLessThan(css.indexOf(".blyg-story > button.blyg-story-headline:hover"));
+    expect(css.indexOf("blyg-story.blyg-is-read > button.blyg-story-headline")).toBeLessThan(css.indexOf(".blyg-story > button.blyg-story-headline:active"));
   });
 });
 
@@ -163,15 +162,16 @@ describe("one Refresh", () => {
     await press(m);
     expect((m.view as unknown as { note: string }).note).toBe("1 new post");
   });
-  it("the menu shows one update action; the manual writes are under Advanced", async () => {
+  it("the menu shows one update action; the manual writes are under Advanced (a row of the menu that opens them as rows)", async () => {
     const m = await setup(false, (c) => written(c));
-    const panelEntries = (): El[] => m.root.all().filter((e) => has(e, "blyg-daily-entry"));
+    const rows = (): El[] => m.root.all().filter((e) => has(e, "blyg-menurow"));
     const adv = m.root.all().find((e) => has(e, "blyg-daily-advanced"))!;
     expect(adv.tag).toBe("details");
-    expect(adv.children[0]!.text).toBe("Advanced");
-    const outside = panelEntries().filter((e) => !adv.all().includes(e));
-    expect(outside.map((e) => textOf(e.all().find((b) => b.tag === "button")!))).toEqual(["Refresh"]);
-    expect(adv.all().filter((b) => b.tag === "button" && !b.cls.has("blyg-mark")).length).toBeGreaterThanOrEqual(1);
+    expect(adv.children[0]!.tag).toBe("summary");
+    expect(adv.children[0]!.all().map((e) => e.text).filter(Boolean)).toEqual(["Advanced", "›"]); // the label, and the › of a row that opens something
+    const outside = rows().filter((e) => !adv.all().includes(e));
+    expect(outside.map((e) => e.all().find((b) => has(b, "blyg-menurow-label"))?.text)).toEqual(["Refresh"]);
+    expect(adv.all().filter((b) => b.tag === "button" && has(b, "blyg-menurow")).length).toBeGreaterThanOrEqual(1);
     expect(adv.all().some((b) => has(b, "blyg-story-write"))).toBe(true);
   });
 });

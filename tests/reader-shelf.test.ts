@@ -1,8 +1,13 @@
 // SH1: the reader's side of Save for later (src/ui/readerShelf.ts): what a tap does, when nothing is drawn, and the Saved view. The shelf itself is a fake here
 // (tests/studio/shelf.test.ts covers the Studio conversation); the screen is a recorder.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// The mark itself is drawn by ui/savedMark.ts (Obsidian's setIcon); here it is a recorder, so what is asked of it can be checked.
+const drawn: HTMLElement[] = [];
+vi.mock("../src/ui/savedMark", () => ({ drawSavedMark: (el: HTMLElement) => void drawn.push(el), SAVED_MARK_CLASS: "blyg-savedmark" }));
 import type { ShelfFacade, ShelfResult } from "../src/app/shelfService";
 import type { ReadingPost } from "../src/studio/reading";
+import type { ButtonOpts } from "../src/ui/readerButton";
 import { ShelfControl } from "../src/ui/readerShelf";
 
 const post = (remoteId: string, over: Partial<ReadingPost> = {}): ReadingPost => ({ subscriptionId: "s", subscriptionTitle: "T", origin: null, remoteId, kind: "fragment", withdrawn: false, version: 1, readVersion: null, observedAt: "", created: null, isReply: false, contentHtml: "", contentMd: "", authorName: null, authorUrl: null, sourceUrl: null, ...over });
@@ -69,28 +74,30 @@ describe("Save for later in the reader", () => {
   it("the saved mark is drawn for a saved post only, and nothing at all while the shelf is off or not read", () => {
     const on = fakeShelf({ saved: new Set(["a"]) }).facade;
     const ui = new ShelfControl(() => on, screenOf([]).screen);
+    drawn.length = 0;
     const yes = parentOf();
     ui.mark(yes.el, post("a"));
-    expect(yes.made).toEqual([expect.objectContaining({ cls: "blyg-reader-savedmark", text: "saved" })]);
-    const no = parentOf();
-    ui.mark(no.el, post("b"));
-    expect(no.made).toEqual([]);
+    expect(drawn).toEqual([yes.el]); // the one shared helper draws it, once
+    expect(ui.marked(post("a"))).toBe(true);
+    ui.mark(parentOf().el, post("b"));
+    expect(drawn).toHaveLength(1);
+    expect(ui.marked(post("b"))).toBe(false);
     for (const off of [undefined, fakeShelf({ ready: () => false, saved: new Set(["a"]) }).facade]) {
-      const p = parentOf();
-      new ShelfControl(() => off, screenOf([]).screen).mark(p.el, post("a"));
-      expect(p.made).toEqual([]);
+      new ShelfControl(() => off, screenOf([]).screen).mark(parentOf().el, post("a"));
+      expect(drawn).toHaveLength(1);
     }
   });
-  it("the Save button: 'Save', 'Saved', disabled with the reason on a full shelf, absent for posts that cannot be saved or when there is no shelf", () => {
+  it("the Save button is a bookmark glyph: labelled 'Save for later' or 'Saved', disabled with the reason on a full shelf, absent for posts that cannot be saved or when there is no shelf", () => {
     const draw = (facade: ShelfFacade | undefined, p: ReadingPost) => {
-      const out: Array<{ text: string; opts: { disabled?: boolean; title?: string; cls?: string } }> = [];
+      const out: Array<{ text: string; opts: ButtonOpts }> = [];
       new ShelfControl(() => facade, screenOf([]).screen).button({} as HTMLElement, p, (_parent, text, _run, opts) => { out.push({ text, opts }); return {} as HTMLButtonElement; });
       return out;
     };
     const { facade } = fakeShelf({ saved: new Set(["a"]) });
-    expect(draw(facade, post("b")).map((b) => b.text)).toEqual(["Save"]);
+    const unsaved = draw(facade, post("b"));
+    expect(unsaved.map((b) => [b.text, b.opts.icon, b.opts.label, b.opts.pressed])).toEqual([["", "bookmark", "Save for later", false]]);
     const savedButton = draw(facade, post("a"));
-    expect(savedButton.map((b) => b.text)).toEqual(["Saved"]);
+    expect(savedButton.map((b) => [b.text, b.opts.icon, b.opts.label, b.opts.pressed])).toEqual([["", "bookmark", "Saved", true]]);
     expect(savedButton[0]?.opts.cls).toContain("is-saved");
     const full = fakeShelf({ full: () => true, saved: new Set(["a"]) }).facade;
     const fullButton = draw(full, post("b"))[0];

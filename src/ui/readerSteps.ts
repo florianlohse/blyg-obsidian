@@ -1,7 +1,7 @@
 // Previous / Next in an open post, and the counter next to the read mark. Kept out of ReaderView.ts (its size is capped). One rule: Next and Previous walk ALL the posts of the list
 // the open post was opened from, in that list's order, whatever the entry point. From the digest that list is the Daily's page top to bottom (every story's posts, then the
 // singles, read ones included); from the feed it is the feed as it is shown (its order, filter or Saved view). The counter counts that same list and names it ("Digest 4 of 12").
-import { setIcon } from "obsidian";
+import { heldSectionOf } from "../digest/placement";
 import type { ReadingPost } from "../studio/reading";
 
 const keyOf = (p: ReadingPost): string => `${p.subscriptionId}/${p.remoteId}`;
@@ -13,6 +13,8 @@ export interface Step {
   at: number;
   /** Which list the walk is in: the Daily's order or the feed's. */
   mode: StepMode;
+  /** The heading of the Daily the open post is under ("Garden", "Top stories"), when the page drew sections; the counter names it. */
+  section?: string;
 }
 
 /** The Daily's posts in the order the page shows them, handed to the reader when a post is opened from the digest. */
@@ -29,7 +31,8 @@ export class DigestWalk {
   where(p: ReadingPost): Step | null {
     const keys = this.posts.map(keyOf);
     const at = keys.indexOf(keyOf(p));
-    return at < 0 ? null : { keys, at, mode: "digest" };
+    const section = at < 0 ? undefined : heldSectionOf(this.posts[at]?.remoteId ?? "");
+    return at < 0 ? null : { keys, at, mode: "digest", ...(section ? { section } : {}) };
   }
   post(key: string): ReadingPost | null {
     return this.posts.find((q) => keyOf(q) === key) ?? null;
@@ -52,16 +55,16 @@ export function drawSteps(row: HTMLElement, where: Step, h: StepHooks): void {
   const prev = h.button(steps, "", () => h.step(-1, false), { cls: "blyg-reader-step blyg-reader-step-prev", disabled: where.at <= 0, title: `The post before this one in the ${what}` });
   h.addIcon(prev, "chevron-left");
   let longPressed = false;
-  const next = h.button(steps, "Next", () => {
+  const next = h.button(steps, "", () => {
     if (longPressed) {
       longPressed = false;
       return;
     }
     return h.step(1, false);
   }, { cls: "blyg-reader-step blyg-reader-step-next", disabled: where.at >= where.keys.length - 1, title: `The post after this one in the ${what}. Hold to mark this one read and go on.` });
-  const icon = createSpan({ cls: "blyg-reader-icon" });
-  setIcon(icon, "chevron-right");
-  next.append(icon);
+  h.addIcon(next, "chevron-right");
+  prev.setAttr("aria-label", "Previous");
+  next.setAttr("aria-label", "Next");
   let timer = 0;
   const cancel = (): void => window.clearTimeout(timer);
   next.addEventListener("pointerdown", () => {
@@ -75,12 +78,19 @@ export function drawSteps(row: HTMLElement, where: Step, h: StepHooks): void {
   next.addEventListener("contextmenu", (e) => e.preventDefault());
 }
 
-/** "Feed 3 of 24" or "Digest 4 of 12": where the open post is in what Next and Previous walk (the mode word is the existing title span, kept short). */
+/** The counter text: the mode word, the heading the post is under when the Daily has one, then the numbers ("Feed · 9 of 38", "Digest · Work and Culture · 4 of 12"). */
+export function stepLabel(where: Step): { name: string; numbers: string } {
+  return { name: where.mode === "digest" ? (where.section ? `Digest · ${where.section}` : "Digest") : "Feed", numbers: `${where.at + 1} of ${where.keys.length}` };
+}
+
+/** Where the open post is in what Next and Previous walk, short, italic and muted, in the right half of the header's first row. The name of the list gives way with an ellipsis; the numbers never do. */
 export function stepCount(parent: HTMLElement, where: Step): void {
-  const count = parent.createSpan({ cls: "blyg-reader-stepcount" });
-  count.createSpan({ cls: "blyg-reader-steptitle", text: where.mode === "digest" ? "Digest" : "Feed" });
+  const { name, numbers } = stepLabel(where);
+  const count = parent.createSpan({ cls: "blyg-reader-stepcount", attr: { "aria-label": `${name} · ${numbers}` } });
+  count.createSpan({ cls: "blyg-reader-steptitle", text: name, attr: { title: name } });
   const num = count.createSpan({ cls: "blyg-reader-stepnum" });
-  num.appendText(" ");
-  num.createEl("strong", { text: String(where.at + 1) });
-  num.appendText(` of ${where.keys.length}`);
+  num.appendText(" · ");
+  const [at, of] = numbers.split(" of ");
+  num.createEl("strong", { text: at });
+  num.appendText(` of ${of}`);
 }

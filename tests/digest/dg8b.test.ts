@@ -203,10 +203,10 @@ describe("Next and Previous in the digest", () => {
     expect(w.post(at!.keys[2]!)).toBe(ps[2]);
     const host = new (BlygDailyView as unknown as new (l: unknown, h: unknown) => { contentEl: El })({}, {}).contentEl;
     stepCount(host as never, at!);
-    expect(textOf(host)).toBe("Digest 2 of 4");
+    expect(textOf(host)).toBe("Digest · 2 of 4");
     const feed = new (BlygDailyView as unknown as new (l: unknown, h: unknown) => { contentEl: El })({}, {}).contentEl;
     stepCount(feed as never, { keys: ["a", "b", "c"], at: 2, mode: "feed" });
-    expect(textOf(feed)).toBe("Feed 3 of 3");
+    expect(textOf(feed)).toBe("Feed · 3 of 3");
     w.clear();
     expect(w.where(ps[1]!)).toBeNull(); // no digest list held: the feed's order
   });

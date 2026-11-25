@@ -82,18 +82,18 @@ await runScenario({ data }, async (s) => {
   reset();
   await wait(3000);
   check(Object.keys(snap()).length === 0, `the digest asks the Studio for nothing by itself (${JSON.stringify(snap())})`);
-  const icon = await page.evaluate(() => { const b = document.querySelector(".blyg-daily .blyg-daily-barrow .blyg-daily-refresh"); const e = document.querySelector(".blyg-daily .blyg-daily-panel .blyg-daily-refreshbtn"); return { bar: !!b?.querySelector("svg"), label: b?.getAttribute("aria-label"), entry: e?.textContent, hint: document.querySelector(".blyg-daily .blyg-daily-hint")?.textContent, panel: document.querySelector(".blyg-daily .blyg-daily-panel")?.textContent }; });
-  check(icon.bar && icon.label === "Refresh" && icon.entry === "Refresh" && /^Fetches new posts from your blygs and groups them\. Writes the missing texts only if “Write the digest automatically” is on/.test(icon.hint ?? "") && /Writes headlines and summaries with your AI model, uses tokens/.test(icon.panel ?? ""), `the bar has a Refresh icon and the menu explains Refresh and Write in words (${JSON.stringify(icon)})`);
+  const icon = await page.evaluate(() => { const b = document.querySelector(".blyg-daily .blyg-daily-barrow .blyg-daily-refresh"); const e = document.querySelector(".blyg-daily .blyg-daily-panel .blyg-daily-refreshbtn"); const w = document.querySelector(".blyg-daily .blyg-daily-panel .blyg-story-write"); return { bar: !!b?.querySelector("svg"), label: b?.getAttribute("aria-label"), entry: e?.querySelector(".blyg-menurow-label")?.textContent, value: e?.querySelector(".blyg-menurow-value")?.textContent, hint: e?.getAttribute("title"), write: w?.getAttribute("title"), writeValue: w?.querySelector(".blyg-menurow-value")?.textContent }; });
+  check(icon.bar && icon.label === "Refresh" && icon.entry === "Refresh" && icon.value === "may use tokens" && /^Fetches new posts from your blygs and groups them\. Writes the missing texts only if “Write the digest automatically” is on/.test(icon.hint ?? "") && /Writes headlines and summaries with your AI model, uses tokens/.test(icon.write ?? "") && icon.writeValue === "uses tokens", `the bar has a Refresh icon and the menu rows say in words what Refresh and Write cost: a short value at the right, the longer explanation in the title (${JSON.stringify(icon)})`);
 
-  // DG18: one update action in the menu; "Write the digest" and "Re-sort sections" are under a labelled "Advanced" part
+  // DG18: one update action in the menu; "Write the digest" and "Re-sort sections" are under a labelled "Advanced" part (a row of the menu that unfolds the writes as rows)
   const menu = await page.evaluate(() => {
     const panel = document.querySelector(".blyg-daily .blyg-daily-panel");
     const adv = panel?.querySelector("details.blyg-daily-advanced");
-    const entries = [...(panel?.querySelectorAll(".blyg-daily-entry") ?? [])];
-    const outside = entries.filter((e) => !adv?.contains(e)).map((e) => e.querySelector("button")?.textContent ?? "");
-    return { label: adv?.querySelector("summary")?.textContent ?? null, outside, inside: [...(adv?.querySelectorAll("button") ?? [])].map((b) => b.textContent), writeIn: !!adv?.querySelector(".blyg-story-write"), mainWrite: !!panel?.querySelector(":scope > .blyg-daily-entry .blyg-story-write") };
+    const rows = [...(panel?.querySelectorAll(".blyg-menurow") ?? [])];
+    const outside = rows.filter((r) => !adv?.contains(r)).map((r) => r.querySelector(".blyg-menurow-label")?.textContent ?? "");
+    return { label: adv?.querySelector("summary .blyg-menurow-label")?.textContent ?? null, opens: adv?.querySelector("summary .blyg-menurow-go")?.textContent ?? null, outside, inside: [...(adv?.querySelectorAll("button.blyg-menurow .blyg-menurow-label") ?? [])].map((b) => b.textContent), writeIn: !!adv?.querySelector(".blyg-story-write"), mainWrite: !!panel?.querySelector(":scope > .blyg-story-write") };
   });
-  check(menu.label === "Advanced" && JSON.stringify(menu.outside) === JSON.stringify(["Refresh"]) && menu.writeIn && !menu.mainWrite && menu.inside.includes("Write the digest"), `the main menu has one update action (Refresh); "Write the digest" (and "Re-sort sections" once there are sections) are under "Advanced" (${JSON.stringify(menu)})`);
+  check(menu.label === "Advanced" && menu.opens === "›" && JSON.stringify(menu.outside) === JSON.stringify(["Refresh"]) && menu.writeIn && !menu.mainWrite && menu.inside.includes("Write the digest"), `the main menu has one update action (Refresh); "Write the digest" (and "Re-sort sections" once there are sections) are under "Advanced", a row with the › of a row that opens something (${JSON.stringify(menu)})`);
 
   // new posts arrive on the blyg: a reply that joins the first story, and an unrelated post
   live.rows = [...posts, mk(30, "Alpha harbour tide lantern story body number 0 follow up from the quay.", "Late", { isReply: true, stubTarget: { origin: "https://one.example.com/", id: posts[0].remoteId } }), mk(31, "Zebra crossing paint dries slowly on the new bridge deck.", "Zed")].map(wire);
@@ -152,8 +152,39 @@ await runScenario({ data }, async (s) => {
   const cache = await page.evaluate(async () => JSON.parse(await window.app.vault.adapter.read(".obsidian/plugins/blyg/reader-cache.json")).posts.length);
   check(cache === posts.length + 2, `the list read by the digest's Refresh is saved for the next session (${cache} posts)`);
 
+  // ---- DG19, Menu 1: every row is a label at the left and a muted value right-aligned; all rows end on one right edge; a long value is cut with an ellipsis and never takes room from the label
+  await page.evaluate(() => { document.querySelector(".blyg-daily .blyg-daily-menu").click(); document.querySelector(".view-content.blyg-daily").scrollTop = 0; });
+  await wait(400);
+  const menu1 = await page.evaluate(() => {
+    const adv = document.querySelector(".blyg-daily-panel details.blyg-daily-advanced");
+    const advWas = adv?.open ?? false;
+    if (adv) adv.open = true;
+    const rows = [...document.querySelectorAll(".blyg-daily-panel .blyg-menurow")];
+    const R = (e) => e.getBoundingClientRect();
+    const first = rows[0];
+    const lab = first.querySelector(".blyg-menurow-label");
+    const val = first.querySelector(".blyg-menurow-value");
+    const keep = val.textContent;
+    const labelW = R(lab).width;
+    val.textContent = "an unreasonably long value that cannot fit on one line of the menu at all, ever, however narrow";
+    const cut = val.scrollWidth > val.clientWidth && getComputedStyle(val).textOverflow === "ellipsis" && getComputedStyle(val).whiteSpace === "nowrap";
+    const labelKept = Math.abs(R(lab).width - labelW) < 0.5 && R(first).height < 60;
+    const valueRightWhenCut = R(val).right;
+    val.textContent = keep;
+    if (adv) adv.open = advWas;
+    return {
+      n: rows.length, labels: rows.every((r) => Math.abs(R(r.querySelector(".blyg-menurow-label")).left - R(r).left) <= 1),
+      valueEdges: [...new Set(rows.map((r) => Math.round(R(r.querySelector(".blyg-menurow-value")).right * 2) / 2))], goEdges: [...new Set(rows.map((r) => Math.round(R(r.querySelector(".blyg-menurow-go")).right * 2) / 2))], rowEdges: [...new Set(rows.map((r) => Math.round(R(r).right * 2) / 2))],
+      aligned: rows.every((r) => getComputedStyle(r.querySelector(".blyg-menurow-value")).textAlign === "right"), muted: rows.every((r) => getComputedStyle(r.querySelector(".blyg-menurow-value")).color !== getComputedStyle(r.querySelector(".blyg-menurow-label")).color),
+      plain: rows.every((r) => getComputedStyle(r).backgroundColor === "rgba(0, 0, 0, 0)" && getComputedStyle(r).boxShadow === "none"), cut, labelKept, cutRight: valueRightWhenCut === R(val).right, inside: rows.every((r) => R(r).right <= window.innerWidth + 0.5),
+    };
+  });
+  check(menu1.n >= 2 && menu1.labels && menu1.valueEdges.length === 1 && menu1.goEdges.length === 1 && menu1.rowEdges.length === 1 && menu1.goEdges[0] === menu1.rowEdges[0] && menu1.aligned && menu1.muted && menu1.plain && menu1.inside, `the digest menu's rows: labels at the left, values muted and right-aligned, all on one right edge, no box (${JSON.stringify(menu1)})`);
+  check(menu1.cut && menu1.labelKept, `a long value is cut with an ellipsis and the label keeps its room (${JSON.stringify({ cut: menu1.cut, labelKept: menu1.labelKept })})`);
+  await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-menu").click());
+
   // ---- "Write the digest" sends nothing without consent
-  const writeText = await page.evaluate(() => document.querySelector(".blyg-daily .blyg-story-write")?.textContent ?? "");
+  const writeText = await page.evaluate(() => document.querySelector(".blyg-daily .blyg-story-write .blyg-menurow-label")?.textContent ?? "");
   check(writeText === "Write the digest", `the menu has "Write the digest" (${writeText})`);
   reset();
   await page.evaluate(() => document.querySelector(".blyg-daily .blyg-story-write")?.click());

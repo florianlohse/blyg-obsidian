@@ -13,3 +13,8 @@ export function placedSection(postId: string, edition: number | undefined): InDi
   const name = held && edition !== undefined && held.edition === edition ? held.of.get(postId) : undefined;
   return name && edition !== undefined ? { edition, section: name } : null;
 }
+
+/** The heading the page put this post under, from the page drawn last (the reader's step counter names it); undefined when that page drew no sections or the post is not on it. */
+export function heldSectionOf(postId: string): string | undefined {
+  return held?.of.get(postId);
+}
