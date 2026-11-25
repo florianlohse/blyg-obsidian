@@ -16,7 +16,7 @@ import { drawModeToggle, setReaderMode, switchMode } from "./readerMode";
 import { askStudioToFetch } from "./readerFetch";
 import { emptyFeedNote, heldList, noteListLoaded, sessionSync, startReader, type Saved } from "./readerStart";
 import { askAndWait } from "../app/readerRefresh";
-import { drawSteps, StoryWalk, stepCount, type Step } from "./readerSteps";
+import { drawSteps, DigestWalk, stepCount, type Step } from "./readerSteps";
 import { CONTRASTS, type ReaderContrast } from "./readerLook";
 import { responseChip, responseIndex, type ResponseEntry } from "./readerResponses";
 import { changedCount, chooseWalk, keepOlderTail, keepOwnPosts, knownOf, mergeFresh, READER_KEEP, type OlderResult, type SyncMemory } from "./readerSync";
@@ -644,16 +644,16 @@ export class BlygReaderView extends ItemView {
     return this.respMemo.index(p);
   }
 
-  /** The keys of the posts in the order the feed showed when the open post was opened from it (its blyg, length and unread choices applied): ‹ › step through it. */
+  /** The keys of the posts in the list the feed showed when the open post was opened from it (its blyg, length and unread choices, or the Saved view, applied): ‹ › step through all of it. */
   private stepKeys: string[] | null = null;
-  /** Where the open post is in what Next and Previous walk: its story's posts (opened from a story of the digest), else the feed's order. */
+  /** Where the open post is in what Next and Previous walk: the digest's whole order when it was opened from the Daily, else the feed's list. */
   private stepIndex(p: ReadingPost): Step | null {
-    const story = this.walk.where(p);
-    if (story) return story;
+    const digest = this.walk.where(p);
+    if (digest) return digest;
     if (!this.data || !this.inFeed(p)) return null;
-    this.stepKeys ??= arrange(this.data.posts, this.filter, this.mineIds).map(keyOf);
+    this.stepKeys ??= (this.shelfUi.view?.map((q) => this.live(q)) ?? arrange(this.data.posts, this.filter, this.mineIds)).map(keyOf);
     const at = this.stepKeys.indexOf(keyOf(p));
-    return at < 0 ? null : { keys: this.stepKeys, at };
+    return at < 0 ? null : { keys: this.stepKeys, at, mode: "feed" };
   }
 
   /** Open the post before or after the open one in that order. `markRead`: the open one counts as read first (a long press on Next). */
@@ -661,7 +661,7 @@ export class BlygReaderView extends ItemView {
     const where = this.stepIndex(p);
     if (!where || this.moving) return;
     const key = where.keys[where.at + delta];
-    const target = key === undefined ? null : (where.story !== undefined ? this.walk.post(key) : null) ?? this.data?.posts.find((q) => keyOf(q) === key) ?? null;
+    const target = key === undefined ? null : (where.mode === "digest" ? this.walk.post(key) : null) ?? this.data?.posts.find((q) => keyOf(q) === key) ?? null;
     if (!target) return;
     this.moving = true;
     try {
@@ -678,8 +678,8 @@ export class BlygReaderView extends ItemView {
   private trail: ReadingPost[] = [];
   /** Set by the digest when it opens a post here: Back, once the trail is used up, returns to the digest. */
   readonly returnTo = new ReturnPoint();
-  /** Set by the digest when it opens a post of a story: Next and Previous walk that story (ui/readerSteps.ts). */
-  readonly walk = new StoryWalk();
+  /** Set by the digest when it opens a post: Next and Previous walk the Daily's whole order (ui/readerSteps.ts). */
+  readonly walk = new DigestWalk();
 
   private closePost(): void {
     const back = this.trail.pop();

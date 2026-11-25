@@ -36,7 +36,7 @@ export const BLYG_DAILY_VIEW = "blyg-daily";
 export interface DigestHost {
   /** The reader's saved list and when it was saved, or null when there is none (the reader has not been opened, or the list is too old). */
   loadList(): Promise<{ posts: ReadingPost[]; mentions: InboundMention[]; savedAt: number } | null>;
-  /** Refresh, the feed's action (src/app/readerRefresh.ts): ask the Studio to fetch, read the list once, keep it. No AI request. Absent: Refresh reads the saved list again. */
+  /** Refresh, the feed's action (src/app/readerRefresh.ts): ask the Studio to fetch, read the list once, keep it. No AI request here (the digest's Refresh may write texts afterwards, see `ai.autoOn`). Absent: Refresh reads the saved list again. */
   refresh?(o: { held: { posts: ReadingPost[]; mentions: InboundMention[] } | null; alive: () => boolean; status: (text: string) => void }): Promise<{ ok: true; list: { posts: ReadingPost[]; mentions: InboundMention[] }; note?: string } | { ok: false; message: string; cancelled?: true }>;
   /** The current edition for these posts (src/digest/editionHost.ts): its window, and the stories and Mixed bag it has settled. Absent `id`/`grouped`: group the window afresh. */
   edition(posts: readonly ReadingPost[]): Promise<{ id?: number; since: number; until: number; grouped?: Grouped; auto?: { note?: string }; usage?: { tokens: number; cost: number | null }; editor?: string }>;
@@ -44,8 +44,8 @@ export interface DigestHost {
   history?(): Promise<{ editions: PastEdition[]; capped: boolean }>;
   /** The reader's font setting; the digest's type follows it. */
   font(): ReaderFont;
-  /** Open a post in the reader, in this leaf, like a feed card; the reader's Back returns to the digest. */
-  openPost(post: ReadingPost, leaf: WorkspaceLeaf, story?: { title: string; posts: readonly ReadingPost[] }): Promise<void>;
+  /** Open a post in the reader, in this leaf, like a feed card; the reader's Back returns to the digest. `order`: every post of the page, top to bottom (what Next and Previous walk). */
+  openPost(post: ReadingPost, leaf: WorkspaceLeaf, order?: readonly ReadingPost[]): Promise<void>;
   /** Show the reader's feed in this leaf. */
   showFeed(leaf: WorkspaceLeaf): Promise<void>;
   openWeb(url: string): void;
@@ -70,6 +70,8 @@ export interface DigestHost {
     /** The sections kept for these stories and single posts (the Mixed bag). */
     /** True once, when the digest should write itself now (setting on, consent given, not tried for this edition); it also marks the edition as tried. */
     autoDue?(clusters: readonly Cluster[]): Promise<boolean>;
+    /** True when Refresh may write the missing texts by itself: the AI layer on, "Write the digest automatically" on, and consent recorded for the provider's host. Absent: false (Refresh never sends). */
+    autoOn?(): Promise<boolean>;
     /** The tokens all devices used today (the synced usage); null: not readable. Shown in the footer next to this edition's usage. */
     sharedToday?(): Promise<number | null>;
     cachedSections?(clusters: readonly Cluster[], singles: readonly ReadingPost[]): Promise<Section[] | null>;
@@ -80,6 +82,8 @@ export interface DigestHost {
 
 /** What each button of the menu does and costs (shown under it). */
 const REFRESH_HINT = "Fetches new posts from your blygs, no AI, no cost";
+const REFRESH_AI_HINT = "Fetches new posts from your blygs and groups them. Writes the missing texts only if “Write the digest automatically” is on (uses tokens).";
+const NOT_WRITTEN = "New posts are grouped, but their texts are not written (automatic writing is off). “Write the digest” under Advanced writes them.";
 const WRITE_HINT = "Writes headlines and summaries with your AI model, uses tokens";
 const RESORT_HINT = "Sorts every story and post into sections again, uses tokens";
 const stamp = (t: number): string => new Date(t).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
@@ -110,9 +114,13 @@ export class BlygDailyView extends ItemView {
   private edition: number | null = null;
   /** The page whose scroll position is kept (an edition's id, see digest/scrollMemory.ts); null until something is drawn. */
   private drawnKey: string | null = null;
+  /** The posts of the page as drawn, top to bottom: every story's posts, the singles, the rest and the changes, each once. Opening a post hands it to the reader as the list Next and Previous walk. */
+  private order: ReadingPost[] = [];
   /** Repainters of the "read" look of what is drawn (a card dims, a button goes) when a mark changes; filled while drawing. */
   private readPainters: Array<() => void> = [];
   private markStatus: HTMLElement | null = null;
+  /** The menu's "Advanced" part (the manual writes): folded until opened, kept over redraws. */
+  private advancedOpen = false;
   /** The sticky bar's menu: folded until the person opens it (kept over redraws). */
   private bar = { open: false };
   /** The contents of the page being drawn: one entry per heading, pushed by section() as the heading is drawn, so the contents can never differ from the page. */
@@ -174,10 +182,14 @@ export class BlygDailyView extends ItemView {
     if (this.drawnKey !== null) rememberScroll(this.drawnKey, this.contentEl.scrollTop ?? 0);
   }
 
-  /** Open a post in the reader: the position is kept first, so Back returns to the same place. */
-  private openEntry(p: ReadingPost, story?: { title: string; posts: readonly ReadingPost[] }): void {
+  /** Open a post in the reader: the position is kept first, so Back returns to the same place. Next and Previous there walk the whole page's order, whichever post this is. */
+  private openEntry(p: ReadingPost): void {
     this.saveScroll();
-    void this.host.openPost(p, this.leaf, story);
+    void this.host.openPost(p, this.leaf, this.order);
+  }
+  /** `p` is on the page now: it joins the order Next and Previous walk (once, at its first place). */
+  private seen(p: ReadingPost | null | undefined): void {
+    if (p) this.order.push(p);
   }
 
   /** Opening the page (and the fallback Refresh): read the saved list and draw it; the automatic write follows when it is due. */
@@ -221,11 +233,26 @@ export class BlygDailyView extends ItemView {
       this.written = model && this.host.ai?.enabled() ? await this.host.ai.cached(model.front).catch(() => []) : [];
       this.sections = model && this.written.length > 0 && this.host.ai?.enabled() ? await (this.host.ai.cachedSections?.(model.front, model.mixed) ?? Promise.resolve(null)).catch(() => null) : null;
       if (run === this.runs) this.render(model);
+      if (run === this.runs && model) await this.writeMissing(model, this.note, run);
     } catch {
       if (run === this.runs) this.say("Could not check your blygs.");
     } finally {
       if (run === this.runs) this.setWorking(false);
     }
+  }
+
+  /**
+   * After a Refresh: the texts missing for new or changed stories are written, but only by the rules of the automatic write (setting on, consent recorded, the daily ceiling; nothing is
+   * asked). With automatic writing off nothing is sent and one plain line says so; "Write the digest" (under Advanced) stays the way to write them.
+   */
+  private async writeMissing(model: DailyModel, lead: string, run: number): Promise<void> {
+    const ai = this.host.ai;
+    if (!ai?.enabled() || this.busy || (this.written.every((w) => w !== null) && this.added.size === 0)) return;
+    if (!(await (ai.autoOn?.() ?? Promise.resolve(false)).catch(() => false))) {
+      if (this.added.size > 0 && run === this.runs) this.say((this.note = [lead, NOT_WRITTEN].filter(Boolean).join(" · ")));
+      return;
+    }
+    if (run === this.runs) await this.run(model, false, true, lead);
   }
 
   /** A file of another device changed (DG16): read the edition, the history and the texts again and draw them in place. Nothing is asked of the Studio or the AI. */
@@ -287,7 +314,7 @@ export class BlygDailyView extends ItemView {
     this.render(model);
     // The automatic write: the plain digest is on the page already; the text replaces it when it is ready.
     const ai = this.host.ai;
-    if (model && ai?.enabled() && !this.busy && this.viewing === null && (await (ai.autoDue?.(model.front) ?? Promise.resolve(false)).catch(() => false))) this.run(model, false, true);
+    if (model && ai?.enabled() && !this.busy && this.viewing === null && (await (ai.autoDue?.(model.front) ?? Promise.resolve(false)).catch(() => false))) void this.run(model, false, true);
   }
 
   /** The Refresh buttons (the bar's icon and the menu's entry): busy while a read or a Refresh runs; in place, so the page does not redraw. */
@@ -307,15 +334,15 @@ export class BlygDailyView extends ItemView {
     }
   }
 
-  /** "Write the digest" (or the automatic write): in the background; the page redraws when the answer is in. */
-  private run(model: DailyModel, resort: boolean, auto = false): void {
+  /** "Write the digest" (or the automatic write, or the write after a Refresh): in the background; the page redraws when the answer is in. `lead`: what the status says first. */
+  private run(model: DailyModel, resort: boolean, auto = false, lead = ""): Promise<void> {
     const ai = this.host.ai;
-    if (!ai || this.busy) return;
+    if (!ai || this.busy) return Promise.resolve();
     this.busy = true;
-    this.note = "";
+    this.note = lead;
     const before = this.written;
     if (this.writeBtn) this.paintWrite(this.writeBtn); // in place: the page does not redraw, so nothing jumps
-    void ai
+    return ai
       .write(model.front, model.mixed, { resort, ...(auto ? { auto: true } : {}) })
       .then((o) => {
         this.written = o.written;
@@ -324,8 +351,9 @@ export class BlygDailyView extends ItemView {
         if (o.status === "ok" && o.tokens && this.sharedToday !== null) this.sharedToday += o.tokens; // this write is now part of today's total
         this.note = o.note ?? nothingToWriteNote(o, before, model.front.length, model.mixed.length);
         if (o.status === "failed") this.note = auto ? `The automatic write did not work: ${o.note ?? "no reason given"}` : `${o.note ?? "The digest could not be written."} Showing the list made on your device.`;
+        if (lead && this.note !== lead) this.note = [lead, this.note].filter(Boolean).join(" · ");
       })
-      .catch(() => (this.note = "The digest could not be written. Showing the list made on your device."))
+      .catch(() => void (this.note = "The digest could not be written. Showing the list made on your device."))
       .finally(() => {
         this.busy = false;
         this.render(model);
@@ -350,6 +378,7 @@ export class BlygDailyView extends ItemView {
     this.sectionEls = new Map();
     this.toc = [];
     this.readPainters = [];
+    this.order = [];
     this.refreshBtns = [];
     publishPlacement(undefined, null); // set again by a page with sections
     root.empty();
@@ -366,18 +395,19 @@ export class BlygDailyView extends ItemView {
     });
     if (pastRec) {
       if (this.pastCapped) root.createDiv({ cls: "blyg-daily-meta", text: CAPPED_NOTE });
-      drawPast(root, pastRec, this.byId, { open: (p) => this.openEntry(p), section: (name, el) => this.sectionEls.set(name, el), go: (name) => this.goTo(name) });
+      drawPast(root, pastRec, this.byId, { open: (p) => this.openEntry(p), seen: (p) => this.seen(p), section: (name, el) => this.sectionEls.set(name, el), go: (name) => this.goTo(name) });
       return;
     }
-    // The three actions, each with what it does and what it costs, in plain words.
-    const entry = (hint: string, make: (box: HTMLElement) => HTMLElement): HTMLElement => {
-      const box = bar.panel.createDiv({ cls: "blyg-daily-entry" });
+    // One update action in the menu, with what it does and what it costs in plain words; the manual writes are under "Advanced".
+    const entry = (hint: string, make: (box: HTMLElement) => HTMLElement, into: HTMLElement = bar.panel): HTMLElement => {
+      const box = into.createDiv({ cls: "blyg-daily-entry" });
       const btn = make(box);
       box.createDiv({ cls: "blyg-daily-hint", text: hint });
       return btn;
     };
-    const rbtn = entry(REFRESH_HINT, (box) => {
-      const b = box.createEl("button", { cls: "blyg-daily-btn blyg-daily-refreshbtn", attr: { title: REFRESH_HINT } });
+    const hint = this.host.ai?.enabled() ? REFRESH_AI_HINT : REFRESH_HINT;
+    const rbtn = entry(hint, (box) => {
+      const b = box.createEl("button", { cls: "blyg-daily-btn blyg-daily-refreshbtn", attr: { title: hint } });
       setIcon(b.createSpan({ cls: "blyg-daily-refreshicon" }), "refresh-cw");
       b.createSpan({ text: "Refresh" });
       b.addEventListener("click", () => void this.refreshNow());
@@ -387,13 +417,17 @@ export class BlygDailyView extends ItemView {
     this.paintRefresh(rbtn);
     const ai = this.host.ai;
     if (model && ai?.enabled()) {
-      const btn = entry(WRITE_HINT, (box) => box.createEl("button", { cls: "blyg-daily-btn blyg-story-write", attr: { title: WRITE_HINT } }));
+      const adv = bar.panel.createEl("details", { cls: "blyg-daily-advanced" });
+      adv.createEl("summary", { text: "Advanced" });
+      if (this.advancedOpen) adv.setAttr("open", "true");
+      adv.addEventListener("toggle", () => (this.advancedOpen = adv.hasAttribute("open")));
+      const btn = entry(WRITE_HINT, (box) => box.createEl("button", { cls: "blyg-daily-btn blyg-story-write", attr: { title: WRITE_HINT } }), adv);
       this.writeBtn = btn;
       this.paintWrite(btn);
-      btn.addEventListener("click", () => this.run(model, false));
+      btn.addEventListener("click", () => void this.run(model, false));
       if (this.sections) {
-        const resort = entry(RESORT_HINT, (box) => box.createEl("button", { text: "Re-sort sections", cls: "blyg-daily-btn", attr: { title: RESORT_HINT } }));
-        resort.addEventListener("click", () => this.run(model, true));
+        const resort = entry(RESORT_HINT, (box) => box.createEl("button", { text: "Re-sort sections", cls: "blyg-daily-btn", attr: { title: RESORT_HINT } }), adv);
+        resort.addEventListener("click", () => void this.run(model, true));
       }
     }
     this.markStatus = root.createDiv({ cls: "blyg-daily-meta blyg-daily-markstatus", text: this.note });
@@ -456,6 +490,7 @@ export class BlygDailyView extends ItemView {
     if (m.letters.length > 0) {
       const s = this.section(root, "Letters", m.letters.length);
       for (const l of m.letters) {
+        this.seen(l.post);
         const row = s.createDiv({ cls: "blyg-daily-row" });
         const open = row.createEl("button", { cls: "blyg-daily-link", text: `${l.who} ${l.words} your item${l.headline ? `: ${l.headline}` : ""}` });
         open.addEventListener("click", () => {
@@ -473,6 +508,7 @@ export class BlygDailyView extends ItemView {
       const s = this.section(root, "Corrections", m.corrections.length);
       const lazy: Array<{ c: Correction; row: HTMLElement; head: HTMLElement }> = [];
       for (const c of m.corrections) {
+        this.seen(c.post);
         const row = s.createDiv({ cls: "blyg-daily-row" });
         // The author's change note leads (bold) when the data holds one; the headline is secondary. No note: the line is as before.
         if (c.note) row.createEl("button", { cls: "blyg-daily-link blyg-correction-note", text: c.note }).addEventListener("click", () => this.openEntry(c.post));
@@ -486,6 +522,7 @@ export class BlygDailyView extends ItemView {
     if (m.retractions.length > 0) {
       const s = this.section(root, "Retractions", m.retractions.length);
       for (const r of m.retractions) {
+        this.seen(r.post);
         const row = s.createDiv({ cls: "blyg-daily-row" });
         row.createEl("button", { cls: "blyg-daily-link", text: r.headline }).addEventListener("click", () => this.openEntry(r.post));
         row.createDiv({ cls: "blyg-daily-meta", text: `${r.post.authorName ?? r.post.subscriptionTitle} · withdrawn` });
@@ -507,6 +544,7 @@ export class BlygDailyView extends ItemView {
 
   /** A single post: its content line in bold (the AI line's topic, else its first sentence), "by <Author>" in italics under it, and a small "Mark read". A tap on the row opens it in the reader; Back returns here. */
   private drawSingle(into: HTMLElement, p: ReadingPost, line?: string): void {
+    this.seen(p);
     const row = into.createDiv({ cls: `blyg-daily-row blyg-story-mixed${this.added.has(p.remoteId) ? " blyg-is-new" : ""}` });
     const main = row.createDiv({ cls: "blyg-story-main" });
     if (this.added.has(p.remoteId)) main.createSpan({ cls: "blyg-story-updated blyg-story-newtag", text: "new" });
@@ -523,13 +561,13 @@ export class BlygDailyView extends ItemView {
   }
 
   /** The quick menu (long press or right click) of a post's row; marks go through the same queue as the read symbol. */
-  private quick(el: HTMLElement, p: ReadingPost, story?: { title: string; posts: readonly ReadingPost[] }): void {
+  private quick(el: HTMLElement, p: ReadingPost): void {
     const q = this.queue();
     const host = this.host;
     const shelf = host.shelf;
     // The shelf is read once per opening of the Daily (the first menu that needs it); Save and Remove are one write each, said in the line under the masthead.
     const shelfMenu = shelf?.on() ? { shelf: { state: () => (shelf.ready() ? { saved: shelf.has(p), full: shelf.full() } : null), toggle: () => void shelf.toggle(p).then((r) => this.say(r.ok ? (r.saved ? "Saved for later." : "Removed from saved.") : r.message)) } } : {};
-    quickPost(el, () => p, { open: () => this.openEntry(p, story), ...(host.replyTo ? { reply: () => void host.replyTo?.(p) } : {}), ...(q ? { mark: (read: boolean) => void (read ? q.enqueue([p]) : q.enqueueUnread([p])) } : {}), ...shelfMenu }, this.contentEl);
+    quickPost(el, () => p, { open: () => this.openEntry(p), ...(host.replyTo ? { reply: () => void host.replyTo?.(p) } : {}), ...(q ? { mark: (read: boolean) => void (read ? q.enqueue([p]) : q.enqueueUnread([p])) } : {}), ...shelfMenu }, this.contentEl);
   }
 
   /** The "read" look of a card or row and its read symbol (a circle to mark read, a check to mark unread again), now and after every change of a mark. `slot` holds the symbol (one for all `posts`). */
@@ -636,6 +674,7 @@ export class BlygDailyView extends ItemView {
     if (rest.line) {
       const box = into.createDiv({ cls: "blyg-daily-rest" });
       box.createDiv({ cls: "blyg-daily-meta", text: rest.line });
+      rest.posts.forEach((p) => this.seen(p));
       const open = box.createEl("button", { cls: "blyg-daily-btn", text: `Other posts (${rest.posts.length})` });
       const list = box.createDiv({ cls: "blyg-daily-others" });
       let shown = false;
@@ -689,9 +728,9 @@ export class BlygDailyView extends ItemView {
     this.paintRead(card, card.createDiv({ cls: "blyg-story-markrow" }), c.posts, true);
     const list = card.createDiv({ cls: "blyg-daily-members" });
     const story = c.id ?? c.headline;
-    const walk = { title: ai ? ai.headline : c.headline, posts: c.posts }; // Next and Previous in the reader walk this story, in this order
+    for (const p of c.posts) this.seen(p); // folded or not, a story's posts are on the page in this order
     const sq = this.queue();
-    quickStory(card, c.posts, { open: () => c.posts[0] && this.openEntry(c.posts[0], walk), ...(sq ? { mark: (read: boolean) => void (read ? sq.enqueue(c.posts) : sq.enqueueUnread(c.posts)) } : {}) });
+    quickStory(card, c.posts, { open: () => c.posts[0] && this.openEntry(c.posts[0]), ...(sq ? { mark: (read: boolean) => void (read ? sq.enqueue(c.posts) : sq.enqueueUnread(c.posts)) } : {}) });
     const key = scrollKey(this.viewing ?? this.edition);
     const paintOpen = addStoryMark(card, meta, [title, ...(summary ? [summary] : [])]);
     const toggle = (open: boolean): void => {
@@ -704,12 +743,12 @@ export class BlygDailyView extends ItemView {
         const who = row.createEl("button", { cls: "blyg-daily-link blyg-daily-who", text: `${p.authorName ?? p.subscriptionTitle}${p.isReply ? " (reply)" : ""}` });
         who.addEventListener("click", (e) => {
           e?.stopPropagation?.();
-          this.openEntry(p, walk);
+          this.openEntry(p);
         });
         const preview = previewOf(p);
         if (preview) row.createDiv({ cls: "blyg-daily-preview", text: preview });
-        row.addEventListener("click", () => this.openEntry(p, walk)); // a tap anywhere on the post's area opens it
-        this.quick(row, p, walk);
+        row.addEventListener("click", () => this.openEntry(p)); // a tap anywhere on the post's area opens it
+        this.quick(row, p);
         const dim = (): void => row.toggleClass("blyg-is-read", !isUnread(p));
         dim();
         this.readPainters.push(dim);

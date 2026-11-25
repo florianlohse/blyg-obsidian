@@ -121,7 +121,7 @@ await runScenario({ data }, async (s) => {
   const saves = frames.map((f) => f.save);
   check(frames.length >= 5 && kidSets.length === 1, `the header row has the same children in every frame of the first 1.5 s (${frames.length} frames, ${kidSets.length} different: ${JSON.stringify(kidSets)})`);
   check(saves.every((x) => x !== null) && Math.max(...saves) - Math.min(...saves) <= 1 && new Set(frames.map((f) => f.reply)).size === 1, `Save and Reply do not move while the header settles (Save at ${[...new Set(saves)]}, Reply at ${[...new Set(frames.map((f) => f.reply))]})`);
-  check(/ of \d+/.test(await page.evaluate(() => document.querySelector(".blyg-reader-header .blyg-reader-stepcount")?.textContent ?? "")), "the counter (its place in the feed) is there from the first frame");
+  check(/^Feed \d+ of \d+$/.test(await page.evaluate(() => document.querySelector(".blyg-reader-header .blyg-reader-stepcount")?.textContent ?? "")), "the counter (its place in the feed) is there from the first frame");
 
   // ---- 1. mark it read in the open post: one PUT to the Studio, shown in the header, in the digest after Back, and in the post when it is opened again
   const m0 = marks.length;

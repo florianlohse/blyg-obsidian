@@ -319,13 +319,13 @@ export class BlygSettingTab extends PluginSettingTab {
       items: [
         {
           name: "Use an AI model",
-          desc: "Off by default. Turning it on asks once for your agreement: the text of posts from blygs you follow is then sent to the provider below to write the digest. A manual “Write the digest” shows one line (stories, posts, tokens, a rough cost) and waits for Send. Afterwards, “Show what the digest sent” lists every run. Without it the Daily is the same list, made on your device.",
+          desc: "Off by default. Turning it on asks once for your agreement: the text of posts from blygs you follow is then sent to the provider below to write the digest. The Daily’s menu keeps “Write the digest” under Advanced: it shows one line (stories, posts, tokens, a rough cost) and waits for Send. Afterwards, “Show what the digest sent” lists every run. Without it the Daily is the same list, made on your device.",
           aliases: ["ai", "llm", "claude", "anthropic", "summary"],
           control: { type: "toggle", key: "digest.useAi", defaultValue: false },
         },
         {
           name: "Write the digest automatically",
-          desc: "Off by default. When on, the AI digest is written once for each new edition, in the background while the plain digest shows, if the AI layer is on, you agreed, and the daily token ceiling is not used up. A later update of the same edition stays manual (“Write the digest”). A failed try is not repeated; the button stays.",
+          desc: "Off by default. When on, the AI digest is written once for each new edition, in the background while the plain digest shows, if the AI layer is on, you agreed, and the daily token ceiling is not used up. Refresh in the Daily then also writes the texts that are missing for new or changed stories (within the same ceiling; it sends nothing when this setting is off). A failed try is not repeated by itself; “Write the digest” under Advanced stays.",
           aliases: ["auto", "automatic", "background"],
           control: { type: "toggle", key: "digest.autoWrite", defaultValue: false },
         },
@@ -334,7 +334,7 @@ export class BlygSettingTab extends PluginSettingTab {
         text("AI model", "The model that writes the digest, e.g. claude-sonnet-5-5 (others: claude-haiku-5-5 cheaper, claude-opus-5-5, claude-fable-5-2).", "digest.model", "claude-sonnet-5-5"),
         {
           name: "Daily token ceiling",
-          desc: "The most tokens the digest may use in one day by itself (the automatic run checks this; the “Write the digest” button is never blocked by it, but its tokens count). Default 2000000, plenty for many full runs a day. 0 means no ceiling. Token counts are rough.",
+          desc: "The most tokens the digest may use in one day by itself (the automatic run checks this; the “Write the digest” entry under Advanced is never blocked by it, but its tokens count). Default 2000000, plenty for many full runs a day. 0 means no ceiling. Token counts are rough.",
           aliases: ["limit", "budget", "tokens", "cost"],
           render: (setting) => {
             setting.addText((t) => t.setValue(String(s.digest.dailyTokenCeiling)).onChange((v) => {

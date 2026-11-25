@@ -935,7 +935,6 @@ button.blyg-daily-link.blyg-toc-row { display: flex; align-items: baseline; gap:
 .blyg-toc-count { flex: none; white-space: nowrap; font-size: var(--font-ui-smaller); text-align: right; color: var(--text-muted); font-weight: var(--font-normal); font-variant-numeric: tabular-nums; font-family: ui-serif, "New York", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif; }
 .blyg-toc-summary { color: var(--text-muted); font-size: var(--font-ui-smaller); cursor: pointer; }
 .blyg-reader-digestchip { white-space: normal; overflow-wrap: anywhere; }
-.blyg-is-read { opacity: 0.55; }
 
 .blyg-daily-markstatus:empty { display: none; }
 
@@ -971,6 +970,9 @@ button.blyg-daily-link.blyg-correction-headline { color: var(--text-muted); font
 .blyg-daily-cluster.blyg-story:not(.blyg-story + .blyg-story) > button.blyg-story-headline { font-size: calc(var(--font-text-size, 16px) * 1.9); line-height: 1.1; }
 .blyg-story > button.blyg-story-summary { font-family: inherit; font-size: var(--font-text-size, 16px); line-height: 1.5; margin-top: var(--blyg-sp-2); color: var(--text-normal); }
 .blyg-story > .blyg-daily-meta { margin-top: var(--blyg-sp-2); font-style: italic; font-size: var(--font-ui-smaller); letter-spacing: 0.02em; }
+/* Read posts stay where they are, in a muted colour (never opacity or a strike-through, so the text keeps its contrast and stays tappable); a story whose posts are all read has its headline and summary muted too. The hover colour below still wins. */
+.blyg-story.blyg-is-read > button.blyg-story-headline, .blyg-story.blyg-is-read > button.blyg-story-summary,
+.blyg-daily-member.blyg-is-read button.blyg-daily-who, .blyg-story-mixed.blyg-is-read button.blyg-story-line { color: var(--text-muted); }
 .blyg-story-more { margin-inline-start: var(--blyg-sp-1); font-style: normal; font-weight: var(--font-bold); }
 .blyg-story.is-open .blyg-story-more, .blyg-story:has(> button:hover) .blyg-story-more { color: var(--text-accent); }
 .blyg-story > button.blyg-story-headline:hover, .blyg-story > button.blyg-story-headline:focus-visible, .blyg-story > button.blyg-story-headline:active,
@@ -996,6 +998,9 @@ button.blyg-daily-refresh { height: var(--clickable-icon-size, 32px); min-width:
 .blyg-daily-refreshicon { display: inline-flex; }
 .blyg-daily-entry { margin-top: var(--size-4-2); }
 .blyg-daily-hint { font-size: var(--font-ui-smaller); color: var(--text-muted); margin-top: var(--size-4-1); }
+/* The menu's "Advanced" part: the manual writes, folded. */
+.blyg-daily-advanced { margin-top: var(--size-4-3); border-top: 1px solid var(--blyg-paper-rule); padding-top: var(--size-2-2); }
+.blyg-daily-advanced > summary { color: var(--text-muted); font-size: var(--font-ui-small); cursor: pointer; padding: var(--size-2-2) 0; min-height: var(--clickable-icon-size, 32px); box-sizing: border-box; }
 .blyg-story-newtag { margin-right: var(--size-4-1); font-size: var(--font-ui-smaller); text-transform: uppercase; }
 @media (prefers-reduced-motion: reduce) { .blyg-daily-refresh.is-busy svg, .blyg-daily-refreshbtn.is-busy svg { animation: none; } }
 .blyg-reader-savebtn.is-pending { visibility: hidden; }
