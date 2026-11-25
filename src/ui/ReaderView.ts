@@ -4,7 +4,8 @@
 //
 // Layout: a header that never scrolls away (tabs and controls, or for a post two rows: the way out and its small print, then the read mark, Reply and Previous / Next; and a status line only when something happened) above a
 // body that scrolls by itself. Read state changes at once, in place, and is put back if the Studio refuses.
-import { drawFilterRow } from "./readerHeader";
+import { styleButton, type ButtonOpts } from "./readerButton";
+import { drawMenuButton, drawMenuPanel, sortValue, type FeedMenu } from "./readerMenu";
 import { ItemView, sanitizeHTMLToDom, setIcon, type WorkspaceLeaf } from "obsidian";
 import { isUnread, type InboundMention, type ReadingPost } from "../studio/reading";
 import { quickPost } from "./quickMenu";
@@ -14,7 +15,7 @@ import { type ReaderFont } from "./readerFonts";
 import { ReturnPoint, whenIdle } from "./readerExtras";
 import { drawModeToggle, setReaderMode, switchMode } from "./readerMode";
 import { askStudioToFetch } from "./readerFetch";
-import { emptyFeedNote, heldList, noteListLoaded, sessionSync, startReader, type Saved } from "./readerStart";
+import { drawFeedStart, heldList, noteListLoaded, sessionSync, startReader, type Saved } from "./readerStart";
 import { askAndWait } from "../app/readerRefresh";
 import { drawSteps, DigestWalk, stepCount, type Step } from "./readerSteps";
 import { CONTRASTS, type ReaderContrast } from "./readerLook";
@@ -140,6 +141,7 @@ export class BlygReaderView extends ItemView {
   /** The Studio's change counters as last seen, and when the list was last read, for the watcher below. */
   private lastMarks: ChangeMarks | null = null;
   private lastMentionsAt = 0;
+  private readonly menu = { open: false }; // whether the header's menu is unfolded (kept over redraws)
   /** Whether the sort and filter choices are open (they start closed, so the header stays slim). */
   private filtersOpen = false;
   private status = "";
@@ -492,10 +494,9 @@ export class BlygReaderView extends ItemView {
     this.clearBottom();
   }
 
-  private button(parent: HTMLElement, text: string, run: () => void | Promise<void>, opts: { active?: boolean; disabled?: boolean; title?: string; cls?: string } = {}): HTMLButtonElement {
+  private button(parent: HTMLElement, text: string, run: () => void | Promise<void>, opts: ButtonOpts = {}): HTMLButtonElement {
     const b = parent.createEl("button", { text, cls: `blyg-reader-btn${opts.cls ? ` ${opts.cls}` : ""}`, ...(opts.title ? { attr: { title: opts.title, "aria-label": opts.title } } : {}) });
-    if (opts.active) b.addClass("is-active");
-    b.disabled = opts.disabled === true;
+    styleButton(b, opts, (el, icon) => this.addIcon(el, icon));
     b.addEventListener("click", () => void run());
     return b;
   }
@@ -792,10 +793,8 @@ export class BlygReaderView extends ItemView {
     row.createDiv({ cls: "blyg-reader-spacer" });
     drawModeToggle(row, "feed", (m) => switchMode(this.leaf, m)); // the toggle is always the last thing of this row: one fixed slot, whatever else is drawn
     const canFilter = this.tab === "stream" && this.data !== null && this.data.posts.length > 0;
-    if (canFilter) drawFilterRow(h, (...a) => this.button(...a), activeFilters(this.filter), this.filtersOpen, () => {
-      this.filtersOpen = !this.filtersOpen;
-      this.drawHeader();
-    });
+    const menu: FeedMenu = { state: this.menu, repaint: () => this.drawHeader(), sort: canFilter ? { value: sortValue(activeFilters(this.filter), SORT_LABELS[this.filter.sort]), run: () => void (this.filtersOpen = !this.filtersOpen) } : null, sources: () => this.host.openFollowed(), ...(this.host.openSettings ? { settings: () => this.host.openSettings?.() } : {}) };
+    drawMenuButton(row, menu); // the menu is the last thing of the first row, after the toggle (the Daily's header has it at the same edge)
     // One item: what the last check found (or what is going on) and the button that checks again, in a single bar under the tabs.
     const bar = h.createDiv({ cls: "blyg-reader-statusrow" });
     this.statusEl = bar.createDiv({ cls: "blyg-reader-status", text: this.status });
@@ -805,7 +804,8 @@ export class BlygReaderView extends ItemView {
     this.addIcon(refresh, "refresh-cw");
     refresh.disabled = this.busyCount > 0;
     this.refreshEl = refresh;
-    drawFollowedButton(bar, this.host, this.host.version);
+    drawFollowedButton(bar, this.host.version);
+    drawMenuPanel(h, menu);
     if (!canFilter || !this.filtersOpen || !this.data) return;
 
     // Two rows: the three choices side by side, then the two switches as chips and "Clear" at the end.
@@ -860,14 +860,16 @@ export class BlygReaderView extends ItemView {
     const top = h.createDiv({ cls: "blyg-reader-bar blyg-reader-bar-main" });
     const toPost = this.trail.length > 0 || this.returnTo.active;
     this.button(top, toPost ? "Back" : "Reader", () => this.closePost(), { cls: "blyg-reader-back", title: toPost ? "Back to the post you came from" : "Back to the reader" });
-    // The small print, one line that gives way at its end: the blyg (its name is the only link), how long it takes to read (bold, first), when, and the replies chip when something answers it.
-    const meta = top.createDiv({ cls: "blyg-reader-meta blyg-reader-postmeta" });
+    if (where) stepCount(top, where); // the right half of that row: where the post is in what Next and Previous walk (never cut; only the list's name gives way)
+    // The second line: the blyg (its name is the only link), and under it the small print, one line that gives way at its end: the saved mark, how long it takes to read (bold, first), when, and the replies chip when something answers it.
+    const meta = h.createDiv({ cls: "blyg-reader-meta blyg-reader-postmeta" });
     const blygUrl = p.origin ?? (web ? new URL(web).origin : null);
     const name = meta.createSpan({ cls: "blyg-reader-postblyg" });
     // The name opens the post's own page (what the Browser button did); a post with no page of its own opens its blyg.
     if (p.subscriptionTitle || blygUrl) this.link(name, p.subscriptionTitle || new URL(blygUrl ?? "").host, web ?? blygUrl);
     meta.createSpan({ cls: "blyg-reader-postsep", text: "·" });
     const rest = meta.createSpan({ cls: "blyg-reader-postrest" });
+    this.shelfUi.mark(rest, p);
     const bits: Array<() => void> = [];
     if (!p.withdrawn) bits.push(() => rest.createEl("strong", { cls: "blyg-reader-readtime", text: readingTimeLabel(p) }));
     const when = relativeTime(p.created ?? p.observedAt, Date.now());
@@ -895,14 +897,12 @@ export class BlygReaderView extends ItemView {
       this.button(row, "Open note", async () => {
         if (!(await this.host.openOwnItem(p.remoteId))) this.setStatus("No note of this vault holds this post.");
       }, { title: "Open the note this post was published from" });
-      if (where) stepCount(row, where);
     } else {
-      // The read mark is the feed card's own: a ring while unread, a green check once read. The place in the feed ("3 of 24") sits beside it.
+      // The read mark is the feed card's own: a ring while unread, a green check once read. Save (a bookmark) follows it, then Reply and the steps at the other end.
       this.readCheck(row, p, unread, { disabled: p.withdrawn || !held });
-      if (where) stepCount(row, where);
     }
-    row.createDiv({ cls: "blyg-reader-spacer" });
     this.shelfUi.button(row, p, (...a) => this.button(...a));
+    row.createDiv({ cls: "blyg-reader-spacer" });
     this.replyBtn = this.button(row, "Reply", () => {
       const sel = this.replySelection();
       void this.host.replyTo(p, sel.trim() !== "" ? sel : undefined);
@@ -959,7 +959,7 @@ export class BlygReaderView extends ItemView {
     this.scrollEl = scroll;
     const col = scroll.createDiv({ cls: "blyg-reader-column" });
     if (!this.data) {
-      col.createDiv({ cls: "blyg-reader-note", text: emptyFeedNote(this.busyCount > 0, this.loadingFirst) });
+      drawFeedStart(col, this.busyCount > 0, this.loadingFirst);
     } else if (this.tab === "stream") this.drawStream(col, this.data.posts);
     else this.drawMentions(col, this.data.mentions);
     col.createDiv({ cls: "blyg-reader-foot", text: `Blyg reader · plugin ${this.host.version}` });
@@ -1022,8 +1022,9 @@ export class BlygReaderView extends ItemView {
     // One name when the author is the blyg ("Teo Brandt · Teo Brandt" said nothing twice), and each piece of the line stays whole: "1 min read" never breaks across two lines.
     const author = p.authorName !== null && p.authorName.trim().toLowerCase() !== source.trim().toLowerCase() ? p.authorName : null;
     const pieces = [author, relativeTime(p.created ?? p.observedAt, Date.now()), p.withdrawn ? "" : readingTimeLabel(p)].filter((x): x is string => !!x);
-    if (pieces.length > 0) {
+    if (pieces.length > 0 || this.shelfUi.marked(p)) {
       const meta = title.createDiv({ cls: "blyg-reader-meta blyg-reader-cardmeta" });
+      this.shelfUi.mark(meta, p);
       pieces.forEach((piece, i) => {
         if (i > 0) meta.appendText(" · ");
         meta.createSpan({ cls: "blyg-reader-nowrap", text: piece });
@@ -1039,7 +1040,6 @@ export class BlygReaderView extends ItemView {
     else if (p.isReply) badges.createSpan({ cls: "blyg-reader-badge", text: "reply" });
     else if (p.kind === "thread") badges.createSpan({ cls: "blyg-reader-badge", text: "thread" });
     if (p.withdrawn) badges.createSpan({ cls: "blyg-reader-badge", text: "withdrawn" });
-    this.shelfUi.mark(badges, p);
     if (unread) badges.createSpan({ cls: "blyg-reader-badge is-new", text: p.readVersion !== null ? "updated" : "unread" });
     else if (tracked && !p.withdrawn && p.own !== true) badges.createSpan({ cls: "blyg-reader-badge is-done", text: "✓ read" });
     // The replies you can see (same rule as in an open post): green when one of them is yours.

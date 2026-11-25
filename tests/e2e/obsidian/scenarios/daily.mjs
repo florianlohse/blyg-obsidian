@@ -101,8 +101,8 @@ await runScenario({ data }, async (s) => {
   const second = await open();
   check(/your digest/i.test(second.text) && second.rows > 0, "the digest page has content after a restart, with sections and lines in the record");
 
-  // DG7: a past edition written by an editor shows "Editor: <name>" under the masthead (text only); today's edition, plain here (the AI layer is off), draws no such line.
-  check(await page.evaluate(() => document.querySelectorAll(".blyg-daily .blyg-daily-editor").length) === 0, "a plain edition draws no editor line");
+  // DG7 / DG19: a past edition written by an editor shows "Editor: <name>" as the top line under the masthead (small caps, muted, text only); today's edition, plain here (the AI layer is off), draws no top line at all.
+  check(await page.evaluate(() => document.querySelectorAll(".blyg-daily .blyg-daily-priceline").length) === 0, "a plain edition draws no top line (no price, no editor)");
   const pastId = rec.id - 24 * 3600 * 1000;
   const pastRec = { id: pastId, at: pastId + 1000, stories: [{ headline: "Harbour lanterns lit early", summary: "A calm start to the day.", posts: [] }], singles: [], sections: null, who: {}, editor: "harbour-master" };
   // (the history is the `hist` register of an edition's file since DG16: a file of another device that carries only that, so it can be removed again below)
@@ -116,8 +116,8 @@ await runScenario({ data }, async (s) => {
   await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-menu").click());
   await page.waitForSelector(".blyg-daily-select", { state: "visible", timeout: 20000 });
   await page.selectOption(".blyg-daily-select", String(pastId));
-  const line = await page.waitForSelector(".blyg-daily .blyg-daily-editor", { timeout: 20000 }).then((el) => el.evaluate((n) => ({ text: n.textContent, kids: n.children.length })));
-  check(line.text === "Editor: Harbour Master Okafor" && line.kids === 0, `a past edition shows its editor as plain text (${JSON.stringify(line)})`);
+  const line = await page.waitForSelector(".blyg-daily .blyg-daily-priceline", { timeout: 20000 }).then((el) => el.evaluate((n) => { const c = getComputedStyle(n); const first = document.querySelector(".blyg-daily .blyg-story, .blyg-daily .blyg-daily-section"); return { text: n.textContent, kids: n.children.length, caps: c.fontVariantCaps, above: !first || n.getBoundingClientRect().bottom <= first.getBoundingClientRect().top + 1 }; }));
+  check(line.text === "Editor: Harbour Master Okafor" && line.kids === 0 && line.caps === "small-caps" && line.above, `a past edition shows its editor, and no price it does not have, as one small-caps line of plain text above the first story (${JSON.stringify(line)})`);
   await page.evaluate(() => { const m = document.querySelector(".blyg-daily .blyg-daily-menu"); if (m?.getAttribute("aria-expanded") === "true") m.click(); });
   await page.evaluate(() => window.app.workspace.detachLeavesOfType("blyg-daily"));
   await page.evaluate((f) => window.app.vault.adapter.remove(f), pastFile); // the later steps start without a past edition (no day switcher)
@@ -184,7 +184,7 @@ await runScenario({ data }, async (s) => {
   await page.click(".blyg-reader-header .blyg-reader-step-prev");
   await wait(600);
   const c3 = await counter();
-  check(digestOrder.length >= 8 && at0 >= 0 && c1 === `Digest ${at0 + 1} of ${digestOrder.length}` && c2 === `Digest ${at0 + 2} of ${digestOrder.length}` && c3 === c1, `Next and Previous count the digest's whole list and name it: "${c1}", then "${c2}", then "${c3}" (the page holds ${digestOrder.length} posts)`);
+  check(digestOrder.length >= 8 && at0 >= 0 && c1 === `Digest · ${at0 + 1} of ${digestOrder.length}` && c2 === `Digest · ${at0 + 2} of ${digestOrder.length}` && c3 === c1, `Next and Previous count the digest's whole list and name it: "${c1}", then "${c2}", then "${c3}" (the page holds ${digestOrder.length} posts)`);
   // all the way to the end: every post of the page once, in the page's order, across the stories and into the singles
   const seenForward = [await shownId()];
   for (let i = at0; i < digestOrder.length - 1; i++) {
@@ -193,7 +193,7 @@ await runScenario({ data }, async (s) => {
     seenForward.push(await shownId());
   }
   const endState = await page.evaluate(() => ({ next: document.querySelector(".blyg-reader-header .blyg-reader-step-next")?.disabled, prev: document.querySelector(".blyg-reader-header .blyg-reader-step-prev")?.disabled, count: document.querySelector(".blyg-reader-header .blyg-reader-stepcount")?.textContent ?? "" }));
-  check(JSON.stringify(seenForward) === JSON.stringify(digestOrder.slice(at0)) && endState.next === true && endState.prev === false && endState.count === `Digest ${digestOrder.length} of ${digestOrder.length}`, `Next goes through the page's posts in order to the end, across stories and singles, and stops there (${JSON.stringify({ seenForward: seenForward.length, expected: digestOrder.length - at0, endState })})`);
+  check(JSON.stringify(seenForward) === JSON.stringify(digestOrder.slice(at0)) && endState.next === true && endState.prev === false && endState.count === `Digest · ${digestOrder.length} of ${digestOrder.length}`, `Next goes through the page's posts in order to the end, across stories and singles, and stops there (${JSON.stringify({ seenForward: seenForward.length, expected: digestOrder.length - at0, endState })})`);
   // back to the first one: the same list the other way
   for (let i = digestOrder.length - 1; i > at0; i--) {
     const before = await shownId();
@@ -214,27 +214,27 @@ await runScenario({ data }, async (s) => {
   await wait(800);
   const singleId = await shownId();
   const singleCount = await counter();
-  check(digestOrder.includes(singleId) && singleCount === `Digest ${digestOrder.indexOf(singleId) + 1} of ${digestOrder.length}`, `a single post opened from the digest walks the same ${digestOrder.length} posts, at its place in the page's order ("${singleCount}")`);
+  check(digestOrder.includes(singleId) && singleCount === `Digest · ${digestOrder.indexOf(singleId) + 1} of ${digestOrder.length}`, `a single post opened from the digest walks the same ${digestOrder.length} posts, at its place in the page's order ("${singleCount}")`);
   await page.click(".blyg-reader-header .blyg-reader-back");
   await page.waitForSelector(".view-content.blyg-daily .blyg-story-mixed", { state: "attached", timeout: 20000 });
   await wait(1500);
   const storyAt = marks.length;
-  await page.click(".blyg-daily .blyg-story .blyg-mark");
+  await page.click(".blyg-daily .blyg-story .blyg-storymark");
   await wait(2500);
   const gaps = marks.slice(storyAt).map((m, i, a) => (i ? m.at - a[i - 1].at : Infinity)).slice(1);
   check(marks.length === storyAt + 2 && gaps.every((g) => g >= 300), `Mark story read: one request per unread post (${marks.length - storyAt}), spaced out (${gaps.join(", ")} ms)`);
-  const storySym = await page.evaluate(() => document.querySelector(".blyg-daily .blyg-story .blyg-mark")?.getAttribute("aria-label"));
-  check(storySym === "Mark story unread", `a story whose posts are all read shows the read symbol (${storySym})`);
+  const storySym = await page.evaluate(() => document.querySelector(".blyg-daily .blyg-story .blyg-storymark")?.textContent);
+  check(storySym === "Mark story unread", `a story whose posts are all read offers Mark story unread (${storySym})`);
   const unAt = unmarks.length;
-  await page.click(".blyg-daily .blyg-story .blyg-mark");
+  await page.click(".blyg-daily .blyg-story .blyg-storymark");
   await wait(2500);
   const ugaps = unmarks.slice(unAt).map((m, i, a) => (i ? m.at - a[i - 1].at : Infinity)).slice(1);
-  const storyAfter = await page.evaluate(() => ({ label: document.querySelector(".blyg-daily .blyg-story .blyg-mark")?.getAttribute("aria-label"), dim: document.querySelectorAll(".blyg-daily .blyg-story.blyg-is-read").length }));
+  const storyAfter = await page.evaluate(() => ({ label: document.querySelector(".blyg-daily .blyg-story .blyg-storymark")?.textContent, dim: document.querySelectorAll(".blyg-daily .blyg-story.blyg-is-read").length }));
   check(unmarks.length === unAt + 2 && ugaps.every((g) => g >= 300) && storyAfter.label === "Mark story read" && storyAfter.dim === 0, `tapping a read story marks every read post unread again: one request per post (${unmarks.length - unAt}), spaced out (${ugaps.join(", ")} ms), shown at once (${JSON.stringify(storyAfter)})`);
   const quiet0 = marks.length + unmarks.length;
   await wait(2500);
   check(marks.length + unmarks.length === quiet0, "no mark is repeated by itself after an undo");
-  await page.click(".blyg-daily .blyg-story .blyg-mark"); // read again so the remaining checks see what they did before
+  await page.click(".blyg-daily .blyg-story .blyg-storymark"); // read again so the remaining checks see what they did before
   await wait(2500);
   const quiet = marks.length;
   await wait(3000);
@@ -293,13 +293,13 @@ await runScenario({ data }, async (s) => {
     const ms = getComputedStyle(meta);
     const v = document.querySelector(".view-content.blyg-daily");
     const mark = card.querySelector(":scope > .blyg-daily-meta > .blyg-story-more");
-    return { theme: document.body.classList.contains("theme-dark") ? "dark" : "light", stories: stories.length, plain, ruleBetween: rules.length ? rules.every(Boolean) : null, firstTop: getComputedStyle(card).borderTopWidth, headPx: px(head), sumPx: sum ? px(sum) : null, metaPx: px(meta), headWeight: +getComputedStyle(head).fontWeight, headLead: getComputedStyle(head).lineHeight, metaStyle: ms.fontStyle, headContrast: ratio(getComputedStyle(head).color, ground), sumContrast: sum ? ratio(getComputedStyle(sum).color, ground) : null, metaContrast: ratio(ms.color, ground), accentContrast: ratio(accent, ground), chevron: document.querySelectorAll(".blyg-daily .blyg-story-chevron, .blyg-daily .blyg-story > svg, .blyg-daily .blyg-story > button.clickable-icon").length, markText: mark?.textContent ?? null, markHidden: mark?.getAttribute("aria-hidden") ?? null, headIsButton: head.tagName === "BUTTON" && head.hasAttribute("aria-expanded"), sectionRule: getComputedStyle(document.querySelector(".blyg-daily .blyg-daily-section > h3")).borderBottomWidth, sw: v.scrollWidth <= v.clientWidth };
+    return { theme: document.body.classList.contains("theme-dark") ? "dark" : "light", stories: stories.length, plain, ruleBetween: rules.length ? rules.every(Boolean) : null, firstTop: getComputedStyle(card).borderTopWidth, headPx: px(head), sumPx: sum ? px(sum) : null, metaPx: px(meta), headWeight: +getComputedStyle(head).fontWeight, headLead: getComputedStyle(head).lineHeight, metaStyle: ms.fontStyle, headContrast: ratio(getComputedStyle(head).color, ground), sumContrast: sum ? ratio(getComputedStyle(sum).color, ground) : null, metaContrast: ratio(ms.color, ground), accentContrast: ratio(accent, ground), chevron: document.querySelectorAll(".blyg-daily .blyg-story-chevron, .blyg-daily .blyg-story > svg, .blyg-daily .blyg-story > button.clickable-icon").length, markText: mark?.textContent ?? null, markTag: mark?.tagName ?? null, markLabel: mark?.getAttribute("aria-label") ?? null, headIsButton: head.tagName === "BUTTON" && head.hasAttribute("aria-expanded"), sectionRule: getComputedStyle(document.querySelector(".blyg-daily .blyg-daily-section > h3")).borderBottomWidth, sw: v.scrollWidth <= v.clientWidth };
   }, theme);
   const lookDark = await typeLook("dark");
   const lookLight = await typeLook("light");
   for (const c of [lookDark, lookLight]) {
     check(c.plain && c.firstTop === "0px" && c.ruleBetween !== false && c.chevron === 0 && c.headIsButton, `a story is plain type in the ${c.theme} theme: no background, border, radius or shadow, a hairline between stories, no chevron, the headline still a button with aria-expanded (${JSON.stringify(c)})`);
-    check(c.headPx > (c.sumPx ?? 0) && c.headWeight >= 600 && c.metaPx < (c.sumPx ?? c.headPx) && c.metaStyle === "italic" && c.markText === "›" && c.markHidden === "true", `the ${c.theme} theme: headline larger than summary, bold; meta line smaller and italic, ending in a "›" that screen readers skip (${JSON.stringify(c)})`);
+    check(c.headPx > (c.sumPx ?? 0) && c.headWeight >= 600 && c.metaPx < (c.sumPx ?? c.headPx) && c.metaStyle === "italic" && /^[+−]$/.test(c.markText ?? "") && c.markTag === "BUTTON" && !!c.markLabel, `the ${c.theme} theme: headline larger than summary, bold; meta line smaller and italic, ending in a "+" (or "−" while unfolded) button with a label in words (${JSON.stringify(c)})`);
     check(c.headContrast >= 4.5 && (c.sumContrast === null || c.sumContrast >= 4.5) && c.metaContrast >= 4.5 && c.accentContrast >= 3 && +c.sectionRule.replace("px", "") >= 2 && c.sw, `the ${c.theme} theme: contrast of headline, summary and meta at least 4.5, accent at least 3 (large text), a heavier rule under the section heading, no sideways scroll (${JSON.stringify(c)})`);
   }
   check(lookLight.stories >= 2 && lookLight.ruleBetween === true, `the page holds at least two stories in a row and a rule sits between them (${lookLight.stories} stories, rule ${lookLight.ruleBetween})`);
@@ -344,6 +344,59 @@ await runScenario({ data }, async (s) => {
   const t2 = await rot();
   check(t0.open !== t1.open && t2.open === t0.open && [t0, t1, t2].every((o) => o.expanded === String(o.open) && (o.members > 0) === o.open) && [t0, t1, t2].filter((o) => o.open).every((o) => o.ruled === "1px"), `the headline unfolds and folds the story, aria-expanded follows, the posts sit under a left hairline (${JSON.stringify([t0, t1, t2])})`);
   if (t0.open) await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-cluster.blyg-story .blyg-story-headline").click()); // leave it as the later steps found it (folded)
+  // DG19 (mockups 3A and 3B): the marker at the right end of the meta line ("+" folded, "−" unfolded) without a new line or any height; no accent on the headline, open or pressed;
+  // a read mark at the right of each post row; "Mark story read" as the last item of the unfolded list, and no line under a folded story.
+  const storyLook = () => page.evaluate(() => {
+    const card = document.querySelector(".blyg-daily .blyg-daily-cluster.blyg-story");
+    card.scrollIntoView({ block: "center" });
+    const head = card.querySelector(":scope > .blyg-story-headline");
+    const meta = card.querySelector(":scope > .blyg-daily-meta");
+    const mark = meta.querySelector(".blyg-story-more");
+    const colour = (v) => { const e = document.createElement("span"); e.style.color = v; document.body.appendChild(e); const c = getComputedStyle(e).color; e.remove(); return c; };
+    const mr = meta.getBoundingClientRect();
+    const kr = mark.getBoundingClientRect();
+    const h0 = Math.round(meta.getBoundingClientRect().height * 10) / 10;
+    mark.style.display = "none";
+    const h1 = Math.round(meta.getBoundingClientRect().height * 10) / 10;
+    mark.style.display = "";
+    const members = [...card.querySelectorAll(".blyg-daily-member")];
+    const list = card.querySelector(".blyg-daily-members");
+    const last = list?.lastElementChild;
+    const lastBtn = last?.querySelector("button");
+    const lr = list?.getBoundingClientRect();
+    const lbr = lastBtn?.getBoundingClientRect();
+    return {
+      open: card.classList.contains("is-open"), mark: mark.textContent, markLabel: mark.getAttribute("aria-label"), markExpanded: mark.getAttribute("aria-expanded"),
+      markAtRight: kr.left + kr.width / 2 > mr.left + mr.width * 0.8 && kr.top + kr.height / 2 >= mr.top - 1 && kr.top + kr.height / 2 <= mr.bottom + 1, metaWithMark: h0, metaWithout: h1,
+      headColour: getComputedStyle(head).color, normal: colour("var(--text-normal)"), accent: colour("var(--text-accent)"), markColour: getComputedStyle(mark).color, tapHighlight: getComputedStyle(head).webkitTapHighlightColor,
+      members: members.length, marksInRows: members.filter((m) => { const b = m.querySelector(".blyg-mark"); if (!b) return false; const br = b.getBoundingClientRect(); const rr = m.getBoundingClientRect(); return br.left + br.width / 2 > rr.left + rr.width * 0.6 && br.right <= rr.right + 1 && br.width >= 28; }).length,
+      lastIsStoryMark: !!last?.classList.contains("blyg-storymark-row") && /^Mark story (read|unread)$/.test(lastBtn?.textContent ?? "") && !members.some((m) => m.contains(lastBtn)),
+      lastQuiet: lastBtn ? { italic: getComputedStyle(lastBtn).fontStyle, colour: getComputedStyle(lastBtn).color, bg: getComputedStyle(lastBtn).backgroundColor, rightGap: Math.round(lr.right - lbr.right) } : null,
+      kids: [...card.children].map((c) => c.className.split(" ")[0]), listShown: list ? getComputedStyle(list).display !== "none" : false, cardH: Math.round(card.getBoundingClientRect().height),
+    };
+  });
+  const folded = await storyLook();
+  check(!folded.open && folded.mark === "+" && folded.markExpanded === "false" && folded.markAtRight && folded.metaWithMark === folded.metaWithout, `a folded story has "+" at the right end of its meta line, which has the same height with and without it (${JSON.stringify(folded)})`);
+  check(!folded.kids.includes("blyg-story-markrow") && !folded.listShown && folded.members === 0, `a folded story has no line of its own under it (${JSON.stringify(folded.kids)}, list shown ${folded.listShown})`);
+  check(folded.headColour === folded.normal && folded.headColour !== folded.accent, `a folded story's headline is in the normal text colour, not the accent (${folded.headColour}, accent ${folded.accent})`);
+  await page.click(".blyg-daily .blyg-daily-cluster.blyg-story .blyg-story-more");
+  await wait(300);
+  const unfoldedLook = await storyLook();
+  check(unfoldedLook.open && unfoldedLook.mark === "−" && unfoldedLook.markExpanded === "true" && unfoldedLook.markAtRight && unfoldedLook.metaWithMark === unfoldedLook.metaWithout, `tapping the marker unfolds the story and the marker becomes "−" at the same place, same height (${JSON.stringify(unfoldedLook)})`);
+  check(unfoldedLook.headColour === unfoldedLook.normal && unfoldedLook.markColour !== unfoldedLook.accent, `an open story's headline and marker do not take the accent colour (${unfoldedLook.headColour} against text ${unfoldedLook.normal}, accent ${unfoldedLook.accent}, marker ${unfoldedLook.markColour})`);
+  check(unfoldedLook.members >= 2 && unfoldedLook.marksInRows === unfoldedLook.members, `every post of the unfolded story has the read mark at the right of its row (${unfoldedLook.marksInRows} of ${unfoldedLook.members})`);
+  check(unfoldedLook.lastIsStoryMark && unfoldedLook.lastQuiet.italic === "italic" && unfoldedLook.lastQuiet.bg === "rgba(0, 0, 0, 0)" && unfoldedLook.lastQuiet.colour !== unfoldedLook.accent && unfoldedLook.lastQuiet.rightGap <= 2, `"Mark story read" is the last item of the unfolded list, quiet italic text without a box, right-aligned (${JSON.stringify(unfoldedLook.lastQuiet)})`);
+  // a press: underlined and lighter, never the accent, and the browser's own tap highlight is off
+  const hb = await page.locator(".blyg-daily .blyg-daily-cluster.blyg-story .blyg-story-headline").first().boundingBox();
+  await page.mouse.move(hb.x + 8, hb.y + hb.height / 2);
+  await page.mouse.down();
+  const pressed = await page.evaluate(() => { const h = document.querySelector(".blyg-daily .blyg-daily-cluster.blyg-story .blyg-story-headline"); const c = getComputedStyle(h); return { colour: c.color, deco: c.textDecorationLine, highlight: c.webkitTapHighlightColor }; });
+  await page.mouse.move(2, 2);
+  await page.mouse.up();
+  check(pressed.deco === "underline" && pressed.colour !== unfoldedLook.accent && pressed.colour !== unfoldedLook.normal && /rgba\(0, 0, 0, 0\)|transparent/.test(pressed.highlight), `a pressed headline is underlined and lighter, not the accent, with no tap highlight (${JSON.stringify(pressed)})`);
+  await page.click(".blyg-daily .blyg-daily-cluster.blyg-story .blyg-story-more"); // fold it again with the marker
+  await wait(300);
+  check(!(await storyLook()).open, "the marker folds the story again");
   await page.evaluate(() => { document.querySelector(".view-content.blyg-daily").scrollTop = 0; });
   await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-menu").click());
   await wait(300);
@@ -373,7 +426,7 @@ await runScenario({ data }, async (s) => {
   // The toggle is one slot (the right end of the first header row) in a feed with a list, in a feed without Sort & filter (the Mentions tab) and in the digest; an open post
   // draws the same controls in the same places from a story and from the feed, and nothing in it is wider than the screen. (Chromium emulation, not iOS.)
   const tap = (sel) => page.evaluate((q) => document.querySelector(q)?.click(), sel);
-  const box = (sel) => page.evaluate((q) => { const e = document.querySelector(q); if (!e) return null; const r = e.getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, w: r.width }; }, sel);
+  const box = (sel) => page.evaluate((q) => { const e = document.querySelector(q); if (!e) return null; const r = e.getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom, w: r.width }; }, sel);
   const CONTROLS = { back: ".blyg-reader-header .blyg-reader-back", check: ".blyg-reader-header .blyg-reader-check", reply: ".blyg-reader-header .blyg-reader-replybtn", prev: ".blyg-reader-header .blyg-reader-step-prev", next: ".blyg-reader-header .blyg-reader-step-next" };
   const openPost = async () => {
     const o = {};
@@ -410,13 +463,14 @@ await runScenario({ data }, async (s) => {
     await startWith(posts);
     await page.waitForSelector(".blyg-reader-card", { timeout: 30000 }).catch(async () => { console.error("cache:", await page.evaluate(() => window.app.vault.adapter.read(".obsidian/plugins/blyg/reader-cache.json").then((t) => t.slice(0, 200))), "base", base, "studio", await page.evaluate(() => window.app.plugins.plugins.blyg.settings.studio?.baseUrl)); console.error("view data:", await page.evaluate(() => { const v = window.app.workspace.getLeavesOfType("blyg-reader")[0]?.view; return JSON.stringify({ posts: v?.data?.posts?.length, filter: v?.filter, tab: v?.tab, status: v?.status }); })); console.error("reader shows:", await page.evaluate(() => document.querySelector(".view-content.blyg-reader")?.innerText?.slice(0, 400) ?? "(no reader)")); throw new Error("the feed shows no cards"); });
     const slotFeed = await box(".blyg-reader-header .blyg-modeslot");
+    const hamb = await box(".blyg-reader-header .blyg-reader-menubtn"); // (DG19: the feed's menu button is the last item of the first row, after the toggle)
     await page.evaluate(() => [...document.querySelectorAll(".blyg-reader-header .blyg-reader-btn")].find((b) => /^Mentions/.test(b.textContent ?? ""))?.click());
     await wait(500);
     const slotMentions = await box(".blyg-reader-header .blyg-modeslot");
     await page.evaluate(() => [...document.querySelectorAll(".blyg-reader-header .blyg-reader-btn")].find((b) => b.textContent === "Reading")?.click());
     await wait(500);
     const verRect = await box(".blyg-reader-header .blyg-reader-version");
-    const verClear = !verRect || !slotFeed || verRect.r <= slotFeed.l || verRect.l >= slotFeed.r || verRect.t >= slotFeed.t + 40;
+    const verClear = !verRect || !slotFeed || verRect.r <= slotFeed.l || verRect.l >= slotFeed.r || verRect.t >= slotFeed.b - 0.5; // (below the toggle: the version label is in the status row, under the first row)
     await page.evaluate(() => document.querySelector(".blyg-reader-card")?.click());
     await page.waitForSelector(".blyg-reader-header .blyg-reader-back", { timeout: 20000 });
     await wait(800);
@@ -447,8 +501,10 @@ await runScenario({ data }, async (s) => {
     await page.waitForSelector(".blyg-reader-header .blyg-modeswitch", { timeout: 20000 });
     await wait(1000);
     const near = (a, b, tol) => a !== null && b !== null && Math.abs(a - b) <= tol;
-    check(slotFeed && slotMentions && slotDigest && near(slotFeed.r, slotMentions.r, 1) && near(slotFeed.t, slotMentions.t, 2) && near(slotFeed.r, slotDigest.r + bar, 1) && near(slotFeed.t, slotDigest.t, 2),
-      `${label}: the Feed | Digest toggle is in one slot in the feed with a list (Sort & filter shown), the Mentions tab (none) and the digest (same right edge and the same top in the feed and in the digest, whatever the title wraps to; right edge ${slotFeed?.r}, ${slotMentions?.r}, ${slotDigest?.r}; top ${slotFeed?.t}, ${slotMentions?.t}, ${slotDigest?.t})`);
+    // DG19: the feed's first row ends with the hamburger, after the toggle; the Daily's first row ends with its toggle (its own menu icon and Refresh are to the left of it): the two rows end at the same right edge,
+    // the toggle is one slot in every state of the feed (with a list, the Mentions tab) and sits right before the hamburger, at the same height as the Daily's.
+    check(slotFeed && slotMentions && slotDigest && hamb && near(slotFeed.r, slotMentions.r, 1) && near(slotFeed.t, slotMentions.t, 2) && near(hamb.r, slotDigest.r + bar, 1) && hamb.l >= slotFeed.r - 0.5 && hamb.l - slotFeed.r <= 12 && near(slotFeed.t, slotDigest.t, 2),
+      `${label}: the Feed | Digest toggle is in one slot in the feed with a list and the Mentions tab, with the hamburger right after it at the row's right edge, the same edge where the digest's first row ends (right edges ${slotFeed?.r}, ${slotMentions?.r}; hamburger ${hamb?.l}-${hamb?.r} against the digest's ${slotDigest?.r + bar}; top ${slotFeed?.t}, ${slotMentions?.t}, ${slotDigest?.t})`);
     check(verClear, `${label}: the version label does not overlap the toggle (${JSON.stringify(verRect)} against ${JSON.stringify(slotFeed)})`);
     check(inView(feedPost) && inView(storyPost), `${label}: in an open post (feed and story) every header control is inside the viewport and nothing scrolls sideways (feed ${JSON.stringify(feedPost.view)}, story ${JSON.stringify(storyPost.view)}; right edges feed ${Object.keys(CONTROLS).map((k) => feedPost[k]?.r)}, story ${Object.keys(CONTROLS).map((k) => storyPost[k]?.r)})`);
     const same = Object.keys(CONTROLS).filter((k) => !(feedPost[k] && storyPost[k] && near(feedPost[k].l, storyPost[k].l, 1) && near(feedPost[k].t, storyPost[k].t, 1)));

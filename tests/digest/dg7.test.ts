@@ -8,7 +8,7 @@ import { buildSectionsRequest } from "../../src/digest/sections";
 import { buildFillRequest } from "../../src/digest/sectionFill";
 import { parseHistory } from "../../src/digest/history";
 import { migrateSettings } from "../../src/settings/migrate";
-import { drawEditorLine } from "../../src/ui/digestEditorLine";
+import { drawPriceLine, priceAmount, priceLineText } from "../../src/ui/digestPriceLine";
 import type { Cluster } from "../../src/digest/cluster";
 import type { ReadingPost } from "../../src/studio/reading";
 
@@ -159,23 +159,34 @@ describe("records", () => {
   });
 });
 
-describe("the masthead line", () => {
+describe("the top line of the Daily (DG19: the price, and the editor)", () => {
   const stub = () => {
     const made: Array<{ cls?: string; text?: string }> = [];
     return { made, root: { createDiv: (o: { cls?: string; text?: string }) => (made.push(o), o) } as unknown as HTMLElement };
   };
-  it("is drawn only for a known editor, as text", () => {
+  it("names a known editor only, never neutral, rota or an unknown id; the money alone when no editor is named; nothing at all when there is neither", () => {
     for (const none of [undefined, "neutral", "rota", "unknown"]) {
-      const s = stub();
-      expect(drawEditorLine(s.root, none)).toBeNull();
-      expect(s.made).toEqual([]);
+      expect(priceLineText(undefined, none)).toBeNull();
+      expect(priceLineText(null, none)).toBeNull();
+      expect(priceLineText(0.04, none)).toBe("$0.04");
     }
+    expect(priceLineText(undefined, "forecaster")).toBe("Editor: The Forecaster"); // a past edition keeps no cost
+    expect(priceLineText(null, "harbour-master")).toBe("Editor: Harbour Master Okafor"); // a model without a price: no amount
+  });
+  it("is US dollars with two decimals, then the editor: no tokens, no cents wording", () => {
+    expect(priceLineText(0.04, "crossword-setter")).toMatch(/^\$0\.04 · Editor: .+$/);
+    expect(priceAmount(0.0449)).toBe("$0.04");
+    expect(priceAmount(0.045)).toBe("$0.04"); // toFixed on the binary value: nothing is promised beyond two decimals
+    expect(priceAmount(12.5)).toBe("$12.50");
+    for (const nothing of [0, -1, null, undefined, Number.NaN, Number.POSITIVE_INFINITY]) expect(priceAmount(nothing)).toBeNull();
+    expect(priceLineText(1.234, "forecaster")).not.toMatch(/token|cent/i);
+  });
+  it("is drawn as one small-caps line of text, and not at all without text", () => {
     const s = stub();
-    drawEditorLine(s.root, "harbour-master");
-    expect(s.made).toEqual([{ cls: "blyg-daily-editor", text: "Today's editor: Harbour Master Okafor" }]);
-    const p = stub();
-    drawEditorLine(p.root, "forecaster", true);
-    expect(p.made[0]?.text).toBe("Editor: The Forecaster");
+    expect(drawPriceLine(s.root, null)).toBeNull();
+    expect(s.made).toEqual([]);
+    drawPriceLine(s.root, "$0.04 · Editor: The Forecaster");
+    expect(s.made).toEqual([{ cls: "blyg-daily-priceline", text: "$0.04 · Editor: The Forecaster" }]);
   });
 });
 

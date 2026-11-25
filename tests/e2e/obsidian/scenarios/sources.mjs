@@ -57,6 +57,8 @@ await runScenario({ data }, async (s) => {
   const box = (sel) => page.evaluate((q) => { const e = document.querySelector(q); if (!e) return null; const r = e.getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom, h: r.height }; }, sel);
   const theme = (t) => page.evaluate(async (t) => { document.body.classList.toggle("theme-dark", t === "dark"); document.body.classList.toggle("theme-light", t !== "dark"); await new Promise((r) => setTimeout(r, 300)); }, t);
   const modalText = (q) => page.evaluate((sel) => [...activeDocument.querySelectorAll(`.modal-container ${sel}`)].map((e) => e.textContent ?? ""), q);
+  /** The menu's "Sources" row, as a person gets to it: unfold the menu, tap the row (it folds the menu again and opens the list). */
+  const openSources = () => page.evaluate(() => { const m = document.querySelector(".blyg-reader-header .blyg-reader-menubtn"); if (m.getAttribute("aria-expanded") !== "true") m.click(); document.querySelector(".blyg-reader-sources").click(); });
   const closeModal = async () => { await page.keyboard.press("Escape"); await wait(600); };
 
   await seed();
@@ -79,26 +81,28 @@ await runScenario({ data }, async (s) => {
     await reopenReader();
     await wait(2500);
     check((await page.evaluate(() => window.__followedReads)) === 0, `${label}: opening the feed does not read the kept Sources list (nor look up the token for it)`);
-    // ---- the header: a small muted text link, no box, in the status row; the toggle does not move for it
-    const link = await page.evaluate(() => { const l = document.querySelector(".blyg-reader-header .blyg-reader-sources"); const st = document.querySelector(".blyg-reader-header .blyg-reader-status"); if (!l) return null; const c = getComputedStyle(l); const sc = getComputedStyle(st); const r = l.getBoundingClientRect(); return { text: l.textContent, tag: l.tagName, label: l.getAttribute("aria-label"), bg: c.backgroundColor, border: c.borderTopWidth, fs: parseFloat(c.fontSize), sfs: parseFloat(sc.fontSize), h: r.height, inRow: !!l.closest(".blyg-reader-statusrow"), tab: l.tabIndex }; });
-    const slot = await box(".blyg-reader-header .blyg-modeslot");
-    const bar = await box(".blyg-reader-header .blyg-reader-bar");
-    await page.evaluate(() => { document.querySelector(".blyg-reader-header .blyg-reader-sources").style.display = "none"; });
+    // ---- the header (DG19): "Sources" is a row of the hamburger menu at the right end of the first row (after the Feed | Digest toggle); unfolding the menu moves neither the toggle nor the first row
     const slot0 = await box(".blyg-reader-header .blyg-modeslot");
     const bar0 = await box(".blyg-reader-header .blyg-reader-bar");
-    const hdr0 = await box(".blyg-reader-header");
-    await page.evaluate(() => { document.querySelector(".blyg-reader-header .blyg-reader-sources").style.display = ""; });
-    const hdr = await box(".blyg-reader-header");
+    const hamburger = await page.evaluate(() => { const m = document.querySelector(".blyg-reader-header .blyg-reader-menubtn"); const t = document.querySelector(".blyg-reader-header .blyg-modeslot"); const row = document.querySelector(".blyg-reader-header .blyg-reader-bar"); if (!m || !t || !row) return null; const mr = m.getBoundingClientRect(); const tr = t.getBoundingClientRect(); const rr = row.getBoundingClientRect(); return { tag: m.tagName, label: m.getAttribute("aria-label"), expanded: m.getAttribute("aria-expanded"), afterToggle: mr.left >= tr.right - 0.5, lastInRow: m === row.lastElementChild, rightEdge: Math.abs(mr.right - rr.right) <= 12, w: Math.round(mr.width), h: Math.round(mr.height), icon: !!m.querySelector("svg") }; });
+    const inStatusRow = await page.evaluate(() => !!document.querySelector(".blyg-reader-statusrow .blyg-reader-sources"));
+    await page.evaluate(() => document.querySelector(".blyg-reader-header .blyg-reader-menubtn").click());
+    await wait(300);
+    const link = await page.evaluate(() => { const l = document.querySelector(".blyg-reader-header .blyg-reader-sources"); if (!l) return null; const r = l.getBoundingClientRect(); return { tag: l.tagName, label: l.querySelector(".blyg-menurow-label")?.textContent, opens: l.querySelector(".blyg-menurow-go")?.textContent, inMenu: !!l.closest(".blyg-reader-menu"), h: r.height, tab: l.tabIndex }; });
+    const slot = await box(".blyg-reader-header .blyg-modeslot");
+    const bar = await box(".blyg-reader-header .blyg-reader-bar");
     const fit = await page.evaluate(() => { const v = document.querySelector(".view-content.blyg-reader"); const l = document.querySelector(".blyg-reader-sources").getBoundingClientRect(); return { sw: v.scrollWidth <= v.clientWidth, inside: l.right <= window.innerWidth + 0.5 && l.left >= 0 }; });
-    check(link && link.text === "Sources" && link.tag === "BUTTON" && /Sources/.test(link.label ?? "") && link.tab !== -1, `${label}: the header has a small "Sources" link that is a real button with a label (${JSON.stringify(link)})`);
-    check(link && link.inRow && link.bg === "rgba(0, 0, 0, 0)" && link.border === "0px" && link.fs <= link.sfs + 1 && link.h < 24, `${label}: it is flat text in the status row, the size of the status line, with no box or fill (${JSON.stringify(link)})`);
-    check(slot && slot0 && Math.abs(slot.l - slot0.l) <= 0.5 && Math.abs(slot.t - slot0.t) <= 0.5 && Math.abs(slot.r - slot0.r) <= 0.5 && bar && bar0 && Math.abs(bar.h - bar0.h) <= 0.5 && Math.abs(hdr.h - hdr0.h) <= 1, `${label}: the link moves neither the Feed | Digest toggle, nor the first row, nor the header height (toggle ${JSON.stringify(slot)} vs ${JSON.stringify(slot0)}; header ${hdr?.h} vs ${hdr0?.h})`);
-    check(fit.sw && fit.inside, `${label}: the link is inside the screen and nothing scrolls sideways (${JSON.stringify(fit)})`);
+    check(hamburger && hamburger.tag === "BUTTON" && hamburger.label === "Menu" && hamburger.icon && hamburger.afterToggle && hamburger.lastInRow && hamburger.rightEdge && hamburger.h >= 28, `${label}: the hamburger is a labelled button, the last item of the first row, after the Feed | Digest toggle, at the row's right edge (${JSON.stringify(hamburger)})`);
+    check(link && link.tag === "BUTTON" && link.label === "Sources" && link.opens === "›" && link.inMenu && link.tab !== -1 && !inStatusRow, `${label}: the menu has a "Sources" row that is a real button, with the › of a row that opens something, and the link is no longer in the status row (${JSON.stringify(link)})`);
+    check(slot && slot0 && Math.abs(slot.l - slot0.l) <= 0.5 && Math.abs(slot.t - slot0.t) <= 0.5 && Math.abs(slot.r - slot0.r) <= 0.5 && bar && bar0 && Math.abs(bar.h - bar0.h) <= 0.5, `${label}: unfolding the menu moves neither the Feed | Digest toggle nor the first row (toggle ${JSON.stringify(slot)} vs ${JSON.stringify(slot0)})`);
+    check(fit.sw && fit.inside, `${label}: the row is inside the screen and nothing scrolls sideways (${JSON.stringify(fit)})`);
+    await page.evaluate(() => document.querySelector(".blyg-reader-header .blyg-reader-menubtn").click());
+    await wait(200);
 
     // ---- the screen: the kept list at once, one silent read per opening
     const before = asked.length;
     const ans0 = answered;
-    await page.evaluate(() => document.querySelector(".blyg-reader-sources").click());
+    await openSources();
     await page.waitForSelector(".modal-container .blyg-follow-row", { timeout: 10000 });
     const early = await page.evaluate(() => ({ names: [...activeDocument.querySelectorAll(".modal-container .blyg-follow-name")].map((e) => e.textContent), fresh: activeDocument.querySelector(".modal-container .blyg-follow-fresh")?.textContent ?? "" }));
     const reads = await page.evaluate(() => window.__followedReads);
@@ -150,7 +154,7 @@ await runScenario({ data }, async (s) => {
 
     // ---- a second opening: one more request; it fails, and the kept list stays with a quiet line
     mode = "fail";
-    await page.evaluate(() => document.querySelector(".blyg-reader-sources").click());
+    await openSources();
     await page.waitForSelector(".modal-container .blyg-follow-row", { timeout: 10000 });
     await wait(1500);
     const failed = await page.evaluate(() => ({ names: [...activeDocument.querySelectorAll(".modal-container .blyg-follow-name")].map((e) => e.textContent), fresh: activeDocument.querySelector(".modal-container .blyg-follow-fresh")?.textContent ?? "" }));

@@ -16,16 +16,18 @@ describe("DG9: one slot for the toggle, one header for the open post", () => {
     expect(rule(".blyg-daily-head > .blyg-modeslot")).toMatch(/order: 99/);
     expect(readFileSync("src/ui/readerMode.ts", "utf8")).toMatch(/blyg-modeswitch blyg-modeslot/);
   });
-  it("Sort & filter has its own row, after the tabs row, and the toggle is drawn before it", () => {
+  it("the feed's menu (DG19) is the last item of the first row, after the toggle, and holds Sort & filter, Sources and Settings", () => {
     const src = readFileSync("src/ui/ReaderView.ts", "utf8");
-    expect(src.indexOf("drawModeToggle(row")).toBeLessThan(src.indexOf("drawFilterRow(h"));
-    expect(readFileSync("src/ui/readerHeader.ts", "utf8")).toMatch(/Sort & filter/);
+    expect(src.indexOf("drawModeToggle(row")).toBeLessThan(src.indexOf("drawMenuButton(row"));
+    expect(src.indexOf("drawMenuButton(row")).toBeLessThan(src.indexOf("drawMenuPanel(h"));
+    const menu = readFileSync("src/ui/readerMenu.ts", "utf8");
+    for (const label of ["Sort & filter", "Sources", "Settings"]) expect(menu).toContain(`label: "${label}"`);
   });
-  it("the step counter gives way (an ellipsis on the title), Reply and the steps do not move", () => {
+  it("the step counter gives way (an ellipsis on the list's name, never on the numbers), Reply and the steps do not move", () => {
     expect(rule(".blyg-reader-stepcount .blyg-reader-steptitle")).toMatch(/min-width: 0/);
     expect(rule(".blyg-reader-stepcount .blyg-reader-steptitle")).toMatch(/text-overflow: ellipsis/);
-    expect(rule(".blyg-reader-stepcount .blyg-reader-steptitle")).toMatch(/max-width: 7em/);
-    expect(css).toMatch(/\.blyg-reader-bar-thumb > \.blyg-reader-stepcount \{[^}]*flex: 0 1 auto; min-width: 0/);
+    expect(rule(".blyg-reader-bar-main > .blyg-reader-stepcount .blyg-reader-stepnum")).toMatch(/flex: none/);
+    expect(rule(".blyg-reader-bar-main > .blyg-reader-stepcount")).toMatch(/flex: 1 1 0; min-width: 0/);
     expect(rule(".blyg-reader-bar-thumb .blyg-reader-replybtn ~ .blyg-reader-spacer")).toMatch(/flex: 0 0/);
     expect(rule(".blyg-reader-bar-thumb .blyg-reader-check, .blyg-reader-bar-thumb .blyg-reader-replybtn, .blyg-reader-bar-thumb .blyg-reader-steps")).toMatch(/flex: none/);
   });

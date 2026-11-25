@@ -72,7 +72,7 @@ export function drawPast(root: HTMLElement, rec: PastEdition, byId: ReadonlyMap<
     const meta = card.createDiv({ cls: "blyg-daily-meta", text: `${s.posts.length} ${s.posts.length === 1 ? "post" : "posts"}` });
     const list = card.createDiv({ cls: "blyg-daily-members" });
     let shown = false;
-    const paintOpen = addStoryMark(card, meta, [title, ...(summary ? [summary] : [])]);
+    const paintOpen = addStoryMark(card, meta, [title, ...(summary ? [summary] : [])], () => toggle());
     const toggle = (): void => {
       shown = !shown;
       list.empty();

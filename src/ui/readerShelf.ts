@@ -1,9 +1,11 @@
 // The reader's "Save for later" (SH1): the Save button of an open post, the small "saved" mark of a card, the long-press entry (quickMenu.ts) and the Saved view of the feed.
 // The shelf itself (what is saved, shared with the owner's other devices and the Studio's web app) is the Studio's; this file draws it and asks app/shelfService.ts to change it.
-// Typographic and small, like the rest of the reader: a word, no box, no icon.
+// Quiet and small, like the rest of the reader: a bookmark glyph (outline: not saved, filled in the accent colour: saved), no box, no word. One mark for every place that shows a saved post (ui/savedMark.ts).
+import type { ButtonOpts } from "./readerButton";
 import type { ShelfFacade, ShelfResult } from "../app/shelfService";
 import type { ReadingPost } from "../studio/reading";
 import { SHELF_MAX } from "../studio/shelf";
+import { drawSavedMark } from "./savedMark";
 
 /** What the reader asks of the plugin for the shelf. `ReaderHost` extends this. Absent (or switched off): no Save button, no mark, no Saved view. */
 export interface ShelfHost {
@@ -51,28 +53,36 @@ export class ShelfControl {
     void s.opening().then(() => this.usable && this.screen.posts().forEach((p) => this.screen.refresh(p))); // only the cards (and an open post's header) are drawn again: an open post is not re-drawn under the reader
   }
 
-  /** The small "saved" word on a card of a post that is on the shelf. */
-  mark(parent: HTMLElement, p: ReadingPost): void {
-    if (this.usable && this.has(p)) parent.createSpan({ cls: "blyg-reader-savedmark", text: "saved", attr: { title: "On your shelf: saved for later" } });
+  /** The post is on the shelf and this session has read the shelf: its mark is drawn. */
+  marked(p: ReadingPost): boolean {
+    return this.usable && this.has(p);
   }
 
-  /** "Save" / "Saved" in the open post's button row. */
-  button(parent: HTMLElement, p: ReadingPost, make: (parent: HTMLElement, text: string, run: () => void, opts: { disabled?: boolean; title?: string; cls?: string }) => HTMLButtonElement): void {
+  /** The saved mark (a small filled bookmark) at the start of a meta line of a post that is on the shelf: a card, the open post. */
+  mark(parent: HTMLElement, p: ReadingPost): void {
+    if (this.marked(p)) drawSavedMark(parent);
+  }
+
+  /** The bookmark button in the open post's button row: outline "Save for later", filled "Saved". */
+  button(parent: HTMLElement, p: ReadingPost, make: (parent: HTMLElement, text: string, run: () => void, opts: ButtonOpts) => HTMLButtonElement): void {
     const s = this.shelf();
     if (!s || (p.subscriptionId === "" && p.own !== true) || (p.withdrawn && !this.has(p))) return;
     if (!this.usable) {
       // Room is kept for Save while the shelf is being read (so the row does not move when it arrives), and Save stays when the read had no connection: a tap tries again.
       const lost = s.lost?.() === true;
-      if (lost || s.settling?.() === true) make(parent, "Save", () => void this.toggle(p), { disabled: !lost, cls: `blyg-reader-savebtn${lost ? "" : " is-pending"}`, title: "Save this post for later on your shelf, shared with your other devices" });
+      if (lost || s.settling?.() === true) make(parent, "", () => void this.toggle(p), { disabled: !lost, cls: `blyg-reader-savebtn${lost ? "" : " is-pending"}`, title: "Save this post for later on your shelf, shared with your other devices", icon: "bookmark", label: "Save for later", pressed: false });
       return;
     }
     const saved = this.has(p);
     const working = this.busy.has(keyOf(p));
     const full = !saved && s.full();
-    make(parent, working ? "Saving…" : saved ? "Saved" : "Save", () => void this.toggle(p), {
+    make(parent, "", () => void this.toggle(p), {
       disabled: working || full,
-      cls: `blyg-reader-savebtn${saved ? " is-saved" : ""}`,
+      cls: `blyg-reader-savebtn${saved ? " is-saved" : ""}${working ? " is-working" : ""}`,
       title: full ? `Your shelf is full (${SHELF_MAX} posts). Remove one from Saved first.` : saved ? "On your shelf, shared with your other devices. Tap to remove it." : "Save this post for later on your shelf, shared with your other devices",
+      icon: "bookmark", // outline while not saved, filled in the accent colour once saved (the style sheet)
+      label: working ? "Saving…" : saved ? "Saved" : "Save for later",
+      pressed: saved,
     });
   }
 

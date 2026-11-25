@@ -606,9 +606,7 @@
 .blyg-reader-badge { font-size: var(--font-ui-smaller); color: var(--text-muted); border: 1px solid var(--background-modifier-border); border-radius: var(--radius-s); padding: 0 var(--size-4-1); }
 .blyg-reader-badge.is-new { color: var(--text-accent); border-color: var(--interactive-accent); }
 .blyg-reader-badge.is-done { color: var(--text-faint); }
-/* Save for later (SH1): a word, no box. The mark on a card is small and muted; the button of an open post is as quiet as Reply, and turns to the accent colour once saved. */
-.blyg-reader-savedmark { font-size: var(--font-ui-smaller); color: var(--text-accent); letter-spacing: 0.02em; }
-.blyg-reader-savebtn.is-saved { color: var(--text-accent); }
+/* Save for later (SH1, DG19): the button of an open post is a bookmark glyph, outline while not saved and filled in the accent colour once saved; the mark on a card, a post row and the open post is .blyg-savedmark (below). */
 .blyg-reader-quote { color: var(--text-muted); font-style: italic; border-left: 2px solid var(--background-modifier-border); padding-left: var(--size-4-2); margin-bottom: var(--size-2-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .blyg-reader-card .blyg-reader-excerpt { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
 /* something is loading: the refresh button and the status line turn a small ring, so a wait never looks stuck */
@@ -769,7 +767,6 @@
 .blyg-reader-header .blyg-reader-bar-thumb { flex-wrap: nowrap; gap: var(--size-4-2); margin-top: var(--size-4-2); --blyg-btn-h: 40px; }
 .blyg-reader-bar-thumb .blyg-reader-spacer { flex: 1 1 var(--size-4-2); min-width: 0; }
 .blyg-reader .blyg-reader-header .blyg-reader-bar-thumb .blyg-reader-replybtn { margin-left: 0; font-weight: var(--font-semibold); padding-inline: calc(var(--blyg-btn-h) * 0.5); }
-.blyg-reader-bar-thumb > .blyg-reader-stepcount { color: var(--text-muted); font-size: var(--font-ui-small); }
 .blyg-reader-steps { flex: none; display: inline-flex; gap: var(--size-4-1); }
 .blyg-reader .blyg-reader-steps .blyg-reader-btn { border-radius: 999px; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
 .blyg-reader .blyg-reader-steps .blyg-reader-step-prev { width: var(--blyg-btn-h); padding: 0; color: var(--text-muted); }
@@ -840,7 +837,7 @@ body button.blyg-linkbtn.blyg-follow-unfollow { color: var(--text-error); }
 .blyg-daily-cluster, .blyg-daily-row { padding: var(--size-2-2) 0; }
 .blyg-daily-cluster { border-bottom: 1px solid var(--background-modifier-border); }
 .blyg-daily-members { padding-left: var(--size-4-3); }
-.blyg-daily-meta, .blyg-daily-empty, .blyg-daily-status, .blyg-daily-editor { color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.blyg-daily-meta, .blyg-daily-empty, .blyg-daily-status { color: var(--text-muted); font-size: var(--font-ui-smaller); }
 button.blyg-daily-link { background: none; box-shadow: none; border: 0; padding: 0; height: auto; text-align: left; white-space: normal; color: var(--text-normal); cursor: pointer; }
 button.blyg-daily-headline { font-weight: var(--font-semibold); font-size: var(--font-ui-medium); }
 
@@ -888,10 +885,9 @@ button.blyg-modebtn.is-active { background: var(--background-modifier-hover); co
 .blyg-modeslot { flex: none; margin-left: auto; }
 .blyg-daily-head > .blyg-modeslot { order: 99; }
 .blyg-reader-filterrow { margin-top: var(--size-4-1); }
-/* The open post's header fits the viewport in both modes: the step counter gives way (its story title is cut with an ellipsis, a small fixed budget), Reply and the steps never move or shrink. */
+/* The open post's header fits the viewport in both modes: the step counter (right half of the first row) gives way only in the name of its list, cut with an ellipsis, never in its numbers; Reply and the steps never move or shrink. */
 .blyg-reader-header, .blyg-reader-bodywrap, .blyg-reader-bar-thumb, .blyg-reader-bar-main { min-width: 0; max-width: 100%; box-sizing: border-box; }
-.blyg-reader-bar-thumb > .blyg-reader-stepcount { flex: 0 1 auto; min-width: 0; display: inline-flex; overflow: hidden; }
-.blyg-reader-stepcount .blyg-reader-steptitle { display: block; flex: 0 1 auto; min-width: 0; max-width: 7em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.blyg-reader-stepcount .blyg-reader-steptitle { display: block; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .blyg-reader-stepnum { flex: none; white-space: pre; }
 .blyg-reader-bar-thumb .blyg-reader-check, .blyg-reader-bar-thumb .blyg-reader-replybtn, .blyg-reader-bar-thumb .blyg-reader-steps { flex: none; }
 .blyg-reader-bar-thumb .blyg-reader-replybtn ~ .blyg-reader-spacer { flex: 0 0 var(--size-4-2); }
@@ -921,8 +917,6 @@ button.blyg-daily-link.blyg-story-summary { display: block; width: 100%; font-we
 .blyg-story-main { flex: 1 1 auto; }
 button.blyg-daily-link.blyg-story-line { display: block; font-weight: var(--font-bold); font-size: var(--font-ui-medium); line-height: 1.35; }
 .blyg-story-by { color: var(--text-muted); font-style: italic; font-size: var(--font-ui-smaller); }
-/* Mark read: a small quiet button; a story has one for the whole story. */
-.blyg-story-markrow { margin-top: var(--size-2-2); }
 /* A post in an unfolded story: the whole area is the tap target. */
 .blyg-daily-member { cursor: pointer; }
 /* The table of contents under the masthead. */
@@ -973,10 +967,10 @@ button.blyg-daily-link.blyg-correction-headline { color: var(--text-muted); font
 /* Read posts stay where they are, in a muted colour (never opacity or a strike-through, so the text keeps its contrast and stays tappable); a story whose posts are all read has its headline and summary muted too. The hover colour below still wins. */
 .blyg-story.blyg-is-read > button.blyg-story-headline, .blyg-story.blyg-is-read > button.blyg-story-summary,
 .blyg-daily-member.blyg-is-read button.blyg-daily-who, .blyg-story-mixed.blyg-is-read button.blyg-story-line { color: var(--text-muted); }
-.blyg-story-more { margin-inline-start: var(--blyg-sp-1); font-style: normal; font-weight: var(--font-bold); }
-.blyg-story.is-open .blyg-story-more, .blyg-story:has(> button:hover) .blyg-story-more { color: var(--text-accent); }
-.blyg-story > button.blyg-story-headline:hover, .blyg-story > button.blyg-story-headline:focus-visible, .blyg-story > button.blyg-story-headline:active,
-.blyg-story:has(> button.blyg-story-summary:hover, > button.blyg-story-summary:active) > button.blyg-story-headline { color: var(--text-accent); }
+/* DG19: a story never takes the accent colour, open or pressed. A press is shown in type only: underlined, in lighter text; no tap highlight. */
+.blyg-story button { -webkit-tap-highlight-color: transparent; }
+.blyg-story > button.blyg-story-headline:active, .blyg-story > button.blyg-story-summary:active,
+.blyg-story:has(> button.blyg-story-summary:active) > button.blyg-story-headline { color: var(--text-muted); text-decoration: underline; }
 button.blyg-daily-link:focus-visible { outline: 2px solid var(--text-accent); outline-offset: 2px; border-radius: 0; }
 /* the posts of an unfolded story: light rows indented under the headline with a left hairline (a thin vertical rule, not a box) */
 .blyg-story .blyg-daily-members { margin: var(--blyg-sp-2) 0 0 var(--blyg-sp-1); padding-left: var(--blyg-sp-3); border-left: var(--blyg-hair); }
@@ -999,8 +993,68 @@ button.blyg-daily-refresh { height: var(--clickable-icon-size, 32px); min-width:
 .blyg-daily-entry { margin-top: var(--size-4-2); }
 .blyg-daily-hint { font-size: var(--font-ui-smaller); color: var(--text-muted); margin-top: var(--size-4-1); }
 /* The menu's "Advanced" part: the manual writes, folded. */
-.blyg-daily-advanced { margin-top: var(--size-4-3); border-top: 1px solid var(--blyg-paper-rule); padding-top: var(--size-2-2); }
-.blyg-daily-advanced > summary { color: var(--text-muted); font-size: var(--font-ui-small); cursor: pointer; padding: var(--size-2-2) 0; min-height: var(--clickable-icon-size, 32px); box-sizing: border-box; }
+/* The menu's "Advanced" part: a row of the menu (Menu 1) that unfolds the manual writes as rows. */
 .blyg-story-newtag { margin-right: var(--size-4-1); font-size: var(--font-ui-smaller); text-transform: uppercase; }
 @media (prefers-reduced-motion: reduce) { .blyg-daily-refresh.is-busy svg, .blyg-daily-refreshbtn.is-busy svg { animation: none; } }
 .blyg-reader-savebtn.is-pending { visibility: hidden; }
+
+/* DG19 (mockups 1A, 2B, 3A/B, 4C, Menu 1, 5B, 6A). Mobile first, theme variables only. */
+/* 1. The open post's header, three rows: [Back ......... counter] / source name, then the small print / [read mark, bookmark ......... Reply, previous, next]. */
+.blyg-reader-header .blyg-reader-bar-main { justify-content: space-between; }
+.blyg-reader-bar-main > .blyg-reader-stepcount { flex: 1 1 0; min-width: 0; display: flex; justify-content: flex-end; align-items: baseline; overflow: hidden; margin-left: auto; text-align: right; white-space: nowrap; font-size: var(--font-ui-smaller); font-style: italic; letter-spacing: 0.02em; color: var(--text-muted); }
+.blyg-reader-bar-main > .blyg-reader-stepcount .blyg-reader-stepnum { flex: none; white-space: pre; }
+.blyg-reader-stepcount strong { font-weight: inherit; }
+.blyg-reader-header > .blyg-reader-postmeta { display: flex; flex-direction: column; min-width: 0; margin: var(--size-2-1) 0 0; line-height: 1.35; }
+.blyg-reader .blyg-reader-header .blyg-reader-bar-thumb .blyg-reader-savebtn { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 32px; min-width: 32px; height: 32px; min-height: 32px; padding: 0; border: 0; border-radius: 50%; background: transparent; box-shadow: none; color: var(--text-muted); }
+.blyg-reader-savebtn svg { width: 18px; height: 18px; }
+.blyg-reader .blyg-reader-header .blyg-reader-savebtn.is-saved { color: var(--text-accent); }
+.blyg-reader-savebtn.is-saved svg { fill: currentColor; }
+.blyg-reader .blyg-reader-header .blyg-reader-savebtn:disabled { opacity: 0.5; }
+.blyg-reader-header .blyg-reader-step-prev, .blyg-reader-header .blyg-reader-step-next { width: var(--blyg-btn-h); min-width: var(--blyg-btn-h); padding: 0; }
+.blyg-reader .blyg-reader-steps .blyg-reader-step-next { padding: 0; }
+/* 2. The saved mark: a small filled bookmark before a meta line, the same in a card, a post row and the open post. */
+.blyg-savedmark { display: inline-flex; vertical-align: -1px; margin-right: 3px; color: var(--text-accent); line-height: 1; }
+.blyg-savedmark svg { width: 11px; height: 11px; fill: currentColor; stroke: currentColor; }
+/* 3. A story: the marker ("+" folded, "−" unfolded) sits at the right end of the meta line, out of the flow, so the line keeps its height; its tap area is the padding. */
+.blyg-story-metaline { position: relative; padding-right: 1.6em; }
+button.blyg-story-more { position: absolute; top: -10px; right: 0; box-sizing: content-box; height: auto; min-width: 1em; margin: 0; padding: 10px 0 10px 10px; border: 0; border-radius: 0; background: none; box-shadow: none; color: var(--text-muted); font: inherit; font-style: normal; font-weight: var(--font-bold); text-align: center; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+button.blyg-story-more:active { color: var(--text-faint); text-decoration: underline; }
+.blyg-story .blyg-daily-member { display: flex; align-items: flex-start; gap: var(--size-4-2); }
+.blyg-story .blyg-daily-member > .blyg-story-main { flex: 1 1 auto; min-width: 0; }
+.blyg-story .blyg-daily-member > .blyg-story-markslot { flex: none; align-self: center; }
+.blyg-story .blyg-daily-members:empty { display: none; }
+.blyg-storymark-row { display: flex; justify-content: flex-end; }
+button.blyg-storymark { height: auto; min-height: 32px; padding: var(--size-4-1) 0; border: 0; border-radius: 0; background: none; box-shadow: none; color: var(--text-muted); font: inherit; font-size: var(--font-ui-smaller); font-style: italic; letter-spacing: 0.02em; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+button.blyg-storymark:active { color: var(--text-faint); text-decoration: underline; }
+/* 4. The Daily's top line (small caps, muted) and the menu's rows (Menu 1: label at the left, a muted value at the right, a fixed slot for the ›). */
+.blyg-daily-priceline { color: var(--text-muted); font-variant: small-caps; letter-spacing: 0.1em; font-size: var(--font-ui-small); margin: var(--size-4-1) 0 var(--size-4-2); }
+.blyg-menu, .blyg-daily-panel { font-family: var(--font-interface); }
+.blyg-reader-menu { margin-top: var(--size-4-1); border-top: 1px solid var(--background-modifier-border); }
+.blyg-daily-panel .blyg-menurow:first-of-type { border-top: 1px solid var(--background-modifier-border); }
+body button.blyg-menurow, body div.blyg-menurow, body summary.blyg-menurow { display: flex; align-items: baseline; gap: var(--size-4-2); box-sizing: border-box; width: 100%; height: auto; min-height: 40px; margin: 0; padding: var(--size-4-2) 0; border: 0; border-bottom: 1px solid var(--background-modifier-border); border-radius: 0; background: none; box-shadow: none; color: var(--text-normal); font-size: var(--font-ui-small); text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+body div.blyg-menurow { cursor: default; }
+body button.blyg-menurow:active, body summary.blyg-menurow:active { text-decoration: underline; }
+body summary.blyg-menurow { list-style: none; }
+summary.blyg-menurow::-webkit-details-marker { display: none; }
+.blyg-daily-advanced[open] > summary .blyg-menurow-go { transform: rotate(90deg); }
+body button.blyg-menurow[disabled] { opacity: 0.6; cursor: default; }
+.blyg-menurow-label { flex: none; }
+.blyg-menurow-value { flex: 1 1 0; min-width: 0; overflow: hidden; text-align: right; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.blyg-menurow-go { flex: none; width: 1em; text-align: right; color: var(--text-faint); }
+/* 5. The feed header's hamburger: the last item of the first row, at the same edge as in the Daily. */
+.blyg-reader-header .blyg-reader-menubtn { flex: none; margin-left: 0; }
+/* 6. Loading: a thin spinner centred under the header; reduced motion shows the still ring. */
+.blyg-reader-loading { display: flex; justify-content: center; padding: var(--size-4-12, 48px) 0; }
+.blyg-reader-spinner { width: 22px; height: 22px; box-sizing: border-box; border: 2px solid var(--text-faint); border-right-color: transparent; border-radius: 50%; animation: blyg-spin 0.9s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .blyg-reader-spinner { animation: none; } }
+/* The feed header's first row on a narrow screen (tabs, toggle, menu in one row): the tabs and the toggle take less padding, and below 340 px smaller type, so the row fits at 360 and 320 px; a label that still does not fit is cut at its end, never drawn over its neighbour. */
+.blyg-reader .blyg-reader-header .blyg-reader-bar:not(.blyg-reader-bar-main):not(.blyg-reader-bar-thumb) .blyg-reader-btn { overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 380px) {
+  .blyg-reader .blyg-reader-header .blyg-reader-bar:not(.blyg-reader-bar-main):not(.blyg-reader-bar-thumb) { gap: 2px; }
+  .blyg-reader .blyg-reader-header .blyg-reader-bar:not(.blyg-reader-bar-main):not(.blyg-reader-bar-thumb) .blyg-reader-btn { padding-inline: 8px; }
+  .blyg-reader-header .blyg-modeswitch button.blyg-modebtn { padding-inline: 5px; }
+}
+@media (max-width: 340px) {
+  .blyg-reader .blyg-reader-header .blyg-reader-bar:not(.blyg-reader-bar-main):not(.blyg-reader-bar-thumb) .blyg-reader-btn { font-size: var(--font-ui-smaller); padding-inline: 6px; }
+  .blyg-reader-header button.blyg-reader-menubtn { width: 28px; min-width: 28px; padding-inline: 0; }
+}

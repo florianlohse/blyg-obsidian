@@ -7,6 +7,8 @@ import { followText, type FollowOutcome } from "../app/followFlow";
 export interface FollowHost {
   /** Open "Blygs I follow" (with an address already typed in, when one is given). */
   openFollowed(prefill?: string): void;
+  /** Open this plugin's tab of Obsidian's settings (the feed menu's "Settings" entry). Absent: no such entry. */
+  openSettings?(): void;
   /** Follow the blyg at this address (a plain blyg at once; anything else is said to need the full screen). */
   followBlyg(origin: string): Promise<FollowOutcome>;
 }
@@ -18,10 +20,9 @@ export const isUnfollowedPost = (p: Pick<ReadingPost, "own" | "subscriptionId" |
 export const unfollowedReplyTitle = followText.replyTitleUnfollowed;
 export const selectionNotQuoted = followText.selectionNotQuoted;
 
-/** The end of the feed header's status row: a small muted "Sources" link (the blygs your Studio follows) beside the plugin version. */
-export function drawFollowedButton(parent: HTMLElement, host: FollowHost, version: string): void {
+/** The end of the feed header's status row: the plugin version. ("Sources" is a row of the header's menu, ui/readerMenu.ts, and opens the same list.) */
+export function drawFollowedButton(parent: HTMLElement, version: string): void {
   const end = parent.createDiv({ cls: "blyg-reader-statusend" });
-  end.createEl("button", { cls: "blyg-linkbtn blyg-reader-sources", text: "Sources", attr: { "aria-label": "Sources: the blygs your Studio follows", title: "The blygs your Studio follows: follow one, rename it, or stop" } }).addEventListener("click", () => host.openFollowed());
   end.createSpan({ cls: "blyg-reader-version", text: `v${version}`, attr: { title: "Version of the Blyg plugin on this device" } });
 }
 

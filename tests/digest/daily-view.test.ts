@@ -259,7 +259,7 @@ describe("the Daily view with sections that hold single posts", () => {
     const { root } = await mount(list, ai);
     root.all().find((e) => cls(e).has("blyg-story-write"))?.click();
     await new Promise((r) => setTimeout(r, 0));
-    root.all().find((e) => e.text === "Re-sort sections")?.click();
+    root.all().find((e) => cls(e).has("blyg-daily-resortbtn"))?.click();
     await new Promise((r) => setTimeout(r, 0));
     expect(calls.map((c) => c?.resort === true)).toEqual([false, true]);
   });

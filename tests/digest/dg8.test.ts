@@ -191,23 +191,33 @@ describe("the digest page", () => {
     return { root: (view as unknown as { contentEl: El }).contentEl, view };
   }
   const buttons = (root: El, label: string): El[] => root.all().filter((e) => e.tag === "button" && (e.attrs["aria-label"] === label || e.text === label));
+  /** The "+" at the end of each story's meta line (DG19): unfolds the story, whose last item is "Mark story read". */
+  const unfold = (root: El): void => root.all().filter((e) => has(e, "blyg-story-more")).forEach((e) => e.click());
 
-  it("a single post has a Mark read button that marks it and dims the row; a story has one for all its posts", async () => {
+  it("a single post has a Mark read button that marks it and dims the row; an unfolded story has the same one in each post row and, as the last item of its list, Mark story read for all its posts", async () => {
     const [a, b] = story("harbour");
     const lone = post("A lone post nobody answers.", "Cy");
     const marked: string[] = [];
     const { root } = await mount([a!, b!, lone], marked);
+    expect(buttons(root, "Mark story read")).toHaveLength(0); // folded: no line of its own under the story
+    expect(buttons(root, "Mark read")).toHaveLength(1); // the single post's
+    unfold(root);
     expect(buttons(root, "Mark story read")).toHaveLength(1);
-    expect(buttons(root, "Mark read")).toHaveLength(1);
-    buttons(root, "Mark read")[0]!.click();
+    expect(buttons(root, "Mark read")).toHaveLength(3); // the single post's and one in each of the story's two post rows
+    const members = root.all().filter((e) => has(e, "blyg-daily-member"));
+    expect(members.map((m) => m.all().filter((e) => has(e, "blyg-mark")).length)).toEqual([1, 1]); // at the right of each row
+    const list = root.all().find((e) => has(e, "blyg-daily-members"))!;
+    expect((list as unknown as { children: El[] }).children.at(-1)!.all().some((e) => e.text === "Mark story read")).toBe(true); // the last item of the list
+    root.all().filter((e) => has(e, "blyg-story-mixed")).flatMap((r) => r.all()).find((e) => e.tag === "button" && e.attrs["aria-label"] === "Mark read")!.click();
     await flush();
     expect(marked).toEqual([lone.remoteId]);
-    expect(buttons(root, "Mark read")).toHaveLength(0); // gone at once
+    expect(buttons(root, "Mark read")).toHaveLength(2); // the single post's is gone at once
     expect(root.all().filter((e) => has(e, "blyg-story-mixed") && has(e, "blyg-is-read"))).toHaveLength(1);
     buttons(root, "Mark story read")[0]!.click();
     await flush();
     await vi.waitFor(() => expect(marked).toEqual([lone.remoteId, a!.remoteId, b!.remoteId])); // one request per post, in the story's order
     expect(buttons(root, "Mark story read")).toHaveLength(0);
+    expect(buttons(root, "Mark story unread")).toHaveLength(1); // a story's read state follows its posts
     expect(root.all().filter((e) => has(e, "blyg-story") && has(e, "blyg-is-read"))).toHaveLength(1);
   });
   it("marks nothing when everything is read: the symbol shows read, and a tap marks every read post unread again, one write each", async () => {
@@ -217,12 +227,12 @@ describe("the digest page", () => {
     const marked: string[] = [];
     const unmarked: string[] = [];
     const { root } = await mount([a!, b!], marked, [], {}, unmarked);
+    unfold(root);
     expect(buttons(root, "Mark story read")).toHaveLength(0);
     expect(marked).toEqual([]);
     const sym = buttons(root, "Mark story unread");
     expect(sym).toHaveLength(1);
-    expect(sym[0]!.attrs["data-icon"]).toBe("check-circle-2");
-    expect(sym[0]!.text).toBe(""); // a symbol, not a word
+    expect(sym[0]!.text).toBe("Mark story unread"); // quiet text at the end of the list, not a symbol
     sym[0]!.click();
     await vi.waitFor(() => expect(unmarked).toEqual([a!.remoteId, b!.remoteId]));
     expect([a!.readVersion, b!.readVersion]).toEqual([null, null]); // shown at once, kept
@@ -245,6 +255,7 @@ describe("the digest page", () => {
     a!.readVersion = 1;
     const unmarked: string[] = [];
     const { root, view } = await mount([a!, b!], [], [], {}, unmarked);
+    unfold(root);
     expect(buttons(root, "Mark story unread")).toHaveLength(0);
     const q = (view as unknown as { queue(): MarkQueue }).queue();
     await q.enqueueUnread([a!, b!]);
@@ -255,6 +266,7 @@ describe("the digest page", () => {
     a!.readVersion = 1;
     const marked: string[] = [];
     const { root } = await mount([a!, b!], marked);
+    unfold(root);
     buttons(root, "Mark story read")[0]!.click();
     await flush();
     expect(marked).toEqual([b!.remoteId]);

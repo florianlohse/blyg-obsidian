@@ -60,7 +60,7 @@ vi.mock("obsidian", () => {
 });
 
 import { BlygDailyView, type DigestHost } from "../../src/ui/DigestView";
-import { autoDue, ceilingRefusal, usageLine, addUsage } from "../../src/digest/autoWrite";
+import { autoDue, ceilingRefusal, addUsage } from "../../src/digest/autoWrite";
 import { Editions } from "../../src/digest/editionHost";
 import { buildPast, History, HISTORY_MAX_CHARS, parseHistory, type PastEdition } from "../../src/digest/history";
 import { emptyStore, writeDigest, type LlmDeps, type LlmStore, type Outcome } from "../../src/digest/llm";
@@ -130,9 +130,8 @@ describe("automatic write: when it is due (pure rules)", () => {
     expect(ceilingRefusal(s, st, NOW, { tokens: 150_000 })).toContain("daily token ceiling");
     expect(ceilingRefusal({ dailyTokenCeiling: 0 }, st, NOW, { tokens: 1e9 })).toBeNull(); // 0: none
   });
-  it("the footer line", () => {
-    expect(usageLine({ tokens: 1234, cost: 0.004 })).toBe("about 1234 tokens, under 1 cent");
-    expect(usageLine({ tokens: 10, cost: null })).toBe("about 10 tokens, cost unknown");
+  it("usage adds up, and an unknown price makes the sum unknown", () => {
+    expect(addUsage({ tokens: 10, cost: null }, 5, 0.002)).toEqual({ tokens: 15, cost: null });
     expect(addUsage({ tokens: 10, cost: 0.001 }, 5, 0.002)).toEqual({ tokens: 15, cost: 0.003 });
   });
 });
@@ -162,7 +161,8 @@ describe("automatic write in the Daily", () => {
     release(ok());
     await settle();
     expect(m.texts()).toContain("Gardens");
-    expect(m.texts().join("\n")).toContain("about 1234 tokens, under 1 cent"); // the footer estimate
+    expect(m.texts()).toContain("$0.00"); // the top line: the money only (0.004 dollars, two decimals), no editor named here
+    expect(m.texts().join("\n")).not.toMatch(/about 1234 tokens|under 1 cent/); // DG19: the permanent cost line under the credit is gone
   });
   it("does not write when nothing is due (off, no consent, over the ceiling, already tried)", async () => {
     const m = await mount({ due: [false] });
