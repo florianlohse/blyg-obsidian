@@ -1,10 +1,8 @@
 import { importFolderChoices } from "../studio/import";
-import { DEVICE_LABEL_KEY, defaultLabel, setDeviceLabel } from "../digest/sync/device";
 import { DEV_STUDIO_RULE, isDevStudioLock } from "../studio/devLock";
 import {
   debounce,
   Notice,
-  Platform,
   PluginSettingTab,
   SecretComponent,
   type App,
@@ -287,17 +285,8 @@ export class BlygSettingTab extends PluginSettingTab {
           },
         },
         {
-          name: "This device's name",
-          desc: "Shown under the Daily's masthead (\"made on …\") when the digest is synced between your devices. Kept on this device only, not in the synced settings. Empty: the platform's name.",
-          aliases: ["device", "sync", "name"],
-          render: (setting) => {
-            const local = { load: (k: string) => this.app.loadLocalStorage(k) as unknown, save: (k: string, v: string | null) => this.app.saveLocalStorage(k, v) };
-            setting.addText((t) => t.setPlaceholder(defaultLabel(Platform)).setValue(((v) => (typeof v === "string" ? v : ""))(local.load(DEVICE_LABEL_KEY))).onChange((v) => setDeviceLabel(local, v)));
-          },
-        },
-        {
           name: "Sync check",
-          desc: "Which devices' Daily files this device can see in the plugin folder (so you can tell whether your sync carries them). Compare the list on two devices. Reads local files only.",
+          desc: "Which devices' Daily editions this device can see, in the settings file (data.json) and in the plugin's digest folder, and how big this device's own entry in the settings file is. Compare the list on two devices. Reads local files only.",
           aliases: ["sync", "devices", "obsidian sync", "check"],
           render: (setting) => {
             const out = setting.infoEl.createDiv({ cls: "blyg-note" });
@@ -305,7 +294,7 @@ export class BlygSettingTab extends PluginSettingTab {
               out.empty();
               const seen = await runSyncCheck().catch(() => null);
               if (!seen) return void out.createDiv({ text: "The Daily is not available on this device." });
-              for (const line of checkLines(seen)) out.createDiv({ text: line });
+              for (const line of checkLines(seen.devices, seen.ownKeyBytes)) out.createDiv({ text: line });
             };
             setting.addButton((b) => b.setButtonText("Check").onClick(() => void run()));
           },

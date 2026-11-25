@@ -30,11 +30,12 @@ import { autoDue } from "./autoWrite";
 import { createDigestRefresh, type DigestReader } from "../app/readerRefresh";
 import { noteListLoaded, sessionSync } from "../ui/readerStart";
 import { SyncedDigest, type SyncFs } from "./sync/store";
+import { dataPort, type DataIo } from "./sync/dataPort";
 import { sharedStore, writeShared } from "./sync/aiWrite";
-import { deviceId, deviceLabel } from "./sync/device";
+import { deviceId } from "./sync/device";
 import { syncLines } from "./sync/line";
 import { seedSaved } from "../ui/readerStart";
-import { Platform, type EventRef } from "obsidian";
+import { type EventRef } from "obsidian";
 import type { ShelfFacade } from "../app/shelfService";
 
 export interface DigestDeps {
@@ -58,6 +59,8 @@ export interface DigestDeps {
   shelf?: ShelfFacade;
   /** Reads one revised post's change notes from the Studio (`importedNotes`); absent: corrections show no note. */
   notes?: NoteDeps["fetch"];
+  /** The plugin's data.json (read fresh, written by read-modify-write only): the Daily's second sync transport. Absent: the digest folder only. */
+  data?: DataIo;
   /** The optional AI layer. Absent: no AI. */
   ai?: { settings: () => BlygSettings["digest"]; keychain: Keychain; transport: RawTransport };
 }
@@ -98,15 +101,14 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
     },
   };
   const meId = deviceId(local, (n) => crypto.getRandomValues(new Uint8Array(n)));
-  // The name set under Daily → "This device's name", else the platform's; a short suffix from the id only when another synced device has the same platform name.
-  const me = { id: meId, label: (taken?: readonly string[]) => deviceLabel(local, Platform, meId, taken) };
+  const me = { id: meId };
   const readJson = async (p: string): Promise<unknown> => ((await adapter.exists(p)) ? (JSON.parse(await adapter.read(p)) as unknown) : null);
   const sync = new SyncedDigest(fs, normalizePath(`${base()}/digest`), me, () => Date.now(), {
     editions: () => readJson(normalizePath(`${base()}/digest-editions.json`)),
     history: () => readJson(normalizePath(`${base()}/digest-history.json`)),
     entries: async () => (await loadLocal()).entries,
-  });
-  setSyncCheck(() => sync.devicesSeen());
+  }, deps.data ? dataPort(deps.data) : undefined);
+  setSyncCheck(async () => ({ devices: await sync.devicesSeen(), ownKeyBytes: sync.ownKeyBytes() }));
   const storePath = (): string => normalizePath(`${plugin.manifest.dir ?? `${plugin.app.vault.configDir}/plugins/${plugin.manifest.id}`}/digest-ai.json`);
   const loadLocal = async (): Promise<LlmStore> => {
     try {
@@ -223,9 +225,10 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
     await workspace.revealLeaf(leaf);
   };
   // A file of another device changed (the synced folder is raw: Obsidian reports it as a "raw" event): read again once it has been quiet for a moment.
+  const dataPath = (): string => normalizePath(`${base()}/data.json`);
   let timer: number | null = null;
   const onRaw = (path: string): void => {
-    if (!sync.isStateFile(path) || sync.isOwnFile(path)) return;
+    if (path === dataPath() ? false : !sync.isStateFile(path) || sync.isOwnFile(path)) return;
     if (timer !== null) window.clearTimeout(timer);
     timer = window.setTimeout(() => ((timer = null), void sync.refresh().catch(() => undefined)), 700);
   };

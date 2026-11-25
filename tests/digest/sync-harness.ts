@@ -10,6 +10,9 @@ import { SyncedDigest, type LegacyPorts, type SyncFs } from "../../src/digest/sy
 import type { RawRequest, RawResponse } from "../../src/platform/http";
 import type { ReadingPost } from "../../src/studio/reading";
 import type { BlygSettings } from "../../src/settings/schema";
+import { createDataUpdater } from "../../src/app/dataUpdater";
+import { dataPort, type DataPort } from "../../src/digest/sync/dataPort";
+import { keyOf } from "../../src/digest/sync/dataKey";
 
 export const DIR = "plugin/digest";
 
@@ -35,6 +38,33 @@ export class Disk {
         return f ? { mtime: f.mtime, size: f.text.length } : null;
       },
     };
+  }
+}
+
+/** One device's data.json on a fake disk, written the way the plugin writes it (the real updater: re-read, change, write) and changeable behind the plugin's back (what Sync does). */
+export class DataJson {
+  /** The file's text (null: none). */
+  text: string | null = null;
+  writes = 0;
+  /** The plugin's own settings keys, as loaded at start; `saveSettings` writes these over whatever is on disk. */
+  settings: Record<string, unknown> = { schemaVersion: 1, github: { owner: "o" } };
+  private update = createDataUpdater({ load: async (): Promise<unknown> => (this.text === null ? null : (JSON.parse(this.text) as unknown)), save: async (d) => void (this.writes++, (this.text = JSON.stringify(d))) }, () => false);
+  get json(): Record<string, unknown> {
+    return this.text === null ? {} : (JSON.parse(this.text) as Record<string, unknown>);
+  }
+  port(): DataPort {
+    return dataPort({ load: async (): Promise<unknown> => (this.text === null ? null : (JSON.parse(this.text) as unknown)), update: (c, o) => this.update(c, o) });
+  }
+  /** What the plugin's settings screen does: write the in-memory settings into what is on disk. */
+  saveSettings(change: Record<string, unknown> = {}): Promise<void> {
+    Object.assign(this.settings, change);
+    return this.update((d) => void Object.assign(d, this.settings));
+  }
+  /** Sync brings another device's key (the whole top-level key replaced, the rest untouched). */
+  arrive(from: DataJson, deviceId: string): void {
+    const k = keyOf(deviceId);
+    const v = from.json[k];
+    if (v !== undefined) this.text = JSON.stringify({ ...this.json, [k]: v });
   }
 }
 
@@ -75,11 +105,12 @@ export interface Device {
   write(clusters: Parameters<typeof writeShared>[1], singles?: readonly ReadingPost[], opts?: { resort?: boolean; auto?: boolean }): ReturnType<typeof writeShared>;
 }
 
-export function device(id: string, label: string | ((taken?: readonly string[]) => string), prov: Provider, start: number, opts: { legacy?: LegacyPorts; time?: string; editor?: string; ceiling?: number; settle?: () => Promise<void> } = {}): Device {
+/** `_label`: kept so the many callers read as before; devices have no names any more (DG20). */
+export function device(id: string, _label: string, prov: Provider, start: number, opts: { data?: DataJson; legacy?: LegacyPorts; time?: string; editor?: string; ceiling?: number; settle?: () => Promise<void> } = {}): Device {
   const disk = new Disk();
   let now = start;
   const local = { store: emptyStore() };
-  const sync = new SyncedDigest(disk.fs(), DIR, { id, label: typeof label === "function" ? label : () => label }, () => now, opts.legacy);
+  const sync = new SyncedDigest(disk.fs(), DIR, { id }, () => now, opts.legacy, opts.data?.port());
   const editions = new Editions({ read: async () => null, write: async () => undefined, sync: { load: () => sync.load(), save: (s) => sync.save(s) }, now: () => now, time: () => opts.time ?? "07:00" });
   const history = new History({ read: async () => null, write: async () => undefined, sync: { list: () => sync.history(), put: (r) => sync.putHistory(r) } });
   const shared = sharedStore(sync, editions, { load: async () => structuredClone(local.store), save: async (s) => void (local.store = structuredClone(s)) });
