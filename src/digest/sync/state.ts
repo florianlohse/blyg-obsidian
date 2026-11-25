@@ -24,7 +24,7 @@ export interface EdState {
   v: 2;
   /** The edition's id (its cutoff). */
   id: number;
-  /** The device that wrote this file, and the name it gave itself (for "made on …"). */
+  /** The device that wrote this file, and an old name (DG20: names are not used any more; read, never shown). */
   device: string;
   label: string;
   /** When this file was last written (the writer's clock), for "newer than the last read". */
