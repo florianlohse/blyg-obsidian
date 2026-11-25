@@ -138,7 +138,8 @@ await runScenario({ data }, async (s) => {
   await ad(async ([p, k, v]) => { const a = window.app.vault.adapter; const d = JSON.parse(await a.read(p)); d[k] = v; await a.write(p, JSON.stringify(d)); }, [DATA, KEY, payload]); // what Sync would do to the file
   const viaOk = await s.pollUntil("the edition that arrived through data.json", () => ad(() => document.querySelector(".view-content.blyg-daily")?.innerText ?? ""), (t) => /Roofs and rain from the settings file/.test(t), 45000);
   check(viaOk.ok, "the open Daily shows what another device wrote into its data.json key, without a tap");
-  check(/Synced from 2 devices/.test(await ad(() => document.querySelector(".blyg-daily-sync")?.textContent ?? "")), "... and the masthead counts it as a second synced device");
+  const viaLine = await ad(() => document.querySelector(".blyg-daily-sync")?.textContent ?? "");
+  check(/^Synced from 3 devices$/.test(viaLine.trim()), `... and the masthead counts it: this device, the one in the digest folder and the one in data.json (${JSON.stringify(viaLine)})`);
   // a settings save (the plugin's in-memory settings object never held that key)
   await ad(async () => { const pl = window.app.plugins.plugins.blyg; pl.settings.digest.time = "07:05"; await pl.saveSettings(); pl.settings.digest.time = "07:00"; await pl.saveSettings(); });
   const afterSave = await readData();
