@@ -24,6 +24,7 @@ export const FEATURES: readonly FeatureDef[] = [
   { id: "shelf", title: "Save posts for later", description: "A Save action in the reader and the Daily, and a Saved view in the feed, kept on your Studio's shelf and shared with your other devices.", stage: "experimental", modules: [] },
   { id: "marginalia", title: "Marginalia", description: "Markers in the editor where a published item was quoted, and the Reception list in the panel.", stage: "experimental", modules: [] },
   { id: "share-open", title: "Open a shared address", description: "The Share inbox folder and the command “Open post address from clipboard”.", stage: "experimental", modules: ["src/app/shareEntry.ts"] },
+  { id: "passages", title: "Send passage to note", description: "Select a passage in the reader and send it, as a native quote, to a note in the folders you choose, under a heading you pick. A dock appears under the post while text is selected, and the command “Send selected passage to a note” does the same.", stage: "experimental", modules: ["src/app/passageEntry.ts"] },
   { id: "author-look", title: "Author look (prototype)", description: "A chooser that switches the look of the open post.", stage: "dev", modules: ["src/dev/authorStyle.ts"] },
   { id: "reader-timing", title: "Reader timing", description: "A command that draws invented posts and times it.", stage: "dev", modules: ["src/dev/drawBench.ts"] },
 ];

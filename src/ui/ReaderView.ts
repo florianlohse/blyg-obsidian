@@ -92,7 +92,6 @@ export interface ReaderHost extends FollowHost, ShelfHost {
   isOwnItem(itemId: string): Promise<boolean>;
   /** Look an item of another blyg up (through the owner's Studio) and open its page in the browser; false when it cannot be found. */
   openQuotedItem(origin: string, itemId: string): Promise<boolean>;
-  /** The owner's own items (for the replies they wrote to a post); empty when they cannot be had. Kept for a few minutes by the host. */
   /** The owner's own items (the replies chip): `cached` only what this session kept, `ask` that or one request, `fresh` always one request (Refresh). */
   myItems(mode: "cached" | "ask" | "fresh"): Promise<StudioListedItem[]>;
   /** Open the note of one of the owner's items in Obsidian; false when no note of this vault holds it. */
@@ -196,6 +195,7 @@ export class BlygReaderView extends ItemView {
   override getViewType(): string {
     return BLYG_READER_VIEW;
   }
+  currentPost = (): ReadingPost | null => this.shown; // the open post, for the passage dock (features: passages)
   override getDisplayText(): string {
     return "Blyg reader";
   }
