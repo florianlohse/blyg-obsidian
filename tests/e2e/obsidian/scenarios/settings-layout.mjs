@@ -25,7 +25,8 @@ await runScenario({ data }, async (s) => {
   });
   const open = async (label) => {
     await page.evaluate(() => { window.app.setting.open(); window.app.setting.openTabById("blyg"); });
-    await page.waitForSelector(".modal.mod-settings .blyg-settings, .modal.mod-settings .setting-item", { timeout: 20000 });
+    const drawn = await s.becomes(async () => page.evaluate(() => /Publish to a GitHub-hosted site/.test(activeDocument.querySelector(".modal.mod-settings")?.textContent ?? "")), 20000, "the plugin's settings tab");
+    check(Boolean(drawn), `${label}: the plugin's settings tab is drawn`);
     await wait(1500);
     const m = await measure();
     check(Boolean(m) && m.sw <= m.cw && m.ssw <= m.scw && !m.widest, `${label}: the settings pane does not scroll sideways (${JSON.stringify(m)})`);
