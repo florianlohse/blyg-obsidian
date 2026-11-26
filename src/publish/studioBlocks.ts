@@ -25,6 +25,17 @@ export const BLOCKS_ORIGIN_KEY = "blyg_blocks_origin";
 
 const refNote = (path: string): NoteRef => ({ path, name: path.split("/").pop() ?? path, extension: path.split(".").pop() ?? "" });
 
+/** What a paragraph is sent as: comments out, normalised, names turned into ids, as any fragment. A reason when it cannot be sent (also what the panel compares against). */
+export function blockContentMd(text: string, ctx: { vault: PublishDeps["vault"]; routes: PublishDeps["settings"]["routes"]; fromPath: string; origin: string; fragmentCharCap: number }): { ok: true; contentMd: string; removed: number } | { ok: false; refusal: string } {
+  const stripped = stripComments(text);
+  if (!stripped.ok) return { ok: false, refusal: stripped.outcome.notices.join(" ") };
+  const words = normalizeContentMd(stripped.text);
+  if (/!\[[^\]]*\]\(|!\[\[/.test(words)) return { ok: false, refusal: M.blockPicture };
+  const draft = prepareStudioText(words, "fragment", ctx);
+  const problem = draft.problems[0];
+  return problem ? { ok: false, refusal: refusalFor(problem) } : { ok: true, contentMd: draft.contentMd, removed: stripped.removed };
+}
+
 export interface PendingBlock {
   /** The line of the thread that embeds it (1-based). */
   line: number;
@@ -124,14 +135,9 @@ export async function makeBlockItem(deps: PublishDeps, host: NoteRef, want: { bl
   const route = routeFor(deps.settings.routes, host.path);
   if (route?.mode !== "studio" || route.draftsOnly === true) return { ok: false, outcome: refused(M.blockNotInRoute) };
 
-  const stripped = stripComments(want.text);
-  if (!stripped.ok) return { ok: false, outcome: stripped.outcome };
-  const words = normalizeContentMd(stripped.text);
-  if (/!\[[^\]]*\]\(|!\[\[/.test(words)) return { ok: false, outcome: refused(M.blockPicture) };
-  const draft = prepareStudioText(words, "fragment", { vault: deps.vault, routes: deps.settings.routes, fromPath: host.path, origin: address.origin, fragmentCharCap: deps.settings.fragmentCharCap });
-  const problem = draft.problems[0];
-  if (problem) return { ok: false, outcome: refused(refusalFor(problem)) };
-  const contentMd = draft.contentMd;
+  const prepared = blockContentMd(want.text, { vault: deps.vault, routes: deps.settings.routes, fromPath: host.path, origin: address.origin, fragmentCharCap: deps.settings.fragmentCharCap });
+  if (!prepared.ok) return { ok: false, outcome: refused(prepared.refusal) };
+  const contentMd = prepared.contentMd;
   const localHash = await localStudioHash(contentMd);
 
   const raw = await deps.vault.read(host);

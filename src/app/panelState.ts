@@ -26,6 +26,7 @@ import { editedInStudio, type StudioFacts } from "../studio/live";
 import { localStudioHash, resolveImages, type DigestCache } from "../studio/media";
 import { panelLines, prepareStudioText } from "../studio/text";
 import { translateBlockEmbeds } from "../publish/studioBlocks";
+import { loadBlockRows, type BlockRow } from "./blockPanel";
 import type { PublishedRecord, PublishedStore } from "./publishedStore";
 import { githubInUse } from "../settings/studioOnly";
 import { activeBranch, activeChannel, toPublishSettings } from "./publishSettings";
@@ -231,6 +232,8 @@ export interface PanelState {
   /** The main button is the call to action (there is something to send); false when it would only say "No changes". */
   emphasizePublish: boolean;
   /** Studio notes: what the Studio itself reported (mentions, warnings, whether it could be reached). Absent for other routes. */
+  /** V1-C.3: the note's paragraphs that were published as items, and where each stands. Absent when there are none. */
+  blocks?: { rows: BlockRow[]; more: number };
   studio?: { mentions?: { count: number; complete: boolean }; warnings: string[]; /** Muted transparency lines (a newer minor contract): not warnings, not counted. */ notes?: string[]; unreachable?: boolean };
   /** Studio notes that are replies (roadmap S10): what they answer, and what is wrong with it, if anything. */
   stub?: { label: string; problem: string | null };
@@ -927,7 +930,10 @@ export async function loadPanelState(env: PanelEnv, note: NoteRef | null): Promi
       const thread = earlier.length > 0 ? { ...summary, problems: [...earlier, ...summary.problems] } : summary;
       const idOfThisStudio = address && isBlygId(frontmatter.id) && typeof frontmatter.origin === "string" && sameOrigin(frontmatter.origin, address.origin) ? frontmatter.id : null;
       const live = env.studioLive?.(note, idOfThisStudio);
-      return computePanelState({ settings, note, frontmatter, localHash: await localStudioHash(contentMd), thread, chars: contentMd.length, ...(live ? { studio: live } : {}) });
+      const state = computePanelState({ settings, note, frontmatter, localHash: await localStudioHash(contentMd), thread, chars: contentMd.length, ...(live ? { studio: live } : {}) });
+      // Paragraphs of this note that were published as items (V1-C.3): the feature must be on, and the note must hold a record.
+      const blocks = env.tangle && address ? await loadBlockRows({ vault, routes: settings.routes, fragmentCharCap: settings.blyg.fragmentCharCap, origin: address.origin, facts: (itemId) => env.studioLive?.(note, itemId).facts }, note) : null;
+      return blocks && (blocks.rows.length > 0 || blocks.more > 0) ? { ...state, blocks } : state;
     }
     if (route?.mode === "blyg" && note.extension === "md") {
       const raw = await vault.read(note);
