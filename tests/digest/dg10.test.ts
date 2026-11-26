@@ -23,6 +23,7 @@ vi.mock("obsidian", () => {
       if (o?.cls) o.cls.split(" ").forEach((c) => el.cls.add(c));
       if (o?.text) el.text = o.text;
       Object.assign(el.attrs, o?.attr ?? {});
+      el.parent = this;
       this.children.push(el);
       return el;
     }
@@ -33,6 +34,8 @@ vi.mock("obsidian", () => {
     click() { this.handlers.forEach((h) => h()); }
     empty() { this.children = []; }
     removeClass(c: string) { this.cls.delete(c); }
+    parent: FakeEl | null = null;
+    after(el: FakeEl) { const p = this.parent; if (!p) return; p.children = p.children.filter((c) => c !== el); p.children.splice(p.children.indexOf(this) + 1, 0, el); }
     prepend(el: FakeEl) { this.children = this.children.filter((c) => c !== el); this.children.unshift(el); }
     scrollIntoView() { this.scrolled++; }
     all(): FakeEl[] { return [this, ...this.children.flatMap((c) => c.all())]; }
@@ -170,7 +173,7 @@ describe("the Corrections line with a lazily read note", () => {
   const rows = (root: El): El[] => root.all().filter((e) => has(e, "blyg-daily-row"));
   const row = (root: El, headline: string): El => rows(root).find((r) => r.all().some((e) => e.text === headline))!;
 
-  it("shows the note as the bold lead and the headline second; asks only for revised posts; one request per (item, version) over repeated draws", async () => {
+  it("shows the excerpt first, the note in bold second; asks only for revised posts; one request per (item, version) over repeated draws", async () => {
     const revised = post("Corrected harbour figure here.", "Ann", { version: 2 });
     const first = post("A first version, never revised.", "Bo");
     const calls: string[] = [];
@@ -178,9 +181,9 @@ describe("the Corrections line with a lazily read note", () => {
     const root = await mount([revised, first], (p) => e.notes.get(p));
     const r = row(root, "Corrected harbour figure here.");
     const kids = r.all().filter((x) => x.tag === "button");
-    expect(kids.map((x) => x.text)).toEqual(["Fixed the March total", "Corrected harbour figure here."]);
-    expect(has(kids[0]!, "blyg-correction-note")).toBe(true);
-    expect(has(kids[1]!, "blyg-correction-headline")).toBe(true);
+    expect(kids.map((x) => x.text)).toEqual(["Corrected harbour figure here.", "Fixed the March total"]);
+    expect(has(kids[0]!, "blyg-correction-headline")).toBe(true);
+    expect(has(kids[1]!, "blyg-correction-note")).toBe(true);
     expect(e.calls).toEqual([`s1/${revised.remoteId}`]);
     await mount([revised, first], (p) => e.notes.get(p)); // drawn again
     expect(e.calls).toHaveLength(1);

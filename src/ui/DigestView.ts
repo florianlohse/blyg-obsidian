@@ -491,10 +491,10 @@ export class BlygDailyView extends ItemView {
       for (const c of m.corrections) {
         this.seen(c.post);
         const row = s.createDiv({ cls: "blyg-daily-row" });
-        // The author's change note leads (bold) when the data holds one; the headline is secondary. No note: the line is as before.
-        if (c.note) row.createEl("button", { cls: "blyg-daily-link blyg-correction-note", text: c.note }).addEventListener("click", () => this.openEntry(c.post));
+        // Order: the post's excerpt (or the AI's line), then the author's change note in bold at the same size, then the author and revision. No note: no second line.
         const head = row.createEl("button", { cls: c.note ? "blyg-daily-link blyg-correction-headline" : "blyg-daily-link", text: c.headline });
         head.addEventListener("click", () => this.openEntry(c.post));
+        if (c.note) row.createEl("button", { cls: "blyg-daily-link blyg-correction-note", text: c.note }).addEventListener("click", () => this.openEntry(c.post));
         row.createDiv({ cls: "blyg-daily-meta", text: `${c.post.authorName ?? c.post.subscriptionTitle} · ${c.revised}` });
         if (!c.note) lazy.push({ c, row, head });
       }
@@ -518,7 +518,7 @@ export class BlygDailyView extends ItemView {
       if (!note || row.isConnected === false) continue;
       const lead = row.createEl("button", { cls: "blyg-daily-link blyg-correction-note", text: note });
       lead.addEventListener("click", () => this.openEntry(c.post));
-      row.prepend(lead); // the note leads; the headline already in the row becomes the secondary line
+      head.after(lead); // the note follows the excerpt and comes before the author line
       head.addClass("blyg-correction-headline");
     }
   }

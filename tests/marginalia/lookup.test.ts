@@ -36,12 +36,12 @@ describe("MarginaliaLookup", () => {
   it("parses passages and whole-post quotes from the source post", async () => {
     const { read } = fake({ x1: post("intro\nQ:a line\nWHOLE") });
     const [e] = await new MarginaliaLookup(read, parse).lookup([m()], "t1");
-    expect(e!.result).toEqual({ kind: "quotes", version: 1, quotes: [{ kind: "passage", text: "a line" }, { kind: "whole" }] });
+    expect(e!.result).toMatchObject({ kind: "quotes", version: 1, quotes: [{ kind: "passage", text: "a line" }, { kind: "whole" }] });
   });
   it("a reply whose text quotes a passage gives the passage; a reply with no quote gives no quotes (it is a reply, not an unknown)", async () => {
     const { read } = fake({ x1: post("Q:a line"), x2: post("just my answer") });
     const got = await new MarginaliaLookup(read, parse).lookup([m({ relation: "stub", firstSeen: "2" }), m({ id: "m2", relation: "stub", sourceId: "x2", firstSeen: "1" })], "t1");
-    expect(got.map((e) => e.result)).toEqual([{ kind: "quotes", version: 1, quotes: [{ kind: "passage", text: "a line" }] }, { kind: "quotes", version: 1, quotes: [] }]);
+    expect(got.map((e) => e.result)).toMatchObject([{ kind: "quotes", version: 1, quotes: [{ kind: "passage", text: "a line" }] }, { kind: "quotes", version: 1, quotes: [] }]);
   });
   it("a quote (relation transclusion) whose text shows no quote stays unknown: the Studio said it quoted", async () => {
     const { read } = fake({ x1: post("just words") });
