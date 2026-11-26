@@ -374,6 +374,23 @@ export class FakeStudio {
     return resp.status === 200 ? this.json(200, { ...(JSON.parse(resp.text) as Record<string, unknown>), readState: true, readStateClear: true }) : resp;
   }
 
+  /** Ids of the items tangling made, in order (a test asserts none is made twice). */
+  readonly tangledItems: string[] = [];
+  /** Spans and placeholders as the real Studio 0.69.0 reads them, minimally: spans open at a line start (0 to 3 spaces), close at a line end; placeholders are one line. */
+  private tangleParts(md: string): Array<{ kind: "span" | "placeholder"; start: number; end: number; text: string; label: string }> {
+    const found: Array<{ kind: "span" | "placeholder"; start: number; end: number; text: string; label: string }> = [];
+    for (const m of md.matchAll(/^ {0,3}!\[\[\+([ \t\n][\s\S]*?)\]\][ \t]*$/gm)) {
+      const text = (m[1] ?? "").trim();
+      const w = text.split(/\s+/).filter(Boolean);
+      found.push({ kind: "span", start: m.index ?? 0, end: (m.index ?? 0) + m[0].replace(/[ \t]+$/, "").length, text, label: w.length > 8 ? `${w.slice(0, 8).join(" ")}…` : w.join(" ") });
+    }
+    const inSpan = (i: number): boolean => found.some((f) => f.kind === "span" && i >= f.start && i < f.end);
+    for (const m of md.matchAll(/(?<!!)\[\[\+[ \t]+([^\]\n]+?)\]\]/g)) {
+      if (!inSpan(m.index ?? 0)) found.push({ kind: "placeholder", start: m.index ?? 0, end: (m.index ?? 0) + m[0].length, text: (m[1] ?? "").trim(), label: "" });
+    }
+    return found.sort((a, b) => a.start - b.start);
+  }
+
   private major(): number {
     return Number((this.contractVersion ?? "5").split(".")[0]);
   }
@@ -586,6 +603,28 @@ export class FakeStudio {
       if (m[2] === "publish" && req.method === "POST") {
         const stale = checkRevision();
         if (stale) return stale;
+        // Tangling (contract 6, measured on Studio 0.69.0): spans `![[+ …]]` at a line start and placeholders `[[+ …]]` make new threads first.
+        if (typeof body.tangle === "boolean" && this.major() < 6) return this.fail(400, "invalid-input", 'request: Unrecognized key: "tangle"');
+        const tangled = this.major() >= 6 ? this.tangleParts(item.content_md) : [];
+        let madeParts: Array<{ id: string; version: number }> | undefined;
+        if (tangled.length > 0) {
+          if (item.kind === "fragment") return this.fail(400, "invalid-input", "tangling makes a thread; switch this draft to a thread");
+          if (tangled.length > 10) return this.fail(400, "invalid-input", `one publish can make at most 10 new items; this has ${tangled.length}`);
+          if (body.tangle !== true) return this.fail(409, "tangle-confirmation-required", `publishing this thread also publishes ${tangled.length} new items; send tangle: true to confirm`, { count: tangled.length, parts: tangled.map((t) => (t.kind === "placeholder" ? `${t.text} (linked)` : t.label)) });
+          madeParts = [];
+          let out = "";
+          let at = 0;
+          for (const t of tangled) {
+            const made = this.seed({ kind: "thread", status: "public", version: 1, revision: 2, content_md: t.kind === "span" ? t.text : `# ${t.text}` });
+            made.versions.push({ version: 1, content_md: made.content_md, content_html: `<p>${esc(made.content_md)}</p>`, content_hash: sha(made.content_md), published_at: this.now, note: null });
+            this.tangledItems.push(made.id);
+            madeParts.push({ id: made.id, version: 1 });
+            out += item.content_md.slice(at, t.start) + (t.kind === "span" ? `![[${made.id}${t.label === "" ? "" : ` | ${t.label}`}]]` : `[[${made.id} | ${t.text}]]`);
+            at = t.end;
+            if (t.kind === "span" && !/^[ \t]*\n[ \t]*\n/.test(item.content_md.slice(at)) && item.content_md.slice(at).trim() !== "") out += item.content_md.slice(at).startsWith("\n") ? "\n" : "\n\n";
+          }
+          item.content_md = out + item.content_md.slice(at);
+        }
         if (item.kind === "fragment" && item.content_md.length > 1000) return this.fail(400, "invalid-input", "fragment exceeds 1000 characters");
         item.version += 1;
         item.revision++;
@@ -593,7 +632,7 @@ export class FakeStudio {
         item.status = "public";
         item.updated = this.now;
         item.versions.push({ version: item.version, content_md: item.content_md, content_html: `<p>${esc(item.content_md)}</p>`, content_hash: sha(item.content_md), published_at: this.now, note: typeof body.note === "string" ? body.note : null, media: [...(item.media ?? [])] });
-        return this.json(200, { ok: true, version: item.version, revision: item.revision });
+        return this.json(200, { ok: true, version: item.version, revision: item.revision, ...(madeParts ? { parts: madeParts } : {}) });
       }
       if (m[2] === "withdraw" && req.method === "POST") {
         const stale = checkRevision();

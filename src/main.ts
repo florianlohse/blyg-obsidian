@@ -125,7 +125,7 @@ export default class BlygPlugin extends Plugin {
     this.addCommand({ id: "open-reader", name: "Open reader", callback: () => void this.openReader() });
     this.addCommand({ id: "open-reader-sidebar", name: "Open reader in the sidebar", callback: () => void this.openReader("sidebar") });
     // The switchable features (the Daily and its AI layer, the share entry, the dev commands) register here, each only when features/registry.ts says it is on.
-    registerFeatureEntries(this, this.features, { digest: { font: () => this.settings.readerPane.font, time: () => this.settings.digest.time, readList: () => this.readReaderCache(), reader: { ...this.readerService, writeCache: (data) => this.writeReaderCache(data) }, mode: { get: () => this.settings.readerPane.mode ?? "feed", set: (m) => { this.settings.readerPane.mode = m; void this.saveSettings(); } }, markRead: (post) => this.writes.mark(post, true), markUnread: (post) => this.writes.mark(post, false), shelf: this.shelf, replyTo: (post) => this.readerHost().replyTo(post), data: { load: () => this.loadData() as Promise<unknown>, update: (change, opts) => this.updateData(change, opts) }, notes: async (sub, id) => { const b = buildStudio(this.env()); return b.ok ? b.studio.client.importedNotes(sub, id) : { kind: "error", status: 0, message: b.message }; }, ai: { settings: () => this.settings.digest, keychain: obsidianKeychain(this.app), transport: obsidianTransport } }, share: { settings: () => this.settings, build: () => buildStudio(this.env()), openReader: () => this.openReader() }, contrast: () => this.settings.readerPane.contrast });
+    registerFeatureEntries(this, this.features, { digest: { font: () => this.settings.readerPane.font, time: () => this.settings.digest.time, readList: () => this.readReaderCache(), reader: { ...this.readerService, writeCache: (data) => this.writeReaderCache(data) }, mode: { get: () => this.settings.readerPane.mode ?? "feed", set: (m) => { this.settings.readerPane.mode = m; void this.saveSettings(); } }, markRead: (post) => this.writes.mark(post, true), markUnread: (post) => this.writes.mark(post, false), shelf: this.shelf, replyTo: (post) => this.readerHost().replyTo(post), data: { load: () => this.loadData() as Promise<unknown>, update: (change, opts) => this.updateData(change, opts) }, notes: async (sub, id) => { const b = buildStudio(this.env()); return b.ok ? b.studio.client.importedNotes(sub, id) : { kind: "error", status: 0, message: b.message }; }, ai: { settings: () => this.settings.digest, keychain: obsidianKeychain(this.app), transport: obsidianTransport } }, share: { settings: () => this.settings, build: () => buildStudio(this.env()), openReader: () => this.openReader() }, contrast: () => this.settings.readerPane.contrast, tangle: { write: (action) => this.write(action), routes: () => this.settings.routes } });
     this.addCommand({
       id: "clear-reader-cache",
       name: "Clear the reader's saved list",
@@ -428,7 +428,7 @@ export default class BlygPlugin extends Plugin {
       vault: obsidianVault(this.app),
       images: obsidianBinaryVault(this.app),
       imageDigests: this.imageDigests,
-      edit: obsidianNoteEdit(this.app),
+      edit: obsidianNoteEdit(this.app), tangle: () => this.features.enabled("tangle"),
       yaml: obsidianYaml,
       clock: systemClock,
       random: webRandom,
@@ -763,7 +763,7 @@ export default class BlygPlugin extends Plugin {
         settings: this.settings,
         vault,
         images: obsidianBinaryVault(this.app),
-        imageDigests: this.imageDigests,
+        imageDigests: this.imageDigests, tangle: this.features.enabled("tangle"),
         published: this.published(),
         studioLive: (_note, id) => {
           if (id) this.studioFacts.request(id, () => this.refreshPanels());

@@ -24,6 +24,9 @@ import { fileProperty, logError, stripComments } from "./shared";
 import { studioFailureOutcome } from "./studioFailure";
 import { pullStudio } from "./studioPull";
 import { withRevision } from "./studioRevision";
+import { finishTangle, tangleWindow } from "./studioTangle";
+import { describeBlocks, publishPendingBlocks, translateBlockEmbeds } from "./studioBlocks";
+import { TANGLE_MAX } from "../tangle/analyse";
 import { applyHoppers, hopperLines, hoppersOnly, planHoppers } from "./studioHoppers";
 import { cancelled, failed, noop, refused, type Outcome, type PublishDeps, type StudioQuoteLine, type WritePreview } from "./types";
 
@@ -90,17 +93,25 @@ export async function publishStudio(deps: PublishDeps, note: NoteRef, opts: { re
   const resolved = await resolveImages(normalizeContentMd(stripped.text), { vault, binary: deps.images, fromPath: note.path, folder: routeFor(settings.routes, note.path)?.vaultPrefix ?? "", ...(deps.imageDigests ? { cache: deps.imageDigests } : {}) });
   if (resolved.problems.length > 0) return refused(M.imagesProblems(resolved.problems));
   const images = resolved.images;
-  const draft = prepareStudioText(resolved.text, kind, {
-    vault,
-    routes: settings.routes,
-    fromPath: note.path,
-    origin: address.origin,
-    fragmentCharCap: settings.fragmentCharCap,
-  });
+  // Paragraphs of other notes (`![[Note#^id]]`, V1-C.2): quotes of their items; the ones not published yet are published first, after the one confirmation.
+  const blocksOn = deps.tangle?.() === true && kind === "thread" && !draftsOnly;
+  const embeds = blocksOn ? translateBlockEmbeds(resolved.text, { vault, routes: settings.routes, fromPath: note.path, origin: address.origin }) : null;
+  if (embeds && embeds.problems.length > 0) return refused(embeds.problems.length === 1 && /^line \d+ embeds/.test(embeds.problems[0] ?? "") ? `Not published — ${embeds.problems[0]} Nothing was sent.` : M.itemProblems(embeds.problems));
+  const pendingBlocks = embeds?.pending ?? [];
+  if (pendingBlocks.length > 0) {
+    const described = await describeBlocks(deps, pendingBlocks);
+    if (!described.ok) return refused(M.itemProblems(described.problems));
+  }
+  const draftCtx = { vault, routes: settings.routes, fromPath: note.path, origin: address.origin, fragmentCharCap: settings.fragmentCharCap, tangle: deps.tangle?.() === true };
+  const draft = prepareStudioText(embeds?.text ?? resolved.text, kind, draftCtx);
   const problem = draft.problems[0];
   if (problem) return refused(refusalFor(problem));
-  const contentMd = draft.contentMd;
-  const localHash = await localStudioHash(contentMd);
+  let contentMd = draft.contentMd;
+  if (draft.tangle.length + pendingBlocks.length > TANGLE_MAX) return refused(M.tangleCap(draft.tangle.length + pendingBlocks.length, TANGLE_MAX));
+  /** The new items this thread makes (spans and placeholders), when the feature is on; each is made by the Studio inside the thread's publish. */
+  const tangled = draft.tangle;
+  if (tangled.length > 0 && !draftsOnly && !(await client.tangleSupported())) return refused(M.tangleUnsupported);
+  let localHash = await localStudioHash(contentMd);
 
   try {
     // ---- which item, and what the Studio holds now -----------------------------------------------------------------------
@@ -222,11 +233,12 @@ export async function publishStudio(deps: PublishDeps, note: NoteRef, opts: { re
         ...(publishedBefore?.status === "withdrawn" ? ["The item is no longer withdrawn"] : []),
         ...(stub ? [M.stubReply(stubLabel(stub))] : []),
         ...hopperLines(hoppers),
+        ...(tangled.length + pendingBlocks.length > 0 ? tangleWindow(tangled, pendingBlocks).changes : []),
       ],
       links: [],
       blygNote: false,
       commitMessage: "",
-      studio: { host: address.host, html: previewed.value.html, ...(localImages.length > 0 ? { localImages } : {}), ...(quotes.length > 0 ? { quotes } : {}), askNote: publishedBefore !== null || repost !== null, ...(repost ? { noteDefault: repostNoteText(repost.origin, vault.frontmatterValue(note, "blyg_created")), repost: { id: repost.id, origin: repost.origin, version: typeof repost.version === "number" ? repost.version : null } } : {}) },
+      studio: { host: address.host, html: previewed.value.html, ...(localImages.length > 0 ? { localImages } : {}), ...(quotes.length > 0 ? { quotes } : {}), ...(tangled.length + pendingBlocks.length > 0 ? { tangle: tangleWindow(tangled, pendingBlocks).tangle } : {}), askNote: publishedBefore !== null || repost !== null, ...(repost ? { noteDefault: repostNoteText(repost.origin, vault.frontmatterValue(note, "blyg_created")), repost: { id: repost.id, origin: repost.origin, version: typeof repost.version === "number" ? repost.version : null } } : {}) },
     };
     // Decision 1: work done in the Studio's own editor is never overwritten without being shown, and asked about, first.
     if (editedThere && item) {
@@ -252,6 +264,16 @@ export async function publishStudio(deps: PublishDeps, note: NoteRef, opts: { re
     }
     const answer = await deps.confirm(confirmation);
     if (!answer) return cancelled(M.studioCancelled);
+    // The paragraphs the thread quotes that were not published: items first, one at a time, each marked in its note; the thread is last. A stop here leaves the finished ones in place and the thread unwritten.
+    if (pendingBlocks.length > 0) {
+      const madeBlocks = await publishPendingBlocks(deps, pendingBlocks);
+      if (!madeBlocks.ok) return madeBlocks.outcome;
+      const again = translateBlockEmbeds(resolved.text, { vault, routes: settings.routes, fromPath: note.path, origin: address.origin, known: madeBlocks.known });
+      const final = prepareStudioText(again.text, kind, draftCtx);
+      if (again.pending.length > 0 || again.problems.length > 0 || final.problems[0]) return failed(M.blocksProgress(pendingBlocks.length, pendingBlocks.length));
+      contentMd = final.contentMd;
+      localHash = await localStudioHash(contentMd);
+    }
     // A first version takes a note only as a repost's provenance; an ordinary first publish has no changelog to add to.
     const changeNote = typeof answer === "object" && (publishedBefore !== null || repost !== null) ? cleanNote(answer.note) : undefined;
 
@@ -313,8 +335,12 @@ export async function publishStudio(deps: PublishDeps, note: NoteRef, opts: { re
     }
 
     const publishId = itemId;
-    const published = await withRevision(client, publishId, revision, localHash, (rev) => client.publish(publishId, changeNote, rev));
+    const published = await withRevision(client, publishId, revision, localHash, (rev) => client.publish(publishId, changeNote, rev, tangled.length > 0 ? { tangle: true } : undefined));
     if (published.kind === "changed-there") return failed(M.studioChangedWhilePublishing(publishId));
+    // The window showed a count; the Studio counts for itself. If they differ, nothing was published and the person is not asked to approve a number they did not see.
+    if (published.kind === "rejected" && published.tangle) {
+      return { ...failed(M.tangleCountDiffers(tangled.length, published.tangle.count)), notices: [M.tangleCountDiffers(tangled.length, published.tangle.count), `The text is saved as a draft of ${itemId} in the Studio; the note is untouched.`] };
+    }
     if (published.kind !== "ok") {
       const out = studioFailureOutcome("Publishing", published);
       return { ...out, notices: [...out.notices, `The text is saved as a draft of ${itemId} in the Studio; the note is untouched.`] };
@@ -329,7 +355,14 @@ export async function publishStudio(deps: PublishDeps, note: NoteRef, opts: { re
         ? M.studioPublishedUpdate(published.value.version, url)
         : M.studioPublishedNew(itemId, published.value.version, url);
     if (stripped.removed > 0) notices.push(M.commentsLeftOut(stripped.removed));
-    const done = await stamp(deps, note, { id: itemId, version: published.value.version, kind, localHash }, message, "published", notices, repost !== null);
+    // The Studio made the new items first: bring the note in line with what it did to its working copy, before the note is stamped.
+    let stampHash = localHash;
+    if (tangled.length > 0) {
+      const finished = await finishTangle(deps, client, note, itemId, tangled, published.value.parts ?? []);
+      notices.push(...finished.notices);
+      if (finished.sentHash) stampHash = finished.sentHash;
+    }
+    const done = await stamp(deps, note, { id: itemId, version: published.value.version, kind, localHash: stampHash }, message, "published", notices, repost !== null);
     return hoppers && !done.localStampFailed ? { ...done, notices: [...done.notices, ...(await applyHoppers(deps, note, itemId, hoppers))] } : done;
   } catch (err) {
     logError(deps, "publishing to the Studio", err);

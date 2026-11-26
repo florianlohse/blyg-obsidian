@@ -7,6 +7,7 @@ import { readToken } from "../platform/token";
 import { fetchQuotable, type Quotable } from "../publish/items";
 import { deleteDraftNote, publishNote, pullNote, repostNote, withdrawNote } from "../publish/router";
 import { studioFailureOutcome } from "../publish/studio";
+import { publishParagraph } from "../publish/studioBlocks";
 import { takeHoppersNote } from "../publish/studioHopperNote";
 import type { DigestCache } from "../studio/media";
 import type { StudioHopper } from "../studio/types";
@@ -44,6 +45,8 @@ export interface AppEnv {
   imageDigests?: DigestCache;
   /** Replacing a note's text (bringing the Studio's copy in). Optional (tests that never do). */
   edit?: NoteEditPort;
+  /** Is the feature "New items from a thread" on? Asked at call time; absent means off. */
+  tangle?: () => boolean;
   yaml: Yaml;
   clock: Clock;
   random: Random;
@@ -102,6 +105,7 @@ function buildDeps(env: AppEnv): { ok: true; deps: PublishDeps; secrets: string[
       ...(env.images ? { images: env.images } : {}),
       ...(env.imageDigests ? { imageDigests: env.imageDigests } : {}),
       ...(env.edit ? { edit: env.edit } : {}),
+      ...(env.tangle ? { tangle: env.tangle } : {}),
       yaml: env.yaml,
       clock: env.clock,
       random: env.random,
@@ -111,6 +115,9 @@ function buildDeps(env: AppEnv): { ok: true; deps: PublishDeps; secrets: string[
     },
   };
 }
+
+/** "Publish this paragraph": the paragraph at `line` (1-based) of the active note (V1-C.2). */
+export const runPublishParagraph = (env: AppEnv, line: number): Promise<Outcome> => run(env, (deps, note) => publishParagraph(deps, note, line));
 
 async function run(env: AppEnv, action: typeof publishNote): Promise<Outcome> {
   const note = env.activeNote();
