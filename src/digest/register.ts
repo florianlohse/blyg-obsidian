@@ -120,7 +120,7 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
   const editions = new Editions({
     read: async () => null, // the synced store replaces it; the old digest-editions.json is read once by the migration and stays where it is
     write: () => Promise.resolve(),
-    sync: { load: () => sync.load(), save: (s) => sync.save(s) },
+    sync: { load: () => sync.load(), save: (s) => sync.save(s), hold: (id) => sync.hold(id) },
     now: () => Date.now(),
     time: () => deps.time(),
   });
@@ -195,7 +195,15 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
     watchSync: (fn) => {
       const off = sync.onChange(fn);
       const t = window.setInterval(() => void (activeDocument.visibilityState === "visible" && sync.refresh().catch(() => undefined)), SYNC_FALLBACK_MS);
-      return () => (off(), window.clearInterval(t));
+      // A first open that is still checking for the other devices: read data.json again every second, and draw once the bound has passed (the edition is then made here).
+      let waiting = false;
+      const h = window.setInterval(() => {
+        const was = waiting;
+        waiting = sync.holding();
+        if (waiting) void sync.refresh().catch(() => undefined);
+        else if (was) fn(); // the bound has passed: draw again, the edition is made here now
+      }, 1000);
+      return () => (off(), window.clearInterval(t), window.clearInterval(h));
     },
     loadList: async () => seedSaved(await deps.readList()),
     ...(deps.reader ? { refresh: createDigestRefresh(deps.reader, Date.now, (l, origin, at) => noteListLoaded({ posts: l.posts, mentions: l.mentions, savedAt: at, studioOrigin: origin }), sessionSync) } : {}),

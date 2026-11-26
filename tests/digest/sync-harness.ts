@@ -106,12 +106,12 @@ export interface Device {
 }
 
 /** `_label`: kept so the many callers read as before; devices have no names any more (DG20). */
-export function device(id: string, _label: string, prov: Provider, start: number, opts: { data?: DataJson; legacy?: LegacyPorts; time?: string; editor?: string; ceiling?: number; settle?: () => Promise<void> } = {}): Device {
+export function device(id: string, _label: string, prov: Provider, start: number, opts: { data?: DataJson; legacy?: LegacyPorts; time?: string; editor?: string; ceiling?: number; settle?: () => Promise<void>; hold?: boolean } = {}): Device {
   const disk = new Disk();
   let now = start;
   const local = { store: emptyStore() };
   const sync = new SyncedDigest(disk.fs(), DIR, { id }, () => now, opts.legacy, opts.data?.port());
-  const editions = new Editions({ read: async () => null, write: async () => undefined, sync: { load: () => sync.load(), save: (s) => sync.save(s) }, now: () => now, time: () => opts.time ?? "07:00" });
+  const editions = new Editions({ read: async () => null, write: async () => undefined, sync: { load: () => sync.load(), save: (s) => sync.save(s), ...(opts.hold ? { hold: (id: number) => sync.hold(id) } : {}) }, now: () => now, time: () => opts.time ?? "07:00" });
   const history = new History({ read: async () => null, write: async () => undefined, sync: { list: () => sync.history(), put: (r) => sync.putHistory(r) } });
   const shared = sharedStore(sync, editions, { load: async () => structuredClone(local.store), save: async (s) => void (local.store = structuredClone(s)) });
   const llm: LlmDeps = {

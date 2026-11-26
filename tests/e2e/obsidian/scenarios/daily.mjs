@@ -81,7 +81,9 @@ await runScenario({ data }, async (s) => {
   // a restart with the edition record the first open saved, plus sections and lines in it
   // (the edition record lives in this device's own file of the synced folder since DG16: the sections, bylines and lines are registers of that file)
   const dir = ".obsidian/plugins/blyg/digest";
-  const file = await page.evaluate(async (d) => (await window.app.vault.adapter.list(d)).files.find((f) => /\/ed-\d+\./.test(f)) ?? "", dir);
+  // DG21: a first-ever open waits up to 8 s for another device's edition before it makes its own
+  const found = await s.pollUntil("this device's edition file", () => page.evaluate(async (d) => (await window.app.vault.adapter.list(d).catch(() => ({ files: [] }))).files.find((f) => /\/ed-\d+\./.test(f)) ?? "", dir), (f) => f !== "", 30000);
+  const file = found.value;
   check(file !== "", `the first open left this device's edition file in ${dir} (${file})`);
   const rec = JSON.parse(await page.evaluate((f) => window.app.vault.adapter.read(f), file));
   const reg = (v) => ({ c: rec.clock + 1, d: rec.device, v });
