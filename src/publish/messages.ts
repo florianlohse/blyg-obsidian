@@ -119,7 +119,7 @@ export const M = {
     `Not published — line ${lines[0] ?? 1} makes a new item (“![[+ …]]” or “[[+ …]]”), which only a thread can do. Add the property blyg_kind: thread before the first publish (the kind of a published item never changes), or take the span out. Nothing was sent.`,
   tangleCap: (count: number, max: number) =>
     `Not published — this thread would make ${count} new items; one publish may make at most ${max}. Publish some of them first, or take some out. Nothing was sent.`,
-  tangleUnsupported: `Not published — this thread has new-item spans (“![[+ …]]”) or placeholders (“[[+ …]]”), and this Studio's API cannot make those from here (it needs API contract 6, Studio 0.67 or newer). Update the Studio, or take them out. Nothing was sent.`,
+  tangleUnsupported: `Not published — this thread has new-item spans (“![[+ …]]”) or placeholders (“[[+ …]]”), and this Studio's API cannot make those from here (it needs API contract 5.12 or newer, Studio 0.63 or newer). Update the Studio, or take them out. Nothing was sent.`,
   tangleCountDiffers: (mine: number, studio: number) =>
     `Not published — the Studio counts ${studio} new items where this plugin counted ${mine}. Nothing was published; the text is saved as a draft. Check the spans (![[+ …]]) and placeholders ([[+ …]]) and try again.`,
   blockHeading: (line: number, target: string) =>
@@ -151,6 +151,8 @@ export const M = {
     `${created ? "Published" : "Updated"} the paragraph as item ${id}, version ${version}. Quote it in a thread with ![[${host}#^${blockId}]].`,
   blockStampFailed: (id: string) => `The paragraph is published as item ${id}, but your note could not be marked (it changed while publishing). Publish the paragraph again: it finds this item and only marks the note, it does not make another one.`,
   blocksProgress: (done: number, total: number) => `${done} of ${total} new items were published; the thread was not. Publish it again to continue: the finished ones are not made again.`,
+  tangleRewriteStillPending: (lines: string[]) =>
+    `Not published — an earlier publish already made new items for this note's spans and placeholders, but the note could not be updated then, and still cannot be (its spans no longer match). Publishing now would make them again. Replace each span or placeholder by hand with a link to its item${lines.length > 0 ? `, in this order:\n${lines.join("\n")}` : ""}\nthen remove the property blyg_tangle_pending (or publish again: it is removed once the spans are gone). Nothing was sent.`,
   tangleDone: (n: number) => `${n} new item${n === 1 ? "" : "s"} made and published before the thread.`,
   tangleRewritten: (n: number) => `Your note now points at ${n === 1 ? "it" : "them"}: each span or placeholder became a link to the new item.`,
   tangleNotRewritten: (lines: string[]) =>

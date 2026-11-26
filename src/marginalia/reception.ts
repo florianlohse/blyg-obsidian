@@ -10,7 +10,10 @@ import type { FoundQuote, MarginaliaEntry, MarginaliaMention, QuoteParser, Unkno
 export const parseQuotesOf: QuoteParser = (markdown, itemId) =>
   parseQuoteRefs(markdown)
     .filter((r) => r.itemId === itemId)
-    .map((r): FoundQuote => (r.passageText !== null && r.passageText.trim() !== "" ? { kind: "passage", text: r.passageText } : { kind: "whole" }));
+    .map((r): FoundQuote => {
+      const cited = r.citedVersion !== null ? { cited: r.citedVersion } : {};
+      return r.passageText !== null && r.passageText.trim() !== "" ? { kind: "passage", text: r.passageText, ...cited } : { kind: "whole", ...cited };
+    });
 
 /** A paragraph of the note: where it ends in the text (for the marker) and its words without Markdown (for the match). */
 export interface NoteParagraph {
@@ -97,6 +100,8 @@ export interface ReceptionRow {
   excerpt: string | null;
   /** The whole quoted passage (not cut like `excerpt`), to find it in the note's text for the mark. Memory only. */
   passage?: string | null;
+  /** The version of the item the quote says it was taken from, when the post says. */
+  cited?: number | null;
 }
 
 /** One row per quote found; a mention whose quotes could not be read gives one `unknown` row. Newest mention first, as the lookup gave them. */
@@ -114,13 +119,13 @@ export function buildReception(entries: MarginaliaEntry[], paragraphs: NoteParag
     }
     for (const q of e.result.quotes) {
       if (q.kind === "whole") {
-        rows.push({ mention: e.mention, placement: { kind: "whole" }, excerpt: null });
+        rows.push({ mention: e.mention, placement: { kind: "whole" }, excerpt: null, cited: q.cited ?? null });
         continue;
       }
       const hit = findPassage(q.text, plain);
       const excerpt = q.text.length > 160 ? `${q.text.slice(0, 157)}…` : q.text;
       const placement: Placement = hit && hit.method !== "overlap" ? { kind: "paragraph", index: hit.end, method: hit.method } : { kind: "earlier" };
-      rows.push({ mention: e.mention, placement, excerpt, passage: q.text });
+      rows.push({ mention: e.mention, placement, excerpt, passage: q.text, cited: q.cited ?? null });
     }
   }
   return rows;
@@ -152,12 +157,12 @@ export function whoOf(m: MarginaliaMention): string {
 export const leadOf = (m: MarginaliaMention): string => `${whoOf(m)} ${relationWords(m.relation)} this`;
 
 /** What a row says about where the quote is, for the list; null for a passage that sits in the note (the marker says it). */
-export function placementNote(p: Placement): string | null {
+export function placementNote(p: Placement, cited?: number | null): string | null {
   switch (p.kind) {
     case "paragraph": return null;
     case "whole": return "the whole post";
     case "reply": return "a reply, with no quote";
-    case "earlier": return "from an earlier version";
+    case "earlier": return typeof cited === "number" ? `quoted version ${cited}; this wording is no longer in the note` : "from an earlier version";
     case "unknown": return p.reason === "over-cap" ? "not looked up yet" : p.reason === "unreadable" ? "the Studio does not hold this post, so what it quotes cannot be read" : "what it quotes could not be read";
   }
 }

@@ -17,7 +17,8 @@ import { choosePassageDestination, type PassageChoice } from "../ui/PassageSendM
 import { PassageDock } from "../ui/passageDock";
 import { replyPlan } from "./replyToPost";
 import { noteHeadings } from "./noteHeadings";
-import { insertPassage } from "./passageInsert";
+import { insertPassage, newThreadBody } from "./passageInsert";
+import { createDraft, openForEditing } from "./passageDraftEntry";
 import { PM } from "./passageMessages";
 import { destinationVerdict, parseFolders, passageBlocked, readRecent, withRecent, type DestinationNote, type RecentDestination } from "./passageScope";
 import { passageFromSelection, quoteBlockOf, renamedForThread, threadConversion } from "./threadCommands";
@@ -127,6 +128,14 @@ async function sendPassage(app: App, plugin: Plugin, deps: PassageDeps, post: Re
 }
 
 async function writePassage(app: App, plugin: Plugin, settings: BlygSettings, choice: PassageChoice, block: string, recentPath: string, loadRecent: () => Promise<RecentDestination[]>): Promise<void> {
+  if (choice.newThread === true) {
+    // A new thread of its own: nothing is written to the note that cannot hold a quote. It opens with the cursor on the empty line under the quote.
+    const made = await createDraft(app, settings, "", "thread", newThreadBody(block));
+    if (!made) return;
+    await openForEditing(app, made);
+    new Notice(PM.newThreadMade(made.basename), 10000);
+    return;
+  }
   const file = app.vault.getFileByPath(choice.path);
   if (!file) return void new Notice(PM.noteGone, 8000);
   if (choice.convert && !(await makeThread(app, settings, file))) return void new Notice(PM.convertFailed, 8000);

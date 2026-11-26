@@ -30,7 +30,6 @@ export function selectionInPostBody(root: HTMLElement): string {
 export class PassageDock {
   private el: HTMLElement | null = null;
   private held = "";
-  private heldAt = 0;
   private timer = 0;
 
   constructor(private readonly root: HTMLElement, private readonly port: DockPort) {}
@@ -42,7 +41,6 @@ export class PassageDock {
     window.clearTimeout(this.timer);
     if (post && text.trim() !== "") {
       this.held = text;
-      this.heldAt = Date.now();
       this.port.seen(post, text);
       this.show(post, text);
       return;
@@ -54,7 +52,8 @@ export class PassageDock {
   private passage(): string {
     const now = selectionInPostBody(this.root);
     if (now.trim() !== "") return now;
-    return Date.now() - this.heldAt < HELD_MS + 500 ? this.held : "";
+    // The dock hides itself HELD_MS after the selection goes, so while it is on screen the last passage is still the one meant.
+    return this.el?.isConnected ? this.held : "";
   }
 
   private show(post: ReadingPost, text: string): void {
@@ -86,6 +85,21 @@ export class PassageDock {
     this.el.toggleClass("is-blocked", why !== null);
     const send = this.el.querySelector<HTMLButtonElement>(".blyg-passage-dock-send");
     if (send) send.disabled = why !== null;
+    this.clearNavbar(this.el);
+  }
+
+  /**
+   * Obsidian's floating bar on a phone must never cover the button. The pane clears it by its own padding, which is measured at layout changes and can be stale
+   * (a pane that was hidden while it was measured); the dock checks for itself and lifts itself by the overlap, so a tap always lands on the dock.
+   */
+  private clearNavbar(el: HTMLElement): void {
+    const bar = this.root.ownerDocument.querySelector<HTMLElement>(".mobile-navbar");
+    el.style.marginBottom = "";
+    if (!bar || bar.offsetParent === null) return;
+    const b = bar.getBoundingClientRect();
+    const d = el.getBoundingClientRect();
+    if (b.width <= 0 || b.height <= 0 || d.bottom <= b.top || d.top >= b.bottom) return;
+    el.style.marginBottom = `${Math.ceil(d.bottom - b.top)}px`;
   }
 
   hide(): void {
