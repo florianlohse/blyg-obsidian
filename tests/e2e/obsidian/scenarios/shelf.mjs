@@ -146,6 +146,14 @@ await runScenario({ data }, async (s) => {
   const b2 = await saveBtn();
   check(b2?.text === "Saved" && b2.saved && b2.glyph, `the button says Saved afterwards (${JSON.stringify(b2)})`);
 
+  // A: the status line's "Saved for later." belongs to the post it was said about: stepping to the next post clears it
+  check(/Saved for later/.test(await status()), `after saving the open post the status line says so (${await status()})`);
+  await pg.click(".blyg-reader-header .blyg-reader-step-next");
+  await eventually(async () => !/Saved for later/.test(await status()));
+  check(!/Saved for later|Removed from saved/.test(await status()), `moving to the next post clears that message (${JSON.stringify(await status())})`);
+  await pg.click(".blyg-reader-header .blyg-reader-step-prev");
+  await eventually(async () => (await saveBtn())?.text === "Saved");
+
   // ---- back to the feed, the Saved view: one read, no write, an older post the feed did not load, in the shelf's order
   await pg.click(".blyg-reader-header .blyg-reader-back");
   await pg.waitForSelector(".blyg-reader-card", { timeout: 15000 });
