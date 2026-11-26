@@ -17,7 +17,9 @@ export function parseQuotesFromHtml(html: string, itemId: string): FoundQuote[] 
     const classes = classOf(attrs).split(/\s+/);
     if (!classes.includes("blyg-transclusion") || attr(attrs, "data-blyg-id") !== itemId) continue;
     const text = classes.includes("blyg-partial") ? plainTextFromHtml(m[2] ?? "") : "";
-    out.push(text !== "" ? { kind: "passage", text } : { kind: "whole" });
+    const v = Number(attr(attrs, "data-blyg-version"));
+    const cited = Number.isInteger(v) && v >= 1 ? { cited: v } : {};
+    out.push(text !== "" ? { kind: "passage", text, ...cited } : { kind: "whole", ...cited });
   }
   return out;
 }

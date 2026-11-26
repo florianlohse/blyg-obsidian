@@ -150,7 +150,7 @@ await runScenario({ data }, async (s) => {
   check(list.some((t) => /Ana replied to this/.test(t) && /a reply, with no quote/.test(t)), "Ana's reply without a quote is listed as a reply, not as unreadable");
   check(list.some((t) => /Mira quoted this/.test(t) && /the whole post/.test(t)), "Mira's whole-post quote, of a blyg the owner does not follow (peek has HTML only, no subscription), is listed as a whole-post quote");
   check(!list.some((t) => /Zed/.test(t)), "a mention of another item is not listed");
-  check(list.some((t) => /Ed quoted this/.test(t) && /earlier version/.test(t)), "Ed's quote of wording the note no longer has says 'from an earlier version'");
+  check(list.some((t) => /Ed quoted this/.test(t) && /quoted version 1; this wording is no longer in the note/.test(t)), "Ed's quote of wording the note no longer has says which version he quoted (his directive says @v1)");
   check(list.some((t) => /Kai quoted this/.test(t) && /cannot be read|could not be read/.test(t)), "a post the Studio cannot serve says that it could not be read (never an empty list)");
   check(!list.some((t) => /Nobody has quoted this yet/.test(t)) && !(await page.evaluate(() => /Nobody has quoted this yet/.test(document.body.textContent ?? ""))), "the list never says 'Nobody has quoted this yet' while mentions exist");
 
