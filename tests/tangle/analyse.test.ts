@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rewriteTangled, scanTangle, spanLabel, TANGLE_MAX } from "../../src/tangle/analyse";
+import { blankTangleMarkers, rewriteTangled, scanTangle, spanLabel, TANGLE_MAX } from "../../src/tangle/analyse";
 
 const ID = "7c9wk2n4h6q1x8v0z3m5rjy2ke";
 const codes = (t: string): string[] => scanTangle(t).issues.map((i) => i.code);
@@ -19,8 +19,9 @@ describe("spans ![[+ … ]]", () => {
   it("opens with a line break after the marker", () => {
     expect(codes("![[+\nwords\n]]\n")).toEqual([]);
   });
-  it("steps over links and directives when looking for the closer", () => {
-    const t = `![[+ see [[Note]] and\n![[${ID} | label]]\nand [[${ID}]] end]]\n`;
+  it("steps over links and directives written with an id when looking for the closer, not over a link by name", () => {
+    expect(codes("![[+ see [[Note]] ok]]\n")).toEqual(["closer-not-at-line-end"]);
+    const t = `![[+ see [[${ID}]] and\n![[${ID} | label]]\nand [[${ID} | x]] end]]\n`;
     const s = scanTangle(t);
     expect(s.issues).toEqual([]);
     expect(s.count).toBe(1);
@@ -28,7 +29,13 @@ describe("spans ![[+ … ]]", () => {
   });
   it("refuses: opener not at line start", () => {
     expect(codes("text ![[+ a]]\n")).toEqual(["opener-not-at-line-start"]);
-    expect(codes(" ![[+ a]]\n")).toEqual(["opener-not-at-line-start"]);
+    expect(codes("- ![[+ a]]\n")).toEqual(["opener-not-at-line-start"]);
+    expect(codes("> ![[+ a]]\n")).toEqual(["opener-not-at-line-start"]);
+  });
+  it("up to three spaces of indent are fine (measured on a Studio); four spaces or a tab are indented code, inert", () => {
+    expect(scanTangle("   ![[+ a b]]\n").count).toBe(1);
+    expect(scanTangle("    ![[+ a b]]\n")).toMatchObject({ count: 0, issues: [] });
+    expect(scanTangle("\t![[+ a b]]\n")).toMatchObject({ count: 0, issues: [] });
   });
   it("refuses: no space after the opener", () => {
     expect(codes("![[+a]]\n")).toEqual(["no-space-after-opener"]);
@@ -94,8 +101,9 @@ describe("spanLabel", () => {
     expect(spanLabel("one two three four five six seven eight nine")).toBe("one two three four five six seven eight…");
     expect(spanLabel("one two three")).toBe("one two three");
   });
-  it("leaves directive lines out, and bars and brackets", () => {
-    expect(spanLabel(`![[${ID}]]\nreal | words [x]`)).toBe("real words x");
+  it("leaves directive lines out; keeps bars and single brackets; writes ]] as ] ] (all as a Studio 0.69.0 does)", () => {
+    expect(spanLabel(`![[${ID}]]\nreal | words [x]`)).toBe("real | words [x]");
+    expect(spanLabel("a ```\nb]]\n```\nc")).toBe("a ``` b] ] ``` c");
     expect(spanLabel(`![[${ID}]]`)).toBe("");
   });
 });
@@ -127,8 +135,21 @@ describe("rewriteTangled (what the Studio does to its working copy, done to the 
     expect(rewriteTangled("![[+ a]] more\n", [A]).ok).toBe(false);
     expect(rewriteTangled("no parts\n", [A]).ok).toBe(false);
   });
+  it("an indented opener loses its indent, as in the Studio", () => {
+    expect(rewriteTangled("  ![[+ a b]]\nnext", [A])).toEqual({ ok: true, text: `![[${A} | a b]]\n\nnext` });
+  });
   it("is idempotent once rewritten: the result holds no parts", () => {
     const r = rewriteTangled("![[+ a b]]\n", [A]);
     expect(r.ok && scanTangle(r.text).count).toBe(0);
+  });
+});
+
+describe("blankTangleMarkers", () => {
+  it("blanks only the markers; length and lines are kept", () => {
+    const text = "![[+ the words]]\n\nand [[+ idea]] here";
+    const s = scanTangle(text);
+    const out = blankTangleMarkers(text, s.parts);
+    expect(out).toHaveLength(text.length);
+    expect(out).toBe("     the words  \n\nand     idea   here");
   });
 });

@@ -139,6 +139,8 @@ export interface StudioCommandDone {
   version: number;
   revision: number;
   warning?: string;
+  /** Publish with `tangle: true`: the items the Studio made from the thread's spans and placeholders, in source order (each published before the thread). */
+  parts?: Array<{ id: string; version: number }>;
 }
 
 /** What a media upload answers: the address the Studio gave the file (it holds the file's SHA-256), and the item's new revision when it was attached to one. */
@@ -162,7 +164,7 @@ export type StudioFailure =
   /** The Studio speaks another API contract than this plugin (refused before any request, S16 plan §3.2). `message` says what to update. */
   | { kind: "incompatible"; which: "studio-older" | "plugin-older"; message: string }
   /** Another 4xx: Studio refused the content or the state (a cap, a grammar error, a kind that is fixed). `message` is Studio's own words; `code` its error code. */
-  | { kind: "rejected"; status: number; message: string; problems: StudioProblem[]; code?: string }
+  | { kind: "rejected"; status: number; message: string; problems: StudioProblem[]; code?: string; /** 409 `tangle-confirmation-required`: how many new items the publish would make, and the first words of each (the Studio's own labels). */ tangle?: { count: number; parts: string[] } }
   /** 5xx, 429 after waiting, or an answer the plugin cannot read. */
   | { kind: "error"; status: number; message: string };
 

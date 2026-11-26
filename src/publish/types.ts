@@ -97,7 +97,14 @@ export interface WritePreview {
    * For "delete-draft" `before` is the draft's text and `after` is empty; the draft and the note's record of it go, the note keeps its text.
    * For "studio-pull" `before` is the note's text and `after` the Studio's copy that would replace it; nothing is sent to the Studio.
    */
-  studio?: { host: string; html: string; /** Pictures of the note that the preview shows at a stand-in address: the window puts the vault's file in their place (ui/localImages.ts). */ localImages?: Array<{ src: string; path: string }>; quotes?: StudioQuoteLine[]; askNote?: boolean; noteDefault?: string; repost?: { id: string; origin: string | null; version: number | null } };
+  studio?: { host: string; html: string; /** Pictures of the note that the preview shows at a stand-in address: the window puts the vault's file in their place (ui/localImages.ts). */ localImages?: Array<{ src: string; path: string }>; quotes?: StudioQuoteLine[]; /** V1-C: the new items the Studio makes from this thread's spans and placeholders before the thread (the window lists them, one confirmation). */ tangle?: { rows: TangleRow[]; max: number }; askNote?: boolean; noteDefault?: string; repost?: { id: string; origin: string | null; version: number | null } };
+}
+
+/** One new item of a tangled thread, for the window: where it comes from and its first words. */
+export interface TangleRow {
+  kind: "span" | "placeholder";
+  line: number;
+  words: string;
 }
 
 /** One quote of a thread for the window: the item, the passage (null: all of it), whether it lives in another blyg, and how the note labelled it. */
@@ -146,6 +153,8 @@ export interface PublishDeps {
   imageDigests?: DigestCache;
   /** Replacing a note's text (pulling a Studio's copy into it). Absent in callers that never do (tests). */
   edit?: NoteEditPort;
+  /** Is the feature "New items from a thread" on (features/registry.ts)? Asked at call time. Absent or false: a note with `![[+ …]]` or `[[+ …]]` is refused as before. */
+  tangle?: () => boolean;
   yaml: Yaml;
   clock: Clock;
   random: Random;

@@ -149,7 +149,7 @@ export async function localContentHash(rawNote: string): Promise<string | null> 
  * What a Studio publish of this text would find locally, said in the panel before the user taps Publish: the same function the publish
  * calls (`prepareStudioText`), so the two cannot disagree. `contentMd` is the note's body as a publish takes it (comments out, normalised).
  */
-export function studioTextSummary(contentMd: string, kind: BlygKind, ctx: { settings: BlygSettings; vault: VaultPort; note: NoteRef }): ThreadSummary & { contentMd: string } {
+export function studioTextSummary(contentMd: string, kind: BlygKind, ctx: { settings: BlygSettings; vault: VaultPort; note: NoteRef; tangle?: boolean }): ThreadSummary & { contentMd: string } {
   const address = studioAddress(ctx.settings.studio);
   if (!address) return { quotes: 0, passages: 0, links: 0, problems: [], contentMd };
   const draft = prepareStudioText(contentMd, kind, {
@@ -158,6 +158,7 @@ export function studioTextSummary(contentMd: string, kind: BlygKind, ctx: { sett
     fromPath: ctx.note.path,
     origin: address.origin,
     fragmentCharCap: ctx.settings.blyg.fragmentCharCap,
+    ...(ctx.tangle === true ? { tangle: true } : {}),
   });
   return {
     quotes: draft.quotes.length,
@@ -854,6 +855,8 @@ export function deployLine(deploy: PanelDeploy | null): DeployLine | null {
 export interface PanelEnv {
   settings: BlygSettings;
   vault: VaultPort;
+  /** The feature "New items from a thread" is on: spans and placeholders are not listed as problems. */
+  tangle?: boolean;
   /** The plugin's record of plain publishes; without one, plain routes always read "not known". */
   published?: PublishedStore;
   /**
@@ -914,7 +917,7 @@ export async function loadPanelState(env: PanelEnv, note: NoteRef | null): Promi
       // The hash a publish stamps (`blyg_sent`) is of the text with names turned into ids and pictures in their canonical form, so that is the text to hash here too.
       const pictures = await resolveImages(normalizeContentMd(stripped.text), { vault, binary: env.images, fromPath: note.path, folder: route.vaultPrefix, ...(env.imageDigests ? { cache: env.imageDigests } : {}) });
       // A picture that cannot be sent is listed with the other problems (the publish refuses with the same words); the text is then taken as written.
-      const { contentMd, ...summary } = studioTextSummary(pictures.problems.length > 0 ? normalizeContentMd(stripped.text) : pictures.text, kind, { settings, vault, note });
+      const { contentMd, ...summary } = studioTextSummary(pictures.problems.length > 0 ? normalizeContentMd(stripped.text) : pictures.text, kind, { settings, vault, note, ...(env.tangle ? { tangle: true } : {}) });
       const thread = pictures.problems.length > 0 ? { ...summary, problems: [...pictures.problems, ...summary.problems] } : summary;
       const address = studioAddress(settings.studio);
       const idOfThisStudio = address && isBlygId(frontmatter.id) && typeof frontmatter.origin === "string" && sameOrigin(frontmatter.origin, address.origin) ? frontmatter.id : null;

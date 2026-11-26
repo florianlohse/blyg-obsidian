@@ -1,7 +1,9 @@
 // V1-C: the Studio's tangling syntax, read the way the Studio (0.63) reads it. Pure: no Obsidian, no network.
 //
-//   ![[+ passage]]   a SPAN: opens with `![[+` at the start of a line, then a space, tab or line break; closes with `]]` at the end of a line; it may run
-//                    over several lines. `[[id]]` and `![[id]]` links and directives inside are stepped over when looking for the closer.
+//   ![[+ passage]]   a SPAN: opens with `![[+` at the start of a line (up to 3 spaces of indent; 4 or a tab make it inert), then a space, tab or line
+//                    break; closes with `]]` at the end of a line; it may run over several lines. `[[id]]` and `![[id]]` links and directives
+//                    (written with a Blyg id) inside are stepped over when looking for the closer; a link by name is not.
+// Checked against a real Studio 0.69.0 (the probe in the V1-C pull request), not only against its description.
 //   [[+ idea]]       a PLACEHOLDER: inline, one line, not preceded by `!`, non-empty text.
 //
 // Both are inert in code, in `/* … */` comments and in Obsidian's `%% … %%` comments (the plugin strips those before it sends). One publish makes at
@@ -9,13 +11,17 @@
 // refusal then stands): a `TK` scope inside a span.
 import { maskCode } from "../core/links";
 
+const ID_LINK_AT = /^!?\[\[[0-9a-hjkmnp-tv-z]{26}(?:[ \t]*\|(?:(?!\]\])[^\n])*)?\]\]/;
+
 /** The Studio's limit: new items one publish may make, spans and placeholders together. */
 export const TANGLE_MAX = 10;
 
 export interface TangleSpan {
   kind: "span";
-  /** Offsets into the scanned text: from the `!` of `![[+` to just after the closing `]]`. */
+  /** Offsets into the scanned text: from the start of the opener's line (its indent goes) to just after the closing `]]`. */
   start: number;
+  /** Offset of the `!` of `![[+`. */
+  open: number;
   end: number;
   /** 1-based lines of the opener and the closer. */
   line: number;
@@ -26,6 +32,7 @@ export interface TangleSpan {
 export interface TanglePlaceholder {
   kind: "placeholder";
   start: number;
+  open: number;
   end: number;
   line: number;
   endLine: number;
@@ -101,9 +108,12 @@ export function scanTangle(text: string): TangleScan {
     const at = masked.indexOf("![[+", i);
     if (at < 0) break;
     const line = lineOf(starts, at);
-    if (at !== (starts[line - 1] ?? 0)) {
-      issues.push({ code: "opener-not-at-line-start", line });
+    const lineStart = starts[line - 1] ?? 0;
+    const indent = masked.slice(lineStart, at);
+    if (indent !== "" && !/^ {1,3}$/.test(indent)) {
       i = at + 4;
+      if (/^ {4,}$/.test(indent) || /^[ ]*\t[ \t]*$/.test(indent)) continue; // indented code: inert, as the Studio reads it
+      issues.push({ code: "opener-not-at-line-start", line });
       continue;
     }
     const after = masked[at + 4];
@@ -119,15 +129,9 @@ export function scanTangle(text: string): TangleScan {
     while (p < masked.length) {
       if (masked.startsWith("![[+", p)) nested ??= "span-in-span";
       else if (masked.startsWith("[[+", p)) nested ??= "placeholder-in-span";
-      if (masked.startsWith("![[", p) || masked.startsWith("[[", p)) {
-        const open = masked[p] === "!" ? p + 3 : p + 2;
-        const end = masked.indexOf("]]", open);
-        const nl = masked.indexOf("\n", open);
-        if (end >= 0 && (nl < 0 || end < nl)) {
-          p = end + 2;
-          continue;
-        }
-        p = open;
+      const link = ID_LINK_AT.exec(masked.slice(p, p + 400));
+      if (link) {
+        p += link[0].length;
         continue;
       }
       if (masked.startsWith("]]", p)) {
@@ -148,7 +152,7 @@ export function scanTangle(text: string): TangleScan {
     const words = text.slice(at + 4, closer).trim();
     if (words === "") issues.push({ code: "empty-span", line });
     if (/\]\(blyg-media:/.test(text.slice(at, end))) issues.push({ code: "image-in-span", line });
-    parts.push({ kind: "span", start: at, end, line, endLine: lineOf(starts, closer), text: words });
+    parts.push({ kind: "span", start: lineStart, open: at, end, line, endLine: lineOf(starts, closer), text: words });
     blankRange(at, end);
     i = end;
   }
@@ -165,20 +169,23 @@ export function scanTangle(text: string): TangleScan {
       issues.push({ code: "empty-placeholder", line });
       continue;
     }
-    parts.push({ kind: "placeholder", start: at, end: at + m[0].length, line, endLine: line, text: text.slice(at + 3, at + m[0].length - 2).trim() });
+    parts.push({ kind: "placeholder", start: at, open: at, end: at + m[0].length, line, endLine: line, text: text.slice(at + 3, at + m[0].length - 2).trim() });
   }
   parts.sort((a, b) => a.start - b.start);
   issues.sort((a, b) => a.line - b.line);
   return { parts, issues, count: parts.length, overCap: parts.length > TANGLE_MAX };
 }
 
-/** The label of a span's directive: the first 8 words, `…` when cut, directive lines left out, and cleaned for `![[id | label]]`. Empty: no label. */
+/**
+ * The label of a span's directive, as the Studio makes it (measured on 0.69.0): the first 8 words joined by single spaces (lines and paragraphs
+ * run together), `…` when cut, own-line directives left out, a `]]` written `] ]`. Bars and single brackets stay. Empty: no label.
+ */
 export function spanLabel(span: string, words = 8): string {
   const kept = span
     .split("\n")
     .filter((l) => !/^\s*!\[\[[^\]\n]*\]\]\s*$/.test(l))
     .join(" ")
-    .replace(/[|[\]]/g, " ")
+    .replace(/\]\]/g, "] ]")
     .split(/\s+/)
     .filter((w) => w !== "");
   return kept.length > words ? `${kept.slice(0, words).join(" ")}…` : kept.join(" ");
@@ -202,7 +209,7 @@ export function rewriteTangled(text: string, ids: string[]): RewriteResult {
     out += text.slice(at, part.start);
     at = part.end;
     if (part.kind === "placeholder") {
-      out += `[[${id} | ${spanLabel(part.text, Number.MAX_SAFE_INTEGER) || part.text}]]`;
+      out += `[[${id} | ${part.text}]]`;
       return;
     }
     const label = spanLabel(part.text);
@@ -214,4 +221,20 @@ export function rewriteTangled(text: string, ids: string[]): RewriteResult {
     if (rest.length > 0 && breaks < 2 && !/^\s*$/.test(rest)) out += "\n".repeat(2 - breaks);
   });
   return { ok: true, text: out + text.slice(at) };
+}
+
+/**
+ * The text with the tangle markers blanked (same length): `![[+` and `]]` of a span, `[[+` and `]]` of a placeholder. What is left is the
+ * words, which the other checks (stray embeds, links by name) then read as they read any text.
+ */
+export function blankTangleMarkers(text: string, parts: readonly TanglePart[]): string {
+  const chars = text.split("");
+  const blank = (from: number, to: number): void => {
+    for (let k = from; k < to; k++) if (chars[k] !== "\n") chars[k] = " ";
+  };
+  for (const part of parts) {
+    blank(part.open, part.open + (part.kind === "span" ? 4 : 3));
+    blank(part.end - 2, part.end);
+  }
+  return chars.join("");
 }
