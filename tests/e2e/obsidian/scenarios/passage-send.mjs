@@ -218,5 +218,5 @@ await runScenario({ data }, async (s) => {
   await eventually(() => pg.evaluate(() => document.querySelector(".blyg-passage-dock-send")));
   await tap(".blyg-passage-dock-send");
   const none = await eventually(async () => (await noticeText()).find((t) => /Choose folders for passages/.test(t)));
-  check(Boolean(none) && !(await modal()), `with no folder chosen it says "Choose folders for passages first" and opens no picker (${none})`);
+  check(Boolean(none) && !(await modal()), `with no folder chosen it says "Choose folders for passages first" and opens no picker (${none ?? JSON.stringify({ notices: await noticeText(), dock: await pg.evaluate(() => !!document.querySelector(".blyg-passage-dock-send")), sel: await pg.evaluate(() => getSelection()?.toString().length), active: await pg.evaluate(() => window.app.workspace.activeLeaf?.view?.getViewType?.()) })})`);
 });
