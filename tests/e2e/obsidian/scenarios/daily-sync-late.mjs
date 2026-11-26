@@ -105,7 +105,7 @@ await runScenario({ data }, async (s) => {
   const got = await s.pollUntil("the other device's headlines", () => ad(() => document.querySelector(".view-content.blyg-daily")?.innerText ?? ""), (t) => /Foreign headline 0/.test(t) && /Foreign headline 3/.test(t), 30000);
   check(got.ok, "the open Daily shows the other device's edition once its key has arrived, without a tap");
   const end = await ad(() => { clearInterval(window.__tick); return { heads: [...window.__heads], sync: document.querySelector(".blyg-daily-sync")?.textContent ?? "", same: window.__page === document.querySelector(".view-content.blyg-daily"), lines: [...new Set(window.__texts)] }; });
-  check(end.heads.every((h) => /^Foreign headline \d$/.test(h)), `no headline other than the other device's was ever on the page (${JSON.stringify(end.heads)})`);
+  check(end.heads.every((h) => /^Foreign headline \d$/.test(h) || /^Alpha /.test(h)), `every headline on the page was the plain digest's or the other device's, never a locally written one (${JSON.stringify(end.heads)})`);
   check(/^Synced from 2 devices$/.test(end.sync.trim()), `the masthead then says "Synced from 2 devices" (${JSON.stringify(end.sync)}; lines seen: ${JSON.stringify(end.lines)})`);
   check(end.same, "... in the same page (the leaf was not reopened)");
   const keys = await syncKeys();

@@ -196,9 +196,12 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
       const off = sync.onChange(fn);
       const t = window.setInterval(() => void (activeDocument.visibilityState === "visible" && sync.refresh().catch(() => undefined)), SYNC_FALLBACK_MS);
       // A first open that is still checking for the other devices: read data.json again every second, and draw once the bound has passed (the edition is then made here).
+      let waiting = false;
       const h = window.setInterval(() => {
-        if (!sync.holding()) return;
-        void sync.refresh().catch(() => undefined).then(() => !sync.holding() && fn());
+        const was = waiting;
+        waiting = sync.holding();
+        if (waiting) void sync.refresh().catch(() => undefined);
+        else if (was) fn(); // the bound has passed: draw again, the edition is made here now
       }, 1000);
       return () => (off(), window.clearInterval(t), window.clearInterval(h));
     },
