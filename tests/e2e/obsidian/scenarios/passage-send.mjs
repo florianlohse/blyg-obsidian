@@ -100,6 +100,7 @@ await runScenario({ data }, async (s) => {
   const dock = await pg.evaluate(() => { const d = document.querySelector(".blyg-passage-dock"); const r = d.getBoundingClientRect(); const root = document.querySelector(".blyg-reader").getBoundingClientRect(); const b = d.querySelector(".blyg-passage-dock-send").getBoundingClientRect(); return { count: d.querySelector(".blyg-passage-dock-note")?.textContent, bottomGap: Math.round(root.bottom - r.bottom), clear: Math.round(parseFloat(getComputedStyle(document.querySelector(".blyg-reader")).paddingBottom)), btnH: Math.round(b.height), w: Math.round(r.width), vw: window.innerWidth }; });
   check(/\d+ selected characters/.test(dock.count ?? ""), `the dock says how many characters are selected (${dock.count})`);
   check(Math.abs(dock.bottomGap - dock.clear) <= 2 && dock.btnH >= 40 && dock.w <= dock.vw, `the dock is at the foot of the pane, just above Obsidian's own bottom bar, the button is at least 40 px high, nothing wider than the screen (${JSON.stringify(dock)})`);
+  check(await pg.evaluate(() => { const n = document.querySelector(".mobile-navbar"); const d = document.querySelector(".blyg-passage-dock").getBoundingClientRect(); const r = n?.getBoundingClientRect(); return !r || n.offsetParent === null || d.bottom <= r.top + 1; }), "the dock is clear of Obsidian's own bottom bar, so a tap on Send lands on it");
   check(state.writes === 0 && state.reads.length === 0, "selecting asks nothing of the Studio and writes nothing");
 
   // ---- one tap on Send: the quotation is read first (so a post that cannot be quoted is said before the writer looks for a note), then the picker
@@ -219,7 +220,7 @@ await runScenario({ data }, async (s) => {
   await selectPassage(SENT);
   await eventually(() => pg.evaluate(() => document.querySelector(".blyg-passage-dock-send")));
   await pg.evaluate(() => { window.app.plugins.plugins.blyg.settings.passages.folders = ""; }); // set last: the plugin re-reads data.json when it changes
-  const before = await pg.evaluate(() => { const b = document.querySelector(".blyg-passage-dock-send"); const r = b?.getBoundingClientRect(); return { disabled: b?.disabled, note: document.querySelector(".blyg-passage-dock-note")?.textContent, rect: r && [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)], vh: innerHeight }; });
+  const before = await pg.evaluate(() => { const b = document.querySelector(".blyg-passage-dock-send"); const r = b?.getBoundingClientRect(); return { disabled: b?.disabled, note: document.querySelector(".blyg-passage-dock-note")?.textContent, rect: r && [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)], vh: innerHeight, nav: (() => { const n = document.querySelector(".mobile-navbar"); const r = n?.getBoundingClientRect(); return r && [Math.round(r.top), Math.round(r.height), getComputedStyle(n).display]; })(), pad: getComputedStyle(document.querySelector(".blyg-reader")).paddingBottom }; });
   await s.clearNotices();
   await tap(".blyg-passage-dock-send");
   const none = await eventually(async () => (await s.notices()).find((t) => /Choose folders for passages/.test(t)), 8000);

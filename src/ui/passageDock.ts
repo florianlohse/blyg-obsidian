@@ -85,6 +85,21 @@ export class PassageDock {
     this.el.toggleClass("is-blocked", why !== null);
     const send = this.el.querySelector<HTMLButtonElement>(".blyg-passage-dock-send");
     if (send) send.disabled = why !== null;
+    this.clearNavbar(this.el);
+  }
+
+  /**
+   * Obsidian's floating bar on a phone must never cover the button. The pane clears it by its own padding, which is measured at layout changes and can be stale
+   * (a pane that was hidden while it was measured); the dock checks for itself and lifts itself by the overlap, so a tap always lands on the dock.
+   */
+  private clearNavbar(el: HTMLElement): void {
+    const bar = this.root.ownerDocument.querySelector<HTMLElement>(".mobile-navbar");
+    el.style.marginBottom = "";
+    if (!bar || bar.offsetParent === null) return;
+    const b = bar.getBoundingClientRect();
+    const d = el.getBoundingClientRect();
+    if (b.width <= 0 || b.height <= 0 || d.bottom <= b.top || d.top >= b.bottom) return;
+    el.style.marginBottom = `${Math.ceil(d.bottom - b.top)}px`;
   }
 
   hide(): void {
