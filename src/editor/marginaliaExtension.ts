@@ -64,7 +64,7 @@ export function marginaliaExtension(deps: MarginaliaEditorDeps): Extension {
       }
       update(u: ViewUpdate): void {
         const modeChanged = u.state.field(editorLivePreviewField, false) !== u.startState.field(editorLivePreviewField, false);
-        if (u.docChanged || modeChanged || u.transactions.some((t) => t.effects.some((e) => e.is(refresh)))) this.decorations = this.build(u.view);
+        if (u.docChanged || modeChanged || u.transactions.some((t) => t.reconfigured || t.effects.some((e) => e.is(refresh)))) this.decorations = this.build(u.view);
       }
       destroy(): void {
         this.stop();

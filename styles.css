@@ -1058,3 +1058,10 @@ body button.blyg-menurow[disabled] { opacity: 0.6; cursor: default; }
   .blyg-reader .blyg-reader-header .blyg-reader-bar:not(.blyg-reader-bar-main):not(.blyg-reader-bar-thumb) .blyg-reader-btn { font-size: var(--font-ui-smaller); padding-inline: 6px; }
   .blyg-reader-header button.blyg-reader-menubtn { width: 28px; min-width: 28px; padding-inline: 0; }
 }
+
+/* HK3 Marginalia: the Reception section at the end of a note (editor block widget). */
+.blyg-reception-widget { margin: var(--size-4-4) 0 var(--size-4-8); user-select: text; }
+.blyg-reception-section { padding-top: var(--size-4-3); border-top: 1px solid var(--background-modifier-border); font-size: var(--font-ui-medium); }
+.blyg-reception-title { font-weight: var(--font-semibold); font-size: var(--font-ui-large); }
+.blyg-reception-group { margin-top: var(--size-4-3); color: var(--text-muted); font-size: var(--font-ui-smaller); text-transform: uppercase; letter-spacing: 0.06em; }
+.blyg-reception-section .blyg-reception-open { min-height: var(--input-height); }

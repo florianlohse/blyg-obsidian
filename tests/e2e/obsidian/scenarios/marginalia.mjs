@@ -107,10 +107,27 @@ await runScenario({ data }, async (s) => {
   check(card.length >= 1 && /quoted this|replied to this/.test(card.join(" ")), `a tap on a marker opens a card saying who, how and when (${JSON.stringify(card)})`);
   await page.keyboard.press("Escape");
 
+  // ---- the Reception section at the end of the note (a block widget after the last line), grouped, in words, inside the screen
+  const section = () => page.evaluate(() => {
+    const el = document.querySelector(".workspace-leaf.mod-active .blyg-reception-section");
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { title: el.querySelector(".blyg-reception-title")?.textContent ?? "", groups: [...el.querySelectorAll(".blyg-reception-group")].map((g) => g.textContent), rows: el.querySelectorAll(".blyg-reception-row").length, inside: r.left >= 0 && r.right <= innerWidth + 0.5, text: el.textContent ?? "", afterText: !!el.closest(".cm-content") && (document.querySelector(".workspace-leaf.mod-active .cm-content")?.lastElementChild?.contains(el) ?? false) };
+  });
+  const sec = await s.becomes(async () => { const v = await section(); return v && v.rows >= 7 ? v : false; }, 15000, "the Reception section");
+  const live2 = await section();
+  console.log("OBSERVED section:", JSON.stringify(live2)?.slice(0, 900));
+  check(Boolean(sec) && live2.title === "Reception · 7", `Live Preview ends with a Reception section titled with the count (${live2?.title})`);
+  check(JSON.stringify(live2?.groups) === JSON.stringify(["Quoted a paragraph", "Quoted the whole note", "Replies", "From an earlier version", "Could not be read"]), `its groups are in the fixed order (${JSON.stringify(live2?.groups)})`);
+  check(Boolean(live2?.inside), "the section stays inside the 393 px screen");
+  check(/paragraph 2/.test(live2?.text ?? "") && /Ana replied to this/.test(live2?.text ?? "") && /earlier version/.test(live2?.text ?? ""), "it says which paragraph, lists the reply with no quote and the older wording");
+
   // ---- source mode and the note itself
   await openIn("source");
   await wait(800);
   check((await markers()).length === 0, "source mode draws no marker");
+  const srcSec = await s.becomes(async () => { const v = await section(); return v && v.rows >= 7 ? v : false; }, 10000, "the section in source mode");
+  check(Boolean(srcSec), "source mode shows the Reception section at the end");
   check((await s.readNote(PATH)) === NOTE, "the note's text is byte for byte what it was (nothing of a stranger is written into it)");
 
   // ---- the panel's Reception list: every mention, none lost as "nobody"; a post the Studio cannot serve says so
@@ -126,6 +143,19 @@ await runScenario({ data }, async (s) => {
   check(list.some((t) => /Ed quoted this/.test(t) && /earlier version/.test(t)), "Ed's quote of wording the note no longer has says 'from an earlier version'");
   check(list.some((t) => /Kai quoted this/.test(t) && /cannot be read|could not be read/.test(t)), "a post the Studio cannot serve says that it could not be read (never an empty list)");
   check(!list.some((t) => /Nobody has quoted this yet/.test(t)) && !(await page.evaluate(() => /Nobody has quoted this yet/.test(document.body.textContent ?? ""))), "the list never says 'Nobody has quoted this yet' while mentions exist");
+
+  // ---- the two switches: each hides its own display and nothing else
+  const setSwitch = (key, v) => page.evaluate(([k, val]) => { window.app.plugins.plugins.blyg.settings.marginalia[k] = val; window.app.workspace.updateOptions(); }, [key, v]);
+  await openIn("live");
+  await setSwitch("bottom", false);
+  await wait(800);
+  check((await section()) === null && (await markers()).length === 3, `"Reception at the end of the note" off: no section, the three marks stay (${(await markers()).length})`);
+  await setSwitch("bottom", true);
+  await setSwitch("markers", false);
+  await wait(800);
+  check((await section()) !== null && (await markers()).length === 0, "\"Marks in the text\" off: no marks, the section stays");
+  await setSwitch("markers", true);
+  check((await s.readNote(PATH)) === NOTE, "the note is still byte for byte what it was after all of it");
 
   check(seen.writes.length === 0, `the stand-in Studio saw no write (${JSON.stringify(seen.writes)})`);
 });
