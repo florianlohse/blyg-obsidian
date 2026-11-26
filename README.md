@@ -41,6 +41,12 @@ will change before anything leaves your vault.
   from Safari or another app: in Obsidian's share sheet make a **Location** that creates a **New note** in a folder of its own, set to **URL only** (or with `{{url}}` in its template),
   and enter that folder under **Settings → Blyg → Reader → Share inbox folder**. A new note in that folder that names one blyg post opens it in the reader. Existing notes and notes you edit later are never looked at, and no note is changed or deleted
   (delete the shared note yourself when you are done). A note with no address, or with more than one, opens nothing and says so.
+- **Send a passage to a note (experimental).** Select a passage in an open post of a blyg you follow: a small bar appears at the foot of the reader with **Send to note**. Choose a note (only
+  notes of the folders you list under **Settings → Blyg → Send passage to note**, one folder per line; with none listed nothing is offered; recent notes come first), then the heading the
+  quote goes under, or the end of the note. The passage is written as a native Blyg quote (a line naming the post, then the quoted words as a blockquote, then a blank line), so a thread
+  you later publish from that note shows the quote with its source and attributes only those words, without you pasting an address or fixing anything. The reader stays where it was;
+  **Open note** puts the cursor on the empty line under the quote for your reaction. A note that is an unpublished fragment can be turned into a thread first (a fragment cannot hold a quote).
+  Also available as the command **Send selected passage to a note**; to put it in Obsidian's toolbar above the keyboard on a phone, add it once under **Settings → Mobile → Toolbar**.
 - **Keep both sides in step.** Pull the Studio's copy into the note, import items that were written in the Studio,
   withdraw an item, delete a draft, put items into your Studio's hoppers.
 - **Mobile first.** Everything runs on iOS and Android as well as desktop; no desktop-only APIs are used.

@@ -1077,3 +1077,36 @@ body button.blyg-menurow[disabled] { opacity: 0.6; cursor: default; }
 .blyg-blocks .blyg-block-id { color: var(--text-muted); font-size: var(--font-smaller); }
 .blyg-blocks .blyg-block-excerpt { font-size: var(--font-smaller); overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .blyg-blocks .blyg-block-update { margin-top: var(--size-4-2); min-height: 34px; }
+/* "Send passage to note" (feature passages): the dock under the open post, and the two-step window. */
+.blyg-reader .blyg-passage-dock { flex: none; display: flex; flex-direction: column; gap: var(--size-2-2); padding: var(--size-4-2) var(--size-4-3); border-top: 1px solid var(--background-modifier-border); background: var(--background-primary); }
+.blyg-passage-dock-note { text-align: center; color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.blyg-passage-dock.is-blocked .blyg-passage-dock-note { color: var(--text-warning, var(--text-muted)); }
+.blyg-passage-dock-row { display: flex; gap: var(--size-4-2); }
+.blyg-passage-dock-row button { height: 40px; min-width: 40px; -webkit-user-select: none; user-select: none; }
+.blyg-passage-dock-send { flex: 1 1 auto; font-weight: var(--font-semibold); }
+.blyg-passage-dock-send:disabled { opacity: 0.45; }
+.is-mobile .blyg-passage-dock { padding-bottom: calc(var(--size-4-2) + env(safe-area-inset-bottom, 0px)); }
+.blyg-passage-modal { max-width: 560px; }
+.blyg-passage-modal .modal-content { display: flex; flex-direction: column; gap: var(--size-4-2); max-height: 70vh; }
+.is-phone .blyg-passage-modal { max-height: 88vh; }
+.blyg-passage-title { font-weight: var(--font-semibold); font-size: var(--font-ui-large); }
+.blyg-passage-sub { color: var(--text-muted); font-size: var(--font-ui-small); }
+.blyg-passage-preview { border-left: 3px solid var(--interactive-accent); padding: 2px var(--size-4-2); color: var(--text-muted); font-style: italic; font-size: var(--font-ui-small); max-height: 5.5em; overflow: hidden; overflow-wrap: anywhere; }
+.blyg-passage-search { width: 100%; height: 40px; }
+.blyg-passage-chips { display: flex; flex-wrap: wrap; gap: var(--size-4-1); }
+.blyg-passage-chip { height: 32px; border-radius: 16px; padding: 0 var(--size-4-3); }
+.blyg-passage-chip.is-on { background: var(--interactive-accent); color: var(--text-on-accent); }
+.blyg-passage-list { display: flex; flex-direction: column; overflow-y: auto; min-height: 0; flex: 1 1 auto; }
+.blyg-passage-group { padding: var(--size-4-2) 0 var(--size-2-1); color: var(--text-faint); font-size: var(--font-ui-smaller); text-transform: uppercase; letter-spacing: 0.06em; font-weight: var(--font-bold); }
+.blyg-passage-row { display: flex; flex-direction: column; align-items: flex-start; gap: 0; height: auto; min-height: 52px; padding: var(--size-4-1) var(--size-4-2); text-align: left; background: transparent; border: 0; border-top: 1px solid var(--background-modifier-border); border-radius: 0; box-shadow: none; }
+.blyg-passage-row.is-selected { background: color-mix(in srgb, var(--interactive-accent) 16%, var(--background-primary)); }
+.blyg-passage-name { color: var(--text-normal); overflow-wrap: anywhere; }
+.blyg-passage-where { color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.blyg-passage-heading { padding-left: calc(var(--size-4-2) + var(--blyg-indent, 0) * var(--size-4-4)); }
+.blyg-passage-end .blyg-passage-name { font-style: italic; }
+.blyg-passage-actions { display: flex; flex-direction: column; gap: var(--size-4-2); }
+.blyg-passage-actions button { height: 44px; }
+.blyg-passage-hint { opacity: 0.8; font-weight: normal; font-size: var(--font-ui-smaller); }
+.blyg-passage-modal .blyg-passage-back { align-self: flex-start; background: transparent; box-shadow: none; padding: 0 var(--size-4-2); height: 32px; border-radius: var(--radius-s); color: var(--text-accent); }
+.blyg-passage-empty { padding: var(--size-4-4) 0; color: var(--text-muted); }
+.blyg-passage-toast-open { margin-left: var(--size-4-2); }

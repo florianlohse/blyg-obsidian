@@ -174,6 +174,7 @@ const FIELD_LABELS: Record<string, string> = {
   "templates.fragment": "Fragment template",
   "templates.thread": "Thread template",
   "webQuote.format": "Web quote Markdown",
+  "passages.folders": "Folders for passages",
   routes: "Routes",
 };
 
