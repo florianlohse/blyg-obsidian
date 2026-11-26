@@ -102,9 +102,11 @@ export interface WritePreview {
 
 /** One new item of a tangled thread, for the window: where it comes from and its first words. */
 export interface TangleRow {
-  kind: "span" | "placeholder";
+  kind: "span" | "placeholder" | "block";
   line: number;
   words: string;
+  /** A paragraph of a note: the note's name and the block id, as written in `![[Note#^id]]`. */
+  block?: { host: string; id: string };
 }
 
 /** One quote of a thread for the window: the item, the passage (null: all of it), whether it lives in another blyg, and how the note labelled it. */

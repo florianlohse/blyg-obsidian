@@ -345,3 +345,14 @@ describe("digest settings", () => {
     expect(JSON.stringify(migrateSettings({ digest: { apiKey: "sk-x" } }).settings)).not.toContain("sk-x");
   });
 });
+
+describe("marginalia switches (HK3)", () => {
+  it("are both on in the defaults and for settings written before they existed", () => {
+    expect(defaultSettings().marginalia).toEqual({ markers: true, bottom: true });
+    expect(migrateSettings({ schemaVersion: SCHEMA_VERSION }).settings.marginalia).toEqual({ markers: true, bottom: true });
+  });
+  it("only a literal false turns one off; an odd value leaves it on", () => {
+    expect(migrateSettings({ schemaVersion: SCHEMA_VERSION, marginalia: { markers: false, bottom: "no" } }).settings.marginalia).toEqual({ markers: false, bottom: true });
+    expect(migrateSettings({ schemaVersion: SCHEMA_VERSION, marginalia: { markers: 0, bottom: false } }).settings.marginalia).toEqual({ markers: true, bottom: false });
+  });
+});

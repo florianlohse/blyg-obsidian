@@ -25,6 +25,7 @@ import { sameOrigin, ORIGIN_KEY, SENT_KEY, URL_KEY } from "../studio/record";
 import { editedInStudio, type StudioFacts } from "../studio/live";
 import { localStudioHash, resolveImages, type DigestCache } from "../studio/media";
 import { panelLines, prepareStudioText } from "../studio/text";
+import { translateBlockEmbeds } from "../publish/studioBlocks";
 import type { PublishedRecord, PublishedStore } from "./publishedStore";
 import { githubInUse } from "../settings/studioOnly";
 import { activeBranch, activeChannel, toPublishSettings } from "./publishSettings";
@@ -917,9 +918,13 @@ export async function loadPanelState(env: PanelEnv, note: NoteRef | null): Promi
       // The hash a publish stamps (`blyg_sent`) is of the text with names turned into ids and pictures in their canonical form, so that is the text to hash here too.
       const pictures = await resolveImages(normalizeContentMd(stripped.text), { vault, binary: env.images, fromPath: note.path, folder: route.vaultPrefix, ...(env.imageDigests ? { cache: env.imageDigests } : {}) });
       // A picture that cannot be sent is listed with the other problems (the publish refuses with the same words); the text is then taken as written.
-      const { contentMd, ...summary } = studioTextSummary(pictures.problems.length > 0 ? normalizeContentMd(stripped.text) : pictures.text, kind, { settings, vault, note, ...(env.tangle ? { tangle: true } : {}) });
-      const thread = pictures.problems.length > 0 ? { ...summary, problems: [...pictures.problems, ...summary.problems] } : summary;
       const address = studioAddress(settings.studio);
+      // Paragraphs of other notes (`![[Note#^id]]`, V1-C.2) read as the quotes they become; the ones not published yet are made when the thread is published.
+      const textHere = pictures.problems.length > 0 ? normalizeContentMd(stripped.text) : pictures.text;
+      const embeds = env.tangle && kind === "thread" && address ? translateBlockEmbeds(textHere, { vault, routes: settings.routes, fromPath: note.path, origin: address.origin }) : null;
+      const { contentMd, ...summary } = studioTextSummary(embeds?.text ?? textHere, kind, { settings, vault, note, ...(env.tangle ? { tangle: true } : {}) });
+      const earlier = [...pictures.problems, ...(embeds?.problems ?? [])];
+      const thread = earlier.length > 0 ? { ...summary, problems: [...earlier, ...summary.problems] } : summary;
       const idOfThisStudio = address && isBlygId(frontmatter.id) && typeof frontmatter.origin === "string" && sameOrigin(frontmatter.origin, address.origin) ? frontmatter.id : null;
       const live = env.studioLive?.(note, idOfThisStudio);
       return computePanelState({ settings, note, frontmatter, localHash: await localStudioHash(contentMd), thread, chars: contentMd.length, ...(live ? { studio: live } : {}) });
