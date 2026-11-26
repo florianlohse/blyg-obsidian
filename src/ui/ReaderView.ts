@@ -9,7 +9,7 @@ import { drawMenuButton, drawMenuPanel, sortValue, type FeedMenu } from "./reade
 import { ItemView, sanitizeHTMLToDom, setIcon, type WorkspaceLeaf } from "obsidian";
 import { isUnread, type InboundMention, type ReadingPost } from "../studio/reading";
 import { quickPost } from "./quickMenu";
-import { plainText, renderForeign, type ImageMode } from "./defang";
+import { plainText, renderForeign, type ImageMode } from "./defang"; import { routeOwnLinks } from "./readerOwnLinks";
 import { activeFilters, arrange, isReplyToMine, OWN_SOURCE, readFilter, cardOf, DEFAULT_FILTER, frameable, LENGTH_LABELS, postOfQuote, readingTimeLabel, relativeTime, SORT_LABELS, sourcesOf, type FeedFilter, type FeedLength, type FeedSort } from "./readerFeed";
 import { type ReaderFont } from "./readerFonts";
 import { ReturnPoint, whenIdle } from "./readerExtras";
@@ -1169,8 +1169,8 @@ export class BlygReaderView extends ItemView {
     const guard = renderForeign(p.contentHtml, { trustedOrigin: this.data?.studioOrigin ?? null, mode: this.host.imageMode(), baseUrl: p.sourceUrl ?? p.origin }, sanitizeHTMLToDom);
     if (guard.blocked > 0) this.button(into, `Load images (${guard.blocked})`, () => guard.loadAll(), { cls: "blyg-reader-loadall" });
     const body = into.createDiv({ cls: "blyg-reader-body" });
-    body.appendChild(guard.fragment);
-    this.nameQuoteSources(body, p);
+    body.appendChild(guard.fragment); this.nameQuoteSources(body, p);
+    routeOwnLinks(body, (id) => this.host.openOwnItem(id), (url) => this.host.openWeb(url)); // a link to one of my own items opens its note, not the web viewer
   }
 
   /**

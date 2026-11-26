@@ -42,6 +42,9 @@ await runScenario({ data }, async (s) => {
     const got = await s.becomes(async () => { const w = await widgets(); return w.length === 1 && /The words to be shown/.test(w[0].text) ? w : false; }, 15000, "the preview in Live Preview");
     if (!got) console.log("DEBUG", JSON.stringify(await page.evaluate(() => { const l = window.app.workspace.getLeaf(false); const cm = document.querySelector(".workspace-leaf.mod-active .cm-content"); return { mode: l.view.getMode?.(), state: l.getViewState().state, html: cm?.innerHTML?.slice(0, 700), cursor: l.view.editor?.getCursor?.() }; })));
     check(Boolean(got), `${layout}: Live Preview shows the text of the item the directive points at (${JSON.stringify(await widgets()).slice(0, 160)})`);
+    // H: the preview is collapsed to about two lines by default (the expand button is "Show more")
+    const clampPx = await page.evaluate(() => { const host = document.querySelector(".workspace-leaf.mod-active .blyg-reply-preview"); if (!host) return null; const probe = host.createDiv({ cls: "blyg-reply-preview-body is-clamped" }); const px = parseFloat(getComputedStyle(probe).maxHeight); const lh = parseFloat(getComputedStyle(probe).lineHeight) || 24; probe.remove(); return { px, lh }; });
+    check(clampPx && clampPx.px <= clampPx.lh * 2.4, `${layout}: a long quoted item is collapsed to two lines by default (max height ${clampPx?.px}px, line ${clampPx?.lh}px)`);
     if (process.env.POC_SHOTS) await page.screenshot({ path: `${process.env.POC_SHOTS}/reply-preview-${layout}.png` }).catch(() => {});
     check((await s.readNote(own)).includes(`![[${ownId} | My earlier item]]`) && !(await s.readNote(own)).includes("The words to be shown"), `${layout}: the note's text is unchanged: the directive stays, the item's words are not in the file`);
     const raw = await page.evaluate(() => document.querySelector(".workspace-leaf.mod-active .cm-content")?.textContent ?? "");

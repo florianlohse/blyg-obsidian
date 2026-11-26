@@ -93,3 +93,29 @@ export function passageBlocked(post: ReadingPost): string | null {
   if (isUnfollowedPost(post)) return PM.dockNotFollowed;
   return null;
 }
+
+/** The folder (as the writer named it, the longest that holds the path) a note is in; null when it is in none. */
+const rootOf = (path: string, folders: readonly string[]): string | null => folders.filter((f) => path.startsWith(`${f}/`)).sort((a, b) => b.length - a.length)[0] ?? null;
+
+/**
+ * Notes grouped by SUBFOLDER under the configured folders, for the picker's list. Only when at least one note sits in a subfolder (else null: one plain list, as before).
+ * Groups follow the order of the configured folders, the folder's own notes first, then its subfolders A to Z; the notes inside a group keep the order they came in.
+ * `title` is the folder's path, so two folders with the same subfolder name stay apart.
+ */
+export function clusterBySubfolder(notes: readonly DestinationNote[], folders: readonly string[]): Array<{ title: string; notes: DestinationNote[] }> | null {
+  const groups = new Map<string, { root: number; dir: string; notes: DestinationNote[] }>();
+  let nested = false;
+  for (const n of notes) {
+    const root = rootOf(n.path, folders);
+    if (root === null) continue;
+    const rest = n.path.slice(root.length + 1);
+    const dir = rest.includes("/") ? rest.slice(0, rest.lastIndexOf("/")) : "";
+    if (dir !== "") nested = true;
+    const title = dir === "" ? root : `${root}/${dir}`;
+    const g = groups.get(title) ?? { root: folders.indexOf(root), dir, notes: [] };
+    g.notes.push(n);
+    groups.set(title, g);
+  }
+  if (!nested) return null;
+  return [...groups.entries()].sort(([, a], [, b]) => a.root - b.root || (a.dir === "" ? -1 : b.dir === "" ? 1 : a.dir.localeCompare(b.dir))).map(([title, g]) => ({ title, notes: g.notes }));
+}

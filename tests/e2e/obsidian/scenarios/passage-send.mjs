@@ -78,6 +78,7 @@ await runScenario({ data }, async (s) => {
   const SENT = "The point of copying a passage out by hand was never the copy. It was the minute spent deciding.";
 
   await s.createNote("Reading/Commonplace book.md", HABIT);
+  await s.createNote("Reading/Essays/Nested note.md", "A note in a subfolder.\n");
   await s.createNote("Ideas/Slow reading.md", "Just a line with no heading.\n");
   await s.createNote("Private/Diary.md", "Not in a chosen folder.\n");
   await s.createNote("Blyg/Fragment 2026-11-26 0900.md", "A fragment of mine.\n");
@@ -109,6 +110,10 @@ await runScenario({ data }, async (s) => {
   const m1 = await modal();
   await shot("picker");
   check(m1?.rows.includes("Commonplace book") && m1.rows.includes("Slow reading") && !m1.rows.includes("Diary"), `the picker offers the notes of both chosen folders and not the others (${JSON.stringify(m1?.rows)})`);
+  // H: with subfolders under the chosen folders the notes are clustered by folder, under headings that carry the folder's path; hover and focus use the accent colour
+  check(m1?.groups.includes("Reading/Essays") && m1.groups.includes("Reading") && m1.groups.includes("Ideas"), `the list is clustered by folder, the subfolder under its own heading (${JSON.stringify(m1?.groups)})`);
+  const hoverCss = await pg.evaluate(() => { const st = [...document.styleSheets].flatMap((sh) => { try { return [...sh.cssRules]; } catch { return []; } }).flatMap((r) => (r instanceof CSSMediaRule ? [...r.cssRules] : [r])).map((r) => r.cssText ?? "").filter((t) => /blyg-passage-row(:hover|:focus-visible)/.test(t)); return st.some((t) => /:focus-visible/.test(t) && /interactive-accent/.test(t)) && st.some((t) => /:hover/.test(t) && /interactive-accent/.test(t)); });
+  check(hoverCss, "the picker rows use the accent colour on hover and keyboard focus");
   check(JSON.stringify(m1?.chips) === JSON.stringify(["Reading", "Ideas"]), `the folder chips show the scope (${JSON.stringify(m1?.chips)})`);
   check(m1?.text.includes("The point of copying a passage out by hand") && !m1.wide, "the picker shows the passage and does not scroll sideways");
   check(state.reads.length === 1 && state.writes === 0, `the quotation was read once, nothing written yet (${state.reads.length} reads, ${state.writes} writes)`);

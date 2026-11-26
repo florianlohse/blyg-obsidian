@@ -4,7 +4,7 @@
 import { Modal, type App } from "obsidian";
 import type { NoteHeading } from "../app/noteHeadings";
 import { PM } from "../app/passageMessages";
-import { destinationList, type DestinationNote, type DestinationVerdict, type RecentDestination } from "../app/passageScope";
+import { clusterBySubfolder, destinationList, type DestinationNote, type DestinationVerdict, type RecentDestination } from "../app/passageScope";
 import type { PassageTarget } from "../app/passageInsert";
 
 export interface PassagePickerPort {
@@ -114,7 +114,10 @@ class PassageModal extends Modal {
       }
     };
     group(PM.recent, all.recent);
-    group(PM.others, all.others);
+    // With subfolders under the chosen folders the other notes stand under their folder's path; with a search typed the list is flat, as before.
+    const clusters = this.query.trim() === "" ? clusterBySubfolder(all.others, all.folders) : null;
+    if (clusters) for (const c of clusters) group(c.title, c.notes);
+    else group(PM.others, all.others);
   }
 
   private async pickNote(n: DestinationNote): Promise<void> {
