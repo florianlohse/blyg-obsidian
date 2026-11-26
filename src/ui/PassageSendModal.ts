@@ -25,6 +25,8 @@ export interface PassageChoice {
   headingText: string | null;
   /** The note is an unpublished fragment and the writer chose to make it a thread. */
   convert: boolean;
+  /** The writer chose "Start a new thread with it" instead of this note: nothing is written to the note. */
+  newThread?: boolean;
 }
 
 const PREVIEW_CHARS = 180;
@@ -134,6 +136,14 @@ class PassageModal extends Modal {
         convert.createSpan({ cls: "blyg-passage-hint", text: ` ${PM.convertHint}` });
         convert.addEventListener("click", () => void this.step2(n, true));
       }
+    }
+    if (reason !== "plain-route") {
+      const fresh = box.createEl("button", { text: PM.newThread });
+      fresh.createSpan({ cls: "blyg-passage-hint", text: ` ${PM.newThreadHint}` });
+      fresh.addEventListener("click", () => {
+        this.done({ path: n.path, name: n.name, target: { kind: "end" }, headingText: null, convert: false, newThread: true });
+        this.close();
+      });
     }
     box.createEl("button", { text: PM.pickAnother }).addEventListener("click", () => this.step1());
   }
