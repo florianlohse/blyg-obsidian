@@ -318,6 +318,16 @@ describe("cursor walks", () => {
     expect((await client.hideMention("nope", true)).kind).toBe("not-found");
   });
 
+  it("asks for one item's inbound mentions with targetItemId, so another item's rows are not read", async () => {
+    const { client, studio } = setup();
+    studio.mentions.push({ id: "m1", target_item_id: "A", status: "verified", relation: "stub", hidden: false }, { id: "m2", target_item_id: "B", status: "verified", relation: "transclusion", hidden: false });
+    const got = await client.listInboundMentions(4, "A");
+    expect(got.kind === "ok" && got.value.mentions.map((m) => m.id)).toEqual(["m1"]);
+    expect(studio.seen.at(-1)?.path).toBe("/api/mentions?direction=inbound&targetItemId=A&limit=100");
+    const all = await client.listInboundMentions();
+    expect(all.kind === "ok" && all.value.mentions).toHaveLength(2);
+  });
+
   it("counts a mention only when it is verified, visible, and for this item; asks for this item's rows", async () => {
     const { client, studio } = setup();
     studio.mentions.push(
