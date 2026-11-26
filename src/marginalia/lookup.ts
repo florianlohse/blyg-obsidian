@@ -5,7 +5,8 @@
 import type { InboundMention } from "../studio/reading";
 
 /** What one post quotes of the item: a passage (the `>` lines under the directive) or the whole item (the directive with no `>` lines). */
-export type FoundQuote = { kind: "passage"; text: string } | { kind: "whole" };
+export type FoundQuote = { kind: "passage"; text: string; cited?: number } | { kind: "whole"; cited?: number };
+// `cited`: the version of the item the quote says it was taken from (`![[id@v2]]` in the Markdown, `data-blyg-version` in the rendered HTML), when it says.
 
 /** The parser's side of the contract: the quotes of `itemId` in a post's Markdown, in the order they stand. Empty when the post does not quote it. */
 export type QuoteParser = (markdown: string, itemId: string) => FoundQuote[];

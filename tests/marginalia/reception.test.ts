@@ -1,6 +1,6 @@
 // HK3 stage 2: the pure parts: the parser adapter, the paragraphs of a note, the matching, and the store.
 import { describe, expect, it } from "vitest";
-import { MarginaliaLookup, type MarginaliaEntry, type MarginaliaMention } from "../../src/marginalia/lookup";
+import { MarginaliaLookup, type FoundQuote, type MarginaliaEntry, type MarginaliaMention } from "../../src/marginalia/lookup";
 import { buildReception, leadOf, locatePassage, markGroups, markersOf, paragraphsOf, parseQuotesOf, placementNote, plainOfParagraph } from "../../src/marginalia/reception";
 import { ReceptionStore } from "../../src/marginalia/store";
 import type { InboundMention } from "../../src/studio/reading";
@@ -13,6 +13,10 @@ describe("parseQuotesOf", () => {
   it("a directive with > lines is a passage, one without is the whole post; other items are ignored", () => {
     const md = `hi\n\n![[${ID}]]\n> a passage\n> of two lines\n\n![[${ID}]]\n\n![[${"b".repeat(26)}]]\n> not ours\n`;
     expect(parseQuotesOf(md, ID)).toEqual([{ kind: "passage", text: "a passage of two lines" }, { kind: "whole" }]);
+  });
+  it("a directive that cites a version (`@v2`) carries it; one that names none does not", () => {
+    const md = `![[${ID}@v2]]\n> old words\n\n![[${ID}@v3]]\n\n![[${ID}]]\n> new words\n`;
+    expect(parseQuotesOf(md, ID)).toEqual([{ kind: "passage", text: "old words", cited: 2 }, { kind: "whole", cited: 3 }, { kind: "passage", text: "new words" }]);
   });
   it("no directive for the item gives an empty list", () => {
     expect(parseQuotesOf("just text", ID)).toEqual([]);
@@ -34,7 +38,7 @@ describe("paragraphsOf", () => {
   });
 });
 
-const entry = (mention: MarginaliaMention, quotes: Array<{ kind: "whole" } | { kind: "passage"; text: string }>): MarginaliaEntry => ({ mention, result: { kind: "quotes", quotes, version: 1 } });
+const entry = (mention: MarginaliaMention, quotes: FoundQuote[]): MarginaliaEntry => ({ mention, result: { kind: "quotes", quotes, version: 1 } });
 
 describe("buildReception", () => {
   const ps = paragraphsOf(note);
@@ -60,6 +64,13 @@ describe("buildReception", () => {
     expect(markersOf(rows).size).toBe(1);
     expect(placementNote(rows[0]!.placement)).toBe("a reply, with no quote");
     expect(leadOf(reply)).toBe("Teo replied to this");
+  });
+  it("a quote that is no longer in the note says which version it was taken from, when the post says; without it, only that it is earlier", () => {
+    const old = buildReception([entry(m({ id: "a" }), [{ kind: "passage", text: "words that were never in this note at all", cited: 1 }]), entry(m({ id: "b" }), [{ kind: "passage", text: "other words that are not here either" }])], ps);
+    expect(old.map((r) => [r.placement.kind, r.cited])).toEqual([["earlier", 1], ["earlier", null]]);
+    expect(placementNote(old[0]!.placement, old[0]!.cited)).toBe("quoted version 1; this wording is no longer in the note");
+    expect(placementNote(old[1]!.placement, old[1]!.cited)).toBe("from an earlier version");
+    expect(placementNote({ kind: "paragraph", index: 0, method: "exact" }, 2)).toBeNull(); // a quote that is in the note says nothing about versions
   });
   it("two quotes by one post are two rows; two posts in one paragraph share one marker", () => {
     const rows = buildReception([entry(m({ id: "a" }), [{ kind: "passage", text: "First paragraph about gardens." }, { kind: "passage", text: "Last one." }]), entry(m({ id: "b" }), [{ kind: "passage", text: "first paragraph about gardens" }])], ps);
