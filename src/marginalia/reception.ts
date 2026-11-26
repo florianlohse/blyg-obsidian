@@ -114,16 +114,18 @@ export function buildReception(entries: MarginaliaEntry[], paragraphs: NoteParag
       continue;
     }
     if (e.result.quotes.length === 0) {
-      rows.push({ mention: e.mention, placement: { kind: "reply" }, excerpt: null });
+      rows.push({ mention: e.mention, placement: { kind: "reply" }, excerpt: e.result.own || null }); // a reply's own words, not the original it quotes
       continue;
     }
     for (const q of e.result.quotes) {
       if (q.kind === "whole") {
-        rows.push({ mention: e.mention, placement: { kind: "whole" }, excerpt: null, cited: q.cited ?? null });
+        rows.push({ mention: e.mention, placement: { kind: "whole" }, excerpt: e.result.own || null, cited: q.cited ?? null });
         continue;
       }
       const hit = findPassage(q.text, plain);
-      const excerpt = q.text.length > 160 ? `${q.text.slice(0, 157)}…` : q.text;
+      // A reply shows ITS words under the note; the passage it quotes on top is the note's own text (the placement and the mark still use it).
+      const quoted = q.text.length > 160 ? `${q.text.slice(0, 157)}…` : q.text;
+      const excerpt = e.mention.relation === "stub" && e.result.own ? e.result.own : quoted;
       const placement: Placement = hit && hit.method !== "overlap" ? { kind: "paragraph", index: hit.end, method: hit.method } : { kind: "earlier" };
       rows.push({ mention: e.mention, placement, excerpt, passage: q.text, cited: q.cited ?? null });
     }
