@@ -6,7 +6,7 @@ import { drawReceptionRow } from "./receptionView";
 
 /** What the section says about itself: a stable text for the widget to compare and for tests to read. */
 export function receptionTitle(rec: ReceptionPanel): string {
-  return rec.status === "ready" && rec.rows.length > 0 ? `Reception · ${rec.rows.length}${rec.incomplete ? "+" : ""}` : "Reception";
+  return rec.status === "ready" && rec.rows.length > 0 ? `Reception (${rec.rows.length}${rec.incomplete ? "+" : ""})` : "Reception";
 }
 
 /** A signature of what the section shows, so a redraw is only made when it changed. */

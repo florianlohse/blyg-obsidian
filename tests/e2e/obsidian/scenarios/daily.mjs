@@ -141,9 +141,9 @@ await runScenario({ data }, async (s) => {
   const corr = await page.evaluate(() => {
     const row = [...document.querySelectorAll(".blyg-daily .blyg-daily-row")].find((r) => r.querySelector(".blyg-correction-note"));
     const lead = row?.querySelector(".blyg-correction-note");
-    return { lead: lead?.textContent ?? "", weight: lead ? Number(getComputedStyle(lead).fontWeight) : 0, first: row?.firstElementChild === lead, head: row?.querySelector(".blyg-correction-headline")?.textContent ?? "", markup: !!lead?.querySelector("b") };
+    return { lead: lead?.textContent ?? "", weight: lead ? Number(getComputedStyle(lead).fontWeight) : 0, first: row?.querySelector(".blyg-correction-headline")?.nextElementSibling === lead && lead?.nextElementSibling?.classList.contains("blyg-daily-meta"), size: lead && row?.querySelector(".blyg-correction-headline") ? getComputedStyle(lead).fontSize === getComputedStyle(row.querySelector(".blyg-correction-headline")).fontSize : false, head: row?.querySelector(".blyg-correction-headline")?.textContent ?? "", markup: !!lead?.querySelector("b") };
   });
-  check(corr.lead === "Fixed the <b>March</b> total" && !corr.markup && corr.weight >= 600 && corr.first && /Trains were delayed/.test(corr.head), `a revised post's change note leads its correction line in bold, as plain text, the headline second (${JSON.stringify(corr)})`);
+  check(corr.lead === "Fixed the <b>March</b> total" && !corr.markup && corr.weight >= 600 && corr.first && corr.size && /Trains were delayed/.test(corr.head), `a revised post's change note leads its correction line in bold, as plain text, after the headline at the same size and before the author line (${JSON.stringify(corr)})`);
   check(histories.length === 1, `the note was asked for once, for the one revised post (${histories.length} request)`);
   const before = marks.length;
   const sym = await page.evaluate(() => { const b = document.querySelector(".blyg-daily .blyg-story-mixed .blyg-mark"); return { label: b?.getAttribute("aria-label"), text: b?.textContent ?? "x", svg: !!b?.querySelector("svg"), w: b?.getBoundingClientRect().width ?? 0 }; });

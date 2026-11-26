@@ -3,6 +3,7 @@
 // shown as "nobody quoted this": a mention whose post cannot be read comes back as `unknown`.
 // The quote parser (src/core/quoteRefs.ts) and the passage matcher are written elsewhere; this file knows them only through `QuoteParser`.
 import type { InboundMention } from "../studio/reading";
+import { ownTextFromHtml, ownTextFromMarkdown } from "./ownText";
 
 /** What one post quotes of the item: a passage (the `>` lines under the directive) or the whole item (the directive with no `>` lines). */
 export type FoundQuote = { kind: "passage"; text: string; cited?: number } | { kind: "whole"; cited?: number };
@@ -30,7 +31,7 @@ export type MarginaliaMention = Pick<InboundMention, "id" | "targetItemId" | "re
 export type UnknownReason = "unreadable" | "no-text" | "over-cap" | "withdrawn";
 
 export type MentionQuotes =
-  | { kind: "quotes"; quotes: FoundQuote[]; version: number }
+  | { kind: "quotes"; quotes: FoundQuote[]; version: number; /** What the post says itself, without the quoted original (a reply's own words); for the preview. */ own?: string }
   /** The mention says it quoted, but what was quoted is not known: never to be shown as an empty list. */
   | { kind: "unknown"; reason: UnknownReason };
 
@@ -65,7 +66,7 @@ const keyOf = (m: MarginaliaMention, version: number): string => `${(m.sourceOri
 
 /** Looks quotes up and remembers the answers per (source post, its version, item): a post's version changes when its text does, so an answer stays right. */
 export class MarginaliaLookup {
-  private readonly cache = new Map<string, FoundQuote[]>();
+  private readonly cache = new Map<string, { quotes: FoundQuote[]; own: string }>();
 
   constructor(private readonly read: SourceReader, private readonly parse: QuoteParser, private readonly parseHtml?: QuoteParser) {}
 
@@ -92,7 +93,7 @@ export class MarginaliaLookup {
     // The Studio often says which version of the post it saw: then a held answer needs no request at all.
     if (typeof m.sourceVersion === "number") {
       const hit = this.cache.get(keyOf(m, m.sourceVersion));
-      if (hit) return { kind: "quotes", quotes: hit, version: m.sourceVersion };
+      if (hit) return { kind: "quotes", quotes: hit.quotes, version: m.sourceVersion, own: hit.own };
     }
     let post: SourcePost | null;
     try {
@@ -103,7 +104,7 @@ export class MarginaliaLookup {
     if (!post) return { kind: "unknown", reason: "unreadable" };
     if (post.withdrawn) return { kind: "unknown", reason: "withdrawn" };
     const held = this.cache.get(keyOf(m, post.version));
-    if (held) return { kind: "quotes", quotes: held, version: post.version };
+    if (held) return { kind: "quotes", quotes: held.quotes, version: post.version, own: held.own };
     const html = post.markdown === null && this.parseHtml && post.html ? post.html : null;
     if (post.markdown === null && html === null) return { kind: "unknown", reason: "no-text" };
     let quotes: FoundQuote[];
@@ -116,7 +117,8 @@ export class MarginaliaLookup {
     // version than the mention saw: that is not "no quote", it is unknown.
     if (quotes.length === 0 && m.relation !== "stub") return { kind: "unknown", reason: "no-text" };
     if (this.cache.size >= CACHE_MAX) this.cache.delete(this.cache.keys().next().value as string);
-    this.cache.set(keyOf(m, post.version), quotes);
-    return { kind: "quotes", quotes, version: post.version };
+    const own = html !== null ? ownTextFromHtml(html) : ownTextFromMarkdown(post.markdown as string);
+    this.cache.set(keyOf(m, post.version), { quotes, own });
+    return { kind: "quotes", quotes, version: post.version, own };
   }
 }

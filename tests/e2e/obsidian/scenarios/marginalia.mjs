@@ -127,10 +127,17 @@ await runScenario({ data }, async (s) => {
   const sec = await s.becomes(async () => { const v = await section(); return v && v.rows >= 8 ? v : false; }, 15000, "the Reception section");
   const live2 = await section();
   console.log("OBSERVED section:", JSON.stringify(live2)?.slice(0, 900));
-  check(Boolean(sec) && live2.title === "Reception · 8", `Live Preview ends with a Reception section titled with the count (${live2?.title})`);
+  check(Boolean(sec) && live2.title === "Reception (8)", `Live Preview ends with a Reception section titled with the count (${live2?.title})`);
   check(JSON.stringify(live2?.groups) === JSON.stringify(["Quoted a paragraph", "Quoted the whole note", "Replies", "From an earlier version", "Could not be read"]), `its groups are in the fixed order (${JSON.stringify(live2?.groups)})`);
   check(Boolean(live2?.inside), "the section stays inside the 393 px screen");
   check(/paragraph 2/.test(live2?.text ?? "") && /Ana replied to this/.test(live2?.text ?? "") && /earlier version/.test(live2?.text ?? ""), "it says which paragraph, lists the reply with no quote and the older wording");
+
+  // G: every row that can be read has a preview; a reply shows its own words ("Jo's reply."), not the note's text it quotes on top; the title is the plain "Reception (8)" in the same type size as Obsidian's backlinks heading
+  const rowTexts = await page.evaluate(() => [...document.querySelectorAll(".workspace-leaf.mod-active .blyg-reception-row")].map((r) => ({ who: r.querySelector(".blyg-reception-lead")?.textContent ?? "", ex: r.querySelector(".blyg-reception-excerpt")?.textContent ?? "" })));
+  const jo = rowTexts.find((r) => /^Jo /.test(r.who));
+  check(Boolean(jo) && /Jo's reply/.test(jo.ex) && !/First paragraph of the note/.test(jo.ex), `a reply's preview is its own words, not the quoted original (${JSON.stringify(jo)})`);
+  const ana = rowTexts.find((r) => /^Ana /.test(r.who));
+  check(Boolean(ana) && /only answers/.test(ana.ex), `a reply with no quote has its preview too (${JSON.stringify(ana)})`);
 
   // ---- source mode and the note itself
   await openIn("source");
@@ -162,7 +169,7 @@ await runScenario({ data }, async (s) => {
   const reading = await s.becomes(async () => { const v = await section(RV); return v && v.rows >= 8 ? v : false; }, 15000, "the section in Reading view");
   const once = await page.evaluate((sc) => document.querySelectorAll(`${sc} .blyg-reception-section`).length, RV);
   console.log("OBSERVED reading:", JSON.stringify(reading)?.slice(0, 300));
-  check(Boolean(reading) && reading.title === "Reception · 8" && JSON.stringify(reading.groups) === JSON.stringify(["Quoted a paragraph", "Quoted the whole note", "Replies", "From an earlier version", "Could not be read"]), `Reading view shows the Reception section with its groups (${reading?.title})`);
+  check(Boolean(reading) && reading.title === "Reception (8)" && JSON.stringify(reading.groups) === JSON.stringify(["Quoted a paragraph", "Quoted the whole note", "Replies", "From an earlier version", "Could not be read"]), `Reading view shows the Reception section with its groups (${reading?.title})`);
   check(once === 1 && reading?.inside, `exactly one section, inside the screen (${once})`);
   check((await page.evaluate((sc) => document.querySelectorAll(`${sc} .blyg-marginalia-marker`).length, RV)) === 0, "Reading view draws no marks in the text (the section is its display there)");
   await setSwitch("bottom", false);
