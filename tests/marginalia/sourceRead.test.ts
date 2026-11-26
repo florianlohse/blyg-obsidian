@@ -1,6 +1,7 @@
 // HK3: the two-step read of a source post's Markdown (peek -> imported item), against the fake Studio, through the lookup's cap and cache.
 import { describe, expect, it } from "vitest";
 import { MarginaliaLookup, type MarginaliaMention } from "../../src/marginalia/lookup";
+import { parseQuotesFromHtml } from "../../src/marginalia/htmlQuotes";
 import { parseQuotesOf } from "../../src/marginalia/reception";
 import { makeSourceReader } from "../../src/marginalia/sourceRead";
 import { createStudioClient } from "../../src/studio/client";
@@ -19,7 +20,7 @@ function setup() {
   const address = studioAddress({ baseUrl: STUDIO_HOST, mount: "" });
   if (!address) throw new Error("address");
   const client = createStudioClient({ http: createStudioHttp({ transport: studio.transport, timers: idleTimers, address }), token: STUDIO_TOKEN });
-  const lookup = new MarginaliaLookup(makeSourceReader({ client: () => client, heldPost: () => Promise.resolve(null) }), parseQuotesOf);
+  const lookup = new MarginaliaLookup(makeSourceReader({ client: () => client, heldPost: () => Promise.resolve(null) }), parseQuotesOf, parseQuotesFromHtml);
   const imports = () => studio.seen.filter((s) => s.path.startsWith("/api/imports/"));
   return { studio, lookup, imports };
 }
@@ -32,11 +33,24 @@ describe("reading a source's Markdown from the Studio", () => {
     const [e] = await lookup.lookup([mention()], ITEM);
     expect(e!.result).toEqual({ kind: "quotes", version: 2, quotes: [{ kind: "passage", text: "the quoted words here" }] });
   });
-  it("a blyg the Studio does not import is unknown, not an empty list", async () => {
+  const partialHtml = (text: string) => `<blockquote class="blyg-transclusion blyg-partial" data-blyg-id="${ITEM}" data-blyg-version="1" data-blyg-origin="https://studio.test/"><p>${text}</p></blockquote>\n<p>My words.</p>\n`;
+  it("a blyg the owner does not follow (peek only, no subscription): the quote is read from the peek's HTML", async () => {
     const { studio, lookup } = setup();
-    studio.peekable.push({ origin: ORIGIN, id: SRC, kind: "fragment", version: 1, content_html: "<p>x</p>" });
+    studio.peekable.push({ origin: ORIGIN, id: SRC, kind: "thread", version: 1, content_html: partialHtml("the quoted words here") });
     const [e] = await lookup.lookup([mention()], ITEM);
-    expect(e!.result).toEqual({ kind: "unknown", reason: "unreadable" });
+    expect(e!.result).toEqual({ kind: "quotes", version: 1, quotes: [{ kind: "passage", text: "the quoted words here" }] });
+  });
+  it("a whole-post quote is read from the HTML too; a reply with no blockquote is a reply; a quote whose HTML shows none is unknown", async () => {
+    const { studio, lookup } = setup();
+    studio.peekable.push({ origin: ORIGIN, id: SRC, kind: "thread", version: 1, content_html: `<blockquote class="blyg-transclusion" data-blyg-id="${ITEM}" data-blyg-version="1"><p>x</p></blockquote>` });
+    studio.peekable.push({ origin: ORIGIN, id: "reply1", kind: "thread", version: 1, content_html: "<p>Only an answer.</p>" });
+    studio.peekable.push({ origin: ORIGIN, id: "odd1", kind: "thread", version: 1, content_html: "<p>x</p>" });
+    const got = await lookup.lookup([mention({ firstSeen: "3" }), mention({ id: "m2", sourceId: "reply1", relation: "stub", firstSeen: "2" }), mention({ id: "m3", sourceId: "odd1", firstSeen: "1" })], ITEM);
+    expect(got.map((e) => e.result)).toEqual([{ kind: "quotes", version: 1, quotes: [{ kind: "whole" }] }, { kind: "quotes", version: 1, quotes: [] }, { kind: "unknown", reason: "no-text" }]);
+  });
+  it("a peek the Studio cannot answer is unknown, not an empty list", async () => {
+    const { lookup } = setup();
+    expect((await lookup.lookup([mention()], ITEM))[0]!.result).toEqual({ kind: "unknown", reason: "unreadable" });
   });
   it("a withdrawn post is unknown (withdrawn), by its peek and by its tombstone", async () => {
     const a = setup();
@@ -46,11 +60,11 @@ describe("reading a source's Markdown from the Studio", () => {
     b.studio.importItem({ remote_id: SRC, content_md: quote, state: "tombstone" });
     expect((await b.lookup.lookup([mention()], ITEM))[0]!.result).toEqual({ kind: "unknown", reason: "withdrawn" });
   });
-  it("a 403 on the imported-item read is unknown", async () => {
+  it("a failed imported-item read falls back to the peek's HTML (a quote the HTML does not show stays unknown)", async () => {
     const { studio, lookup } = setup();
     studio.importItem({ remote_id: SRC, content_md: quote });
     studio.forced.set(`GET /api/imports/sub1/${SRC}`, { status: 403, text: "{}" });
-    expect((await lookup.lookup([mention()], ITEM))[0]!.result).toEqual({ kind: "unknown", reason: "unreadable" });
+    expect((await lookup.lookup([mention()], ITEM))[0]!.result).toEqual({ kind: "unknown", reason: "no-text" });
   });
   it("counts against the cap of lookups, and is cached per (source, version)", async () => {
     const { studio, lookup, imports } = setup();

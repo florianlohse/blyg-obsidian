@@ -23,6 +23,8 @@ const MENTIONS = [
   mention("m-reply-plain", "src-reply-plain", "stub", "Ana", 5), //  a reply with no quote
   mention("m-earlier", "src-earlier", "transclusion", "Ed", 6), //   a passage the note no longer has as written
   mention("m-gone", "src-gone", "transclusion", "Kai", 7), //        a post the Studio cannot serve
+  mention("m-html", "src-html", "transclusion", "Lia", 1), //        a passage of a blyg the owner does not follow: only the peek's HTML says what it quotes
+  { ...mention("m-other", "src-other", "transclusion", "Zed", 1), targetItemId: "0000000000000000000000000z" }, // another item's mention: never asked for
 ];
 // Markdown the owner's Studio holds (imported); every other source answers 404 on /imports.
 const HELD = {
@@ -32,6 +34,7 @@ const HELD = {
   "src-earlier": `![[${ITEM}@v1]]\n> ants walk in straight lines\n\nEd quoted an older wording.`,
 };
 const PEEK = {
+  "src-html": { html: `<blockquote class="blyg-transclusion blyg-partial" data-blyg-id="${ITEM}" data-blyg-version="1" data-blyg-origin="https://me.example.com/"><p>Third paragraph ends the note</p></blockquote>\n<p>Lia on the ending.</p>\n`, sub: null },
   "src-whole": { html: `<blockquote class="blyg-transclusion" data-blyg-id="${ITEM}" data-blyg-version="1" data-blyg-origin="https://me.example.com/"><p>the whole note</p></blockquote>\n<p>Mira quotes it all.</p>\n`, sub: null },
   ...Object.fromEntries(Object.keys(HELD).map((id) => [id, { html: "<p>held</p>", sub: "sub1" }])), // a post of a blyg the owner follows: the Studio names the subscription and holds the post
 };
@@ -46,7 +49,7 @@ const stub = http.createServer((req, res) => {
     else seen.reads.push(`${req.method} ${path}${url.search}`);
     if (path === "/blyg.json") return reply(res, 200, { blyg: "0.4", level: 2, generator: "blygger-studio/0.51.0", site: `http://127.0.0.1:${stub.address().port}/`, title: "Stand-in", items: "items/index.json" });
     if (path === "/api/capabilities") return reply(res, 200, { contractVersion: "5.2.0", endpoints: {}, extensions: [], operations: ["getCapabilities", "listItems", "listMentions", "peekItem", "getImportedItem"] });
-    if (path === "/api/mentions") return reply(res, 200, { items: MENTIONS, page: { limit: 100, nextCursor: null }, direction: "inbound" });
+    if (path === "/api/mentions") return reply(res, 200, { items: MENTIONS.filter((x) => !url.searchParams.get("targetItemId") || x.targetItemId === url.searchParams.get("targetItemId")), page: { limit: 100, nextCursor: null }, direction: "inbound" });
     if (path === "/api/peek") {
       const id = url.searchParams.get("id") ?? "";
       const p = PEEK[id];
@@ -92,7 +95,10 @@ await runScenario({ data }, async (s) => {
   check(Boolean(got), "Live Preview shows at least one marker");
   check(live.some((m) => /Teo quoted this/.test(m.label) && /Second paragraph/.test(m.line)), `Teo's passage has its marker at the end of its paragraph ("Second paragraph …") (${JSON.stringify(live)})`);
   check(live.some((m) => /Jo replied to this/.test(m.label) && /First paragraph/.test(m.line)), `Jo's reply, which quotes the first paragraph, has its marker there: a reply is a \`stub\`, not a \`transclusion\` (${JSON.stringify(live)})`);
-  check(live.length === 2, `exactly two paragraphs carry a marker (${live.length})`);
+  check(live.some((m) => /Lia quoted this/.test(m.label) && /Third paragraph/.test(m.line)), `Lia's passage, of a blyg the owner does not follow (read from the peek's HTML), has its marker at the end of the third paragraph (${JSON.stringify(live)})`);
+  check(live.length === 3, `exactly three paragraphs carry a marker (${live.length})`);
+  const mentionAsks = seen.reads.filter((r) => r.startsWith("GET /api/mentions"));
+  check(mentionAsks.length >= 1 && mentionAsks.every((r) => r.includes(`targetItemId=${ITEM}`)), `the Studio is asked for this item's mentions only (${JSON.stringify(mentionAsks)})`);
 
   // ---- the tap: a card with who, what and when
   await page.evaluate(() => document.querySelector(".workspace-leaf.mod-active .blyg-marginalia-marker")?.click());
@@ -110,12 +116,13 @@ await runScenario({ data }, async (s) => {
   // ---- the panel's Reception list: every mention, none lost as "nobody"; a post the Studio cannot serve says so
   await s.openNote(PATH);
   await page.evaluate(() => { for (const d of document.querySelectorAll(".blyg-pane-section")) if (/^Reception/.test(d.querySelector("summary")?.textContent ?? "")) d.open = true; });
-  const rows = await s.becomes(async () => { const r = await page.evaluate(() => [...document.querySelectorAll(".blyg-reception-row")].map((e) => e.textContent ?? "")); return r.length >= 5 ? r : false; }, 20000, "the Reception rows");
+  const rows = await s.becomes(async () => { const r = await page.evaluate(() => [...document.querySelectorAll(".blyg-reception-row")].map((e) => e.textContent ?? "")); return r.length >= 7 ? r : false; }, 20000, "the Reception rows");
   const list = await page.evaluate(() => [...document.querySelectorAll(".blyg-reception-row")].map((e) => e.textContent ?? ""));
   console.log("OBSERVED reception rows:", JSON.stringify(list));
-  check(Boolean(rows), `the Reception list has a row for each of the six mentions (${list.length})`);
+  check(Boolean(rows), `the Reception list has a row for each of the seven mentions (${list.length})`);
   check(list.some((t) => /Ana replied to this/.test(t) && /a reply, with no quote/.test(t)), "Ana's reply without a quote is listed as a reply, not as unreadable");
-  check(list.some((t) => /Mira quoted this/.test(t) && /cannot be read/.test(t)), "a post of a blyg the owner does not follow (peek has HTML only, no subscription) is listed as unreadable, not dropped (until the HTML read, a later change)");
+  check(list.some((t) => /Mira quoted this/.test(t) && /the whole post/.test(t)), "Mira's whole-post quote, of a blyg the owner does not follow (peek has HTML only, no subscription), is listed as a whole-post quote");
+  check(!list.some((t) => /Zed/.test(t)), "a mention of another item is not listed");
   check(list.some((t) => /Ed quoted this/.test(t) && /earlier version/.test(t)), "Ed's quote of wording the note no longer has says 'from an earlier version'");
   check(list.some((t) => /Kai quoted this/.test(t) && /cannot be read|could not be read/.test(t)), "a post the Studio cannot serve says that it could not be read (never an empty list)");
   check(!list.some((t) => /Nobody has quoted this yet/.test(t)) && !(await page.evaluate(() => /Nobody has quoted this yet/.test(document.body.textContent ?? ""))), "the list never says 'Nobody has quoted this yet' while mentions exist");
