@@ -104,7 +104,7 @@ describe("Publish this paragraph", () => {
     expect(first.status).toBe("failed");
     expect(first.notices.join()).toBe(M.blockStampFailed(idOf(1)));
     expect(w.studio.items.get(idOf(1))).toMatchObject({ status: "public", content_md: P1 });
-    w.answerFor = undefined;
+    w.answerFor = null;
     w.local.set(DAILY, original); // the person undoes the edit
     expect((await para(w, 6)).status).toBe("published");
     expect([...w.studio.items.values()].filter((i) => i.kind === "fragment")).toHaveLength(1);

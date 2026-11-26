@@ -48,7 +48,7 @@ const fakePlugin = (id: string) => {
   };
   return { calls, p: p as never };
 };
-const deps = { digest: { font: () => "default" as const, time: () => "07:00", readList: async () => null, mode: { get: () => "feed" as const, set: () => {} }, ai: { settings: () => ({}) as never, keychain: {} as never, transport: {} as never } }, share: { settings: () => ({}) as never, build: () => ({}) as never, openReader: async () => {} }, contrast: () => "normal" as const };
+const deps = { digest: { font: () => "default" as const, time: () => "07:00", readList: async () => null, mode: { get: () => "feed" as const, set: () => {} }, ai: { settings: () => ({}) as never, keychain: {} as never, transport: {} as never } }, share: { settings: () => ({}) as never, build: () => ({}) as never, openReader: async () => {} }, contrast: () => "normal" as const, tangle: { write: async () => {}, routes: () => [] } };
 
 describe("registerFeatureEntries", () => {
   it("registers nothing switchable in the release build by default", () => {
@@ -59,7 +59,7 @@ describe("registerFeatureEntries", () => {
   it("registers everything in the dev build by default", () => {
     const { calls, p } = fakePlugin("blyg-dev");
     registerFeatureEntries(p, createFeatures(() => ({}), "blyg-dev"), deps);
-    expect(calls).toEqual(expect.arrayContaining(["cmd:open-daily", "cmd:show-digest-sent", "ribbon:Open Blyg Daily", "cmd:open-address-from-clipboard", "cmd:dev-author-look", "cmd:dev-draw-synthetic-posts"]));
+    expect(calls).toEqual(expect.arrayContaining(["cmd:open-daily", "cmd:show-digest-sent", "ribbon:Open Blyg Daily", "cmd:open-address-from-clipboard", "cmd:dev-author-look", "cmd:dev-draw-synthetic-posts", "cmd:publish-paragraph"]));
   });
   it("leaves out a feature that is switched off, and the AI layer alone", () => {
     const { calls, p } = fakePlugin("blyg-dev");
@@ -68,6 +68,15 @@ describe("registerFeatureEntries", () => {
     expect(calls).not.toContain("cmd:show-digest-sent");
     expect(calls).not.toContain("cmd:open-address-from-clipboard");
     expect(calls).toContain("cmd:dev-author-look");
+    expect(calls).toContain("cmd:publish-paragraph");
+  });
+  it("Publish this paragraph exists only with the feature `tangle` on", () => {
+    const off = fakePlugin("blyg-dev");
+    registerFeatureEntries(off.p, createFeatures(() => ({ tangle: false }), "blyg-dev"), deps);
+    expect(off.calls).not.toContain("cmd:publish-paragraph");
+    const on = fakePlugin("blyg");
+    registerFeatureEntries(on.p, createFeatures(() => ({ tangle: true }), "blyg"), deps);
+    expect(on.calls).toEqual(["cmd:publish-paragraph"]);
   });
   it("turns the release build's experimental features on with the user's switch", () => {
     const { calls, p } = fakePlugin("blyg");
