@@ -44,3 +44,6 @@ export function insertPassage(text: string, target: PassageTarget, block: string
   const quoteLine = head === "" ? 0 : head.split("\n").length + 1;
   return { ok: true, text: out, quoteLine, cursorLine: quoteLine + block.split("\n").length + 1 };
 }
+
+/** The text a new thread starts with when a passage is sent to "a new thread": the quote pair, a blank line, and the empty line for the reaction (the cursor goes to the end). */
+export const newThreadBody = (block: string): string => `${block}\n\n`;

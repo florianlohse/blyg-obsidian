@@ -9,10 +9,11 @@ export const OPERATION = {
 } as const;
 
 /**
- * The first contract the plugin sends `tangle` to: measured on a real Studio 0.69.0 (contract 6.2). Which 5.x minor first had it (Studio 0.63 to 0.65.0) is not known
- * from the files in this repository, so a contract 5 Studio is treated as without it: the plugin then keeps refusing spans, as before. Widen when it is known.
+ * The first contract the plugin sends `tangle` to: 5.12.0 (Studio 0.63.0, where tangling first shipped; 0.64.0 is 5.13.0, 0.65.0 is 5.14.0, and contract 6.0.0 arrives
+ * with 0.67.0, so every contract 6 has it). Checked against a real Studio 0.69.0 (contract 6.2); a contract 5 older than 5.12 has no `tangle`, and the plugin then keeps
+ * refusing spans and placeholders, as before. The pinned end-to-end leg (Studio 0.51.0, contract 5.2) therefore only checks that refusal.
  */
-export const TANGLE_CONTRACT = { major: 6, minor: 0 } as const;
+export const TANGLE_CONTRACT = { major: 5, minor: 12 } as const;
 
 /**
  * Does this Studio list the operation? False when the verdict is not "ok", or the Studio listed no operations at all: a feature that cannot be shown

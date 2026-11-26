@@ -14,7 +14,7 @@ export function drawReceptionRow(parent: HTMLElement, row: ReceptionRow, actions
   head.createSpan({ cls: "blyg-reception-lead", text: leadOf(row.mention) });
   const when = relativeTime(row.mention.firstSeen || null, now);
   if (when !== "") head.createSpan({ cls: "blyg-reception-when", text: when });
-  const note = placementNote(row.placement) ?? where ?? null;
+  const note = placementNote(row.placement, row.cited) ?? where ?? null;
   if (note) el.createDiv({ cls: "blyg-reception-note", text: note });
   if (row.excerpt) el.createDiv({ cls: "blyg-reception-excerpt", text: row.excerpt });
   if (row.mention.sourcePage) {

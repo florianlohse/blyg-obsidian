@@ -118,7 +118,7 @@ const refuse = (message: string): null => {
 };
 
 /** A new note in the Blyg folder (the active note's own, else the first Studio folder), from the kind's template and the body. Nothing else is touched. */
-async function createDraft(app: App, settings: BlygSettings, sourcePath: string, kind: ItemKind, body: string): Promise<TFile | null> {
+export async function createDraft(app: App, settings: BlygSettings, sourcePath: string, kind: ItemKind, body: string): Promise<TFile | null> {
   const route = newItemRoute(settings.routes, sourcePath === "" ? null : sourcePath);
   if (!route) return refuse(PM.draftNoFolder);
   const { vault } = app;
@@ -146,7 +146,7 @@ async function createDraft(app: App, settings: BlygSettings, sourcePath: string,
 }
 
 /** Open the draft in a tab of its own with the cursor at its end, and say so with one tap back to the note. Never publishes. */
-async function openDraft(app: App, file: TFile, origin: DraftOrigin, back: () => void): Promise<void> {
+export async function openForEditing(app: App, file: TFile): Promise<void> {
   const leaf = app.workspace.getLeaf("tab");
   await leaf.openFile(file, { state: { mode: "source" } });
   const view = leaf.view;
@@ -154,6 +154,10 @@ async function openDraft(app: App, file: TFile, origin: DraftOrigin, back: () =>
     view.editor.setCursor({ line: view.editor.lastLine(), ch: view.editor.getLine(view.editor.lastLine()).length });
     view.editor.focus();
   }
+}
+
+async function openDraft(app: App, file: TFile, origin: DraftOrigin, back: () => void): Promise<void> {
+  await openForEditing(app, file);
   const frag = createFragment();
   frag.createSpan({ text: `${PM.draftMade(file.basename)} ` });
   const button = frag.createEl("button", { cls: "blyg-passage-toast-open", text: PM.backToNote });

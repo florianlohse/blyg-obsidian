@@ -81,6 +81,7 @@ await runScenario({ data }, async (s) => {
   await s.createNote("Ideas/Slow reading.md", "Just a line with no heading.\n");
   await s.createNote("Private/Diary.md", "Not in a chosen folder.\n");
   await s.createNote("Blyg/Fragment 2026-11-26 0900.md", "A fragment of mine.\n");
+  await s.createNote("Blyg/Fragment 2026-11-26 0901.md", "Another fragment of mine.\n");
   await pg.evaluate(() => { window.app.plugins.plugins.blyg.settings.readerPane.filter = { sort: "newest", source: null, unreadOnly: false, length: "any", repliesToMe: false }; });
   await pg.evaluate(() => window.app.commands.executeCommandById("blyg:open-reader"));
   await pg.waitForSelector(".blyg-reader-card", { timeout: 30000 });
@@ -99,6 +100,7 @@ await runScenario({ data }, async (s) => {
   const dock = await pg.evaluate(() => { const d = document.querySelector(".blyg-passage-dock"); const r = d.getBoundingClientRect(); const root = document.querySelector(".blyg-reader").getBoundingClientRect(); const b = d.querySelector(".blyg-passage-dock-send").getBoundingClientRect(); return { count: d.querySelector(".blyg-passage-dock-note")?.textContent, bottomGap: Math.round(root.bottom - r.bottom), clear: Math.round(parseFloat(getComputedStyle(document.querySelector(".blyg-reader")).paddingBottom)), btnH: Math.round(b.height), w: Math.round(r.width), vw: window.innerWidth }; });
   check(/\d+ selected characters/.test(dock.count ?? ""), `the dock says how many characters are selected (${dock.count})`);
   check(Math.abs(dock.bottomGap - dock.clear) <= 2 && dock.btnH >= 40 && dock.w <= dock.vw, `the dock is at the foot of the pane, just above Obsidian's own bottom bar, the button is at least 40 px high, nothing wider than the screen (${JSON.stringify(dock)})`);
+  check(await pg.evaluate(() => { const n = document.querySelector(".mobile-navbar"); const d = document.querySelector(".blyg-passage-dock").getBoundingClientRect(); const r = n?.getBoundingClientRect(); return !r || n.offsetParent === null || d.bottom <= r.top + 1; }), "the dock is clear of Obsidian's own bottom bar, so a tap on Send lands on it");
   check(state.writes === 0 && state.reads.length === 0, "selecting asks nothing of the Studio and writes nothing");
 
   // ---- one tap on Send: the quotation is read first (so a post that cannot be quoted is said before the writer looks for a note), then the picker
@@ -156,7 +158,8 @@ await runScenario({ data }, async (s) => {
   check((await noteText("Reading/Commonplace book.md")).includes(QUOTE), "after the note is closed and read again the quote is in the file");
 
   // ---- recent destinations first
-  await pg.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader")[0] && window.app.workspace.revealLeaf(window.app.workspace.getLeavesOfType("blyg-reader")[0]));
+  await pg.evaluate(async () => { const l = window.app.workspace.getLeavesOfType("blyg-reader")[0]; if (l) { await window.app.workspace.revealLeaf(l); window.app.workspace.setActiveLeaf(l, { focus: true }); } });
+  await wait(700);
   await pg.waitForSelector(".blyg-reader-surface .blyg-reader-body", { timeout: 15000 });
   await selectPassage(SENT);
   await eventually(() => pg.evaluate(() => document.querySelector(".blyg-passage-dock-send")));
@@ -187,12 +190,39 @@ await runScenario({ data }, async (s) => {
     check(/blyg_kind: thread/.test(t) && t.includes(QUOTE), `the note is a thread and holds the quote (${JSON.stringify(t)})`);
   }
 
-  // ---- no folder chosen: nothing is offered, nothing is written (fail closed)
-  await pg.evaluate(() => { window.app.plugins.plugins.blyg.settings.passages.folders = ""; });
-  await pg.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader")[0] && window.app.workspace.revealLeaf(window.app.workspace.getLeavesOfType("blyg-reader")[0]));
+  // ---- "Start a new thread with it": a fragment is not touched; a new thread opens with the quote and the cursor on the empty line under it
+  await pg.evaluate(async () => { const l = window.app.workspace.getLeavesOfType("blyg-reader")[0]; if (l) { await window.app.workspace.revealLeaf(l); window.app.workspace.setActiveLeaf(l, { focus: true }); } });
+  await wait(700);
+  await pg.waitForSelector(".blyg-reader-surface .blyg-reader-body", { timeout: 15000 });
   await selectPassage(SENT);
   await eventually(() => pg.evaluate(() => document.querySelector(".blyg-passage-dock-send")));
+  const threadsBefore = await pg.evaluate(() => window.app.vault.getMarkdownFiles().filter((x) => /^Blyg\/Thread/.test(x.path)).map((x) => x.path));
   await tap(".blyg-passage-dock-send");
-  const none = await eventually(async () => (await noticeText()).find((t) => /Choose folders for passages/.test(t)));
-  check(Boolean(none) && !(await modal()), `with no folder chosen it says "Choose folders for passages first" and opens no picker (${none})`);
+  await eventually(() => modal());
+  await tap(".blyg-passage-row", "Fragment 2026-11-26 0901");
+  const m7 = await eventually(async () => { const m = await modal(); return m?.text.includes("is a fragment") ? m : null; });
+  check(Boolean(m7) && /Start a new thread with it/.test(m7.text), "the fragment screen also offers “Start a new thread with it”");
+  await tap(".blyg-passage-actions button", "Start a new thread with it");
+  const fresh = await eventually(async () => pg.evaluate((before) => window.app.vault.getMarkdownFiles().map((x) => x.path).find((x) => /^Blyg\/Thread/.test(x) && !before.includes(x)), threadsBefore));
+  const ft = fresh ? await noteText(fresh) : "";
+  check(Boolean(fresh) && /blyg_kind: thread/.test(ft) && ft.includes(`${QUOTE}\n`), `a new thread is made holding the quote (${JSON.stringify(ft)})`);
+  check((await noteText("Blyg/Fragment 2026-11-26 0901.md")) === "Another fragment of mine.\n", "the fragment is unchanged");
+  const place = await eventually(() => pg.evaluate((p) => { const ed = window.app.workspace.activeEditor?.editor; return window.app.workspace.getActiveFile()?.path === p && ed ? { line: ed.getCursor().line, last: ed.lastLine(), text: ed.getLine(ed.getCursor().line), above: ed.getLine(ed.getCursor().line - 1) } : null; }, fresh));
+  check(Boolean(place) && place.line === place.last && place.text === "" && place.above === "", `it is open for editing with the cursor on the empty line under the quote (${JSON.stringify(place)})`);
+  check(Boolean(await eventually(async () => (await noticeText()).find((t) => /New thread “.*” made with the quote\. Not published/.test(t)))), "a notice says it is a new thread with the quote and not published");
+  check(state.writes === 0, "nothing was sent to the Studio");
+
+  // ---- no folder chosen: nothing is offered, nothing is written (fail closed)
+  await pg.evaluate(async () => { const l = window.app.workspace.getLeavesOfType("blyg-reader")[0]; if (l) { await window.app.workspace.revealLeaf(l); window.app.workspace.setActiveLeaf(l, { focus: true }); } });
+  await wait(700);
+  await pg.waitForSelector(".blyg-reader-surface .blyg-reader-body", { timeout: 15000 });
+  await wait(500);
+  await selectPassage(SENT);
+  await eventually(() => pg.evaluate(() => document.querySelector(".blyg-passage-dock-send")));
+  await pg.evaluate(() => { window.app.plugins.plugins.blyg.settings.passages.folders = ""; }); // set last: the plugin re-reads data.json when it changes
+  const before = await pg.evaluate(() => { const b = document.querySelector(".blyg-passage-dock-send"); const r = b?.getBoundingClientRect(); return { disabled: b?.disabled, note: document.querySelector(".blyg-passage-dock-note")?.textContent, rect: r && [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)], vh: innerHeight, nav: (() => { const n = document.querySelector(".mobile-navbar"); const r = n?.getBoundingClientRect(); return r && [Math.round(r.top), Math.round(r.height), getComputedStyle(n).display]; })(), pad: getComputedStyle(document.querySelector(".blyg-reader")).paddingBottom }; });
+  await s.clearNotices();
+  await tap(".blyg-passage-dock-send");
+  const none = await eventually(async () => (await s.notices()).find((t) => /Choose folders for passages/.test(t)), 8000);
+  check(Boolean(none) && !(await modal()), `with no folder chosen it says "Choose folders for passages first" and opens no picker (${none ?? JSON.stringify({ before, notices: await s.notices(), folders: await pg.evaluate(() => window.app.plugins.plugins.blyg.settings.passages.folders), dock: await pg.evaluate(() => !!document.querySelector(".blyg-passage-dock-send")), sel: await pg.evaluate(() => getSelection()?.toString().length), active: await pg.evaluate(() => window.app.workspace.activeLeaf?.view?.getViewType?.()) })})`);
 });

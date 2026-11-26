@@ -8,11 +8,11 @@ const whole = (id = ID) => `<blockquote class="blyg-transclusion" data-blyg-id="
 
 describe("parseQuotesFromHtml", () => {
   it("a partial transclusion is a passage with its plain text; a whole one is the whole post", () => {
-    expect(parseQuotesFromHtml(`${partial("<p>ants leave traces for others</p>")}<p>My words on that.</p>\n`, ID)).toEqual([{ kind: "passage", text: "ants leave traces for others" }]);
-    expect(parseQuotesFromHtml(`${whole()}<p>I quote it all.</p>`, ID)).toEqual([{ kind: "whole" }]);
+    expect(parseQuotesFromHtml(`${partial("<p>ants leave traces for others</p>")}<p>My words on that.</p>\n`, ID)).toEqual([{ kind: "passage", text: "ants leave traces for others", cited: 1 }]);
+    expect(parseQuotesFromHtml(`${whole()}<p>I quote it all.</p>`, ID)).toEqual([{ kind: "whole", cited: 1 }]);
   });
   it("several paragraphs of one passage read as one text; entities are decoded; markup and script in a stranger's words never come out", () => {
-    expect(parseQuotesFromHtml(partial("<p>one &amp; two</p>\n<p>three <b>four</b> <script>x()</script></p>"), ID)).toEqual([{ kind: "passage", text: "one & two three four" }]);
+    expect(parseQuotesFromHtml(partial("<p>one &amp; two</p>\n<p>three <b>four</b> <script>x()</script></p>"), ID)).toEqual([{ kind: "passage", text: "one & two three four", cited: 1 }]);
   });
   it("quotes of other items, plain blockquotes and a post with no quote give nothing", () => {
     expect(parseQuotesFromHtml(partial("<p>x</p>", "other"), ID)).toEqual([]);
@@ -21,9 +21,14 @@ describe("parseQuotesFromHtml", () => {
   });
   it("two quotes stand in the order they come; attribute order and quoting do not matter", () => {
     const html = `${whole()}<p>and</p><blockquote data-blyg-id="${ID}" class="blyg-partial blyg-transclusion"><p>again</p></blockquote>`;
-    expect(parseQuotesFromHtml(html, ID)).toEqual([{ kind: "whole" }, { kind: "passage", text: "again" }]);
+    expect(parseQuotesFromHtml(html, ID)).toEqual([{ kind: "whole", cited: 1 }, { kind: "passage", text: "again" }]);
   });
   it("a partial quote with no text is read as the whole post rather than an empty passage", () => {
-    expect(parseQuotesFromHtml(partial("<p> </p>"), ID)).toEqual([{ kind: "whole" }]);
+    expect(parseQuotesFromHtml(partial("<p> </p>"), ID)).toEqual([{ kind: "whole", cited: 1 }]);
+  });
+  it("the version the quote cites is the blockquote's data-blyg-version; none, zero or a word cites nothing", () => {
+    const at = (v: string) => `<blockquote class="blyg-transclusion blyg-partial" data-blyg-id="${ID}" data-blyg-version="${v}"><p>x</p></blockquote>`;
+    expect(parseQuotesFromHtml(at("3"), ID)).toEqual([{ kind: "passage", text: "x", cited: 3 }]);
+    for (const v of ["0", "two", "1.5", ""]) expect(parseQuotesFromHtml(at(v), ID)).toEqual([{ kind: "passage", text: "x" }]);
   });
 });

@@ -2,7 +2,7 @@
 // the note text written here is what a thread on a Studio route accepts as it stands (the native quote kept whole, the reaction line not part of it).
 import { describe, expect, it } from "vitest";
 import { noteHeadings } from "../../src/app/noteHeadings";
-import { insertPassage, type PassageTarget } from "../../src/app/passageInsert";
+import { insertPassage, newThreadBody, type PassageTarget } from "../../src/app/passageInsert";
 import { destinationList, destinationVerdict, inFolders, parseFolders, passageBlocked, readRecent, RECENT_MAX, withRecent, type DestinationNote } from "../../src/app/passageScope";
 import { quoteBlockOf } from "../../src/app/threadCommands";
 import { lazyQuoteLines, prepareStudioText, scanStudioQuotes } from "../../src/studio/text";
@@ -190,5 +190,17 @@ describe("which posts can be quoted", () => {
     expect(passageBlocked(post({ subscriptionId: "" }))).toMatch(/not followed/);
     expect(passageBlocked(post({ withdrawn: true }))).toMatch(/withdrawn/);
     expect(passageBlocked(post({ own: true }))).toMatch(/own post/);
+  });
+});
+
+describe("a new thread with the quote", () => {
+  const ctx = { vault: makeStudioWorld().deps.vault, routes: [], fromPath: "studio/T.md", origin: "https://studio.test/", fragmentCharCap: 1000 };
+  it("starts with the pair, a blank line and an empty line for the reaction, and is a thread the Studio takes as it stands", () => {
+    const text = newThreadBody(BLOCK);
+    expect(text).toBe(`${BLOCK}\n\n`);
+    expect(text.split("\n").at(-1)).toBe("");
+    const d = prepareStudioText(`${text}A reaction.`.trim(), "thread", ctx);
+    expect(d.problems).toEqual([]);
+    expect(d.quotes[0]).toMatchObject({ id: ID, quoteMd: PASSAGE });
   });
 });
