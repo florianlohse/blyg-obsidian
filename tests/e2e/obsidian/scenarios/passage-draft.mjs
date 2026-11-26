@@ -44,7 +44,7 @@ await runScenario({ data }, async (s) => {
   // the editor-menu event, as Obsidian fires it on a long press in a note: the handler adds its items to the menu it is given
   const menuItems = () => pg.evaluate(() => {
     const items = [];
-    const base = { addItem(cb) { const it = { t: "", setTitle(t) { this.t = t; return this; }, setIcon() { return this; }, onClick(f) { this.f = f; return this; } }; cb(it); items.push(it); return menu; } };
+    const base = { addItem(cb) { const raw = { t: "", setTitle(t) { raw.t = t; return it; }, onClick(f) { raw.f = f; return it; } }; const it = new Proxy(raw, { get: (t, k) => (k in t ? t[k] : () => it) }); cb(it); items.push(raw); return menu; } };
     const menu = new Proxy(base, { get: (t, k) => (k in t ? t[k] : () => menu) }); // Obsidian's own handlers call more Menu methods (setSection, addSeparator, ...)
     const view = window.app.workspace.activeLeaf.view;
     window.app.workspace.trigger("editor-menu", menu, window.app.workspace.activeEditor.editor, view);
