@@ -157,7 +157,8 @@ await runScenario({ data }, async (s) => {
   check((await noteText("Reading/Commonplace book.md")).includes(QUOTE), "after the note is closed and read again the quote is in the file");
 
   // ---- recent destinations first
-  await pg.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader")[0] && window.app.workspace.revealLeaf(window.app.workspace.getLeavesOfType("blyg-reader")[0]));
+  await pg.evaluate(async () => { const l = window.app.workspace.getLeavesOfType("blyg-reader")[0]; if (l) { await window.app.workspace.revealLeaf(l); window.app.workspace.setActiveLeaf(l, { focus: true }); } });
+  await wait(700);
   await pg.waitForSelector(".blyg-reader-surface .blyg-reader-body", { timeout: 15000 });
   await selectPassage(SENT);
   await eventually(() => pg.evaluate(() => document.querySelector(".blyg-passage-dock-send")));
@@ -189,7 +190,8 @@ await runScenario({ data }, async (s) => {
   }
 
   // ---- "Start a new thread with it": a fragment is not touched; a new thread opens with the quote and the cursor on the empty line under it
-  await pg.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader")[0] && window.app.workspace.revealLeaf(window.app.workspace.getLeavesOfType("blyg-reader")[0]));
+  await pg.evaluate(async () => { const l = window.app.workspace.getLeavesOfType("blyg-reader")[0]; if (l) { await window.app.workspace.revealLeaf(l); window.app.workspace.setActiveLeaf(l, { focus: true }); } });
+  await wait(700);
   await pg.waitForSelector(".blyg-reader-surface .blyg-reader-body", { timeout: 15000 });
   await selectPassage(SENT);
   await eventually(() => pg.evaluate(() => document.querySelector(".blyg-passage-dock-send")));
@@ -211,7 +213,8 @@ await runScenario({ data }, async (s) => {
 
   // ---- no folder chosen: nothing is offered, nothing is written (fail closed)
   await pg.evaluate(() => { window.app.plugins.plugins.blyg.settings.passages.folders = ""; });
-  await pg.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader")[0] && window.app.workspace.revealLeaf(window.app.workspace.getLeavesOfType("blyg-reader")[0]));
+  await pg.evaluate(async () => { const l = window.app.workspace.getLeavesOfType("blyg-reader")[0]; if (l) { await window.app.workspace.revealLeaf(l); window.app.workspace.setActiveLeaf(l, { focus: true }); } });
+  await wait(700);
   await pg.waitForSelector(".blyg-reader-surface .blyg-reader-body", { timeout: 15000 });
   await wait(500);
   await selectPassage(SENT);
