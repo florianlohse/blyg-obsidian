@@ -95,6 +95,8 @@ export interface ReceptionRow {
   placement: Placement;
   /** The quoted words, for the list (a stranger's text: shown, never stored). */
   excerpt: string | null;
+  /** The whole quoted passage (not cut like `excerpt`), to find it in the note's text for the mark. Memory only. */
+  passage?: string | null;
 }
 
 /** One row per quote found; a mention whose quotes could not be read gives one `unknown` row. Newest mention first, as the lookup gave them. */
@@ -118,7 +120,7 @@ export function buildReception(entries: MarginaliaEntry[], paragraphs: NoteParag
       const hit = findPassage(q.text, plain);
       const excerpt = q.text.length > 160 ? `${q.text.slice(0, 157)}…` : q.text;
       const placement: Placement = hit && hit.method !== "overlap" ? { kind: "paragraph", index: hit.end, method: hit.method } : { kind: "earlier" };
-      rows.push({ mention: e.mention, placement, excerpt });
+      rows.push({ mention: e.mention, placement, excerpt, passage: q.text });
     }
   }
   return rows;
@@ -158,4 +160,42 @@ export function placementNote(p: Placement): string | null {
     case "earlier": return "from an earlier version";
     case "unknown": return p.reason === "over-cap" ? "not looked up yet" : p.reason === "unreadable" ? "the Studio does not hold this post, so what it quotes cannot be read" : "what it quotes could not be read";
   }
+}
+
+/** Where a passage stands, word for word, inside one paragraph of the note's Markdown: the span to underline. Null when it is not there as written (marks and links in the
+ *  Markdown, a different case, a passage of several lines or paragraphs): the mark then goes at the paragraph's end instead. */
+export function locatePassage(passage: string, para: NoteParagraph, docText: string): { from: number; to: number } | null {
+  const text = passage.trim();
+  if (text === "" || text.includes("\n")) return null;
+  const at = docText.slice(para.from, para.to).indexOf(text);
+  return at < 0 ? null : { from: para.from + at, to: para.from + at + text.length };
+}
+
+/** One mark in the text: the rows it stands for, where it sits, and the words to underline when the passage was found as written. */
+export interface MarkGroup {
+  pos: number;
+  rows: ReceptionRow[];
+  range: { from: number; to: number } | null;
+}
+
+/** The marks of a note: a quote found word for word is underlined with its count after the words; the rest of a paragraph's quotes share one count at the paragraph's end. */
+export function markGroups(rows: ReceptionRow[], paragraphs: NoteParagraph[], docText: string): MarkGroup[] {
+  const out: MarkGroup[] = [];
+  for (const [index, list] of [...markersOf(rows)].sort((a, b) => a[0] - b[0])) {
+    const para = paragraphs[index];
+    if (!para) continue;
+    const spans = new Map<string, MarkGroup>();
+    const rest: ReceptionRow[] = [];
+    for (const r of list) {
+      const range = r.placement.kind === "paragraph" && r.placement.method === "exact" && r.passage ? locatePassage(r.passage, para, docText) : null;
+      if (!range) { rest.push(r); continue; }
+      const key = `${range.from}:${range.to}`;
+      const g = spans.get(key) ?? { pos: range.to, rows: [], range };
+      g.rows.push(r);
+      spans.set(key, g);
+    }
+    out.push(...spans.values());
+    if (rest.length > 0) out.push({ pos: para.to, rows: rest, range: null });
+  }
+  return out;
 }

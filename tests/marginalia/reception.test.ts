@@ -1,7 +1,7 @@
 // HK3 stage 2: the pure parts: the parser adapter, the paragraphs of a note, the matching, and the store.
 import { describe, expect, it } from "vitest";
 import { MarginaliaLookup, type MarginaliaEntry, type MarginaliaMention } from "../../src/marginalia/lookup";
-import { buildReception, leadOf, markersOf, paragraphsOf, parseQuotesOf, placementNote, plainOfParagraph } from "../../src/marginalia/reception";
+import { buildReception, leadOf, locatePassage, markGroups, markersOf, paragraphsOf, parseQuotesOf, placementNote, plainOfParagraph } from "../../src/marginalia/reception";
 import { ReceptionStore } from "../../src/marginalia/store";
 import type { InboundMention } from "../../src/studio/reading";
 
@@ -119,5 +119,34 @@ describe("ReceptionStore", () => {
     store.request(ID);
     await done;
     expect(store.peek(ID)?.kind).toBe("failed");
+  });
+});
+
+describe("marks (variant C): underline the words, count after them; the rest count at the paragraph's end", () => {
+  const doc = "First paragraph about gardens.\n\nSecond paragraph, with **bold** words and a [link](https://e.example/a).\nIt runs two lines.\n";
+  const paras = paragraphsOf(doc);
+  const row = (id: string, text: string) => buildReception([entry(m({ id }), [{ kind: "passage", text }])], paras)[0]!;
+  it("locatePassage finds the words as written inside one paragraph and says where; not as written, or over several lines, it is null", () => {
+    expect(locatePassage("paragraph about gardens", paras[0]!, doc)).toEqual({ from: 6, to: 29 });
+    expect(locatePassage("bold words", paras[1]!, doc)).toBeNull(); // the Markdown has ** between
+    expect(locatePassage("PARAGRAPH about gardens", paras[0]!, doc)).toBeNull();
+    expect(locatePassage("two\nlines", paras[1]!, doc)).toBeNull();
+    expect(locatePassage("  ", paras[0]!, doc)).toBeNull();
+  });
+  it("a passage found as written is a span with its count at the end of the words; two quotes of the same words share one count", () => {
+    const g = markGroups([row("a", "paragraph about gardens"), row("b", "paragraph about gardens")], paras, doc);
+    expect(g).toHaveLength(1);
+    expect(g[0]).toMatchObject({ pos: 29, range: { from: 6, to: 29 } });
+    expect(g[0]!.rows).toHaveLength(2);
+  });
+  it("a quote that matches only with the Markdown or the case relaxed goes to a count at the end of its paragraph, beside any span of the same paragraph", () => {
+    const g = markGroups([row("a", "bold words and a link"), row("b", "It runs two lines."), row("c", "FIRST PARAGRAPH ABOUT GARDENS")], paras, doc);
+    const end0 = paras[0]!.to;
+    const end1 = paras[1]!.to;
+    expect(g.map((x) => [x.pos, x.range, x.rows.map((r) => r.mention.id)])).toEqual([
+      [end0, null, ["c"]],
+      [end1, { from: doc.indexOf("It runs"), to: end1 }, ["b"]],
+      [end1, null, ["a"]],
+    ]);
   });
 });

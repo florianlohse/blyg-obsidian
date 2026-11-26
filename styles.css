@@ -1103,6 +1103,11 @@ body button.blyg-menurow[disabled] { opacity: 0.6; cursor: default; }
 .blyg-passage-modal .blyg-passage-back { align-self: flex-start; background: transparent; box-shadow: none; padding: 0 var(--size-4-2); height: 32px; border-radius: var(--radius-s); color: var(--text-accent); }
 .blyg-passage-empty { padding: var(--size-4-4) 0; color: var(--text-muted); }
 .blyg-passage-toast-open { margin-left: var(--size-4-2); }
+.blyg-marginalia-mark { text-decoration: underline dotted var(--text-accent); text-underline-offset: 3px; }
+.blyg-marginalia-marker.is-count { margin-left: 1px; padding: 0 var(--size-2-2); min-width: 0; background: none; border-radius: 0; position: relative; }
+.blyg-marginalia-marker { position: relative; }
+.blyg-marginalia-marker::after { content: ""; position: absolute; inset: -12px -16px; } /* a 44 px touch target around the small mark */
+.blyg-reception-popover.is-wide { width: calc(100vw - 16px); }
 
 /* V1-C.3: the panel's paragraphs of this note that were published as items. */
 .blyg-blocks .blyg-blocks-title { font-weight: var(--font-semibold); margin-bottom: var(--size-4-2); }

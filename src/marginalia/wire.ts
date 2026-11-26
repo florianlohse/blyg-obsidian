@@ -15,7 +15,7 @@ import { parseQuotesFromHtml } from "./htmlQuotes";
 import { MarginaliaLookup } from "./lookup";
 import { registerReadingSection } from "./reading";
 import { makeSourceReader } from "./sourceRead";
-import { buildReception, markersOf, paragraphsOf, parseQuotesOf, type ReceptionRow } from "./reception";
+import { buildReception, markGroups, paragraphsOf, parseQuotesOf, type ReceptionRow } from "./reception";
 import { ReceptionStore, type ReceptionState } from "./store";
 
 export interface MarginaliaHost {
@@ -119,7 +119,7 @@ export function createMarginalia(host: MarginaliaHost): Marginalia {
     if (state?.kind !== "ready") return [];
     if (last && last.state === state && last.text === text) return last.marks;
     const { rows, paragraphs } = rowsOf(state, text);
-    const marks = [...markersOf(rows)].flatMap(([index, list]) => { const p = paragraphs[index]; return p ? [{ pos: p.to, rows: list }] : []; });
+    const marks = markGroups(rows, paragraphs, text);
     last = { state, text, marks };
     return marks;
   };

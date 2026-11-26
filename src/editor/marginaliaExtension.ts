@@ -1,5 +1,5 @@
-// HK3 Marginalia (Live Preview): a small marker at the end of a paragraph of a published note that others quoted; a tap opens the card of who. View-only: a
-// widget decoration, so the note's text never changes and the vault never holds it. Reading view and source mode are not drawn on.
+// HK3 Marginalia (Live Preview and Source mode): a quote found word for word is underlined (dotted) with its count after the words; a quote not found as written gets its count at the
+// end of its paragraph; a tap on a count opens the card of who. View-only: decorations, so the note's text never changes and the vault never holds it. Reading view has the section instead.
 // eslint-disable-next-line import/no-extraneous-dependencies -- provided by Obsidian at run time, typed through the obsidian package
 import { StateEffect, type Extension, type Range } from "@codemirror/state";
 // eslint-disable-next-line import/no-extraneous-dependencies -- provided by Obsidian at run time, typed through the obsidian package
@@ -9,9 +9,11 @@ import { leadOf, type ReceptionRow } from "../marginalia/reception";
 import { relativeTime } from "../ui/readerFeed";
 
 export interface MarginaliaMarker {
-  /** Where the paragraph ends in the note's text. */
+  /** Where the count goes: the end of the quoted words, or the end of the paragraph when they were not found as written. */
   pos: number;
   rows: ReceptionRow[];
+  /** The quoted words to underline (dotted), when the passage was found word for word. */
+  range?: { from: number; to: number } | null;
 }
 
 export interface MarginaliaEditorDeps {
@@ -25,11 +27,11 @@ export interface MarginaliaEditorDeps {
 const refresh = StateEffect.define<null>();
 
 class MarkerWidget extends WidgetType {
-  constructor(private readonly rows: ReceptionRow[], private readonly open: MarginaliaEditorDeps["open"]) {
+  constructor(private readonly rows: ReceptionRow[], private readonly open: MarginaliaEditorDeps["open"], private readonly after: boolean) {
     super();
   }
   private key(): string {
-    return this.rows.map((r) => `${r.mention.id}:${r.excerpt?.length ?? 0}`).join("|");
+    return `${this.after ? "w" : "p"}|${this.rows.map((r) => `${r.mention.id}:${r.excerpt?.length ?? 0}`).join("|")}`;
   }
   override eq(other: MarkerWidget): boolean {
     return other.key() === this.key();
@@ -38,7 +40,7 @@ class MarkerWidget extends WidgetType {
     const first = this.rows[0];
     const rest = this.rows.length - 1;
     const label = first ? `${leadOf(first.mention)}, ${relativeTime(first.mention.firstSeen || null, Date.now())}${rest > 0 ? ` (and ${rest} more)` : ""}` : "";
-    const el = createSpan({ cls: "blyg-marginalia-marker", text: this.rows.length > 1 ? `“${this.rows.length}` : "“", attr: { role: "button", tabindex: "0", "aria-label": label, title: label } });
+    const el = createSpan({ cls: `blyg-marginalia-marker${this.after ? " is-count" : ""}`, text: String(this.rows.length), attr: { role: "button", tabindex: "0", "aria-label": label, title: label } });
     const go = (e: Event): void => {
       e.preventDefault();
       e.stopPropagation();
@@ -70,12 +72,16 @@ export function marginaliaExtension(deps: MarginaliaEditorDeps): Extension {
         this.stop();
       }
       private build(view: EditorView): DecorationSet {
-        if (!view.state.field(editorLivePreviewField, false)) return Decoration.none;
         const path = view.state.field(editorInfoField, false)?.file?.path ?? null;
         const marks = deps.markersFor(path, view.state.doc.toString());
-        const ranges: Range<Decoration>[] = marks
-          .filter((m) => m.pos >= 0 && m.pos <= view.state.doc.length)
-          .map((m) => Decoration.widget({ widget: new MarkerWidget(m.rows, (a, r) => deps.open(a, r)), side: 1 }).range(m.pos));
+        const len = view.state.doc.length;
+        const ranges: Range<Decoration>[] = [];
+        for (const m of marks) {
+          if (m.pos < 0 || m.pos > len) continue;
+          const r = m.range && m.range.from >= 0 && m.range.to <= len && m.range.from < m.range.to ? m.range : null;
+          if (r) ranges.push(Decoration.mark({ class: "blyg-marginalia-mark" }).range(r.from, r.to));
+          ranges.push(Decoration.widget({ widget: new MarkerWidget(m.rows, (a, rr) => deps.open(a, rr), r !== null), side: 1 }).range(m.pos));
+        }
         return Decoration.set(ranges, true);
       }
     },
