@@ -49,7 +49,7 @@ await runScenario({ data }, async (s) => {
     const view = window.app.workspace.activeLeaf.view;
     window.app.workspace.trigger("editor-menu", menu, window.app.workspace.activeEditor.editor, view);
     window.__menuItems = items;
-    return items.map((i) => i.t);
+    return items.map((i) => i.t).filter((t) => /^Draft as/.test(t)); // (Obsidian's own items are in the menu too)
   });
   const clickMenu = (title) => pg.evaluate((t) => { window.__menuItems.find((i) => i.t === t)?.f(); }, title);
   const tapButton = async (text) => { await pg.evaluate((t) => [...activeDocument.querySelectorAll(".blyg-passage-modal button, .notice button")].find((b) => (b.textContent ?? "").includes(t))?.click(), text); await wait(500); };
