@@ -391,6 +391,12 @@ export class FakeStudio {
     return found.sort((a, b) => a.start - b.start);
   }
 
+  /** Tangling (`tangle` on publish) first shipped in contract 5.12.0 (Studio 0.63.0); every contract 6 has it. */
+  private hasTangle(): boolean {
+    const [major, minor] = (this.contractVersion ?? "5").split(".").map(Number);
+    return (major ?? 5) > 5 || ((major ?? 5) === 5 && (minor ?? 0) >= 12);
+  }
+
   private major(): number {
     return Number((this.contractVersion ?? "5").split(".")[0]);
   }
@@ -604,8 +610,8 @@ export class FakeStudio {
         const stale = checkRevision();
         if (stale) return stale;
         // Tangling (contract 6, measured on Studio 0.69.0): spans `![[+ …]]` at a line start and placeholders `[[+ …]]` make new threads first.
-        if (typeof body.tangle === "boolean" && this.major() < 6) return this.fail(400, "invalid-input", 'request: Unrecognized key: "tangle"');
-        const tangled = this.major() >= 6 ? this.tangleParts(item.content_md) : [];
+        if (typeof body.tangle === "boolean" && !this.hasTangle()) return this.fail(400, "invalid-input", 'request: Unrecognized key: "tangle"');
+        const tangled = this.hasTangle() ? this.tangleParts(item.content_md) : [];
         let madeParts: Array<{ id: string; version: number }> | undefined;
         if (tangled.length > 0) {
           if (item.kind === "fragment") return this.fail(400, "invalid-input", "tangling makes a thread; switch this draft to a thread");

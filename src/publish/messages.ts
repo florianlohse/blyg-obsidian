@@ -119,7 +119,7 @@ export const M = {
     `Not published — line ${lines[0] ?? 1} makes a new item (“![[+ …]]” or “[[+ …]]”), which only a thread can do. Add the property blyg_kind: thread before the first publish (the kind of a published item never changes), or take the span out. Nothing was sent.`,
   tangleCap: (count: number, max: number) =>
     `Not published — this thread would make ${count} new items; one publish may make at most ${max}. Publish some of them first, or take some out. Nothing was sent.`,
-  tangleUnsupported: `Not published — this thread has new-item spans (“![[+ …]]”) or placeholders (“[[+ …]]”), and this Studio's API cannot make those from here (it needs API contract 6, Studio 0.67 or newer). Update the Studio, or take them out. Nothing was sent.`,
+  tangleUnsupported: `Not published — this thread has new-item spans (“![[+ …]]”) or placeholders (“[[+ …]]”), and this Studio's API cannot make those from here (it needs API contract 5.12 or newer, Studio 0.63 or newer). Update the Studio, or take them out. Nothing was sent.`,
   tangleCountDiffers: (mine: number, studio: number) =>
     `Not published — the Studio counts ${studio} new items where this plugin counted ${mine}. Nothing was published; the text is saved as a draft. Check the spans (![[+ …]]) and placeholders ([[+ …]]) and try again.`,
   blockHeading: (line: number, target: string) =>
