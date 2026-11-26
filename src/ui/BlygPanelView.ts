@@ -4,6 +4,8 @@ import { ItemView, type WorkspaceLeaf } from "obsidian";
 import { deployLine, type PanelDeploy, type PanelState } from "../app/panelState";
 import type { ReceptionPanel } from "../marginalia/wire";
 import { drawReceptionRow } from "./receptionView";
+import { drawBlockRows } from "./blockRows";
+import { publishParagraphAt } from "./publishParagraphAt";
 
 export const BLYG_PANEL_VIEW = "blyg-panel";
 
@@ -137,6 +139,7 @@ export class BlygPanelView extends ItemView {
     if (publishable) this.drawDecision(status, state);
 
     this.drawStudioWarnings(root, state);
+    if (state.blocks && state.note) drawBlockRows(root, state.blocks, (row) => void publishParagraphAt(this.app, state.note?.path ?? "", row.line));
     this.drawStartWriting(root, state);
     this.drawWorkOnNote(root, state);
     this.drawDetails(root, state);
