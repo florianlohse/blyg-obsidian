@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { CORE_ENTRIES, FEATURES, createFeatures } from "../../src/features/registry";
 
-vi.mock("obsidian", () => ({ FuzzySuggestModal: class { setPlaceholder() {} }, Modal: class {}, Notice: class {}, setIcon: () => {}, ItemView: class {}, TFile: class {}, MarkdownView: class {}, parseYaml: () => ({}), stringifyYaml: () => "", normalizePath: (p: string) => p }));
+vi.mock("obsidian", () => ({ FuzzySuggestModal: class { setPlaceholder() {} }, Modal: class {}, Notice: class {}, setIcon: () => {}, ItemView: class {}, TFile: class {}, MarkdownView: class {}, moment: () => ({ format: () => "" }), parseYaml: () => ({}), stringifyYaml: () => "", normalizePath: (p: string) => p }));
 import { registerFeatureEntries } from "../../src/features/register";
 
 const CALLS = ["addCommand", "addRibbonIcon", "registerView", "registerEditorExtension", "registerObsidianProtocolHandler"];
