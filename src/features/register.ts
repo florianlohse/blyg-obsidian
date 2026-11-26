@@ -4,6 +4,7 @@ import type { Plugin } from "obsidian";
 import { registerDigest, type DigestDeps } from "../digest/register";
 import { registerShareEntry, type ShareEntryDeps } from "../app/shareEntry";
 import { registerPassages } from "../app/passageEntry";
+import { registerPassageDraft } from "../app/passageDraftEntry";
 import { registerDevCommands } from "../dev/drawBench";
 import { registerTangleEntries, type TangleEntryDeps } from "../tangle/register";
 import type { ReaderContrast } from "../ui/readerLook";
@@ -20,6 +21,9 @@ export function registerFeatureEntries(plugin: Plugin, features: Features, deps:
   if (features.enabled("daily")) registerDigest(plugin, features.enabled("digest-ai") ? deps.digest : { font: deps.digest.font, time: deps.digest.time, readList: deps.digest.readList, ...(deps.digest.reader ? { reader: deps.digest.reader } : {}), mode: deps.digest.mode, ...(deps.digest.notes ? { notes: deps.digest.notes } : {}), ...(deps.digest.markRead ? { markRead: deps.digest.markRead } : {}), ...(deps.digest.markUnread ? { markUnread: deps.digest.markUnread } : {}), ...(deps.digest.replyTo ? { replyTo: deps.digest.replyTo } : {}), ...(deps.digest.shelf ? { shelf: deps.digest.shelf } : {}), ...(deps.digest.data ? { data: deps.digest.data } : {}) });
   if (features.enabled("share-open")) registerShareEntry(plugin, { ...deps.share, enabled: () => features.enabled("share-open") });
   if (features.enabled("tangle")) registerTangleEntries(plugin, deps.tangle);
-  if (features.enabled("passages")) registerPassages(plugin, { settings: deps.share.settings, build: deps.share.build });
+  if (features.enabled("passages")) {
+    registerPassages(plugin, { settings: deps.share.settings, build: deps.share.build });
+    registerPassageDraft(plugin, { settings: deps.share.settings });
+  }
   registerDevCommands(plugin, deps.contrast, (id) => features.enabled(id));
 }
