@@ -77,14 +77,15 @@ describe("ReceptionStore", () => {
   const make = (list: () => Promise<{ mentions: InboundMention[]; complete: boolean } | null>, md = `![[${ID}]]\n> hello there friend\n`) => {
     let t = 0;
     let asked = 0;
+    const asks: string[] = [];
     const lookup = new MarginaliaLookup(async () => ({ version: 1, markdown: md, withdrawn: false }), parseQuotesOf);
-    const store = new ReceptionStore({ mentions: () => { asked++; return list(); }, now: () => t }, lookup);
-    return { store, tick: (ms: number) => { t += ms; }, asked: () => asked };
+    const store = new ReceptionStore({ mentions: (id) => { asked++; asks.push(id); return list(); }, now: () => t }, lookup);
+    return { store, tick: (ms: number) => { t += ms; }, asked: () => asked, asks };
   };
   const settled = (store: ReceptionStore): Promise<void> => new Promise((r) => { const off = store.subscribe(() => { off(); r(); }); });
 
-  it("loads once, says loading meanwhile, then ready; the mention list is shared between items", async () => {
-    const { store, asked } = make(async () => ({ mentions: [inbound()], complete: true }));
+  it("loads once, says loading meanwhile, then ready; the Studio is asked for this item's mentions (and again for another item)", async () => {
+    const { store, asked, asks } = make(async () => ({ mentions: [inbound()], complete: true }));
     const done = settled(store);
     store.request(ID);
     expect(store.peek(ID)).toEqual({ kind: "loading" });
@@ -93,6 +94,10 @@ describe("ReceptionStore", () => {
     expect(s?.kind).toBe("ready");
     store.request(ID);
     expect(asked()).toBe(1);
+    const other = settled(store);
+    store.request("another-item");
+    await other;
+    expect(asks).toEqual([ID, "another-item"]);
   });
   it("a failed Studio is failed, never an empty ready list", async () => {
     const { store } = make(async () => null);

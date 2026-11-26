@@ -10,6 +10,7 @@ import { postFromPeekItem } from "../app/shareOpen";
 import { BLYG_READER_VIEW, BlygReaderView } from "../ui/ReaderView";
 import { sameOrigin } from "../ui/readerMentions";
 import { closePopover, showPopover, type ReceptionActions } from "../ui/receptionView";
+import { parseQuotesFromHtml } from "./htmlQuotes";
 import { MarginaliaLookup } from "./lookup";
 import { makeSourceReader } from "./sourceRead";
 import { buildReception, markersOf, paragraphsOf, parseQuotesOf, type ReceptionRow } from "./reception";
@@ -47,13 +48,13 @@ export function createMarginalia(host: MarginaliaHost): Marginalia {
   const read = makeSourceReader(host);
   const store = new ReceptionStore(
     {
-      mentions: async () => {
-        const got = await host.client()?.listInboundMentions(4);
+      mentions: async (itemId) => {
+        const got = await host.client()?.listInboundMentions(4, itemId);
         return got?.kind === "ok" ? { mentions: got.value.mentions, complete: got.value.complete && got.value.unreadable === 0 } : null;
       },
       now: () => Date.now(),
     },
-    new MarginaliaLookup(read, parseQuotesOf),
+    new MarginaliaLookup(read, parseQuotesOf, parseQuotesFromHtml),
   );
   store.subscribe(() => host.refreshPanels());
   // "Open post": in the reader (the held copy, else a peek, as the share entry does); the web page only when the reader cannot open it.
