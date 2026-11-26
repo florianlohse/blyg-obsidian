@@ -61,7 +61,7 @@ await runScenario({ data }, async (s) => {
   check((await s.commandIds("blyg:draft-selection")).length === 2 && (await s.commandIds("blyg:back-to")).length === 1, "the feature is on: both draft commands and the way back exist (they can be added to the mobile toolbar)");
 
   // ---- only my reaction: the menu offers both; a fragment is made as a copy; the note is unchanged; nothing is sent
-  await select({ line: 4, ch: 0 }, { line: 4, ch: lineEnd(4) });
+  await select({ line: 5, ch: 0 }, { line: 5, ch: lineEnd(5) });
   const m1 = await menuItems();
   check(m1.join("|") === "Draft as Blyg fragment|Draft as Blyg thread", `the editor menu offers fragment and thread for plain words (${JSON.stringify(m1)})`);
   await clickMenu("Draft as Blyg fragment");
@@ -83,7 +83,7 @@ await runScenario({ data }, async (s) => {
   check(back === REACTION, `Back to note lands on the original words, selected (${JSON.stringify(back)})`);
 
   // ---- the pair and the reaction: only a thread, quote kept intact, no private line; a fragment is never made from it
-  await select({ line: 2, ch: 0 }, { line: 4, ch: lineEnd(4) });
+  await select({ line: 2, ch: 0 }, { line: 5, ch: lineEnd(5) });
   const m2 = await menuItems();
   check(m2.join("|") === "Draft as Blyg thread", `a selection that holds a captured quote is offered as a thread only (${JSON.stringify(m2)})`);
   const before = (await draftFiles()).length;
@@ -100,7 +100,7 @@ await runScenario({ data }, async (s) => {
   check((await eventually(async () => ((await activePath()) === SOURCE ? true : null))) === true, "the command “Back to the note this draft came from” also goes back");
 
   // ---- a selection that cuts through the quote: asked before anything is made; both ways out
-  await select({ line: 3, ch: 6 }, { line: 4, ch: lineEnd(4) });
+  await select({ line: 3, ch: 6 }, { line: 5, ch: lineEnd(5) });
   const m3 = await menuItems();
   check(m3.join("|") === "Draft as Blyg thread", `a cut selection is offered as a thread (${JSON.stringify(m3)})`);
   const n3 = (await draftFiles()).length;
