@@ -12,7 +12,7 @@ const LABEL: Record<BlockState, string> = {
 };
 
 const DETAIL: Partial<Record<BlockState, string>> = {
-  changed: "The paragraph here differs from what is live. Nothing goes live until you confirm.",
+  changed: "The paragraph here differs from the Studio's copy. Nothing goes live until you confirm.",
   gone: "The item stays published.",
   missing: "The Studio has no item with this id.",
   unknown: "The Studio could not be asked, or the paragraph cannot be sent as it is.",
