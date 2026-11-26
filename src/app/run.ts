@@ -7,6 +7,7 @@ import { readToken } from "../platform/token";
 import { fetchQuotable, type Quotable } from "../publish/items";
 import { deleteDraftNote, publishNote, pullNote, repostNote, withdrawNote } from "../publish/router";
 import { studioFailureOutcome } from "../publish/studio";
+import { publishParagraph } from "../publish/studioBlocks";
 import { takeHoppersNote } from "../publish/studioHopperNote";
 import type { DigestCache } from "../studio/media";
 import type { StudioHopper } from "../studio/types";
@@ -114,6 +115,9 @@ function buildDeps(env: AppEnv): { ok: true; deps: PublishDeps; secrets: string[
     },
   };
 }
+
+/** "Publish this paragraph": the paragraph at `line` (1-based) of the active note (V1-C.2). */
+export const runPublishParagraph = (env: AppEnv, line: number): Promise<Outcome> => run(env, (deps, note) => publishParagraph(deps, note, line));
 
 async function run(env: AppEnv, action: typeof publishNote): Promise<Outcome> {
   const note = env.activeNote();

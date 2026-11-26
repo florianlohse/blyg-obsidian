@@ -84,7 +84,7 @@ export default class BlygPlugin extends Plugin {
   /** What the panel shows about that commit's deploy (waiting, or the verdict). */
   private readonly deploys = createDeployMemory();
   readonly features = createFeatures(() => this.settings.features, this.manifest.id);
-  private readonly marginalia = createMarginalia({ app: this.app, client: () => { const b = buildStudio(this.env()); return b.ok ? b.studio.client : null; }, heldPost: (id) => this.knownPost(id), refreshPanels: () => this.refreshPanels(), openReader: () => this.openReader() });
+  private readonly marginalia = createMarginalia({ app: this.app, client: () => { const b = buildStudio(this.env()); return b.ok ? b.studio.client : null; }, heldPost: (id) => this.knownPost(id), refreshPanels: () => this.refreshPanels(), openReader: () => this.openReader(), options: () => this.settings.marginalia });
   /** What the Studio last said about each item (30 seconds; asked again every 15 s while the panel is on screen, and at once when the app comes back to the foreground), and about the Studio as a whole (token, release): the panel never waits for them. */
   private readonly studioFacts = createLiveCache({
     load: (id: string) => runStudioFacts(this.env(), id),
@@ -125,7 +125,7 @@ export default class BlygPlugin extends Plugin {
     this.addCommand({ id: "open-reader", name: "Open reader", callback: () => void this.openReader() });
     this.addCommand({ id: "open-reader-sidebar", name: "Open reader in the sidebar", callback: () => void this.openReader("sidebar") });
     // The switchable features (the Daily and its AI layer, the share entry, the dev commands) register here, each only when features/registry.ts says it is on.
-    registerFeatureEntries(this, this.features, { digest: { font: () => this.settings.readerPane.font, time: () => this.settings.digest.time, readList: () => this.readReaderCache(), reader: { ...this.readerService, writeCache: (data) => this.writeReaderCache(data) }, mode: { get: () => this.settings.readerPane.mode ?? "feed", set: (m) => { this.settings.readerPane.mode = m; void this.saveSettings(); } }, markRead: (post) => this.writes.mark(post, true), markUnread: (post) => this.writes.mark(post, false), shelf: this.shelf, replyTo: (post) => this.readerHost().replyTo(post), data: { load: () => this.loadData() as Promise<unknown>, update: (change, opts) => this.updateData(change, opts) }, notes: async (sub, id) => { const b = buildStudio(this.env()); return b.ok ? b.studio.client.importedNotes(sub, id) : { kind: "error", status: 0, message: b.message }; }, ai: { settings: () => this.settings.digest, keychain: obsidianKeychain(this.app), transport: obsidianTransport } }, share: { settings: () => this.settings, build: () => buildStudio(this.env()), openReader: () => this.openReader() }, contrast: () => this.settings.readerPane.contrast });
+    registerFeatureEntries(this, this.features, { digest: { font: () => this.settings.readerPane.font, time: () => this.settings.digest.time, readList: () => this.readReaderCache(), reader: { ...this.readerService, writeCache: (data) => this.writeReaderCache(data) }, mode: { get: () => this.settings.readerPane.mode ?? "feed", set: (m) => { this.settings.readerPane.mode = m; void this.saveSettings(); } }, markRead: (post) => this.writes.mark(post, true), markUnread: (post) => this.writes.mark(post, false), shelf: this.shelf, replyTo: (post) => this.readerHost().replyTo(post), data: { load: () => this.loadData() as Promise<unknown>, update: (change, opts) => this.updateData(change, opts) }, notes: async (sub, id) => { const b = buildStudio(this.env()); return b.ok ? b.studio.client.importedNotes(sub, id) : { kind: "error", status: 0, message: b.message }; }, ai: { settings: () => this.settings.digest, keychain: obsidianKeychain(this.app), transport: obsidianTransport } }, share: { settings: () => this.settings, build: () => buildStudio(this.env()), openReader: () => this.openReader() }, contrast: () => this.settings.readerPane.contrast, tangle: { write: (action) => this.write(action), routes: () => this.settings.routes } });
     this.addCommand({
       id: "clear-reader-cache",
       name: "Clear the reader's saved list",
@@ -982,7 +982,7 @@ export default class BlygPlugin extends Plugin {
       const stub = file ? (this.app.metadataCache.getFileCache(file)?.frontmatter?.blyg_stub_of as unknown) : null;
       return typeof stub === "object" && stub !== null && (stub as { id?: unknown }).id === id && typeof (stub as { origin?: unknown }).origin === "string" ? (stub as { origin: string }).origin : null;
     };
-    this.registerEditorExtension([replyPreviewExtension(deps, hintFor), ...(this.features.enabled("marginalia") ? [this.marginalia.extension] : [])]);
+    this.registerEditorExtension([replyPreviewExtension(deps, hintFor), ...(this.features.enabled("marginalia") ? [this.marginalia.extension] : [])]); if (this.features.enabled("marginalia")) this.marginalia.registerReading(this);
     // Ask for the item a reply note answers as soon as the note is opened, so its text is there by the time the line is drawn.
     this.registerEvent(this.app.workspace.on("file-open", (file) => {
       if (!file || !this.app.workspace.layoutReady) return; // not while Obsidian is still restoring its layout: the line asks for itself when it is drawn

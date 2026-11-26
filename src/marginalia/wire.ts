@@ -1,8 +1,9 @@
 // HK3 Marginalia: the pieces joined to the plugin's own parts. Read-only: it asks the Studio's existing client for mentions, reads the posts the reader already
 // holds, and reads the note's text; it writes nothing, in the vault or anywhere else.
-import type { App } from "obsidian";
+import type { App, Plugin } from "obsidian";
 import type { Extension } from "@codemirror/state";
 import { marginaliaExtension, type MarginaliaMarker } from "../editor/marginaliaExtension";
+import { receptionBottomExtension } from "../editor/receptionBottomExtension";
 import { isBlygId } from "../core/ids";
 import type { StudioClient } from "../studio/client";
 import type { ReadingPost } from "../studio/reading";
@@ -12,6 +13,7 @@ import { sameOrigin } from "../ui/readerMentions";
 import { closePopover, showPopover, type ReceptionActions } from "../ui/receptionView";
 import { parseQuotesFromHtml } from "./htmlQuotes";
 import { MarginaliaLookup } from "./lookup";
+import { registerReadingSection } from "./reading";
 import { makeSourceReader } from "./sourceRead";
 import { buildReception, markersOf, paragraphsOf, parseQuotesOf, type ReceptionRow } from "./reception";
 import { ReceptionStore, type ReceptionState } from "./store";
@@ -25,6 +27,8 @@ export interface MarginaliaHost {
   refreshPanels(): void;
   /** Open (or bring forward) the reader. */
   openReader(): Promise<void>;
+  /** The two display switches (settings `marginalia`), read each time something is drawn. */
+  options(): { markers: boolean; bottom: boolean };
 }
 
 /** What the panel's Reception section draws. */
@@ -40,6 +44,10 @@ export interface Marginalia {
   extension: Extension;
   /** The panel's data for the note at `path`; null when the note is not a published item of this Studio. */
   reception(path: string | null): Promise<ReceptionPanel | null>;
+  /** The same for a note whose text is at hand (the editor's), without reading the file; asks for the lookup the first time. */
+  receptionFor(path: string | null, text: string): ReceptionPanel | null;
+  /** Draw the Reception section at the end of a published note in Reading view (a post processor of `plugin`). */
+  registerReading(plugin: Plugin): void;
   /** Forget what is held (after a reader refresh or a publish). */
   invalidate(): void;
 }
@@ -93,7 +101,17 @@ export function createMarginalia(host: MarginaliaHost): Marginalia {
   };
   // The editor asks on every change of the text: the last answer is kept for the same state and text.
   let last: { state: ReceptionState | undefined; text: string; marks: MarginaliaMarker[] } | null = null;
+  const panelOf = (id: string, text: string): ReceptionPanel => {
+    store.request(id);
+    const state = store.peek(id);
+    return { status: state?.kind === "ready" ? "ready" : state?.kind === "failed" ? "failed" : "loading", incomplete: state?.kind === "ready" && !state.complete, rows: rowsOf(state, text).rows, actions };
+  };
+  const receptionFor = (path: string | null, text: string): ReceptionPanel | null => {
+    const id = itemIdOf(path);
+    return id === null || host.client() === null ? null : panelOf(id, text);
+  };
   const markersFor = (path: string | null, text: string): MarginaliaMarker[] => {
+    if (!host.options().markers) return [];
     const id = itemIdOf(path);
     if (id === null || host.client() === null) return [];
     store.request(id);
@@ -106,16 +124,18 @@ export function createMarginalia(host: MarginaliaHost): Marginalia {
     return marks;
   };
   return {
-    extension: marginaliaExtension({ markersFor, subscribe: (fn) => store.subscribe(fn), open: (anchor, rows) => showPopover(anchor, rows, actions, Date.now()) }),
+    extension: [
+      marginaliaExtension({ markersFor, subscribe: (fn) => store.subscribe(fn), open: (anchor, rows) => showPopover(anchor, rows, actions, Date.now()) }),
+      receptionBottomExtension({ receptionFor: (path, text) => (host.options().bottom ? receptionFor(path, text) : null), enabled: () => host.options().bottom, subscribe: (fn) => store.subscribe(fn) }),
+    ],
+    receptionFor,
+    registerReading: (plugin) => registerReadingSection(plugin, { receptionFor, enabled: () => host.options().bottom, subscribe: (fn) => store.subscribe(fn) }),
     reception: async (path) => {
       const id = itemIdOf(path);
       if (id === null || host.client() === null || path === null) return null;
       const file = host.app.vault.getFileByPath(path);
       if (!file) return null;
-      store.request(id);
-      const state = store.peek(id);
-      const text = await host.app.vault.cachedRead(file);
-      return { status: state?.kind === "ready" ? "ready" : state?.kind === "failed" ? "failed" : "loading", incomplete: state?.kind === "ready" && !state.complete, rows: rowsOf(state, text).rows, actions };
+      return panelOf(id, await host.app.vault.cachedRead(file));
     },
     invalidate: () => { closePopover(); store.invalidate(); last = null; },
   };

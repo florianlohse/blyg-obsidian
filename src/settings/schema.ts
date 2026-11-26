@@ -127,6 +127,11 @@ export interface BlygSettings {
    */
   digest: { useAi: boolean; endpoint: string; model: string; keySecretName: string; dailyTokenCeiling: number; /** "Write the digest automatically": once per edition, in the background (default off). */ autoWrite: boolean; /** "Digest time": the local clock time ("HH:MM") an edition of the Daily starts at (src/digest/edition.ts). */ time: string; /** The editor who writes the digest's headlines and summaries (src/digest/editors.ts): "neutral" (default), an editor id or "rota". */ editor?: string };
   /**
+   * Marginalia (HK3, experimental, read-only): which of its two displays are drawn once the feature is on. `markers`: the small marks in the text where a paragraph was quoted;
+   * `bottom`: the "Reception" section at the end of the note. Both on by default; turning one off only hides it.
+   */
+  marginalia: { markers: boolean; bottom: boolean };
+  /**
    * "Send passage to note" (feature `passages`): the folders whose notes the destination picker offers, one folder per line, several allowed. Empty: nothing is
    * offered (fail closed). Optional in data.json, like `webQuote`: no schema change, an older plugin ignores it.
    */
@@ -177,6 +182,7 @@ export function defaultSettings(flavour: "release" | "dev" = "release"): BlygSet
     webQuote: { ...DEFAULT_WEB_QUOTE },
     readerPane: { images: "click", font: "default", contrast: "normal", shareInbox: "", filter: { sort: "newest", source: null, unreadOnly: false, length: "any", repliesToMe: false } },
     digest: { useAi: false, endpoint: "https://api.anthropic.com", model: "claude-sonnet-5-5", keySecretName: "", dailyTokenCeiling: 2000000, autoWrite: false, time: "07:00", editor: "neutral" },
+    marginalia: { markers: true, bottom: true },
     features: {},
     dev: { allowLiveStudio: false },
   };
