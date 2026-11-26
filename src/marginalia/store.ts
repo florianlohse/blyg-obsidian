@@ -9,19 +9,16 @@ export type ReceptionState =
   | { kind: "failed"; at: number };
 
 export interface ReceptionStoreDeps {
-  /** The owner's inbound mentions, verified and visible only (the existing client method); null when the Studio could not be asked. */
-  mentions(): Promise<{ mentions: InboundMention[]; complete: boolean } | null>;
+  /** The owner's inbound mentions OF ONE ITEM, verified and visible only (the client's method with the item filter); null when the Studio could not be asked. */
+  mentions(itemId: string): Promise<{ mentions: InboundMention[]; complete: boolean } | null>;
   now(): number;
 }
 
 const READY_MS = 5 * 60_000;
 const FAILED_MS = 60_000;
-const LIST_MS = 3 * 60_000;
 
 export class ReceptionStore {
   private readonly states = new Map<string, ReceptionState>();
-  private list: { at: number; value: { mentions: InboundMention[]; complete: boolean } | null } | null = null;
-  private listing: Promise<{ mentions: InboundMention[]; complete: boolean } | null> | null = null;
   private readonly listeners = new Set<() => void>();
 
   constructor(private readonly deps: ReceptionStoreDeps, private readonly lookup: MarginaliaLookup) {}
@@ -38,7 +35,6 @@ export class ReceptionStore {
   /** Forget what is held (a publish or a reader refresh may have changed it); the next `request` asks again. */
   invalidate(): void {
     this.states.clear();
-    this.list = null;
   }
 
   /** Start looking an item up unless a fresh answer (or a lookup under way) is held. Returns at once; listeners hear when it is done. */
@@ -56,7 +52,7 @@ export class ReceptionStore {
   private async run(itemId: string, previous: ReceptionState | undefined): Promise<void> {
     let next: ReceptionState;
     try {
-      const got = await this.mentionList();
+      const got = await this.deps.mentions(itemId);
       if (got === null) next = { kind: "failed", at: this.deps.now() };
       else {
         const entries = await this.lookup.lookup(got.mentions, itemId);
@@ -69,16 +65,5 @@ export class ReceptionStore {
     if (next.kind === "failed" && previous?.kind === "ready") next = { ...previous, at: this.deps.now() };
     this.states.set(itemId, next);
     for (const fn of [...this.listeners]) fn();
-  }
-
-  private mentionList(): Promise<{ mentions: InboundMention[]; complete: boolean } | null> {
-    if (this.list && this.deps.now() - this.list.at < LIST_MS && this.list.value) return Promise.resolve(this.list.value);
-    if (this.listing) return this.listing;
-    const run = this.deps.mentions().then((value) => {
-      this.list = { at: this.deps.now(), value };
-      return value;
-    }).finally(() => { this.listing = null; });
-    this.listing = run;
-    return run;
   }
 }

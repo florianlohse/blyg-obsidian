@@ -9,6 +9,12 @@ export const OPERATION = {
 } as const;
 
 /**
+ * The first contract the plugin sends `tangle` to: measured on a real Studio 0.69.0 (contract 6.2). Which 5.x minor first had it (Studio 0.63 to 0.65.0) is not known
+ * from the files in this repository, so a contract 5 Studio is treated as without it: the plugin then keeps refusing spans, as before. Widen when it is known.
+ */
+export const TANGLE_CONTRACT = { major: 6, minor: 0 } as const;
+
+/**
  * Does this Studio list the operation? False when the verdict is not "ok", or the Studio listed no operations at all: a feature that cannot be shown
  * to exist is treated as absent, and the caller then takes its path for a Studio without it.
  */

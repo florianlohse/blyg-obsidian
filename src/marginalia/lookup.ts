@@ -14,6 +14,8 @@ export type QuoteParser = (markdown: string, itemId: string) => FoundQuote[];
 export interface SourcePost {
   version: number;
   markdown: string | null;
+  /** The post's rendered HTML (a peek has it for any blyg), read when there is no Markdown. */
+  html?: string | null;
   withdrawn: boolean;
 }
 
@@ -64,7 +66,7 @@ const keyOf = (m: MarginaliaMention, version: number): string => `${(m.sourceOri
 export class MarginaliaLookup {
   private readonly cache = new Map<string, FoundQuote[]>();
 
-  constructor(private readonly read: SourceReader, private readonly parse: QuoteParser) {}
+  constructor(private readonly read: SourceReader, private readonly parse: QuoteParser, private readonly parseHtml?: QuoteParser) {}
 
   /** For every quoting mention of `itemId` in `mentions`, in order, what it quoted. Never throws; a failed lookup is an `unknown` entry. */
   async lookup(mentions: MarginaliaMention[], itemId: string, opts: LookupOptions = {}): Promise<MarginaliaEntry[]> {
@@ -101,10 +103,11 @@ export class MarginaliaLookup {
     if (post.withdrawn) return { kind: "unknown", reason: "withdrawn" };
     const held = this.cache.get(keyOf(m, post.version));
     if (held) return { kind: "quotes", quotes: held, version: post.version };
-    if (post.markdown === null) return { kind: "unknown", reason: "no-text" };
+    const html = post.markdown === null && this.parseHtml && post.html ? post.html : null;
+    if (post.markdown === null && html === null) return { kind: "unknown", reason: "no-text" };
     let quotes: FoundQuote[];
     try {
-      quotes = this.parse(post.markdown, m.targetItemId);
+      quotes = html !== null ? this.parseHtml!(html, m.targetItemId) : this.parse(post.markdown as string, m.targetItemId);
     } catch {
       return { kind: "unknown", reason: "no-text" };
     }
