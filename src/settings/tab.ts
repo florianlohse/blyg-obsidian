@@ -416,6 +416,21 @@ export class BlygSettingTab extends PluginSettingTab {
       ],
     });
 
+    if (this.plugin.features.enabled("passages")) {
+      items.push({
+        type: "group",
+        heading: "Send passage to note",
+        items: [
+          {
+            name: "Folders for passages",
+            desc: "The folders whose notes “Send passage to note” offers, one folder per line, as many as you like (for example Reading and Ideas). Leave empty to switch it off: nothing is offered and nothing is written. A passage is quoted only into a note in one of these folders, under the heading you pick. To get the button in Obsidian's toolbar above the keyboard on a phone, add the command once in Settings, Mobile, Toolbar.",
+            aliases: ["passage", "quote", "send", "note", "folder", "toolbar"],
+            control: { type: "textarea", key: "passages.folders", placeholder: "Reading\nIdeas", rows: 3 },
+          },
+        ],
+      });
+    }
+
     items.push({
       type: "group",
       heading: "Safety",

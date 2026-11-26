@@ -131,6 +131,11 @@ export interface BlygSettings {
    * `bottom`: the "Reception" section at the end of the note. Both on by default; turning one off only hides it.
    */
   marginalia: { markers: boolean; bottom: boolean };
+  /**
+   * "Send passage to note" (feature `passages`): the folders whose notes the destination picker offers, one folder per line, several allowed. Empty: nothing is
+   * offered (fail closed). Optional in data.json, like `webQuote`: no schema change, an older plugin ignores it.
+   */
+  passages: { folders: string };
   /** Feature switches the user has set, by feature id (src/features/registry.ts). A missing id takes the build's default; turning one off keeps the feature's stored data. */
   features: Record<string, boolean>;
   /** Development build only (ignored by the release plugin). `allowLiveStudio`: lift the test-Studio lock (studio/devLock.ts) on the owner's say. */
@@ -171,6 +176,7 @@ export function defaultSettings(flavour: "release" | "dev" = "release"): BlygSet
       userAgent: "blyg/{version}",
     },
     templates: { fragment: "", thread: "" },
+    passages: { folders: "" },
     respond: { draftsPrefix: "blyg/" },
     mentions: { repoPath: "data/mentions.json" },
     webQuote: { ...DEFAULT_WEB_QUOTE },
