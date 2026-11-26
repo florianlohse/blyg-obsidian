@@ -2,6 +2,7 @@ import { importFolderChoices } from "../studio/import";
 import { DEV_STUDIO_RULE, isDevStudioLock } from "../studio/devLock";
 import {
   debounce,
+  MarkdownView,
   Notice,
   PluginSettingTab,
   SecretComponent,
@@ -85,6 +86,10 @@ export class BlygSettingTab extends PluginSettingTab {
     this.changed();
     if (key.startsWith("features.")) new Notice("Reload Obsidian for this to take effect. Nothing the feature saved is deleted.", 8000);
     if (key.startsWith("readerPane.")) for (const paint of this.previews) paint();
+    if (key.startsWith("marginalia.")) {
+      this.app.workspace.updateOptions(); // the open editors read the two switches again
+      for (const leaf of this.app.workspace.getLeavesOfType("markdown")) if (leaf.view instanceof MarkdownView) leaf.view.previewMode.rerender(true); // and so does Reading view
+    }
   }
 
   /** A setting row that is only a folded help: a native details element (keyboard and screen reader friendly), closed at first. */
@@ -267,6 +272,15 @@ export class BlygSettingTab extends PluginSettingTab {
       items: [
         { name: "Early features", desc: "These are still being built and may change, be slow or misbehave. Each is off in the released plugin until it has been tried. Switching one off hides it completely and keeps what it saved. Reload Obsidian after a change." },
         ...experimental.map((f): SettingGroupItem => ({ name: f.title, desc: f.description, control: { type: "toggle", key: `features.${f.id}`, defaultValue: false } })),
+      ],
+    });
+
+    if (this.plugin.features.enabled("marginalia")) items.push({
+      type: "group",
+      heading: "Marginalia",
+      items: [
+        { name: "Marks in the text", desc: "A small mark at the end of a paragraph that others quoted. Tap it to see who, and when.", control: { type: "toggle", key: "marginalia.markers", defaultValue: true } },
+        { name: "Reception at the end of the note", desc: "A section after the last paragraph listing who quoted or answered this note. It is only drawn, never written into the note.", control: { type: "toggle", key: "marginalia.bottom", defaultValue: true } },
       ],
     });
 

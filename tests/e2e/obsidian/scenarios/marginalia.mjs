@@ -23,6 +23,8 @@ const MENTIONS = [
   mention("m-reply-plain", "src-reply-plain", "stub", "Ana", 5), //  a reply with no quote
   mention("m-earlier", "src-earlier", "transclusion", "Ed", 6), //   a passage the note no longer has as written
   mention("m-gone", "src-gone", "transclusion", "Kai", 7), //        a post the Studio cannot serve
+  mention("m-html", "src-html", "transclusion", "Lia", 1), //        a passage of a blyg the owner does not follow: only the peek's HTML says what it quotes
+  { ...mention("m-other", "src-other", "transclusion", "Zed", 1), targetItemId: "0000000000000000000000000z" }, // another item's mention: never asked for
 ];
 // Markdown the owner's Studio holds (imported); every other source answers 404 on /imports.
 const HELD = {
@@ -32,6 +34,7 @@ const HELD = {
   "src-earlier": `![[${ITEM}@v1]]\n> ants walk in straight lines\n\nEd quoted an older wording.`,
 };
 const PEEK = {
+  "src-html": { html: `<blockquote class="blyg-transclusion blyg-partial" data-blyg-id="${ITEM}" data-blyg-version="1" data-blyg-origin="https://me.example.com/"><p>Third paragraph ends the note</p></blockquote>\n<p>Lia on the ending.</p>\n`, sub: null },
   "src-whole": { html: `<blockquote class="blyg-transclusion" data-blyg-id="${ITEM}" data-blyg-version="1" data-blyg-origin="https://me.example.com/"><p>the whole note</p></blockquote>\n<p>Mira quotes it all.</p>\n`, sub: null },
   ...Object.fromEntries(Object.keys(HELD).map((id) => [id, { html: "<p>held</p>", sub: "sub1" }])), // a post of a blyg the owner follows: the Studio names the subscription and holds the post
 };
@@ -46,7 +49,7 @@ const stub = http.createServer((req, res) => {
     else seen.reads.push(`${req.method} ${path}${url.search}`);
     if (path === "/blyg.json") return reply(res, 200, { blyg: "0.4", level: 2, generator: "blygger-studio/0.51.0", site: `http://127.0.0.1:${stub.address().port}/`, title: "Stand-in", items: "items/index.json" });
     if (path === "/api/capabilities") return reply(res, 200, { contractVersion: "5.2.0", endpoints: {}, extensions: [], operations: ["getCapabilities", "listItems", "listMentions", "peekItem", "getImportedItem"] });
-    if (path === "/api/mentions") return reply(res, 200, { items: MENTIONS, page: { limit: 100, nextCursor: null }, direction: "inbound" });
+    if (path === "/api/mentions") return reply(res, 200, { items: MENTIONS.filter((x) => !url.searchParams.get("targetItemId") || x.targetItemId === url.searchParams.get("targetItemId")), page: { limit: 100, nextCursor: null }, direction: "inbound" });
     if (path === "/api/peek") {
       const id = url.searchParams.get("id") ?? "";
       const p = PEEK[id];
@@ -92,7 +95,10 @@ await runScenario({ data }, async (s) => {
   check(Boolean(got), "Live Preview shows at least one marker");
   check(live.some((m) => /Teo quoted this/.test(m.label) && /Second paragraph/.test(m.line)), `Teo's passage has its marker at the end of its paragraph ("Second paragraph …") (${JSON.stringify(live)})`);
   check(live.some((m) => /Jo replied to this/.test(m.label) && /First paragraph/.test(m.line)), `Jo's reply, which quotes the first paragraph, has its marker there: a reply is a \`stub\`, not a \`transclusion\` (${JSON.stringify(live)})`);
-  check(live.length === 2, `exactly two paragraphs carry a marker (${live.length})`);
+  check(live.some((m) => /Lia quoted this/.test(m.label) && /Third paragraph/.test(m.line)), `Lia's passage, of a blyg the owner does not follow (read from the peek's HTML), has its marker at the end of the third paragraph (${JSON.stringify(live)})`);
+  check(live.length === 3, `exactly three paragraphs carry a marker (${live.length})`);
+  const mentionAsks = seen.reads.filter((r) => r.startsWith("GET /api/mentions"));
+  check(mentionAsks.length >= 1 && mentionAsks.every((r) => r.includes(`targetItemId=${ITEM}`)), `the Studio is asked for this item's mentions only (${JSON.stringify(mentionAsks)})`);
 
   // ---- the tap: a card with who, what and when
   await page.evaluate(() => document.querySelector(".workspace-leaf.mod-active .blyg-marginalia-marker")?.click());
@@ -101,24 +107,71 @@ await runScenario({ data }, async (s) => {
   check(card.length >= 1 && /quoted this|replied to this/.test(card.join(" ")), `a tap on a marker opens a card saying who, how and when (${JSON.stringify(card)})`);
   await page.keyboard.press("Escape");
 
+  // ---- the Reception section at the end of the note (a block widget after the last line), grouped, in words, inside the screen
+  const section = (scope = ".workspace-leaf.mod-active") => page.evaluate((sc) => {
+    const el = document.querySelector(`${sc} .blyg-reception-section`);
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { title: el.querySelector(".blyg-reception-title")?.textContent ?? "", groups: [...el.querySelectorAll(".blyg-reception-group")].map((g) => g.textContent), rows: el.querySelectorAll(".blyg-reception-row").length, inside: r.left >= 0 && r.right <= innerWidth + 0.5, text: el.textContent ?? "", afterText: !!el.closest(".cm-content") && (document.querySelector(".workspace-leaf.mod-active .cm-content")?.lastElementChild?.contains(el) ?? false) };
+  }, scope);
+  const sec = await s.becomes(async () => { const v = await section(); return v && v.rows >= 7 ? v : false; }, 15000, "the Reception section");
+  const live2 = await section();
+  console.log("OBSERVED section:", JSON.stringify(live2)?.slice(0, 900));
+  check(Boolean(sec) && live2.title === "Reception · 7", `Live Preview ends with a Reception section titled with the count (${live2?.title})`);
+  check(JSON.stringify(live2?.groups) === JSON.stringify(["Quoted a paragraph", "Quoted the whole note", "Replies", "From an earlier version", "Could not be read"]), `its groups are in the fixed order (${JSON.stringify(live2?.groups)})`);
+  check(Boolean(live2?.inside), "the section stays inside the 393 px screen");
+  check(/paragraph 2/.test(live2?.text ?? "") && /Ana replied to this/.test(live2?.text ?? "") && /earlier version/.test(live2?.text ?? ""), "it says which paragraph, lists the reply with no quote and the older wording");
+
   // ---- source mode and the note itself
   await openIn("source");
   await wait(800);
   check((await markers()).length === 0, "source mode draws no marker");
+  const srcSec = await s.becomes(async () => { const v = await section(); return v && v.rows >= 7 ? v : false; }, 10000, "the section in source mode");
+  check(Boolean(srcSec), "source mode shows the Reception section at the end");
   check((await s.readNote(PATH)) === NOTE, "the note's text is byte for byte what it was (nothing of a stranger is written into it)");
 
   // ---- the panel's Reception list: every mention, none lost as "nobody"; a post the Studio cannot serve says so
   await s.openNote(PATH);
   await page.evaluate(() => { for (const d of document.querySelectorAll(".blyg-pane-section")) if (/^Reception/.test(d.querySelector("summary")?.textContent ?? "")) d.open = true; });
-  const rows = await s.becomes(async () => { const r = await page.evaluate(() => [...document.querySelectorAll(".blyg-reception-row")].map((e) => e.textContent ?? "")); return r.length >= 5 ? r : false; }, 20000, "the Reception rows");
+  const rows = await s.becomes(async () => { const r = await page.evaluate(() => [...document.querySelectorAll(".blyg-reception-row")].map((e) => e.textContent ?? "")); return r.length >= 7 ? r : false; }, 20000, "the Reception rows");
   const list = await page.evaluate(() => [...document.querySelectorAll(".blyg-reception-row")].map((e) => e.textContent ?? ""));
   console.log("OBSERVED reception rows:", JSON.stringify(list));
-  check(Boolean(rows), `the Reception list has a row for each of the six mentions (${list.length})`);
+  check(Boolean(rows), `the Reception list has a row for each of the seven mentions (${list.length})`);
   check(list.some((t) => /Ana replied to this/.test(t) && /a reply, with no quote/.test(t)), "Ana's reply without a quote is listed as a reply, not as unreadable");
-  check(list.some((t) => /Mira quoted this/.test(t) && /cannot be read/.test(t)), "a post of a blyg the owner does not follow (peek has HTML only, no subscription) is listed as unreadable, not dropped (until the HTML read, a later change)");
+  check(list.some((t) => /Mira quoted this/.test(t) && /the whole post/.test(t)), "Mira's whole-post quote, of a blyg the owner does not follow (peek has HTML only, no subscription), is listed as a whole-post quote");
+  check(!list.some((t) => /Zed/.test(t)), "a mention of another item is not listed");
   check(list.some((t) => /Ed quoted this/.test(t) && /earlier version/.test(t)), "Ed's quote of wording the note no longer has says 'from an earlier version'");
   check(list.some((t) => /Kai quoted this/.test(t) && /cannot be read|could not be read/.test(t)), "a post the Studio cannot serve says that it could not be read (never an empty list)");
   check(!list.some((t) => /Nobody has quoted this yet/.test(t)) && !(await page.evaluate(() => /Nobody has quoted this yet/.test(document.body.textContent ?? ""))), "the list never says 'Nobody has quoted this yet' while mentions exist");
+
+  const setSwitch = (key, v) => page.evaluate(([k, val]) => { window.app.plugins.plugins.blyg.settings.marginalia[k] = val; window.app.workspace.updateOptions(); }, [key, v]);
+
+  // ---- Reading view: the same section, once, at the end
+  await openIn("preview");
+  const RV = ".workspace-leaf.mod-active .markdown-reading-view";
+  const reading = await s.becomes(async () => { const v = await section(RV); return v && v.rows >= 7 ? v : false; }, 15000, "the section in Reading view");
+  const once = await page.evaluate((sc) => document.querySelectorAll(`${sc} .blyg-reception-section`).length, RV);
+  console.log("OBSERVED reading:", JSON.stringify(reading)?.slice(0, 300));
+  check(Boolean(reading) && reading.title === "Reception · 7" && JSON.stringify(reading.groups) === JSON.stringify(["Quoted a paragraph", "Quoted the whole note", "Replies", "From an earlier version", "Could not be read"]), `Reading view shows the Reception section with its groups (${reading?.title})`);
+  check(once === 1 && reading?.inside, `exactly one section, inside the screen (${once})`);
+  check((await page.evaluate((sc) => document.querySelectorAll(`${sc} .blyg-marginalia-marker`).length, RV)) === 0, "Reading view draws no marks in the text (the section is its display there)");
+  await setSwitch("bottom", false);
+  await page.evaluate(() => { const v = window.app.workspace.getLeaf(false).view; v.previewMode?.rerender?.(true); });
+  await wait(1200);
+  check((await section(RV)) === null, "the switch hides the section in Reading view too");
+  await setSwitch("bottom", true);
+
+  // ---- the two switches: each hides its own display and nothing else
+  await openIn("live");
+  await setSwitch("bottom", false);
+  await wait(800);
+  check((await section()) === null && (await markers()).length === 3, `"Reception at the end of the note" off: no section, the three marks stay (${(await markers()).length})`);
+  await setSwitch("bottom", true);
+  await setSwitch("markers", false);
+  await wait(800);
+  check((await section()) !== null && (await markers()).length === 0, "\"Marks in the text\" off: no marks, the section stays");
+  await setSwitch("markers", true);
+  check((await s.readNote(PATH)) === NOTE, "the note is still byte for byte what it was after all of it");
 
   check(seen.writes.length === 0, `the stand-in Studio saw no write (${JSON.stringify(seen.writes)})`);
 });

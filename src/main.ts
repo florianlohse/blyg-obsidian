@@ -84,7 +84,7 @@ export default class BlygPlugin extends Plugin {
   /** What the panel shows about that commit's deploy (waiting, or the verdict). */
   private readonly deploys = createDeployMemory();
   readonly features = createFeatures(() => this.settings.features, this.manifest.id);
-  private readonly marginalia = createMarginalia({ app: this.app, client: () => { const b = buildStudio(this.env()); return b.ok ? b.studio.client : null; }, heldPost: (id) => this.knownPost(id), refreshPanels: () => this.refreshPanels(), openReader: () => this.openReader() });
+  private readonly marginalia = createMarginalia({ app: this.app, client: () => { const b = buildStudio(this.env()); return b.ok ? b.studio.client : null; }, heldPost: (id) => this.knownPost(id), refreshPanels: () => this.refreshPanels(), openReader: () => this.openReader(), options: () => this.settings.marginalia });
   /** What the Studio last said about each item (30 seconds; asked again every 15 s while the panel is on screen, and at once when the app comes back to the foreground), and about the Studio as a whole (token, release): the panel never waits for them. */
   private readonly studioFacts = createLiveCache({
     load: (id: string) => runStudioFacts(this.env(), id),
@@ -982,7 +982,7 @@ export default class BlygPlugin extends Plugin {
       const stub = file ? (this.app.metadataCache.getFileCache(file)?.frontmatter?.blyg_stub_of as unknown) : null;
       return typeof stub === "object" && stub !== null && (stub as { id?: unknown }).id === id && typeof (stub as { origin?: unknown }).origin === "string" ? (stub as { origin: string }).origin : null;
     };
-    this.registerEditorExtension([replyPreviewExtension(deps, hintFor), ...(this.features.enabled("marginalia") ? [this.marginalia.extension] : [])]);
+    this.registerEditorExtension([replyPreviewExtension(deps, hintFor), ...(this.features.enabled("marginalia") ? [this.marginalia.extension] : [])]); if (this.features.enabled("marginalia")) this.marginalia.registerReading(this);
     // Ask for the item a reply note answers as soon as the note is opened, so its text is there by the time the line is drawn.
     this.registerEvent(this.app.workspace.on("file-open", (file) => {
       if (!file || !this.app.workspace.layoutReady) return; // not while Obsidian is still restoring its layout: the line asks for itself when it is drawn

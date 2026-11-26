@@ -101,7 +101,7 @@ export interface StudioClient {
     opts?: { pageSize?: number; stopAfter?: (pageRows: ReadingPost[]) => boolean; cursor?: string },
   ): Promise<StudioResult<{ posts: ReadingPost[]; complete: boolean; unreadable: number; stopped: boolean; next: string | null }>>;
   /** POC (S15): inbound mentions of the owner's items (`GET /mentions?direction=inbound`, `owner:read`), verified and not hidden only. */
-  listInboundMentions(maxPages?: number): Promise<StudioResult<{ mentions: InboundMention[]; complete: boolean; unreadable: number }>>;
+  listInboundMentions(maxPages?: number, targetItemId?: string): Promise<StudioResult<{ mentions: InboundMention[]; complete: boolean; unreadable: number }>>;
   /** POC (S15): mark one version of a post read. Needs the token scope `reading:state`, which the plugin's token does not carry today: a 403 comes back as `forbidden`. */
   markRead(subscriptionId: string, remoteId: string, version: number): Promise<StudioResult<{ readVersion: number | null }>>;
   /** S15: mark a post unread again (`DELETE /reading/{sub}/{id}/read`, `reading:state`). */
@@ -411,8 +411,9 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
       return { kind: "ok", value: { posts: walked.value.rows, complete: walked.value.complete, unreadable: walked.value.unreadable, stopped: walked.value.stopped === true, next: walked.value.next ?? null } } as const;
     },
 
-    listInboundMentions: async (maxPages = 2) => {
-      const walked = await walk("/mentions", { direction: "inbound" }, MENTION_PAGE, maxPages, readInboundMention);
+    listInboundMentions: async (maxPages = 2, targetItemId?: string) => {
+      // `targetItemId` (an inbound-only filter of the list) asks for one item's mentions, so a blyg with many mentions does not push this item's off the pages read.
+      const walked = await walk("/mentions", { direction: "inbound", ...(targetItemId ? { targetItemId } : {}) }, MENTION_PAGE, maxPages, readInboundMention);
       if (walked.kind !== "ok") return walked;
       const mentions = walked.value.rows.filter((m) => m.status === "verified" && !m.hidden);
       return { kind: "ok", value: { mentions, complete: walked.value.complete, unreadable: walked.value.unreadable } } as const;
