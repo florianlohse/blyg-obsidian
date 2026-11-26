@@ -53,6 +53,14 @@ describe("buildReception", () => {
     expect(placementNote(rows[1]!.placement)).toBe("from an earlier version");
     expect(placementNote(rows[2]!.placement)).toBe("the Studio does not hold this post, so what it quotes cannot be read");
   });
+  it("a reply that quotes nothing is its own row, in words, with no marker; a reply that quotes a passage is placed like any quote", () => {
+    const reply = m({ id: "r", relation: "stub" });
+    const rows = buildReception([{ mention: reply, result: { kind: "quotes", version: 1, quotes: [] } }, entry(m({ id: "q", relation: "stub" }), [{ kind: "passage", text: "bold words and a link" }])], ps);
+    expect(rows.map((r) => r.placement.kind)).toEqual(["reply", "paragraph"]);
+    expect(markersOf(rows).size).toBe(1);
+    expect(placementNote(rows[0]!.placement)).toBe("a reply, with no quote");
+    expect(leadOf(reply)).toBe("Teo replied to this");
+  });
   it("two quotes by one post are two rows; two posts in one paragraph share one marker", () => {
     const rows = buildReception([entry(m({ id: "a" }), [{ kind: "passage", text: "First paragraph about gardens." }, { kind: "passage", text: "Last one." }]), entry(m({ id: "b" }), [{ kind: "passage", text: "first paragraph about gardens" }])], ps);
     expect(rows).toHaveLength(3);

@@ -47,10 +47,14 @@ export const DEFAULT_CAP = 20;
 const DEFAULT_PARALLEL = 3;
 const CACHE_MAX = 300;
 
-/** Mentions that say a post quoted the item: verified, not hidden, a quote (`transclusion`), with an address to read. Newest first. */
+/**
+ * Mentions of the item whose post may hold a quote of it: verified, not hidden, with an address to read. Newest first.
+ * Two relations: `transclusion` (a post that quotes it) and `stub` (a reply; measured on a real Studio 0.51.0 on 2026-11-26: a reply whose text quotes the item with a
+ * directive is recorded as `stub`, never as `transclusion`, one relation per post and item). Forks, sources and links carry no quote.
+ */
 export function quotingMentions(all: MarginaliaMention[], itemId: string): MarginaliaMention[] {
   return all
-    .filter((m) => m.targetItemId === itemId && m.relation === "transclusion" && m.status === "verified" && !m.hidden && !!m.sourceOrigin && !!m.sourceId)
+    .filter((m) => m.targetItemId === itemId && (m.relation === "transclusion" || m.relation === "stub") && m.status === "verified" && !m.hidden && !!m.sourceOrigin && !!m.sourceId)
     .sort((a, b) => (a.firstSeen < b.firstSeen ? 1 : a.firstSeen > b.firstSeen ? -1 : 0));
 }
 
@@ -104,8 +108,9 @@ export class MarginaliaLookup {
     } catch {
       return { kind: "unknown", reason: "no-text" };
     }
-    // The Studio says it quoted but the text shows nothing: the text may be a different version than the mention saw. That is not "no quote".
-    if (quotes.length === 0) return { kind: "unknown", reason: "no-text" };
+    // A reply may quote nothing: then it is a reply and says so (no quotes). A post the Studio said it QUOTED but whose text shows no quote may be a different
+    // version than the mention saw: that is not "no quote", it is unknown.
+    if (quotes.length === 0 && m.relation !== "stub") return { kind: "unknown", reason: "no-text" };
     if (this.cache.size >= CACHE_MAX) this.cache.delete(this.cache.keys().next().value as string);
     this.cache.set(keyOf(m, post.version), quotes);
     return { kind: "quotes", quotes, version: post.version };

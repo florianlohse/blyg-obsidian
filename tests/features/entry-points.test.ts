@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { CORE_ENTRIES, FEATURES, createFeatures } from "../../src/features/registry";
 
-vi.mock("obsidian", () => ({ FuzzySuggestModal: class { setPlaceholder() {} }, Modal: class {}, Notice: class {}, setIcon: () => {}, ItemView: class {}, TFile: class {}, normalizePath: (p: string) => p }));
+vi.mock("obsidian", () => ({ FuzzySuggestModal: class { setPlaceholder() {} }, Modal: class {}, Notice: class {}, setIcon: () => {}, ItemView: class {}, TFile: class {}, MarkdownView: class {}, parseYaml: () => ({}), stringifyYaml: () => "", normalizePath: (p: string) => p }));
 import { registerFeatureEntries } from "../../src/features/register";
 
 const CALLS = ["addCommand", "addRibbonIcon", "registerView", "registerEditorExtension", "registerObsidianProtocolHandler"];
@@ -59,7 +59,7 @@ describe("registerFeatureEntries", () => {
   it("registers everything in the dev build by default", () => {
     const { calls, p } = fakePlugin("blyg-dev");
     registerFeatureEntries(p, createFeatures(() => ({}), "blyg-dev"), deps);
-    expect(calls).toEqual(expect.arrayContaining(["cmd:open-daily", "cmd:show-digest-sent", "ribbon:Open Blyg Daily", "cmd:open-address-from-clipboard", "cmd:dev-author-look", "cmd:dev-draw-synthetic-posts", "cmd:publish-paragraph"]));
+    expect(calls).toEqual(expect.arrayContaining(["cmd:open-daily", "cmd:show-digest-sent", "ribbon:Open Blyg Daily", "cmd:open-address-from-clipboard", "cmd:send-passage-to-note", "cmd:dev-author-look", "cmd:dev-draw-synthetic-posts", "cmd:publish-paragraph"]));
   });
   it("leaves out a feature that is switched off, and the AI layer alone", () => {
     const { calls, p } = fakePlugin("blyg-dev");
