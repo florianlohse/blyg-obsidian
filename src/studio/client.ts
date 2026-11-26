@@ -7,7 +7,7 @@ import { readWireStub, stubForWire, type StubTarget } from "./stub";
 import type { StudioHttp, StudioResponse } from "./http";
 import type { StudioCapabilities, StudioCommandDone, StudioFailure, StudioHit, StudioImported, StudioHopper, StudioItem, StudioItemKind, StudioListedItem, StudioManifest, StudioMediaDone, StudioPeek, StudioPreview, StudioProblem, StudioResolvedQuote, StudioResult, StudioSubscription } from "./types";
 import { contractVerdict, incompatibleMessage, type ContractVerdict } from "./version";
-import { OPERATION, contractAtLeast, offers } from "./capabilities";
+import { OPERATION, TANGLE_CONTRACT, contractAtLeast, offers } from "./capabilities";
 import { readShelf, readShelvedRow, SHELF_OPERATIONS, type Shelf, type ShelfEntry, type ShelfPutResult } from "./shelf";
 import { readFollowed, readProposal, type StudioFollowAnswer, type StudioFollowed } from "./subscriptions";
 import { readInboundMention, readOwnReadingEntry, readReadingPost, type InboundMention, type ReadingPost } from "./reading";
@@ -50,7 +50,9 @@ export interface StudioClient {
    */
   uploadMedia(input: { itemId: string; expectedRevision: number; bytes: ArrayBuffer; name: string; mime: string; alt: string }): Promise<StudioResult<StudioMediaDone>>;
   /** Publishes the working copy as the next version. Studio makes a new version even when nothing changed: callers check first. */
-  publish(id: string, note: string | undefined, expectedRevision: number): Promise<StudioResult<StudioCommandDone>>;
+  publish(id: string, note: string | undefined, expectedRevision: number, opts?: { tangle?: boolean }): Promise<StudioResult<StudioCommandDone>>;
+  /** Does this Studio's API make new items from a thread's `![[+ …]]` spans and `[[+ …]]` placeholders (contract 6 and later, V1-C)? False when that cannot be shown. */
+  tangleSupported(): Promise<boolean>;
   withdraw(id: string, note: string | undefined, expectedRevision: number): Promise<StudioResult<StudioCommandDone>>;
   /** For the connection check: proves the token works and says how many items there are (`GET /items/summary`). */
   countItems(): Promise<StudioResult<number>>;
@@ -225,6 +227,12 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
       const details = isRecord(res.json) && isRecord(res.json.details) ? res.json.details : {};
       return { kind: "conflict", itemId: str(details.itemId) ?? "", expectedRevision: typeof details.expectedRevision === "number" ? details.expectedRevision : 0 };
     }
+    if (res.status === 409 && code === "tangle-confirmation-required") {
+      const details = isRecord(res.json) && isRecord(res.json.details) ? res.json.details : {};
+      const parts = Array.isArray(details.parts) ? details.parts.filter((x): x is string => typeof x === "string").slice(0, 20) : [];
+      const count = typeof details.count === "number" ? details.count : parts.length;
+      return { kind: "rejected", status: 409, message, problems: [], code: "tangle-confirmation-required", tangle: { count, parts } };
+    }
     if (res.status === 429) return { kind: "error", status: 429, message: "The Studio is limiting requests. Wait a minute and try again." };
     if (res.status >= 400 && res.status < 500) return { kind: "rejected", status: res.status, message, problems: problemsOf(res.json), ...(code ? { code } : {}) };
     return { kind: "error", status: res.status, message };
@@ -349,12 +357,13 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
       return { kind: "ok", value: { html: res.json.html, problems: problemsOf(res.json), quotes: quotesOf(res.json) } };
     },
 
-    publish: async (id: string, note: string | undefined, expectedRevision: number): Promise<StudioResult<StudioCommandDone>> => {
-      const res = await http.send(token, { method: "POST", area: "api", path: `/items/${encodeURIComponent(id)}/publish`, body: { expectedRevision, ...(note ? { note } : {}) } });
+    publish: async (id: string, note: string | undefined, expectedRevision: number, opts: { tangle?: boolean } = {}): Promise<StudioResult<StudioCommandDone>> => {
+      const res = await http.send(token, { method: "POST", area: "api", path: `/items/${encodeURIComponent(id)}/publish`, body: { expectedRevision, ...(note ? { note } : {}), ...(opts.tangle ? { tangle: true } : {}) } });
       if (res.status !== 200) return failure(res);
       if (!isRecord(res.json) || typeof res.json.version !== "number" || typeof res.json.revision !== "number") return unreadable(res);
       const warning = str(res.json.warning);
-      return { kind: "ok", value: { version: res.json.version, revision: res.json.revision, ...(warning ? { warning: warning.slice(0, 300) } : {}) } };
+      const parts = Array.isArray(res.json.parts) ? res.json.parts.flatMap((p): Array<{ id: string; version: number }> => (isRecord(p) && typeof p.id === "string" && typeof p.version === "number" ? [{ id: p.id, version: p.version }] : [])) : null;
+      return { kind: "ok", value: { version: res.json.version, revision: res.json.revision, ...(warning ? { warning: warning.slice(0, 300) } : {}), ...(parts ? { parts } : {}) } };
     },
 
     withdraw: async (id: string, note: string | undefined, expectedRevision: number): Promise<StudioResult<StudioCommandDone>> => {
@@ -614,6 +623,7 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
     uploadMedia: guard(inner.uploadMedia),
     deleteItem: guard(inner.deleteItem),
     publish: guard(inner.publish),
+    tangleSupported: async (): Promise<boolean> => (await refusal()) === null && contractAtLeast(gateCache.get(), TANGLE_CONTRACT.major, TANGLE_CONTRACT.minor),
     withdraw: guard(inner.withdraw),
     countItems: guard(inner.countItems),
     listItems: guard(inner.listItems),

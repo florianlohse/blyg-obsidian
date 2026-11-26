@@ -428,7 +428,7 @@ export default class BlygPlugin extends Plugin {
       vault: obsidianVault(this.app),
       images: obsidianBinaryVault(this.app),
       imageDigests: this.imageDigests,
-      edit: obsidianNoteEdit(this.app),
+      edit: obsidianNoteEdit(this.app), tangle: () => this.features.enabled("tangle"),
       yaml: obsidianYaml,
       clock: systemClock,
       random: webRandom,
@@ -763,7 +763,7 @@ export default class BlygPlugin extends Plugin {
         settings: this.settings,
         vault,
         images: obsidianBinaryVault(this.app),
-        imageDigests: this.imageDigests,
+        imageDigests: this.imageDigests, tangle: this.features.enabled("tangle"),
         published: this.published(),
         studioLive: (_note, id) => {
           if (id) this.studioFacts.request(id, () => this.refreshPanels());

@@ -29,9 +29,12 @@ export interface StudioWorld extends World {
 }
 
 /** `coldGate`: the client has not asked the Studio for its contract yet (the default is a session in which it has, so the wire shows only what a test is about). */
-export function makeStudioWorld(init: { vault?: Record<string, string>; coldGate?: boolean } = {}): StudioWorld {
+export function makeStudioWorld(init: { vault?: Record<string, string>; coldGate?: boolean; /** The feature "New items from a thread" is on, and the Studio speaks contract 6 (the first that has it). */ tangle?: boolean; /** A Studio of contract 5 even with the feature on. */ contract5?: boolean } = {}): StudioWorld {
   const world = makeWorld({ ...init, settings: { routes: STUDIO_ROUTES } }) as StudioWorld;
   const studio = new FakeStudio();
+  const six = init.tangle === true && init.contract5 !== true;
+  if (six) studio.contractVersion = "6.2.0";
+  if (init.tangle) world.deps.tangle = () => true;
   const address = studioAddress({ baseUrl: STUDIO_HOST, mount: "" });
   if (!address) throw new Error("test address");
   const pendingMap = new Map<string, PendingDraft>();
@@ -77,7 +80,7 @@ export function makeStudioWorld(init: { vault?: Record<string, string>; coldGate
     },
   };
   const gate = createContractCache();
-  if (!init.coldGate) gate.set({ kind: "ok", contract: "5.2.0", major: 5, newerMinor: false, operations: null });
+  if (!init.coldGate) gate.set(six ? { kind: "ok", contract: "6.2.0", major: 6, newerMinor: false, operations: null } : { kind: "ok", contract: "5.2.0", major: 5, newerMinor: false, operations: null });
   world.deps.studio = { client: createStudioClient({ http, token: STUDIO_TOKEN, gate }), address, pending };
   return world;
 }

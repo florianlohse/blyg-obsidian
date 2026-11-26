@@ -101,6 +101,31 @@ export const M = {
     `Not published — line ${line}: a fragment can't quote another item: make this a thread, or link it with [[id]]. (Add the property blyg_kind: thread before the first publish, the kind of a published item never changes; or take the line out.) Nothing was sent.`,
   tangleSpans: (lines: number[]) =>
     `Not published — line ${lines.slice(0, 3).join(", ")}${lines.length > 3 ? ", …" : ""} has a tangle span (“![[+ …]]”) or a placeholder (“[[+ …]]”). Those are made in the Studio, which shows how many new items they create and asks first; this plugin cannot ask that, so nothing was sent. Take the span out here, or publish the note from the Studio.`,
+  tangleReason: (code: string): string =>
+    ({
+      "opener-not-at-line-start": "a new-item span (![[+ …]]) must start its own line",
+      "no-space-after-opener": "![[+ needs a space or a line break after the plus",
+      "no-closer": "this new-item span never closes with ]]",
+      "closer-not-at-line-end": "the closing ]] of a new-item span must end its line",
+      "empty-span": "this new-item span is empty",
+      "span-in-span": "a new-item span cannot hold another one; add it to the new item once it exists",
+      "placeholder-in-span": "a [[+ …]] placeholder cannot sit inside a new-item span; add it to the new item once it exists",
+      "image-in-span": "a picture cannot sit inside a new-item span",
+      "empty-placeholder": "this [[+ ]] placeholder is empty",
+    })[code] ?? "a new-item span or placeholder the Studio would refuse",
+  tangleIssues: (issues: Array<{ code: string; line: number }>) =>
+    `Not published — ${issues.slice(0, 3).map((i) => `line ${i.line}: ${M.tangleReason(i.code)}`).join("; ")}${issues.length > 3 ? `; and ${issues.length - 3} more` : ""}. Nothing was sent.`,
+  tangleFragment: (lines: number[]) =>
+    `Not published — line ${lines[0] ?? 1} makes a new item (“![[+ …]]” or “[[+ …]]”), which only a thread can do. Add the property blyg_kind: thread before the first publish (the kind of a published item never changes), or take the span out. Nothing was sent.`,
+  tangleCap: (count: number, max: number) =>
+    `Not published — this thread would make ${count} new items; one publish may make at most ${max}. Publish some of them first, or take some out. Nothing was sent.`,
+  tangleUnsupported: `Not published — this thread has new-item spans (“![[+ …]]”) or placeholders (“[[+ …]]”), and this Studio's API cannot make those from here (it needs API contract 6, Studio 0.67 or newer). Update the Studio, or take them out. Nothing was sent.`,
+  tangleCountDiffers: (mine: number, studio: number) =>
+    `Not published — the Studio counts ${studio} new items where this plugin counted ${mine}. Nothing was published; the text is saved as a draft. Check the spans (![[+ …]]) and placeholders ([[+ …]]) and try again.`,
+  tangleDone: (n: number) => `${n} new item${n === 1 ? "" : "s"} made and published before the thread.`,
+  tangleRewritten: (n: number) => `Your note now points at ${n === 1 ? "it" : "them"}: each span or placeholder became a link to the new item.`,
+  tangleNotRewritten: (lines: string[]) =>
+    `The thread is published, but your note could not be updated (it changed while publishing, or its spans no longer match). Do NOT publish it again as it is: that would make these items a second time. Replace the spans by hand with:\n${lines.join("\n")}`,
   itemProblems: (problems: string[]) =>
     `Not published — ${problems.length === 1 ? "one problem" : `${problems.length} problems`} with what this note quotes or links to:\n${problems.map((p) => `• ${p}`).join("\n")}`,
   noSuchItem: (what: string, id: string, branch: string) =>
