@@ -2,6 +2,7 @@
 // choice. Built only with createEl/text: nothing from a note is ever inserted as HTML.
 import { Modal, sanitizeHTMLToDom, Setting, type App, type ButtonComponent } from "obsidian";
 import { showLocalImages } from "./localImages";
+import { renderTangle, tangleButton, tangleTitle } from "./tangleSection";
 import { diffText, type DiffBlock } from "../core/diff";
 import type { Confirmation, WritePreview } from "../publish/types";
 
@@ -25,6 +26,7 @@ const TITLES: Record<WritePreview["action"], string> = {
 function titleOf(p: WritePreview): string {
   if (!p.studio) return p.action === "create" ? `Commit a new ${p.label}` : TITLES[p.action];
   if (p.studio.repost) return "Repost to your Studio";
+  if (p.studio.tangle && (p.action === "create" || p.action === "update")) return tangleTitle(p.studio.tangle.rows.length);
   switch (p.action) {
     case "studio-conflict":
       return "Compare copies";
@@ -47,6 +49,7 @@ function titleOf(p: WritePreview): string {
 function confirmLabel(p: WritePreview): string {
   if (!p.studio) return p.action === "withdraw" ? "Withdraw" : `Commit to ${p.branch}`;
   if (p.studio.repost) return "Publish";
+  if (p.studio.tangle && (p.action === "create" || p.action === "update")) return tangleButton(p.studio.tangle.rows.length);
   switch (p.action) {
     case "withdraw":
       return "Withdraw item";
@@ -230,6 +233,7 @@ export class WritePreviewModal extends Modal {
         text: `This publishes the note’s text as a new item, with a new address and today’s date. The old item (${old.id}${old.version !== null ? `, version ${old.version}` : ""}${old.origin ? ` at ${old.origin}` : ""}) stays where it is, untouched; the note remembers it as blyg_previous.`,
       });
     }
+    if (p.studio?.tangle) renderTangle(body, p.studio.tangle);
     this.renderThread(body);
     this.renderStudioQuotes(body);
     this.renderLinks(body);

@@ -12,6 +12,7 @@ import { routeFor } from "../core/routes";
 import { leftoverEmbeds, type Directive } from "../core/thread";
 import type { NoteEditPort, NoteRef, VaultPort } from "../platform/ports";
 import { M } from "../publish/messages";
+import { blankTangleMarkers, scanTangle, TANGLE_MAX, type TangleIssue, type TanglePart } from "../tangle/analyse";
 import type { Route } from "../settings/schema";
 import { readStudioRecord } from "./record";
 import type { StudioItemKind } from "./types";
@@ -49,7 +50,13 @@ export type DraftProblem =
   /** A line directly under a partial quote with no `>` and no blank line before it: Studio 0.50+ reads it as part of the quote (E9). */
   | { kind: "lazy-quote"; lines: number[] }
   /** A tangle span `![[+ …]]` or a placeholder `[[+ …]]` (Studio 0.63): the Studio makes new items from them and asks first; the plugin cannot confirm that, so it sends nothing. */
-  | { kind: "tangle"; lines: number[] };
+  | { kind: "tangle"; lines: number[] }
+  /** With tangling on (V1-C): a span or placeholder the Studio would refuse, read as the Studio reads it. */
+  | { kind: "tangle-issues"; issues: TangleIssue[] }
+  /** With tangling on: a fragment cannot make new items (the Studio makes them in a thread). */
+  | { kind: "tangle-fragment"; lines: number[] }
+  /** With tangling on: more new items than one publish may make (the Studio's own limit). */
+  | { kind: "tangle-cap"; count: number; max: number };
 
 export interface StudioDraft {
   /** The text to send: names turned into ids. When a name could not be turned, the text as written. */
@@ -59,6 +66,8 @@ export interface StudioDraft {
   links: number;
   /** In the order the publish reports them; empty when the text may go on. */
   problems: DraftProblem[];
+  /** With tangling on: the spans and placeholders in `contentMd`, in source order (offsets into `contentMd`); empty otherwise. */
+  tangle: TanglePart[];
 }
 
 export interface DraftContext {
@@ -69,6 +78,8 @@ export interface DraftContext {
   /** The Studio's origin, as the note records stamp it. */
   origin: string;
   fragmentCharCap: number;
+  /** Tangling is on for this Studio (the `tangle` feature and a contract that has it): spans and placeholders are read, not refused. */
+  tangle?: boolean;
 }
 
 type Lookup = { kind: "id"; id: string } | { kind: "problem"; message: string } | { kind: "leave" };
@@ -245,12 +256,32 @@ export function scanStudioQuotes(contentMd: string): { quotes: StudioQuote[]; li
 export function prepareStudioText(contentMd: string, kind: StudioItemKind, ctx: DraftContext): StudioDraft {
   const problems: DraftProblem[] = [];
   // First, so that the cause is named: the span would otherwise be read as a note name that does not exist.
-  const tangled = tangleLines(contentMd);
-  if (tangled.length > 0) problems.push({ kind: "tangle", lines: tangled });
+  if (ctx.tangle !== true) {
+    const tangled = tangleLines(contentMd);
+    if (tangled.length > 0) problems.push({ kind: "tangle", lines: tangled });
+  }
   const translated = translateStudioNames(contentMd, ctx);
   if (translated.problems.length > 0) problems.push({ kind: "names", messages: translated.problems });
-  // Line breaks are kept as the author sees them; the cap below counts the text as it is sent.
-  const text = keepLineBreaks(translated.problems.length > 0 ? contentMd : translated.text);
+  const translatedText = translated.problems.length > 0 ? contentMd : translated.text;
+  // Line breaks are kept as the author sees them; the cap below counts the text as it is sent. The lines of a span are not touched: they are the new item's words.
+  const spans = ctx.tangle === true ? scanTangle(translatedText).parts.filter((p) => p.kind === "span") : [];
+  let text = "";
+  if (spans.length === 0) text = keepLineBreaks(translatedText);
+  else {
+    let at = 0;
+    for (const span of spans) {
+      text += keepLineBreaks(translatedText.slice(at, span.start)) + translatedText.slice(span.start, span.end);
+      at = span.end;
+    }
+    text += keepLineBreaks(translatedText.slice(at));
+  }
+  const scan = ctx.tangle === true ? scanTangle(text) : null;
+  if (scan) {
+    if (scan.issues.length > 0) problems.push({ kind: "tangle-issues", issues: scan.issues });
+    else if (kind === "fragment" && scan.count > 0) problems.push({ kind: "tangle-fragment", lines: scan.parts.map((p) => p.line) });
+    else if (scan.overCap) problems.push({ kind: "tangle-cap", count: scan.count, max: TANGLE_MAX });
+  }
+  const parts = scan?.parts ?? [];
 
   if (kind === "fragment") {
     const body = checkFragmentBody(text, ctx.fragmentCharCap);
@@ -266,13 +297,15 @@ export function prepareStudioText(contentMd: string, kind: StudioItemKind, ctx: 
   }
   const first = quotes[0];
   if (kind === "fragment" && first) problems.push({ kind: "fragment-quote", line: first.line });
-  const stray = leftoverEmbeds(text, quotes);
+  // The markers of a span or placeholder are not embeds or links by name: what is inside them is read like any text.
+  const checked = parts.length > 0 ? blankTangleMarkers(text, parts) : text;
+  const stray = leftoverEmbeds(checked, quotes);
   if (stray.length > 0) problems.push({ kind: "embeds", list: stray });
-  const names = extractWikilinks(text)
+  const names = extractWikilinks(checked)
     .filter((l) => !l.embed)
     .map((l) => `[[${l.target}]]`);
   if (names.length > 0) problems.push({ kind: "links", names });
-  return { contentMd: text, quotes, links, problems };
+  return { contentMd: text, quotes, links, problems, tangle: parts };
 }
 
 /** Lines (1-based) with a tangle span `![[+ …]]` or a placeholder `[[+ …]]`, outside code (the Studio leaves those inert too). */
@@ -384,6 +417,12 @@ export function refusalFor(problem: DraftProblem): string {
       return M.lazyQuote(problem.lines);
     case "tangle":
       return M.tangleSpans(problem.lines);
+    case "tangle-issues":
+      return M.tangleIssues(problem.issues);
+    case "tangle-fragment":
+      return M.tangleFragment(problem.lines);
+    case "tangle-cap":
+      return M.tangleCap(problem.count, problem.max);
   }
 }
 
@@ -405,6 +444,12 @@ export function panelLines(problems: DraftProblem[]): string[] {
         return [`Links to notes the Studio does not have: ${p.names.slice(0, 3).join(", ")}${p.names.length > 3 ? ", …" : ""}.`];
       case "tangle":
         return p.lines.map((n) => `Line ${n} has a tangle span or placeholder (“[[+ …]]”): the Studio makes those, and asks before it creates the new items.`);
+      case "tangle-issues":
+        return p.issues.map((i) => `Line ${i.line}: ${M.tangleReason(i.code)}.`);
+      case "tangle-fragment":
+        return [`Line ${p.lines[0] ?? 1} makes a new item, which only a thread can do (add the property blyg_kind: thread before the first publish).`];
+      case "tangle-cap":
+        return [`This text makes ${p.count} new items; one publish may make at most ${p.max}.`];
       case "lazy-quote":
         return p.lines.map((n) => `Line ${n} sits directly under a quote with no “>”: newer Studios read it as part of the quote. Add a blank line before it, or put “>” in front.`);
     }
