@@ -83,6 +83,8 @@ export type Placement =
   | { kind: "paragraph"; index: number; method: Extract<PassageMethod, "exact" | "normalised"> }
   /** The post quotes the whole item. */
   | { kind: "whole" }
+  /** A reply (relation `stub`) whose text quotes nothing of the item. */
+  | { kind: "reply" }
   /** The post quotes a passage the note no longer holds as written (the note changed after the quote, or the match is only by word overlap). */
   | { kind: "earlier" }
   /** The post says it quotes, but what it quotes could not be read. Never to be shown as "no quotes". */
@@ -102,6 +104,10 @@ export function buildReception(entries: MarginaliaEntry[], paragraphs: NoteParag
   for (const e of entries) {
     if (e.result.kind === "unknown") {
       rows.push({ mention: e.mention, placement: { kind: "unknown", reason: e.result.reason }, excerpt: null });
+      continue;
+    }
+    if (e.result.quotes.length === 0) {
+      rows.push({ mention: e.mention, placement: { kind: "reply" }, excerpt: null });
       continue;
     }
     for (const q of e.result.quotes) {
@@ -148,6 +154,7 @@ export function placementNote(p: Placement): string | null {
   switch (p.kind) {
     case "paragraph": return null;
     case "whole": return "the whole post";
+    case "reply": return "a reply, with no quote";
     case "earlier": return "from an earlier version";
     case "unknown": return p.reason === "over-cap" ? "not looked up yet" : p.reason === "unreadable" ? "the Studio does not hold this post, so what it quotes cannot be read" : "what it quotes could not be read";
   }
