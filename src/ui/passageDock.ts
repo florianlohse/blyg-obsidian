@@ -30,7 +30,6 @@ export function selectionInPostBody(root: HTMLElement): string {
 export class PassageDock {
   private el: HTMLElement | null = null;
   private held = "";
-  private heldAt = 0;
   private timer = 0;
 
   constructor(private readonly root: HTMLElement, private readonly port: DockPort) {}
@@ -42,7 +41,6 @@ export class PassageDock {
     window.clearTimeout(this.timer);
     if (post && text.trim() !== "") {
       this.held = text;
-      this.heldAt = Date.now();
       this.port.seen(post, text);
       this.show(post, text);
       return;
@@ -54,7 +52,8 @@ export class PassageDock {
   private passage(): string {
     const now = selectionInPostBody(this.root);
     if (now.trim() !== "") return now;
-    return Date.now() - this.heldAt < HELD_MS + 500 ? this.held : "";
+    // The dock hides itself HELD_MS after the selection goes, so while it is on screen the last passage is still the one meant.
+    return this.el?.isConnected ? this.held : "";
   }
 
   private show(post: ReadingPost, text: string): void {
