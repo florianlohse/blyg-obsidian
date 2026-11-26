@@ -18,7 +18,7 @@ export function drawReceptionRow(parent: HTMLElement, row: ReceptionRow, actions
   if (note) el.createDiv({ cls: "blyg-reception-note", text: note });
   if (row.excerpt) el.createDiv({ cls: "blyg-reception-excerpt", text: row.excerpt });
   if (row.mention.sourcePage) {
-    const open = el.createEl("button", { cls: "blyg-reception-open", text: "Open post" });
+    const open = el.createEl("button", { cls: "blyg-reception-open", text: "Open in reader" });
     open.addEventListener("click", () => actions.openPost(row));
   }
   return el;
@@ -39,7 +39,10 @@ export function showPopover(anchor: HTMLElement, rows: ReceptionRow[], actions: 
   const el = activeDocument.body.createDiv({ cls: "blyg-reception-popover", attr: { role: "dialog", "aria-label": "Who quoted this" } });
   for (const r of rows) drawReceptionRow(el, r, actions, now);
   const box = anchor.getBoundingClientRect();
-  el.setCssProps({ top: `${Math.round(box.bottom + 6)}px`, left: `${Math.round(Math.max(8, Math.min(box.left, window.innerWidth - 300)))}px` });
+  // On a phone it takes the screen's width (8 px each side) and sits under the mark; on a wide screen it sits beside the mark.
+  const narrow = window.innerWidth <= 480;
+  el.setCssProps({ top: `${Math.round(box.bottom + 6)}px`, left: narrow ? "8px" : `${Math.round(Math.max(8, Math.min(box.left, window.innerWidth - 300)))}px` });
+  if (narrow) el.addClass("is-wide");
   const away = (e: Event): void => {
     if (!el.contains(e.target as Node) && !anchor.contains(e.target as Node)) closePopover();
   };
