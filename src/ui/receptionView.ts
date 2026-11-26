@@ -8,13 +8,13 @@ export interface ReceptionActions {
 }
 
 /** One row as lines: "Teo quoted this", when, where it sits, the words, and the way to the post. */
-export function drawReceptionRow(parent: HTMLElement, row: ReceptionRow, actions: ReceptionActions, now: number): HTMLElement {
+export function drawReceptionRow(parent: HTMLElement, row: ReceptionRow, actions: ReceptionActions, now: number, where?: string): HTMLElement {
   const el = parent.createDiv({ cls: "blyg-reception-row" });
   const head = el.createDiv({ cls: "blyg-reception-head" });
   head.createSpan({ cls: "blyg-reception-lead", text: leadOf(row.mention) });
   const when = relativeTime(row.mention.firstSeen || null, now);
   if (when !== "") head.createSpan({ cls: "blyg-reception-when", text: when });
-  const note = placementNote(row.placement);
+  const note = placementNote(row.placement) ?? where ?? null;
   if (note) el.createDiv({ cls: "blyg-reception-note", text: note });
   if (row.excerpt) el.createDiv({ cls: "blyg-reception-excerpt", text: row.excerpt });
   if (row.mention.sourcePage) {
