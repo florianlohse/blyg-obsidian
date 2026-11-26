@@ -41,7 +41,7 @@ export interface DigestHost {
   /** Refresh, the feed's action (src/app/readerRefresh.ts): ask the Studio to fetch, read the list once, keep it. No AI request here (the digest's Refresh may write texts afterwards, see `ai.autoOn`). Absent: Refresh reads the saved list again. */
   refresh?(o: { held: { posts: ReadingPost[]; mentions: InboundMention[] } | null; alive: () => boolean; status: (text: string) => void }): Promise<{ ok: true; list: { posts: ReadingPost[]; mentions: InboundMention[] }; note?: string } | { ok: false; message: string; cancelled?: true }>;
   /** The current edition for these posts (src/digest/editionHost.ts): its window, and the stories and Mixed bag it has settled. Absent `id`/`grouped`: group the window afresh. */
-  edition(posts: readonly ReadingPost[]): Promise<{ id?: number; since: number; until: number; grouped?: Grouped; auto?: { note?: string }; usage?: { tokens: number; cost: number | null }; editor?: string }>;
+  edition(posts: readonly ReadingPost[]): Promise<{ id?: number; since: number; until: number; grouped?: Grouped; checking?: true; auto?: { note?: string }; usage?: { tokens: number; cost: number | null }; editor?: string }>;
   /** The saved past editions, newest first (src/digest/history.ts). Absent: no history. */
   history?(): Promise<{ editions: PastEdition[]; capped: boolean }>;
   /** The reader's font setting; the digest's type follows it. */
@@ -135,6 +135,8 @@ export class BlygDailyView extends ItemView {
   private refreshBtns: HTMLElement[] = [];
   /** The lines under the masthead about the synced files, and the unsubscribe of the watch on them. */
   private syncText: string[] = [];
+  /** True while the edition is not made yet because another device may still be delivering it: no automatic write then. */
+  private checking = false;
   private unwatchSync: (() => void) | null = null;
   constructor(leaf: WorkspaceLeaf, private readonly host: DigestHost) {
     super(leaf);
@@ -289,7 +291,8 @@ export class BlygDailyView extends ItemView {
     const win = await this.host.edition(list.posts);
     const model = buildDaily(list.posts, list.mentions, win.since, win.until, win.grouped, win.id);
     this.usage = win.usage;
-    this.syncText = (await this.host.syncLines?.(win.id ?? null).catch(() => [])) ?? [];
+    this.checking = win.checking === true;
+    this.syncText = this.checking ? ["Checking for your other devices…"] : ((await this.host.syncLines?.(win.id ?? null).catch(() => [])) ?? []);
     this.editorId = win.editor;
     const ids = new Set([...model.front.flatMap((c) => c.posts.map((p) => p.remoteId)), ...model.mixed.map((p) => p.remoteId)]);
     this.added = mark && this.shown ? new Set([...ids].filter((id) => !this.shown?.has(id))) : new Set();
@@ -313,7 +316,7 @@ export class BlygDailyView extends ItemView {
     this.render(model);
     // The automatic write: the plain digest is on the page already; the text replaces it when it is ready.
     const ai = this.host.ai;
-    if (model && ai?.enabled() && !this.busy && this.viewing === null && (await (ai.autoDue?.(model.front) ?? Promise.resolve(false)).catch(() => false))) void this.run(model, false, true);
+    if (model && ai?.enabled() && !this.busy && !this.checking && this.viewing === null && (await (ai.autoDue?.(model.front) ?? Promise.resolve(false)).catch(() => false))) void this.run(model, false, true);
   }
 
   /** The Refresh buttons (the bar's icon and the menu's entry): busy while a read or a Refresh runs; in place, so the page does not redraw. */

@@ -85,13 +85,13 @@ const cls = (e: unknown): Set<string> => (e as { cls: Set<string> }).cls;
 const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 const ok = (): Outcome => ({ written: [{ headline: "Gardens", summary: "Tomatoes grew.", model: "m", posts: 2 }], sections: null, status: "ok", tokens: 1234, cost: 0.004 });
 
-interface Opts { due?: boolean[]; write?: () => Promise<Outcome>; past?: PastEdition[]; usage?: { tokens: number; cost: number | null }; autoNote?: string; enabled?: boolean }
+interface Opts { due?: boolean[]; write?: () => Promise<Outcome>; past?: PastEdition[]; usage?: { tokens: number; cost: number | null }; autoNote?: string; enabled?: boolean; checking?: boolean }
 async function mount(o: Opts = {}) {
   const calls: Array<{ auto?: boolean; resort?: boolean } | undefined> = [];
   const due = [...(o.due ?? [])];
   const host: DigestHost = {
     loadList: () => Promise.resolve(list),
-    edition: () => Promise.resolve({ id: NOW - 5 * 3600_000, since: NOW - 29 * 3600_000, until: NOW, ...(o.usage ? { usage: o.usage } : {}), ...(o.autoNote ? { auto: { note: o.autoNote } } : {}) }),
+    edition: () => Promise.resolve({ id: NOW - 5 * 3600_000, since: NOW - 29 * 3600_000, until: NOW, ...(o.usage ? { usage: o.usage } : {}), ...(o.autoNote ? { auto: { note: o.autoNote } } : {}), ...(o.checking ? { checking: true as const } : {}) }),
     history: () => Promise.resolve({ editions: o.past ?? [], capped: false }),
     ai: {
       enabled: () => o.enabled !== false,
@@ -109,6 +109,14 @@ async function mount(o: Opts = {}) {
   const root = (view as unknown as { contentEl: El }).contentEl;
   return { root, view, calls, opened, texts: () => root.all().map((e) => e.text) };
 }
+
+describe("an edition still being checked against other devices", () => {
+  it("says so under the masthead and starts no automatic write", async () => {
+    const t = await mount({ due: [true], checking: true });
+    expect(t.texts()).toContain("Checking for your other devices…");
+    expect(t.calls.length).toBe(0);
+  });
+});
 
 describe("automatic write: when it is due (pure rules)", () => {
   const rec = (over: Partial<EditionRec> = {}): EditionRec => ({ id: 1, createdAt: 1, n: 1, stories: [{ id: "s1", posts: ["x", "y"] }], mixed: [], seen: {}, ...over });
