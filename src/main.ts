@@ -982,7 +982,7 @@ export default class BlygPlugin extends Plugin {
       const stub = file ? (this.app.metadataCache.getFileCache(file)?.frontmatter?.blyg_stub_of as unknown) : null;
       return typeof stub === "object" && stub !== null && (stub as { id?: unknown }).id === id && typeof (stub as { origin?: unknown }).origin === "string" ? (stub as { origin: string }).origin : null;
     };
-    this.registerEditorExtension([replyPreviewExtension(deps, hintFor), ...(this.features.enabled("marginalia") ? [this.marginalia.extension] : [])]);
+    this.registerEditorExtension([replyPreviewExtension(deps, hintFor), ...(this.features.enabled("marginalia") ? [this.marginalia.extension] : [])]); if (this.features.enabled("marginalia")) this.marginalia.registerReading(this);
     // Ask for the item a reply note answers as soon as the note is opened, so its text is there by the time the line is drawn.
     this.registerEvent(this.app.workspace.on("file-open", (file) => {
       if (!file || !this.app.workspace.layoutReady) return; // not while Obsidian is still restoring its layout: the line asks for itself when it is drawn

@@ -108,12 +108,12 @@ await runScenario({ data }, async (s) => {
   await page.keyboard.press("Escape");
 
   // ---- the Reception section at the end of the note (a block widget after the last line), grouped, in words, inside the screen
-  const section = () => page.evaluate(() => {
-    const el = document.querySelector(".workspace-leaf.mod-active .blyg-reception-section");
+  const section = (scope = ".workspace-leaf.mod-active") => page.evaluate((sc) => {
+    const el = document.querySelector(`${sc} .blyg-reception-section`);
     if (!el) return null;
     const r = el.getBoundingClientRect();
     return { title: el.querySelector(".blyg-reception-title")?.textContent ?? "", groups: [...el.querySelectorAll(".blyg-reception-group")].map((g) => g.textContent), rows: el.querySelectorAll(".blyg-reception-row").length, inside: r.left >= 0 && r.right <= innerWidth + 0.5, text: el.textContent ?? "", afterText: !!el.closest(".cm-content") && (document.querySelector(".workspace-leaf.mod-active .cm-content")?.lastElementChild?.contains(el) ?? false) };
-  });
+  }, scope);
   const sec = await s.becomes(async () => { const v = await section(); return v && v.rows >= 7 ? v : false; }, 15000, "the Reception section");
   const live2 = await section();
   console.log("OBSERVED section:", JSON.stringify(live2)?.slice(0, 900));
@@ -144,8 +144,24 @@ await runScenario({ data }, async (s) => {
   check(list.some((t) => /Kai quoted this/.test(t) && /cannot be read|could not be read/.test(t)), "a post the Studio cannot serve says that it could not be read (never an empty list)");
   check(!list.some((t) => /Nobody has quoted this yet/.test(t)) && !(await page.evaluate(() => /Nobody has quoted this yet/.test(document.body.textContent ?? ""))), "the list never says 'Nobody has quoted this yet' while mentions exist");
 
-  // ---- the two switches: each hides its own display and nothing else
   const setSwitch = (key, v) => page.evaluate(([k, val]) => { window.app.plugins.plugins.blyg.settings.marginalia[k] = val; window.app.workspace.updateOptions(); }, [key, v]);
+
+  // ---- Reading view: the same section, once, at the end
+  await openIn("preview");
+  const RV = ".workspace-leaf.mod-active .markdown-reading-view";
+  const reading = await s.becomes(async () => { const v = await section(RV); return v && v.rows >= 7 ? v : false; }, 15000, "the section in Reading view");
+  const once = await page.evaluate((sc) => document.querySelectorAll(`${sc} .blyg-reception-section`).length, RV);
+  console.log("OBSERVED reading:", JSON.stringify(reading)?.slice(0, 300));
+  check(Boolean(reading) && reading.title === "Reception · 7" && JSON.stringify(reading.groups) === JSON.stringify(["Quoted a paragraph", "Quoted the whole note", "Replies", "From an earlier version", "Could not be read"]), `Reading view shows the Reception section with its groups (${reading?.title})`);
+  check(once === 1 && reading?.inside, `exactly one section, inside the screen (${once})`);
+  check((await page.evaluate((sc) => document.querySelectorAll(`${sc} .blyg-marginalia-marker`).length, RV)) === 0, "Reading view draws no marks in the text (the section is its display there)");
+  await setSwitch("bottom", false);
+  await page.evaluate(() => { const v = window.app.workspace.getLeaf(false).view; v.previewMode?.rerender?.(true); });
+  await wait(1200);
+  check((await section(RV)) === null, "the switch hides the section in Reading view too");
+  await setSwitch("bottom", true);
+
+  // ---- the two switches: each hides its own display and nothing else
   await openIn("live");
   await setSwitch("bottom", false);
   await wait(800);
