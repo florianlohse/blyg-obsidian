@@ -212,13 +212,13 @@ await runScenario({ data }, async (s) => {
   check(state.writes === 0, "nothing was sent to the Studio");
 
   // ---- no folder chosen: nothing is offered, nothing is written (fail closed)
-  await pg.evaluate(() => { window.app.plugins.plugins.blyg.settings.passages.folders = ""; });
   await pg.evaluate(async () => { const l = window.app.workspace.getLeavesOfType("blyg-reader")[0]; if (l) { await window.app.workspace.revealLeaf(l); window.app.workspace.setActiveLeaf(l, { focus: true }); } });
   await wait(700);
   await pg.waitForSelector(".blyg-reader-surface .blyg-reader-body", { timeout: 15000 });
   await wait(500);
   await selectPassage(SENT);
   await eventually(() => pg.evaluate(() => document.querySelector(".blyg-passage-dock-send")));
+  await pg.evaluate(() => { window.app.plugins.plugins.blyg.settings.passages.folders = ""; }); // set last: the plugin re-reads data.json when it changes
   await tap(".blyg-passage-dock-send");
   const none = await eventually(async () => (await noticeText()).find((t) => /Choose folders for passages/.test(t)));
   check(Boolean(none) && !(await modal()), `with no folder chosen it says "Choose folders for passages first" and opens no picker (${none ?? JSON.stringify({ notices: await noticeText(), dock: await pg.evaluate(() => !!document.querySelector(".blyg-passage-dock-send")), sel: await pg.evaluate(() => getSelection()?.toString().length), active: await pg.evaluate(() => window.app.workspace.activeLeaf?.view?.getViewType?.()) })})`);
