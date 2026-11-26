@@ -31,14 +31,14 @@ describe("reading a source's Markdown from the Studio", () => {
     const { studio, lookup } = setup();
     studio.importItem({ remote_id: SRC, content_md: quote, version: 2 });
     const [e] = await lookup.lookup([mention()], ITEM);
-    expect(e!.result).toEqual({ kind: "quotes", version: 2, quotes: [{ kind: "passage", text: "the quoted words here" }] });
+    expect(e!.result).toMatchObject({ kind: "quotes", version: 2, quotes: [{ kind: "passage", text: "the quoted words here" }] });
   });
   const partialHtml = (text: string) => `<blockquote class="blyg-transclusion blyg-partial" data-blyg-id="${ITEM}" data-blyg-version="1" data-blyg-origin="https://studio.test/"><p>${text}</p></blockquote>\n<p>My words.</p>\n`;
   it("a blyg the owner does not follow (peek only, no subscription): the quote is read from the peek's HTML", async () => {
     const { studio, lookup } = setup();
     studio.peekable.push({ origin: ORIGIN, id: SRC, kind: "thread", version: 1, content_html: partialHtml("the quoted words here") });
     const [e] = await lookup.lookup([mention()], ITEM);
-    expect(e!.result).toEqual({ kind: "quotes", version: 1, quotes: [{ kind: "passage", text: "the quoted words here", cited: 1 }] });
+    expect(e!.result).toMatchObject({ kind: "quotes", version: 1, quotes: [{ kind: "passage", text: "the quoted words here", cited: 1 }] });
   });
   it("a whole-post quote is read from the HTML too; a reply with no blockquote is a reply; a quote whose HTML shows none is unknown", async () => {
     const { studio, lookup } = setup();
@@ -46,7 +46,7 @@ describe("reading a source's Markdown from the Studio", () => {
     studio.peekable.push({ origin: ORIGIN, id: "reply1", kind: "thread", version: 1, content_html: "<p>Only an answer.</p>" });
     studio.peekable.push({ origin: ORIGIN, id: "odd1", kind: "thread", version: 1, content_html: "<p>x</p>" });
     const got = await lookup.lookup([mention({ firstSeen: "3" }), mention({ id: "m2", sourceId: "reply1", relation: "stub", firstSeen: "2" }), mention({ id: "m3", sourceId: "odd1", firstSeen: "1" })], ITEM);
-    expect(got.map((e) => e.result)).toEqual([{ kind: "quotes", version: 1, quotes: [{ kind: "whole", cited: 1 }] }, { kind: "quotes", version: 1, quotes: [] }, { kind: "unknown", reason: "no-text" }]);
+    expect(got.map((e) => e.result)).toMatchObject([{ kind: "quotes", version: 1, quotes: [{ kind: "whole", cited: 1 }] }, { kind: "quotes", version: 1, quotes: [] }, { kind: "unknown", reason: "no-text" }]);
   });
   it("a peek the Studio cannot answer is unknown, not an empty list", async () => {
     const { lookup } = setup();
