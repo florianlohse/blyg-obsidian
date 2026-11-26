@@ -212,6 +212,8 @@ await runScenario({ data }, async (s) => {
   // ---- no folder chosen: nothing is offered, nothing is written (fail closed)
   await pg.evaluate(() => { window.app.plugins.plugins.blyg.settings.passages.folders = ""; });
   await pg.evaluate(() => window.app.workspace.getLeavesOfType("blyg-reader")[0] && window.app.workspace.revealLeaf(window.app.workspace.getLeavesOfType("blyg-reader")[0]));
+  await pg.waitForSelector(".blyg-reader-surface .blyg-reader-body", { timeout: 15000 });
+  await wait(500);
   await selectPassage(SENT);
   await eventually(() => pg.evaluate(() => document.querySelector(".blyg-passage-dock-send")));
   await tap(".blyg-passage-dock-send");
