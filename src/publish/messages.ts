@@ -151,6 +151,8 @@ export const M = {
     `${created ? "Published" : "Updated"} the paragraph as item ${id}, version ${version}. Quote it in a thread with ![[${host}#^${blockId}]].`,
   blockStampFailed: (id: string) => `The paragraph is published as item ${id}, but your note could not be marked (it changed while publishing). Publish the paragraph again: it finds this item and only marks the note, it does not make another one.`,
   blocksProgress: (done: number, total: number) => `${done} of ${total} new items were published; the thread was not. Publish it again to continue: the finished ones are not made again.`,
+  tangleRewriteStillPending: (lines: string[]) =>
+    `Not published — an earlier publish already made new items for this note's spans and placeholders, but the note could not be updated then, and still cannot be (its spans no longer match). Publishing now would make them again. Replace each span or placeholder by hand with a link to its item${lines.length > 0 ? `, in this order:\n${lines.join("\n")}` : ""}\nthen remove the property blyg_tangle_pending (or publish again: it is removed once the spans are gone). Nothing was sent.`,
   tangleDone: (n: number) => `${n} new item${n === 1 ? "" : "s"} made and published before the thread.`,
   tangleRewritten: (n: number) => `Your note now points at ${n === 1 ? "it" : "them"}: each span or placeholder became a link to the new item.`,
   tangleNotRewritten: (lines: string[]) =>

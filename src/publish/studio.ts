@@ -24,7 +24,7 @@ import { fileProperty, logError, stripComments } from "./shared";
 import { studioFailureOutcome } from "./studioFailure";
 import { pullStudio } from "./studioPull";
 import { withRevision } from "./studioRevision";
-import { finishTangle, tangleWindow } from "./studioTangle";
+import { finishPendingRewrite, finishTangle, tangleWindow } from "./studioTangle";
 import { describeBlocks, publishPendingBlocks, translateBlockEmbeds } from "./studioBlocks";
 import { TANGLE_MAX } from "../tangle/analyse";
 import { applyHoppers, hopperLines, hoppersOnly, planHoppers } from "./studioHoppers";
@@ -85,6 +85,12 @@ export async function publishStudio(deps: PublishDeps, note: NoteRef, opts: { re
   /** The other blyg's record, when reposting. From here on the note counts as one with no record of this Studio. */
   const repost = opts.repost && found.kind === "other" ? { id: found.id, origin: found.origin ?? (settings.origin || null), version: vault.frontmatterValue(note, "blyg_version") } : null;
   const record: StudioRecord = repost ? { kind: "none" } : found;
+
+  // An earlier publish made new items but could not rewrite the note: finish that first (V1-C).
+  if (deps.tangle?.() === true) {
+    const earlier = await finishPendingRewrite(deps, note);
+    if (earlier) return earlier;
+  }
 
   // ---- the text, checked locally before any request ------------------------------------------------------------------------
   const stripped = stripComments(stripFrontmatter(await vault.read(note)));
