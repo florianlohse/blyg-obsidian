@@ -1,6 +1,6 @@
 // HK3 Marginalia: the pieces joined to the plugin's own parts. Read-only: it asks the Studio's existing client for mentions, reads the posts the reader already
 // holds, and reads the note's text; it writes nothing, in the vault or anywhere else.
-import type { App } from "obsidian";
+import type { App, Plugin } from "obsidian";
 import type { Extension } from "@codemirror/state";
 import { marginaliaExtension, type MarginaliaMarker } from "../editor/marginaliaExtension";
 import { receptionBottomExtension } from "../editor/receptionBottomExtension";
@@ -13,6 +13,7 @@ import { sameOrigin } from "../ui/readerMentions";
 import { closePopover, showPopover, type ReceptionActions } from "../ui/receptionView";
 import { parseQuotesFromHtml } from "./htmlQuotes";
 import { MarginaliaLookup } from "./lookup";
+import { registerReadingSection } from "./reading";
 import { makeSourceReader } from "./sourceRead";
 import { buildReception, markersOf, paragraphsOf, parseQuotesOf, type ReceptionRow } from "./reception";
 import { ReceptionStore, type ReceptionState } from "./store";
@@ -45,6 +46,8 @@ export interface Marginalia {
   reception(path: string | null): Promise<ReceptionPanel | null>;
   /** The same for a note whose text is at hand (the editor's), without reading the file; asks for the lookup the first time. */
   receptionFor(path: string | null, text: string): ReceptionPanel | null;
+  /** Draw the Reception section at the end of a published note in Reading view (a post processor of `plugin`). */
+  registerReading(plugin: Plugin): void;
   /** Forget what is held (after a reader refresh or a publish). */
   invalidate(): void;
 }
@@ -126,6 +129,7 @@ export function createMarginalia(host: MarginaliaHost): Marginalia {
       receptionBottomExtension({ receptionFor: (path, text) => (host.options().bottom ? receptionFor(path, text) : null), enabled: () => host.options().bottom, subscribe: (fn) => store.subscribe(fn) }),
     ],
     receptionFor,
+    registerReading: (plugin) => registerReadingSection(plugin, { receptionFor, enabled: () => host.options().bottom, subscribe: (fn) => store.subscribe(fn) }),
     reception: async (path) => {
       const id = itemIdOf(path);
       if (id === null || host.client() === null || path === null) return null;

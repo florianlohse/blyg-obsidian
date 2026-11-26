@@ -2,6 +2,7 @@ import { importFolderChoices } from "../studio/import";
 import { DEV_STUDIO_RULE, isDevStudioLock } from "../studio/devLock";
 import {
   debounce,
+  MarkdownView,
   Notice,
   PluginSettingTab,
   SecretComponent,
@@ -85,7 +86,10 @@ export class BlygSettingTab extends PluginSettingTab {
     this.changed();
     if (key.startsWith("features.")) new Notice("Reload Obsidian for this to take effect. Nothing the feature saved is deleted.", 8000);
     if (key.startsWith("readerPane.")) for (const paint of this.previews) paint();
-    if (key.startsWith("marginalia.")) this.app.workspace.updateOptions(); // the open editors read the two switches again
+    if (key.startsWith("marginalia.")) {
+      this.app.workspace.updateOptions(); // the open editors read the two switches again
+      for (const leaf of this.app.workspace.getLeavesOfType("markdown")) if (leaf.view instanceof MarkdownView) leaf.view.previewMode.rerender(true); // and so does Reading view
+    }
   }
 
   /** A setting row that is only a folded help: a native details element (keyboard and screen reader friendly), closed at first. */
