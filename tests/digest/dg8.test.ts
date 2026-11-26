@@ -271,7 +271,7 @@ describe("the digest page", () => {
     await flush();
     expect(marked).toEqual([b!.remoteId]);
   });
-  it("a correction leads with the change note (bold) and the headline is secondary; without a note the line is as before", async () => {
+  it("a correction shows the headline, then the change note (bold); without a note the line is as before", async () => {
     const withNote = post("Corrected harbour figure here.", "Ann", { version: 2, changeNote: "Fixed the March total" });
     const plain = post("Another revised piece appears.", "Bo", { version: 2 });
     const { root } = await mount([withNote, plain]);

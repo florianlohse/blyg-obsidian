@@ -786,7 +786,7 @@
 .blyg-reception-head { display: flex; justify-content: space-between; gap: var(--size-4-2); }
 .blyg-reception-lead { font-weight: var(--font-semibold); }
 .blyg-reception-when, .blyg-reception-note { color: var(--text-muted); font-size: var(--font-ui-smaller); }
-.blyg-reception-excerpt { margin-top: var(--size-2-2); padding-left: var(--size-4-2); border-left: 2px solid var(--background-modifier-border); color: var(--text-muted); font-size: var(--font-ui-small); }
+.blyg-reception-excerpt { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin-top: var(--size-2-2); padding-left: var(--size-4-2); border-left: 2px solid var(--background-modifier-border); color: var(--text-muted); font-size: var(--font-ui-small); }
 .blyg-reception-open { margin-top: var(--size-2-2); }
 /* The development build's timing command (src/dev/drawBench.ts): a full-screen window with a scrolling list. */
 .blyg-bench-modal { width: 100vw; max-width: 100vw; height: 100vh; max-height: 100vh; }
@@ -949,7 +949,9 @@ button.blyg-mark { flex: none; height: auto; background: none; box-shadow: none;
 button.blyg-mark.is-read { color: var(--text-accent); }
 button.blyg-mark svg { width: 20px; height: 20px; }
 .blyg-correction-note { font-weight: var(--font-bold); display: block; }
-button.blyg-daily-link.blyg-correction-headline { color: var(--text-muted); font-size: var(--font-ui-smaller); }
+/* F: the excerpt, the change note (bold) and the author line follow each other, the first two at the same size */
+button.blyg-daily-link.blyg-correction-headline { display: block; font-size: inherit; }
+button.blyg-daily-link.blyg-correction-note { font-size: inherit; }
 
 /* DG13: a long press on a post opens the quick menu, so the system's own press menu and text selection must not start on a card or row. */
 .blyg-reader-card, .blyg-daily-row, .blyg-story { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
@@ -1062,7 +1064,7 @@ body button.blyg-menurow[disabled] { opacity: 0.6; cursor: default; }
 /* HK3 Marginalia: the Reception section at the end of a note (editor block widget). */
 .blyg-reception-widget { margin: var(--size-4-4) 0 var(--size-4-8); user-select: text; }
 .blyg-reception-section { padding-top: var(--size-4-3); border-top: 1px solid var(--background-modifier-border); font-size: var(--font-ui-medium); }
-.blyg-reception-title { font-weight: var(--font-semibold); font-size: var(--font-ui-large); }
+.blyg-reception-title { font-weight: var(--nav-item-weight, var(--font-normal)); font-size: var(--nav-item-size, var(--font-ui-small)); color: var(--nav-item-color, var(--text-muted)); } /* G: the same style as the "Linked mentions" heading (Obsidian's own navigation-item variables) */
 .blyg-reception-group { margin-top: var(--size-4-3); color: var(--text-muted); font-size: var(--font-ui-smaller); text-transform: uppercase; letter-spacing: 0.06em; }
 .blyg-reception-section .blyg-reception-open { min-height: var(--input-height); }
 /* V1-C: new items a thread makes (the Studio's own rendering marks them in the preview). */
