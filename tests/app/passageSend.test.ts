@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { noteHeadings } from "../../src/app/noteHeadings";
 import { insertPassage, newThreadBody, type PassageTarget } from "../../src/app/passageInsert";
-import { destinationList, destinationVerdict, inFolders, parseFolders, passageBlocked, readRecent, RECENT_MAX, withRecent, type DestinationNote } from "../../src/app/passageScope";
+import { clusterBySubfolder, destinationList, destinationVerdict, inFolders, parseFolders, passageBlocked, readRecent, RECENT_MAX, withRecent, type DestinationNote } from "../../src/app/passageScope";
 import { quoteBlockOf } from "../../src/app/threadCommands";
 import { lazyQuoteLines, prepareStudioText, scanStudioQuotes } from "../../src/studio/text";
 import { makeStudioWorld } from "../studio/world";
@@ -202,5 +202,19 @@ describe("a new thread with the quote", () => {
     const d = prepareStudioText(`${text}A reaction.`.trim(), "thread", ctx);
     expect(d.problems).toEqual([]);
     expect(d.quotes[0]).toMatchObject({ id: ID, quoteMd: PASSAGE });
+  });
+});
+
+describe("clusterBySubfolder", () => {
+  const note = (path: string, mtime = 1): DestinationNote => ({ path, name: path.split("/").pop()!.replace(/\.md$/, ""), mtime });
+  it("is null (one plain list) when no note sits in a subfolder", () => {
+    expect(clusterBySubfolder([note("Ideas/a.md"), note("Ideas/b.md")], ["Ideas"])).toBeNull();
+  });
+  it("groups by subfolder under the configured folders: own notes first, then subfolders A to Z, folders in the configured order", () => {
+    const got = clusterBySubfolder([note("Ideas/Zeta/z.md"), note("Notes/n.md"), note("Ideas/top.md"), note("Ideas/Alpha/a.md"), note("Ideas/Alpha/b.md")], ["Ideas", "Notes"]);
+    expect(got?.map((g) => [g.title, g.notes.map((n) => n.name)])).toEqual([["Ideas", ["top"]], ["Ideas/Alpha", ["a", "b"]], ["Ideas/Zeta", ["z"]], ["Notes", ["n"]]]);
+  });
+  it("leaves out a note that is in none of the folders", () => {
+    expect(clusterBySubfolder([note("Other/x.md"), note("Ideas/s/y.md")], ["Ideas"])?.map((g) => g.title)).toEqual(["Ideas/s"]);
   });
 });
