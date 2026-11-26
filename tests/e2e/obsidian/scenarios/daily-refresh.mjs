@@ -78,6 +78,7 @@ await runScenario({ data }, async (s) => {
   // ---- the digest's Refresh: the same requests
   await page.evaluate(() => [...document.querySelectorAll(".blyg-reader-header .blyg-modebtn")].find((b) => b.textContent === "Digest").click());
   await page.waitForSelector(".blyg-daily .blyg-daily-refresh", { timeout: 30000 });
+  await page.waitForFunction(() => !/Checking for your other devices/.test(document.querySelector(".blyg-daily")?.innerText ?? ""), null, { timeout: 30000 }); // DG21: a first-ever open waits up to 8 s for another device
   await wait(2500);
   reset();
   await wait(3000);

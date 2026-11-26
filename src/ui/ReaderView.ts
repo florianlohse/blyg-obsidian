@@ -709,7 +709,7 @@ export class BlygReaderView extends ItemView {
     if (via === "feed" || via === "digest") this.stepKeys = null; // the order to step through is taken from the feed as it is when a post is opened from it
     this.responsesEl = null;
     this.shown = p;
-    this.selected = "";
+    this.selected = ""; if (this.busyCount === 0) this.setStatus(this.afterReadText()); // a message about the last post ("Saved for later.") does not follow to the next
     this.drawHeader();
     this.drawBody();
     this.loadMine("cached"); // never a request of its own: the list of your own items is read with the list

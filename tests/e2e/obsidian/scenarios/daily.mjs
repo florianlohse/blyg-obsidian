@@ -81,7 +81,9 @@ await runScenario({ data }, async (s) => {
   // a restart with the edition record the first open saved, plus sections and lines in it
   // (the edition record lives in this device's own file of the synced folder since DG16: the sections, bylines and lines are registers of that file)
   const dir = ".obsidian/plugins/blyg/digest";
-  const file = await page.evaluate(async (d) => (await window.app.vault.adapter.list(d)).files.find((f) => /\/ed-\d+\./.test(f)) ?? "", dir);
+  // DG21: a first-ever open waits up to 8 s for another device's edition before it makes its own
+  const found = await s.pollUntil("this device's edition file", () => page.evaluate(async (d) => (await window.app.vault.adapter.list(d).catch(() => ({ files: [] }))).files.find((f) => /\/ed-\d+\./.test(f)) ?? "", dir), (f) => f !== "", 30000);
+  const file = found.value;
   check(file !== "", `the first open left this device's edition file in ${dir} (${file})`);
   const rec = JSON.parse(await page.evaluate((f) => window.app.vault.adapter.read(f), file));
   const reg = (v) => ({ c: rec.clock + 1, d: rec.device, v });
@@ -481,6 +483,11 @@ await runScenario({ data }, async (s) => {
     await page.waitForSelector(".blyg-daily .blyg-modeswitch", { timeout: 20000 });
     await wait(1200);
     const slotDigest = await box(".blyg-daily .blyg-modeswitch"); // (the switch itself: the bar wraps it in a slot of its own)
+    // D: the menu icon, the Refresh icon and the Feed | Digest toggle share one horizontal line (their vertical centres agree) in the Daily's header and the menu icon and the toggle in the feed's
+    const mid = (r) => (r ? (r.t + r.b) / 2 : null);
+    const dMenu = await box(".blyg-daily-bar .blyg-daily-menu"), dRefresh = await box(".blyg-daily-bar .blyg-daily-refresh");
+    check(dMenu && dRefresh && slotDigest && Math.abs(mid(dMenu) - mid(slotDigest)) <= 1.5 && Math.abs(mid(dRefresh) - mid(slotDigest)) <= 1.5, `${label}: in the digest's header the menu icon (${mid(dMenu)}), the Refresh icon (${mid(dRefresh)}) and the toggle (${mid(slotDigest)}) are on one line`);
+    check(hamb && slotFeed && Math.abs(mid(hamb) - mid(slotFeed)) <= 1.5, `${label}: in the feed's header the menu icon (${mid(hamb)}) and the toggle (${mid(slotFeed)}) are on one line`);
     // (the emulated phone layout draws a 12 px scrollbar inside the digest's page; a device draws none: the right edge is read without it)
     const bar = await page.evaluate(() => { const v = document.querySelector(".view-content.blyg-daily"); return v ? v.offsetWidth - v.clientWidth : 0; });
     const fitOf = (theme) => page.evaluate(async (theme) => { document.body.classList.toggle("theme-dark", theme === "dark"); document.body.classList.toggle("theme-light", theme !== "dark"); await new Promise((r) => setTimeout(r, 250)); const v = document.querySelector(".view-content.blyg-daily"); const c = document.querySelector(".blyg-daily .blyg-daily-cluster.blyg-story"); const h = c?.querySelector(".blyg-story-headline"); const m = c?.querySelector(".blyg-daily-meta"); if (!c || !h || !m) return null; const cr = c.getBoundingClientRect(); const over = [...c.querySelectorAll("*")].filter((e) => e.getBoundingClientRect().right > cr.right + 1).length; return { sw: v.scrollWidth <= v.clientWidth, over, cardR: cr.right, vw: window.innerWidth, headH: Math.round(h.getBoundingClientRect().height), chev: !!c.querySelector(".blyg-story-chevron"), plain: getComputedStyle(c).backgroundColor === "rgba(0, 0, 0, 0)" && getComputedStyle(c).borderLeftWidth === "0px" && getComputedStyle(c).borderRadius === "0px" }; }, theme);

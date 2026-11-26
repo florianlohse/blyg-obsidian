@@ -379,6 +379,27 @@ export class SyncedDigest {
     return { made: j?.created ? { device: j.created.d, at: j.created.at, mine: j.created.d === this.me.id } : null, others, waiting: snap.unreadable > 0 };
   }
 
+  // ---- the first open of a cutoff on a device that may not have been reached by Sync yet
+  /** How long a first open waits for another device's edition (bounded: after it the device makes its own). */
+  static readonly HOLD_MS = 8_000;
+  private held: { id: number; since: number } | null = null;
+  /**
+   * True while the edition `id` must NOT be made here yet: no device has it, and another device may still be delivering it (one is known, or this device has never made an edition,
+   * or data.json cannot be read). Bounded by HOLD_MS from the first ask; fails open after it. A device alone with its history, and a build without the data.json transport, is never held.
+   */
+  hold(id: number): boolean {
+    const clear = (): boolean => ((this.held = null), false);
+    if (!this.data || this.own.has(id)) return clear();
+    for (const [d, v] of this.snapshot.devices) if (d !== this.me.id && v.ids.has(id)) return clear(); // adopted: the foreign edition is there
+    if (!(this.dataFailed || this.knowsOthers() || this.own.size === 0)) return clear();
+    if (!this.held || this.held.id !== id) this.held = { id, since: this.now() };
+    return this.now() - this.held.since < SyncedDigest.HOLD_MS;
+  }
+  /** True while a first open is waiting (the Daily re-reads every second until this turns false). */
+  holding(): boolean {
+    return this.held !== null && this.now() - this.held.since < SyncedDigest.HOLD_MS;
+  }
+
   // ---- migration of this device's old files (read once; the old files stay)
   private async migrate(): Promise<void> {
     if (!this.legacy) return;

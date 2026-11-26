@@ -830,7 +830,7 @@ body button.blyg-linkbtn.blyg-follow-unfollow { color: var(--text-error); }
 .view-content.blyg-daily { padding: var(--size-4-3); }
 .is-mobile .view-content.blyg-daily { padding-bottom: calc(var(--mobile-navbar-height, 0px) + env(safe-area-inset-bottom, 0px) + var(--size-4-3)); }
 .blyg-daily-head { display: flex; align-items: center; justify-content: space-between; gap: var(--size-4-2); }
-.blyg-daily-switcher { display: flex; align-items: center; justify-content: center; gap: var(--size-4-2); margin-top: var(--size-4-2); }
+.blyg-daily-switcher { display: flex; align-items: center; justify-content: center; gap: var(--size-4-2); margin: var(--size-4-2) 0 var(--size-4-3); } /* E: room below, so it does not touch the divider of the first menu row */
 .blyg-daily-select { max-width: 60%; }
 .blyg-past-gone { font-style: italic; }
 .blyg-daily-section { margin-top: var(--size-4-4); }
@@ -871,9 +871,9 @@ button.blyg-story-headline.blyg-story-font-mono { font-family: ui-monospace, SFM
 .blyg-story-mixed { border-top: 1px solid var(--background-modifier-border); }
 button.blyg-daily-link.blyg-story-who { font-weight: var(--font-semibold); font-size: var(--font-ui-small); }
 .blyg-story-first { color: var(--text-muted); font-size: var(--font-ui-small); line-height: 1.4; overflow-wrap: anywhere; }
-.blyg-story-write { display: inline-flex; align-items: center; justify-content: center; gap: var(--size-2-2); min-width: 11.5em; }
+.blyg-story-write { gap: var(--size-2-2); } /* a Menu 1 row (full width, label left, value right): no own display or min-width, which made the row wider than its menu */
 .blyg-story-write[disabled] { opacity: 0.7; cursor: default; }
-.blyg-story-spinner { width: 0.9em; height: 0.9em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: blyg-story-spin 0.8s linear infinite; }
+.blyg-story-spinner { display: inline-block; vertical-align: -0.12em; flex: none; width: 0.9em; height: 0.9em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: blyg-story-spin 0.8s linear infinite; }
 @keyframes blyg-story-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .blyg-story-spinner { animation-duration: 3s; } }
 /* the Feed / Digest switch at the top of the reader's Sort & filter */
@@ -983,8 +983,10 @@ button.blyg-daily-link:focus-visible { outline: 2px solid var(--text-accent); ou
 .blyg-daily-barrow { align-items: flex-start; }
 /* the first row starts as far from the top as the feed header's first row (its padding is --size-4-2; the masthead's own 4px rule is part of it) */
 .blyg-daily-bar { padding-top: calc(var(--size-4-2) - 4px); }
-.blyg-daily-barrow > .blyg-modeslot { display: flex; align-items: center; justify-content: flex-end; min-height: var(--input-height, 30px); }
-.blyg-daily-barrow > .blyg-daily-menu, .blyg-daily-barrow > .blyg-daily-refresh { align-self: flex-start; }
+/* D: the menu icon, the Refresh icon and the Feed | Digest toggle are ONE line: the same height (the taller of the input height and the icon size, which differ on a phone), the same top, content centred in it. */
+.blyg-daily-barrow { --blyg-ctl-h: max(var(--input-height, 30px), var(--clickable-icon-size, 32px)); }
+.blyg-daily-barrow > .blyg-modeslot { display: flex; align-items: center; justify-content: flex-end; height: var(--blyg-ctl-h); min-height: 0; margin-block: 0; }
+.blyg-daily-barrow > .blyg-daily-menu, .blyg-daily-barrow > .blyg-daily-refresh { align-self: flex-start; height: var(--blyg-ctl-h); min-height: 0; margin-block: 0; padding-block: 0; display: inline-flex; align-items: center; justify-content: center; }
 /* Digest Refresh: an icon in the sticky bar and an explained entry in the menu; busy while it runs. */
 .blyg-daily-bar .blyg-daily-refresh { flex: none; }
 button.blyg-daily-refresh { height: var(--clickable-icon-size, 32px); min-width: var(--clickable-icon-size, 32px); box-shadow: none; background: none; color: var(--text-accent); }
@@ -1044,7 +1046,7 @@ body button.blyg-menurow[disabled] { opacity: 0.6; cursor: default; }
 .blyg-menurow-value { flex: 1 1 0; min-width: 0; overflow: hidden; text-align: right; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: var(--font-ui-smaller); }
 .blyg-menurow-go { flex: none; width: 1em; text-align: right; color: var(--text-faint); }
 /* 5. The feed header's hamburger: the last item of the first row, at the same edge as in the Daily. */
-.blyg-reader-header .blyg-reader-menubtn { flex: none; margin-left: 0; }
+.blyg-reader-header .blyg-reader-menubtn { flex: none; margin-left: 0; margin-block: 0; align-self: center; }
 /* 6. Loading: a thin spinner centred under the header; reduced motion shows the still ring. */
 .blyg-reader-loading { display: flex; justify-content: center; padding: var(--size-4-12, 48px) 0; }
 .blyg-reader-spinner { width: 22px; height: 22px; box-sizing: border-box; border: 2px solid var(--text-faint); border-right-color: transparent; border-radius: 50%; animation: blyg-spin 0.9s linear infinite; }
@@ -1131,3 +1133,14 @@ body:not(.is-mobile) .blyg-passage-dock-send { flex: 0 0 auto; padding-inline: c
 @media (hover: hover) { .blyg-passage-row:hover { background: var(--interactive-accent); } .blyg-passage-row:hover .blyg-passage-name, .blyg-passage-row:hover .blyg-passage-where { color: var(--text-on-accent); } }
 .blyg-passage-row:focus-visible { background: var(--interactive-accent); outline: 2px solid var(--text-on-accent); outline-offset: -3px; }
 .blyg-passage-row:focus-visible .blyg-passage-name, .blyg-passage-row:focus-visible .blyg-passage-where { color: var(--text-on-accent); }
+
+/* Settings: nothing is wider than the pane (C). A long description, check line, URL, path or preview wraps inside its row; fields and the font preview shrink to the pane; the pane never scrolls sideways. */
+.blyg-settings { max-width: 100%; overflow-x: hidden; box-sizing: border-box; }
+.blyg-settings .setting-item, .blyg-settings .setting-item-info, .blyg-settings .setting-item-control, .blyg-settings .setting-item-name, .blyg-settings .setting-item-description { min-width: 0; max-width: 100%; box-sizing: border-box; }
+.blyg-settings .setting-item-name, .blyg-settings .setting-item-description, .blyg-settings .blyg-note, .blyg-settings .blyg-issue, .blyg-settings .blyg-check-line, .blyg-settings .blyg-steps li, .blyg-settings .blyg-help { overflow-wrap: anywhere; word-break: break-word; }
+.blyg-settings .setting-item-control { flex-wrap: wrap; }
+.blyg-settings .setting-item-control input, .blyg-settings .setting-item-control select, .blyg-settings .setting-item-control textarea { max-width: 100%; min-width: 0; box-sizing: border-box; }
+.blyg-settings .setting-item-control input[type="text"], .blyg-settings .setting-item-control textarea { flex: 1 1 8em; }
+.blyg-settings pre, .blyg-settings code { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; }
+.blyg-settings table { display: block; max-width: 100%; overflow-x: auto; }
+.blyg-settings .blyg-font-preview, .blyg-settings .blyg-font-preview * { max-width: 100%; min-width: 0; box-sizing: border-box; }

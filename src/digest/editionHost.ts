@@ -15,7 +15,7 @@ export interface EditionPorts {
   /** The setting "Digest time", "HH:MM". */
   time: () => string;
   /** The synced store (src/digest/sync): when present it replaces `read`/`write`: every device's files are read and joined, only this device's are written. */
-  sync?: { load: () => Promise<EditionStore>; save: (store: EditionStore) => Promise<void> };
+  sync?: { load: () => Promise<EditionStore>; save: (store: EditionStore) => Promise<void>; hold?: (id: number) => boolean };
 }
 
 export interface EditionInfo {
@@ -28,6 +28,8 @@ export interface EditionInfo {
   usage?: { tokens: number; cost: number | null };
   /** The editor that wrote this edition's texts (absent: neutral). */
   editor?: string;
+  /** True: this device is still checking whether another device made this edition; nothing was made or saved: `grouped` is only what the posts group into now. */
+  checking?: true;
 }
 
 export class Editions {
@@ -68,6 +70,7 @@ export class Editions {
       const win = windowOf(r.edition, now);
       const live = livePosts(posts, win.since, win.until);
       const next = assignPosts(r.edition, live, now);
+      if (r.created && this.ports.sync?.hold?.(r.edition.id)) return { ...win, grouped: groupOf(next, live), checking: true }; // shown, not saved
       if (r.created || next !== r.edition) await this.save({ v: 1, editions: [...r.store.editions.filter((e) => e.id !== next.id), next] });
       return { ...win, grouped: groupOf(next, live), ...(next.auto ? { auto: next.auto } : {}), ...(next.usage ? { usage: next.usage } : {}), ...(next.editor ? { editor: next.editor } : {}) };
     });

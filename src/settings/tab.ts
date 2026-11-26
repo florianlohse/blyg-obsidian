@@ -51,6 +51,7 @@ export class BlygSettingTab extends PluginSettingTab {
     private readonly plugin: BlygPlugin,
   ) {
     super(app, plugin);
+    this.containerEl?.addClass?.("blyg-settings"); // the hook for the no-sideways-scroll rules in styles.css
   }
 
   override getControlValue(key: string): unknown {
