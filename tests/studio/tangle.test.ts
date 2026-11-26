@@ -159,4 +159,64 @@ describe("the note cannot be rewritten", () => {
     expect(text).toMatch(/Do NOT publish it again as it is/);
     expect(text).toContain(`[[${w.studio.tangledItems[1]} | slow reading]]`);
   });
+
+  describe("a rewrite that could not be done is finished by the next publish: no item is made twice", () => {
+    async function failedFirst(): Promise<{ w: ReturnType<typeof makeStudioWorld>; original: string }> {
+      const w = makeStudioWorld({ tangle: true, vault: { [NOTE]: THREAD(BODY) } });
+      const original = w.local.get(NOTE) ?? "";
+      w.answerFor = () => {
+        w.local.set(NOTE, original.replace("[[+ slow reading]]", "slow reading")); // the person edits while the window is open
+        return true;
+      };
+      const out = await tapStudio(w, NOTE);
+      expect(out.status).toBe("published");
+      w.answerFor = null;
+      expect(w.studio.tangledItems).toHaveLength(2);
+      return { w, original };
+    }
+
+    it("the new items are remembered in the note's properties, in source order", async () => {
+      const { w } = await failedFirst();
+      const [a, b] = w.studio.tangledItems;
+      expect(frontmatterOf(w.local.get(NOTE) ?? "").blyg_tangle_pending).toEqual([`span ${a}`, `placeholder ${b}`]);
+    });
+
+    it("the person undoes the edit and publishes again: the note is rewritten, the property goes, nothing new is made", async () => {
+      const { w, original } = await failedFirst();
+      const edited = w.local.get(NOTE) ?? "";
+      w.local.set(NOTE, edited.replace("slow reading later", "[[+ slow reading]] later"));
+      expect(w.local.get(NOTE)).toContain("[[+ slow reading]]");
+      void original;
+      const again = await tapStudio(w, NOTE);
+      expect(["noop", "published"]).toContain(again.status);
+      expect(w.studio.tangledItems).toHaveLength(2);
+      const text = w.local.get(NOTE) ?? "";
+      expect(text).not.toContain("![[+");
+      expect(text).not.toContain("[[+");
+      expect(frontmatterOf(text).blyg_tangle_pending).toBeUndefined();
+      expect([...w.studio.items.values()].filter((i) => i.kind === "thread" && i.status === "public")).toHaveLength(3);
+    });
+
+    it("the person replaced the spans by hand: the property is dropped and the publish goes on", async () => {
+      const { w } = await failedFirst();
+      const [a, b] = w.studio.tangledItems;
+      const text = w.local.get(NOTE) ?? "";
+      w.local.set(NOTE, text.replace(/!\[\[\+ The cheapest[^\n]*\]\]/, `![[${a} | The cheapest]]`).replace("slow reading later", `[[${b} | slow reading]] later`));
+      const again = await tapStudio(w, NOTE);
+      expect(["noop", "published"]).toContain(again.status);
+      expect(w.studio.tangledItems).toHaveLength(2);
+      expect(frontmatterOf(w.local.get(NOTE) ?? "").blyg_tangle_pending).toBeUndefined();
+    });
+
+    it("the spans still do not match: the publish is refused and nothing is sent", async () => {
+      const { w } = await failedFirst(); // the placeholder is gone, one span is left, two items are pending
+      const before = w.studio.seen.length;
+      const again = await tapStudio(w, NOTE);
+      expect(again.status).toBe("refused");
+      expect(again.notices.join("\n")).toMatch(/earlier publish already made new items/);
+      expect(again.notices.join("\n")).toContain(`![[${w.studio.tangledItems[0]}]]`);
+      expect(w.studio.seen.slice(before).filter((r) => r.method !== "GET")).toEqual([]);
+      expect(w.studio.tangledItems).toHaveLength(2);
+    });
+  });
 });
