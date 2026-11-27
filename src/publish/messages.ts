@@ -122,35 +122,6 @@ export const M = {
   tangleUnsupported: `Not published — this thread has new-item spans (“![[+ …]]”) or placeholders (“[[+ …]]”), and this Studio's API cannot make those from here (it needs API contract 5.12 or newer, Studio 0.63 or newer). Update the Studio, or take them out. Nothing was sent.`,
   tangleCountDiffers: (mine: number, studio: number) =>
     `Not published — the Studio counts ${studio} new items where this plugin counted ${mine}. Nothing was published; the text is saved as a draft. Check the spans (![[+ …]]) and placeholders ([[+ …]]) and try again.`,
-  blockHeading: (line: number, target: string) =>
-    `Not published — line ${line} embeds a heading's section (![[${target.slice(0, 50)}]]). A section is not published as one unit yet. Embed one paragraph instead (open the note, long-press the paragraph, “Publish this paragraph”, then embed ![[Note#^id]]), or write the passage here as ![[+ …]]. Nothing was sent.`,
-  blockSameNote: (line: number) => `Not published — line ${line} embeds a paragraph of this same note. Put the paragraph in another note, or write it here as ![[+ …]]. Nothing was sent.`,
-  blockHostMissing: (line: number, host: string) => `line ${line}: “${host.slice(0, 50)}” is not a note in your vault.`,
-  blockHostNotStudio: (line: number, host: string) => `line ${line}: “${host.slice(0, 50)}” is not in a folder that publishes to your Studio, so its paragraphs cannot be published.`,
-  blockOtherStudio: (host: string) => `${host.slice(0, 50)} holds published paragraphs of another Studio, so its paragraphs are not published here. Nothing was sent.`,
-  blockNotFound: (line: number, host: string, id: string) => `line ${line}: no plain paragraph in “${host.slice(0, 50)}” ends with ^${id.slice(0, 20)}.`,
-  blockQuoteOfNew: (line: number) => `line ${line}: a passage cannot be quoted from a paragraph that is not published yet. Publish the paragraph first, or quote the whole of it.`,
-  blockPicture: "Not published — this paragraph has a picture. Pictures are not supported in a paragraph item yet. Nothing was sent.",
-  blockNotParagraph: (problem: string) =>
-    ({
-      properties: "That is the note's properties, not a paragraph.",
-      blank: "Put the cursor in a paragraph first.",
-      code: "That is code, not a paragraph.",
-      heading: "That is a heading, not a paragraph.",
-      list: "That is a list, not a paragraph. Only plain paragraphs can be published this way.",
-      quote: "That is a quote, not a paragraph. Only plain paragraphs can be published this way.",
-      table: "That is a table, not a paragraph.",
-      html: "That is html, not a paragraph.",
-      other: "That is not a plain paragraph.",
-    })[problem] ?? "That is not a plain paragraph.",
-  blockSwitchedOff: "Publishing a paragraph is switched off. Switch on “New items from a thread” under Settings → Experimental features.",
-  blockNotInRoute: "This note is not in a folder that publishes to your Studio, so its paragraphs cannot be published. Nothing was sent.",
-  blockWithdrawn: (id: string) => `The item ${id} of this paragraph is withdrawn in the Studio. Nothing was sent.`,
-  blockNoChanges: (blockId: string) => `The paragraph ^${blockId} is already published as it is. Nothing to do.`,
-  blockPublished: (blockId: string, host: string, id: string, version: number, created: boolean) =>
-    `${created ? "Published" : "Updated"} the paragraph as item ${id}, version ${version}. Quote it in a thread with ![[${host}#^${blockId}]].`,
-  blockStampFailed: (id: string) => `The paragraph is published as item ${id}, but your note could not be marked (it changed while publishing). Publish the paragraph again: it finds this item and only marks the note, it does not make another one.`,
-  blocksProgress: (done: number, total: number) => `${done} of ${total} new items were published; the thread was not. Publish it again to continue: the finished ones are not made again.`,
   tangleRewriteStillPending: (lines: string[]) =>
     `Not published — an earlier publish already made new items for this note's spans and placeholders, but the note could not be updated then, and still cannot be (its spans no longer match). Publishing now would make them again. Replace each span or placeholder by hand with a link to its item${lines.length > 0 ? `, in this order:\n${lines.join("\n")}` : ""}\nthen remove the property blyg_tangle_pending (or publish again: it is removed once the spans are gone). Nothing was sent.`,
   tangleDone: (n: number) => `${n} new item${n === 1 ? "" : "s"} made and published before the thread.`,
