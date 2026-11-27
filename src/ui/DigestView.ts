@@ -549,7 +549,7 @@ export class BlygDailyView extends ItemView {
     const host = this.host;
     const shelf = host.shelf;
     // The shelf is read once per opening of the Daily (the first menu that needs it); Save and Remove are one write each, said in the line under the masthead.
-    const shelfMenu = shelf?.on() ? { shelf: { state: () => (shelf.ready() ? { saved: shelf.has(p), full: shelf.full() } : null), toggle: () => void shelf.toggle(p).then((r) => (this.say(r.ok ? (r.saved ? "Saved for later." : "Removed from saved.") : r.message), this.savedPainters.forEach((f) => f()))) } } : {};
+    const shelfMenu = shelf?.on() ? { shelf: { state: () => (shelf.ready() || shelf.lost?.() === true || shelf.settling?.() === true ? { saved: shelf.has(p), full: shelf.full() } : null), toggle: () => void shelf.toggle(p).then((r) => (this.say(r.ok ? (r.saved ? "Saved for later." : "Removed from saved.") : r.message), this.savedPainters.forEach((f) => f()))) } } : {};
     quickPost(el, () => p, { open: () => this.openEntry(p), ...(host.replyTo ? { reply: () => void host.replyTo?.(p) } : {}), ...(q ? { mark: (read: boolean) => void (read ? q.enqueue([p]) : q.enqueueUnread([p])) } : {}), ...shelfMenu }, this.contentEl);
   }
 
