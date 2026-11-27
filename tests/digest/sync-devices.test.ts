@@ -379,42 +379,42 @@ describe("the Sync check (DG17)", () => {
   });
 });
 
-describe("the editor (DG7) is carried by the sync", () => {
-  it("the edition keeps the editor that wrote it on every device: the record, the history and the reused texts are in that voice; the other device's own setting does not change it", async () => {
+describe("the one voice is carried by the sync", () => {
+  it("the edition keeps the voice that wrote it on every device: the record, the history and the reused texts carry it, and a second device reuses the texts instead of writing them again", async () => {
     const prov = provider();
     const w = world();
-    const a = device("devA", "iPhone", prov, T0, { editor: "harbour-master" });
-    const b = device("devB", "iPad", prov, T0 + 3600_000, { editor: "neutral" });
+    const a = device("devA", "iPhone", prov, T0);
+    const b = device("devB", "iPad", prov, T0 + 3600_000);
     const ia = await a.editions.open(w.items);
     await a.write(ia.grouped.clusters, ia.grouped.mixed);
-    expect((await a.editions.current())?.editor).toBe("harbour-master");
+    expect((await a.editions.current())?.editor).toBe("editor"); // a new edition is written in the one voice
     ship(a, b);
     const ib = await b.editions.open(w.items);
-    expect(ib.editor).toBe("harbour-master"); // "Today's editor" line: from the merged record
-    expect((await b.editions.current())?.editor).toBe("harbour-master");
-    expect((await b.history.list()).editions[0]?.editor).toBe("harbour-master");
+    expect((await b.editions.current())?.editor).toBe("editor");
+    expect((await b.history.list()).editions[0]?.editor).toBe("editor");
     const n = prov.requests.length;
-    const ob = await b.write(ib.grouped.clusters, ib.grouped.mixed); // B's setting is neutral, but the edition keeps its editor: the same keys, so reused
+    const ob = await b.write(ib.grouped.clusters, ib.grouped.mixed); // the same keys: reused, nothing sent
     expect(ob.status).toBe("ok");
     expect(prov.requests.length).toBe(n);
-    expect((await b.editions.current())?.editor).toBe("harbour-master");
+    expect((await b.editions.current())?.editor).toBe("editor");
   });
-  it("a manual re-sort on the other device in another voice changes the editor for both, once the file arrives", async () => {
+  it("an edition written in an earlier version's voice keeps that id and its texts: a second device reuses them and sends nothing", async () => {
     const prov = provider();
     const w = world();
-    const a = device("devA", "iPhone", prov, T0, { editor: "harbour-master" });
-    const b = device("devB", "iPad", prov, T0 + 3600_000, { editor: "neutral" });
+    const a = device("devA", "iPhone", prov, T0);
+    const b = device("devB", "iPad", prov, T0 + 3600_000);
     const ia = await a.editions.open(w.items);
+    await a.editions.update((await a.editions.current())?.id ?? 0, (e) => ({ ...e, editor: "crossword-setter" })); // an edition an older version had begun in that voice
     await a.write(ia.grouped.clusters, ia.grouped.mixed);
+    expect(prov.requests.length).toBeGreaterThan(0);
+    expect((await a.editions.current())?.editor).toBe("crossword-setter"); // it stays in its voice id: the cache keys are the old shape
     ship(a, b);
     const ib = await b.editions.open(w.items);
-    await b.write(ib.grouped.clusters, ib.grouped.mixed, { resort: true });
-    expect((await b.editions.current())?.editor).toBeUndefined();
-    ship(b, a);
-    a.setNow(T0 + 7200_000);
-    const ra = await a.editions.open(w.items);
-    expect(ra.editor).toBeUndefined();
-    expect((await a.history.list()).editions[0]?.editor).toBeUndefined();
+    expect((await b.editions.current())?.editor).toBe("crossword-setter");
+    const n = prov.requests.length;
+    expect((await b.write(ib.grouped.clusters, ib.grouped.mixed)).status).toBe("ok");
+    expect(prov.requests.length).toBe(n);
+    expect((await b.editions.current())?.editor).toBe("crossword-setter");
   });
 });
 
