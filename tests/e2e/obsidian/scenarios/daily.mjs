@@ -403,7 +403,7 @@ await runScenario({ data }, async (s) => {
   await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-menu").click());
   await wait(300);
   const unfolded = await page.evaluate(() => { const v = document.querySelector(".view-content.blyg-daily"); const p = document.querySelector(".blyg-daily-panel"); return { shown: getComputedStyle(p).display !== "none", text: p.innerText, sw: v.scrollWidth <= v.clientWidth, expanded: document.querySelector(".blyg-daily-menu")?.getAttribute("aria-expanded") }; });
-  check(unfolded.shown && /Refresh/.test(unfolded.text) && unfolded.sw && unfolded.expanded === "true", `the menu unfolds Refresh and the other controls without sideways scroll (${JSON.stringify(unfolded)})`);
+  check(unfolded.shown && !/Refresh|Advanced|Write the digest|Re-sort/.test(unfolded.text) && unfolded.sw && unfolded.expanded === "true", `the menu unfolds (with no Refresh, Write or Re-sort entry: the refresh icon is the one update action) without sideways scroll (${JSON.stringify(unfolded)})`);
   await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-menu").click());
   const tabs = await page.evaluate(() => [...document.querySelectorAll(".blyg-daily .blyg-modebtn")].map((b) => `${b.textContent}${b.classList.contains("is-active") ? "*" : ""}`).join(" "));
   check(tabs === "Feed Digest*", `the digest has the Feed | Digest switch, Digest pressed (${tabs})`);

@@ -871,8 +871,6 @@ button.blyg-story-headline.blyg-story-font-mono { font-family: ui-monospace, SFM
 .blyg-story-mixed { border-top: 1px solid var(--background-modifier-border); }
 button.blyg-daily-link.blyg-story-who { font-weight: var(--font-semibold); font-size: var(--font-ui-small); }
 .blyg-story-first { color: var(--text-muted); font-size: var(--font-ui-small); line-height: 1.4; overflow-wrap: anywhere; }
-.blyg-story-write { gap: var(--size-2-2); } /* a Menu 1 row (full width, label left, value right): no own display or min-width, which made the row wider than its menu */
-.blyg-story-write[disabled] { opacity: 0.7; cursor: default; }
 .blyg-story-spinner { display: inline-block; vertical-align: -0.12em; flex: none; width: 0.9em; height: 0.9em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: blyg-story-spin 0.8s linear infinite; }
 @keyframes blyg-story-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .blyg-story-spinner { animation-duration: 3s; } }
@@ -931,6 +929,9 @@ button.blyg-daily-link.blyg-toc-row { display: flex; align-items: baseline; gap:
 .blyg-reader-digestchip { white-space: normal; overflow-wrap: anywhere; }
 
 .blyg-daily-markstatus:empty { display: none; }
+/* The refresh's state shares the meta line under the date: while it works, a small spinner leads the line (the same ring as the feed's status); reduced motion shows it still. */
+.blyg-daily-markstatus.is-busy::before { content: ""; display: inline-block; width: 0.85em; height: 0.85em; margin-right: 0.5em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; vertical-align: -0.12em; animation: blyg-spin 0.8s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .blyg-daily-markstatus.is-busy::before { animation: none; border-right-color: currentColor; } }
 
 /* The Daily's sticky bar (src/ui/DigestBar.ts): title and dateline at the left, the Feed | Digest toggle (in .blyg-modeslot) and one menu icon at the right; the menu unfolds the other controls. Folded by default. */
 .blyg-daily-bar { position: sticky; top: calc(var(--size-4-3) * -1); margin-top: calc(var(--size-4-3) * -1); z-index: 5; background: var(--background-primary); margin-bottom: var(--size-4-2); padding: calc(var(--size-4-3) + var(--size-4-1)) 0 var(--size-4-2); text-align: left; }
@@ -990,16 +991,14 @@ button.blyg-daily-link:focus-visible { outline: 2px solid var(--text-accent); ou
 /* Digest Refresh: an icon in the sticky bar and an explained entry in the menu; busy while it runs. */
 .blyg-daily-bar .blyg-daily-refresh { flex: none; }
 button.blyg-daily-refresh { height: var(--clickable-icon-size, 32px); min-width: var(--clickable-icon-size, 32px); box-shadow: none; background: none; color: var(--text-accent); }
-.blyg-daily-refresh.is-busy svg, .blyg-daily-refreshbtn.is-busy svg { animation: blyg-spin 0.9s linear infinite; }
-.blyg-daily-refresh.is-busy, .blyg-daily-refreshbtn.is-busy { opacity: 0.7; }
-.blyg-daily-refreshbtn { display: inline-flex; align-items: center; gap: var(--size-4-1); }
-.blyg-daily-refreshicon { display: inline-flex; }
+.blyg-daily-refresh.is-busy svg { animation: blyg-spin 0.9s linear infinite; }
+.blyg-daily-refresh.is-busy { opacity: 0.7; }
 .blyg-daily-entry { margin-top: var(--size-4-2); }
 .blyg-daily-hint { font-size: var(--font-ui-smaller); color: var(--text-muted); margin-top: var(--size-4-1); }
 /* The menu's "Advanced" part: the manual writes, folded. */
 /* The menu's "Advanced" part: a row of the menu (Menu 1) that unfolds the manual writes as rows. */
 .blyg-story-newtag { margin-right: var(--size-4-1); font-size: var(--font-ui-smaller); text-transform: uppercase; }
-@media (prefers-reduced-motion: reduce) { .blyg-daily-refresh.is-busy svg, .blyg-daily-refreshbtn.is-busy svg { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .blyg-daily-refresh.is-busy svg { animation: none; } }
 .blyg-reader-savebtn.is-pending { visibility: hidden; }
 
 /* DG19 (mockups 1A, 2B, 3A/B, 4C, Menu 1, 5B, 6A). Mobile first, theme variables only. */
@@ -1040,7 +1039,6 @@ body div.blyg-menurow { cursor: default; }
 body button.blyg-menurow:active, body summary.blyg-menurow:active { text-decoration: underline; }
 body summary.blyg-menurow { list-style: none; }
 summary.blyg-menurow::-webkit-details-marker { display: none; }
-.blyg-daily-advanced[open] > summary .blyg-menurow-go { transform: rotate(90deg); }
 body button.blyg-menurow[disabled] { opacity: 0.6; cursor: default; }
 .blyg-menurow-label { flex: none; }
 .blyg-menurow-value { flex: 1 1 0; min-width: 0; overflow: hidden; text-align: right; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: var(--font-ui-smaller); }
