@@ -430,7 +430,7 @@ export class BlygDailyView extends ItemView {
     // The editions under the date (a tap on the date): today's first, then the older ones; only when there is something else to choose.
     const entries: EditionEntry[] = ids.map((id) => ({ id, label: id === today ? "Today" : editionLabel(id), meta: id === today ? (model ? `as of ${timeOnly(model.until)}` : "") : plural(this.past.find((e) => e.id === id)?.stories.length ?? 0, "story", "stories"), current: id === shownId }));
     const editions = ids.length > 1 || pastRec ? { entries, pick: (id: number) => { this.viewing = id === today ? null : id; this.render(model); } } : undefined;
-    const bar = drawBar(root, { date: mastheadDate(this.viewing ?? model?.edition ?? model?.since ?? Date.now()), kicker: pastRec ? "Earlier edition" : "Your digest", state: this.bar, toggle: () => void this.host.showFeed(this.leaf), ...(editions ? { editions } : {}), refresh: { hint: REFRESH_HINT, click: () => void this.refreshNow(), made: (b) => (this.refreshBtns.push(b), this.paintRefresh(b)) } });
+    drawBar(root, { date: mastheadDate(this.viewing ?? model?.edition ?? model?.since ?? Date.now()), kicker: pastRec ? "Earlier edition" : "Your digest", state: this.bar, toggle: () => void this.host.showFeed(this.leaf), ...(editions ? { editions } : {}), refresh: { hint: REFRESH_HINT, click: () => void this.refreshNow(), made: (b) => (this.refreshBtns.push(b), this.paintRefresh(b)) } });
     if (pastRec) {
       const back = root.createEl("button", { cls: "blyg-daily-back", text: "‹ Back to today", attr: { "aria-label": "Back to today's edition" } });
       back.addEventListener("click", () => ((this.viewing = null), this.render(model)));
