@@ -1108,7 +1108,7 @@ export default class BlygPlugin extends Plugin {
         const file = this.app.vault.getMarkdownFiles().find((f) => this.app.metadataCache.getFileCache(f)?.frontmatter?.blyg_id === itemId);
         if (!file) return false;
         const open = this.app.workspace.getLeavesOfType("markdown").find((l) => (l.view as { file?: { path: string } }).file?.path === file.path); // the leaf that holds it already: no second tab
-        if (open) await this.app.workspace.revealLeaf(open); else await this.app.workspace.getLeaf("tab").openFile(file);
+        if (open) { await this.app.workspace.revealLeaf(open); this.app.workspace.setActiveLeaf(open, { focus: true }); } else await this.app.workspace.getLeaf("tab").openFile(file);
         return true;
       },
       openQuotedItem: async (origin, itemId) => {
