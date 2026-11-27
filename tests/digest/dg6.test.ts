@@ -435,7 +435,7 @@ describe("the page: bylines, lines, reading time, table of contents", () => {
     const view = new BlygDailyView({} as never, host);
     await view.onOpen();
     const root = (view as unknown as { contentEl: El }).contentEl;
-    root.all().find((e) => e.tag === "button" && e.text === "‹")?.click();
+    root.all().filter((e) => cls(e, "blyg-daily-edition"))[1]?.click(); // the first older edition, from the list under the date
     const all = root.all();
     expect(all.filter((e) => cls(e, "blyg-toc-name")).map((e) => e.text)).toEqual(["Garden"]); // a past edition has no lead block, so no Top stories line
     expect(all.filter((e) => cls(e, "blyg-section-about")).map((e) => e.text)).toEqual(["Soil and seeds"]);
@@ -451,7 +451,7 @@ describe("no sideways scroll (CSS) and no automatic checking (reader)", () => {
     expect(css).toMatch(/button\.blyg-daily-link \{[^}]*overflow-wrap: anywhere/);
     expect(css).toMatch(/\.blyg-story-summary[^{]*\{[^}]*overflow-wrap: anywhere/);
     expect(css).toMatch(/\.blyg-story-main[^{]*\{[^}]*min-width: 0/); // a flex child that may shrink
-    expect(css).toMatch(/\.blyg-daily-head, \.blyg-daily-switcher \{ flex-wrap: wrap/);
+    expect(css).toMatch(/\.blyg-daily-head \{ flex-wrap: wrap/);
   });
   it("the reader has no watcher: its only interval is the clock of the status line, and nothing reads the counters outside Refresh", () => {
     const src = readFileSync("src/ui/ReaderView.ts", "utf8");
@@ -548,14 +548,14 @@ describe("DG11: the contents are the headings the page draws, in the order drawn
     const plain: PastEdition = { id: 2, at: 2, stories: [{ headline: "One", summary: "", posts: ["a1", "a2"], newest: 1 }], singles: ["b1"], who: {}, sections: null };
     const old: PastEdition = { id: 1, at: 1, stories: [{ headline: "Two", summary: "", posts: ["c1", "c2"], newest: 1 }], singles: [], who: {}, sections: [{ name: "Front page", stories: [0], posts: [] }, { name: "Sport", stories: [], posts: ["d1"] }] };
     const root = await mountList({ posts: [lone], mentions: [], savedAt: NOW }, undefined, [sectioned, plain, old]);
-    const go = (n: number): void => { for (let i = 0; i < n; i++) root.all().find((e) => e.tag === "button" && e.text === "‹")?.click(); };
+    const go = (n: number): void => root.all().filter((e) => cls(e, "blyg-daily-edition"))[n]?.click(); // the n-th entry of the list under the date (0 is today)
     go(1);
     expect(contents(root)).toEqual([["Garden", "6 items"], ["Other", "2 items"], ["Mixed bag", "1 item"]]); // Garden: 2 + 3 + 1; the story no section holds is under Other; one single is not in any section
     expect(contents(root).map(([n]) => n)).toEqual(headings(root));
-    go(1);
+    go(2);
     expect(contents(root)).toEqual([["Top stories", "2 items"], ["Mixed bag", "1 item"]]);
     expect(contents(root).map(([n]) => n)).toEqual(headings(root));
-    go(1);
+    go(3);
     // an old record whose section is called "Front page" is shown under the new label; the stored name is not changed
     expect(contents(root).map(([n]) => n)).toEqual(["Top stories", "Sport"]);
     expect(headings(root)).toEqual(["Top stories", "Sport"]);

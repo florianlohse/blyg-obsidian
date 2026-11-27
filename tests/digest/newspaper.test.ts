@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { mastheadDate, ordinal } from "../../src/digest/window";
+import { editionLabel, mastheadDate, ordinal } from "../../src/digest/window";
 import { GROUPING_NOTE, previewOf, summarizeRest } from "../../src/digest/layout";
 import { FRONT_PAGE_MAX } from "../../src/digest/daily";
 import { MIN_SHARED_TERMS, type Cluster } from "../../src/digest/cluster";
@@ -13,18 +13,34 @@ const post = (id: string, html = "<p>Some words here.</p>"): ReadingPost =>
 const cluster = (...ids: string[]): Cluster => ({ posts: ids.map((i) => post(i)), newest: 0, headline: "h", terms: [] });
 
 describe("the masthead", () => {
-  it("names the weekday and the date in the given locale", () => {
-    const t = new Date(2030, 2, 10, 12).getTime();
-    expect(mastheadDate(t, "en-US")).toBe("Sunday, March 10th, 2030");
-    expect(mastheadDate(t, "de-DE")).toBe("Sonntag, 10. März 2030");
+  it("is always English: English weekday, month and ordinal, whatever the device's language", () => {
+    expect(mastheadDate(new Date(2030, 2, 10, 12).getTime())).toBe("Sunday, March 10th, 2030");
+    expect(mastheadDate(new Date(2026, 10, 27, 12).getTime())).toBe("Friday, November 27th, 2026");
+    expect(editionLabel(new Date(2026, 10, 26, 12).getTime())).toBe("Thursday, November 26th");
+  });
+  it("does not read the device's locale (a German or British device gets the same English line)", () => {
+    const real = Intl.DateTimeFormat;
+    const seen: Array<string | string[] | undefined> = [];
+    const spy = function (loc?: string | string[], o?: Intl.DateTimeFormatOptions) {
+      seen.push(loc);
+      return new real(loc, o);
+    } as unknown as typeof Intl.DateTimeFormat;
+    (Intl as { DateTimeFormat: unknown }).DateTimeFormat = spy;
+    try {
+      mastheadDate(new Date(2026, 10, 27, 12).getTime());
+      editionLabel(new Date(2026, 10, 27, 12).getTime());
+    } finally {
+      (Intl as { DateTimeFormat: unknown }).DateTimeFormat = real;
+    }
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen.every((l) => l === "en-US")).toBe(true);
   });
   it("uses English ordinals for every edge of the month", () => {
     const want: Record<number, string> = { 1: "1st", 2: "2nd", 3: "3rd", 4: "4th", 10: "10th", 11: "11th", 12: "12th", 13: "13th", 14: "14th", 20: "20th", 21: "21st", 22: "22nd", 23: "23rd", 24: "24th", 30: "30th", 31: "31st" };
     for (const [day, text] of Object.entries(want)) {
       expect(ordinal(Number(day))).toBe(text);
-      expect(mastheadDate(new Date(2030, 0, Number(day), 12).getTime(), "en-US")).toContain(`January ${text}, 2030`);
+      expect(mastheadDate(new Date(2030, 0, Number(day), 12).getTime())).toContain(`January ${text}, 2030`);
     }
-    expect(mastheadDate(new Date(2026, 10, 23, 12).getTime(), "en-GB")).toBe("Monday, 23rd November 2026");
   });
 });
 
