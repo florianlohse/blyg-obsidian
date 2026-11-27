@@ -103,7 +103,7 @@ await runScenario({ data }, async (s) => {
   const second = await open();
   check(/your digest/i.test(second.text) && second.rows > 0, "the digest page has content after a restart, with sections and lines in the record");
 
-  // DG7 / DG19: a past edition written by an editor shows "Editor: <name>" as the top line under the masthead (small caps, muted, text only); today's edition, plain here (the AI layer is off), draws no top line at all.
+  // One editor, no naming: neither today's edition nor a past edition written by an earlier version in a named voice shows an "Editor: <name>" line, a name or an amount (the page has no top line at all).
   check(await page.evaluate(() => document.querySelectorAll(".blyg-daily .blyg-daily-priceline").length) === 0, "a plain edition draws no top line (no price, no editor)");
   const pastId = rec.id - 24 * 3600 * 1000;
   const pastRec = { id: pastId, at: pastId + 1000, stories: [{ headline: "Harbour lanterns lit early", summary: "A calm start to the day.", posts: [] }], singles: [], sections: null, who: {}, editor: "harbour-master" };
@@ -150,8 +150,9 @@ await runScenario({ data }, async (s) => {
   await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-datebtn").click());
   await page.waitForSelector(".blyg-daily .blyg-daily-editions.is-open", { state: "visible", timeout: 20000 });
   await page.evaluate(() => document.querySelectorAll(".blyg-daily .blyg-daily-editions button.blyg-daily-edition")[1].click());
-  const line = await page.waitForSelector(".blyg-daily .blyg-daily-priceline", { timeout: 20000 }).then((el) => el.evaluate((n) => { const c = getComputedStyle(n); const first = document.querySelector(".blyg-daily .blyg-story, .blyg-daily .blyg-daily-section"); return { text: n.textContent, kids: n.children.length, caps: c.fontVariantCaps, above: !first || n.getBoundingClientRect().bottom <= first.getBoundingClientRect().top + 1 }; }));
-  check(line.text === "Editor: Harbour Master Okafor" && line.kids === 0 && line.caps === "small-caps" && line.above, `a past edition shows its editor, and no price it does not have, as one small-caps line of plain text above the first story (${JSON.stringify(line)})`);
+  await page.waitForFunction(() => /Harbour lanterns lit early/.test(document.querySelector(".view-content.blyg-daily")?.innerText ?? ""), null, { timeout: 20000 });
+  const line = await page.evaluate(() => ({ n: document.querySelectorAll(".blyg-daily .blyg-daily-priceline").length, text: /Editor:|Harbour Master|Okafor|\$\d/.test(document.querySelector(".view-content.blyg-daily")?.innerText ?? "") }));
+  check(line.n === 0 && !line.text, `a past edition written in an earlier version's named voice shows no editor line, no name and no amount (${JSON.stringify(line)})`);
   const past = await page.evaluate(() => ({ kicker: document.querySelector(".blyg-daily .blyg-daily-kicker")?.textContent, back: document.querySelector(".blyg-daily .blyg-daily-back")?.textContent, closed: !document.querySelector(".blyg-daily .blyg-daily-editions.is-open") }));
   check(past.kicker === "Earlier edition" && past.back === "‹ Back to today" && past.closed, `a past edition says so and offers Back to today; the list closed after the pick (${JSON.stringify(past)})`);
   await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-back").click());
