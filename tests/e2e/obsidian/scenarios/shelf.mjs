@@ -57,7 +57,7 @@ await new Promise((resolve) => stub.listen(0, "127.0.0.1", resolve));
 const base = `http://127.0.0.1:${stub.address().port}`;
 const data = fixtureData();
 data.studio.baseUrl = base;
-data.features = { shelf: true }; // an experimental feature is off in the release flavour this harness loads
+data.features = { shelf: true }; // since 1.1.0 the shelf is stable (always on); the line is kept harmlessly. release-flavour.mjs checks the default set
 
 await runScenario({ data }, async (s) => {
   const { check } = s;

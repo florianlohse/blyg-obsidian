@@ -10,6 +10,14 @@ will change before anything leaves your vault.
 
 <p><img src="images/readme/hero.png" width="640" alt="Obsidian on the desktop: a vault with a Blyg folder of notes, an open thread note, and the Blyg panel on the right with the buttons Open reader and Sync with Studio, the status Published (v1) and up to date, and the buttons New fragment, New thread and Reply to item"></p>
 
+## What's new in 1.1.0: read and save
+
+- **The Daily.** A newspaper page of what the blygs you follow posted: stories first, single posts after, corrections apart. Open it from the ribbon or the reader's Feed | Digest switch. Daily sync between devices is new: it needs your vault sync to carry the plugin's settings file. An optional AI summary uses your own API key, is off until you turn it on, and shows a rough cost before it sends anything.
+- **Save for later.** Press and hold a post, or tap the bookmark in an open post. Saved posts live on your Studio's shelf (up to 50), shared with your other devices. Needs a token with every permission ticked and a Studio that offers the shelf.
+- **Reception.** For a note you published: words others quoted are underlined with a count, and a Reception section at the end of the note (also in Reading view) lists who quoted or answered it. Works best on blygs you follow.
+
+Still experimental, off until you switch them on under Settings → Experimental features: sending a passage to a note and drafting selected words, new items from a thread, opening a shared address. The full list is in the [changelog](CHANGELOG.md).
+
 ## What it does
 
 - **Publish** a note from a chosen vault folder as a fragment (up to 1,000 characters by default) or a thread. Ids,
@@ -32,6 +40,9 @@ will change before anything leaves your vault.
   checked, fetched or sent. Settings → Web quote holds a template for the whole block, so you decide where the quote, the
   link and any blank line go.
 - **See what you answer.** A reply note starts with the line that quotes the item it answers; in Live Preview and Reading view that line shows the item's text (a view only: the text is fetched when the note is shown and never written into your vault).
+- **The Daily.** “Open Daily” (ribbon icon or command) shows what the blygs you follow posted in the last day as a newspaper page: stories of several posts, single posts, corrections. Posts open in the reader and Back returns to the page; read posts stay in place, lighter. The edition starts at the first open after your Digest time (Settings → Daily) and is shared between your devices through the plugin's settings file. With “Use an AI model” on (Settings → Daily digest, off by default, asks once for your agreement) “Write the digest” adds headlines and summaries written by a model you choose, with your own API key.
+- **Save for later.** Press and hold a post in the feed or the Daily and choose “Save for later”, or tap the bookmark in an open post. “Saved” under Sort & filter shows only the saved posts. They live on your Studio's shelf (50 at most), so your other devices and the Studio's web app share them. Needs a token with **`owner:manage`** and a Studio that offers the shelf.
+- **Reception.** In a note you published, words that others quoted are underlined with a count (tap for who and when), and a **Reception** section at the end of the note, in editing and in Reading view, lists who quoted a paragraph, the whole note or replied. It is only drawn, never written into your note; two switches under Settings → Marginalia turn the marks and the section off.
 - **Read (experimental).** “Open reader” shows the posts of the blygs your Studio follows as a feed (newest first, or by reading time;
   filter by blyg, length or unread; the choices are remembered) and the mentions of your items. A post opens as text on its own calm
   reading surface (quotes shown as quotes; contrast and font are settings); one tap or a pull-up at the end
@@ -144,7 +155,7 @@ copy and the community copy together.
 ## Set up
 
 1. **Token.** In your Studio open **More → Client access → REST API** and create a token and tick **every permission**.
-   Publishing needs `owner:read`, `owner:draft` and `owner:publish`; `owner:manage` is for changing hoppers, dismissing mentions and asking your Studio to
+   Publishing needs `owner:read`, `owner:draft` and `owner:publish`; `owner:manage` is for changing hoppers, saving posts for later, dismissing mentions and asking your Studio to
    look for new posts, and `reading:state` for read marks in the reader. Copy it (it is shown once).
 2. **Keychain.** In Obsidian open **Settings → Keychain** and add a secret (lowercase letters, digits and dashes in the
    name, for example `blyg-studio`); paste the token as its value. Keychain entries stay on one device: repeat on each
@@ -190,7 +201,7 @@ stripped from the published text.
 ## Token
 
 - The plugin needs the Studio permissions **`owner:read`**, **`owner:draft`**, **`owner:publish`**; **`owner:manage`**
-  is optional (hoppers, dismissing a mention in the reader, and asking your Studio to look for new posts in the reader). **`reading:state`** is optional too: without
+  is optional (hoppers, Save for later, dismissing a mention in the reader, and asking your Studio to look for new posts in the reader). **`reading:state`** is optional too: without
   it the reader works, but marking a post read or unread is refused (and says so). For the reader, make the token with every permission.
 - The token is stored only in **Obsidian's keychain**. The settings hold the *name* of the entry, never the value; the
   plugin never logs it, writes it to a file or sends it anywhere except your Studio's host.

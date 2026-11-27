@@ -18,6 +18,7 @@ vi.mock("obsidian", () => {
     registerEvent() {}
     registerInterval() {}
     registerDomEvent() {}
+    register() {}
     loadData() {
       return Promise.resolve(this.data);
     }

@@ -8,16 +8,41 @@ becomes the release notes. Write entries for people who use the plugin, not for 
 
 ## [Unreleased]
 
-- **Draft selected words as a fragment or thread (experimental).** Select your own words in a note and choose "Draft as Blyg fragment" or "Draft as Blyg thread" in the editor menu (or the matching commands). The words are copied into a new draft that opens for editing; your note stays as it is and nothing is published. "Back to note" returns to the original words. A selection with a quote of another post is offered as a thread and keeps the quote whole; if it cuts through a quote you are asked first. Part of Settings → Experimental features → "Send passage to note".
-- **Send a passage to a note (experimental).** Select text in an open post and tap **Send to note** (a bar at the foot of the reader). Pick a note from the folders you chose in Settings (several allowed, recent ones first), then a heading, and the passage is written there as a native Blyg quote, ready for you to write your reaction below it; **Open note** takes you there. Publishing a thread from that note later shows the quote with its source and only the words you selected. Switch it on under Settings → Experimental features → "Send passage to note".
-- **A tidier open post and Daily (experimental).** In an open post the counter ("Feed · 9 of 38", "Digest · <heading> · 4 of 12") is on the first line, at the right, and its numbers are never cut; Save is a bookmark symbol (outline, filled once saved) next to the read mark, and Previous and Next are icons. A small filled bookmark before a post's details replaces the word "saved" on cards, in the Daily and in the open post. In the Daily a story ends its line with "+" (then "−") to unfold it, each post in it has its own read mark, "Mark story read" is the last item of an unfolded story, and a headline no longer turns blue when pressed. A small line above the stories shows what the edition cost in dollars and who edited it (nothing is shown when the AI wrote nothing), the permanent cost line under "Written by" is gone, and the Daily's menu lists its actions as rows. The feed's header has a menu button at the right of its first row (Sort & filter, Sources, Settings), and the feed shows a thin spinner while it loads for the first time.
-- **The Daily: read posts dim in place.** A post you have read stays where it is, in a lighter colour; a story whose posts are all read has its headline and summary lighter too. Nothing is hidden or folded, and the edition is the same on all your devices.
-- **Next and Previous walk the whole list you came from.** From the Daily they go through every post of the page, top to bottom, singles included and read ones too, not only one story; from the feed they go through the feed as shown (its order, choices or Saved view). The counter counts the same list and says which one: "Digest 4 of 12", "Feed 9 of 38".
-- **One Refresh.** In the Daily, Refresh fetches new posts and, when "Write the digest automatically" is on, also writes the texts that are missing for new or changed stories (within the daily token ceiling). With that setting off it sends nothing to your AI provider and says so in one line. "Write the digest" and "Re-sort sections" moved into an "Advanced" part of the Daily's menu.
+## [1.1.0] — 2026-11-27
 
-- **Fixes in the open post.** A post marked read in the open post, when you came from the Daily, now shows as read in the Daily and when you open it again. The header of an open post no longer shifts while it settles. A save that fails for want of a connection puts Save back with a short line, and tapping it again tries again. The feed says "Loading…" until its first list has arrived instead of "nothing to show".
-- **Save posts for later (experimental).** Press and hold a post in the feed or the Daily and choose "Save for later", or tap "Save" in an open post. Saved posts get a small "saved" mark, and a "Saved" choice under Sort & filter shows only them (the shelf holds 50 posts; when it is full the plugin says so and drops nothing). The list lives on your Studio's shelf, so your other devices and the Studio's web app share it. It needs a Studio with the shelf and a token with the permission "owner:manage"; without them the plugin says so in one line. Switch it on under Settings → Experimental features → "Save posts for later".
-- **The reader can go further back.** "Load older posts" at the end of the feed reads 200 older posts at a time from your Studio, up to 5000. Long feeds stay quick: only the cards near the screen are drawn.
+**Read and save.** Three features that were behind a switch are now part of the plugin: the Daily, Save for later and Reception. Everything else that is new is still experimental and off until you switch it on.
+
+### What's new
+
+**The Daily.** A newspaper page of what the blygs you follow posted. Open it from the ribbon, the command "Open Daily", or the Feed | Digest switch in the reader.
+
+- Stories (several posts on one subject) come first, single posts follow, and corrections to posts you may have read are listed apart. A new edition starts at the first open after your Digest time (default 07:00, Settings → Daily).
+- Tap a story's "+" to unfold it. Posts you have read stay in place, in a lighter colour. Press and hold a post or story for a quick menu (open, reply, mark read or unread).
+- Next and Previous in an open post walk the whole list you came from, and the counter says which ("Digest 4 of 12", "Feed 9 of 38"). Back returns to where you were.
+- One Refresh, in the Daily and in the feed, fetches new posts. It sends nothing to an AI unless you turned on automatic writing.
+- **Daily sync between devices, new.** The edition and what you have read are shared between your devices through the plugin's settings file, so they need your vault sync to carry it. The masthead says "Synced from 2 devices" when it did.
+- **An optional AI summary** (Settings → Daily digest → Use an AI model). It is off until you turn it on, asks once for your agreement, and uses your own API key from Obsidian's keychain. "Write the digest" shows how many posts, requests and tokens, and a rough cost, before it sends anything; a daily token ceiling stops it. It sends the text and author names of the posts in stories, never single posts, never your notes. Without it the Daily is the same page without the written summaries.
+
+**Save for later.** Press and hold a post in the feed or the Daily and choose "Save for later", or tap the bookmark in an open post. Saved posts carry a small bookmark, and "Saved" under Sort & filter shows only them. The list lives on your Studio's shelf, so your other devices and the Studio's web app share it. The shelf holds 50 posts; when it is full the plugin says so and drops nothing.
+
+**Reception.** For a note you published, see who quoted or answered it. Words in your text that others quoted are underlined with a count, and a "Reception" section at the end of the note, in editing and in Reading view, lists who quoted a paragraph, the whole note, or replied, with a short preview. Tap a mark to see who and when. It is only drawn, never written into your note; switch the marks and the section on or off under Settings → Marginalia.
+
+**Also better.** "Load older posts" at the end of the feed reads 200 older posts at a time, up to 5000. A tidier open post (the counter on the first line, Save as a bookmark, Previous and Next as icons). A post marked read in the open post shows as read in the Daily. A failed save can be tried again.
+
+### Still experimental
+
+Off until you switch them on under Settings → Experimental features: **Send passage to note** (with drafting selected words as a fragment or thread), **New items from a thread** (and "Publish this paragraph"), and **Open a shared address**. They keep improving; this release does not promote them.
+
+### Good to know
+
+- **Save for later** needs a token with every permission ticked (it uses `owner:manage`) and a Studio that offers the shelf (Studio 0.67.0 or newer; the plugin says so in one line when yours does not). The plugin itself still needs Studio 0.51.0 or newer.
+- **Reception** works best on blygs you follow.
+- The AI summary sends text to the provider you choose (by default `api.anthropic.com`) only after you agree and only when you ask for it or switch on automatic writing.
+- Needs Obsidian 1.13.0 or newer. It works on mobile.
+- If you had switched the Daily, Save for later or Marginalia on or off under Experimental features: those switches are gone, the features are on, and nothing you saved is lost. The AI summary stays off until you turn it on.
+- No settings migration is needed.
+
+**Rollback:** install the previous release (1.0.0) from its GitHub page.
 
 ## [1.0.0] — 2026-11-18
 

@@ -1,4 +1,4 @@
-// HK3, Marginalia, in real Obsidian at the phone layout against a stand-in Studio (feature "marginalia" on; experimental features are off in the release flavour this harness loads).
+// HK3, Marginalia, in real Obsidian at the phone layout against a stand-in Studio (feature "marginalia", stable since 1.1.0, always on; the switch set below is harmless).
 // The stand-in answers like the real Studio 0.51.0 measured on 2026-11-26 (two local Studios, one quoting and answering the other's item):
 //   - a post that quotes an item has the mention relation `transclusion`; a REPLY (a thread with `stub_of`) has `stub`, also when its text quotes the item with a directive;
 //   - `GET /api/peek` serves the post's rendered HTML and a `subscriptionId` (null for a blyg the owner does not follow); `GET /api/imports/{sub}/{id}` answers 404 for a post that
