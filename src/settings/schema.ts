@@ -116,6 +116,8 @@ export interface BlygSettings {
     contrast: "reduced" | "normal" | "high";
     /** The folder the iOS share sheet's Location writes new notes into ("Share inbox folder"). Empty: off. A new note there that names a blyg post opens it in the reader; no note is ever changed. */
     shareInbox: string;
+    /** Mark a post as read once it has been open for about a second (ui/readerAutoRead.ts). Default on. */
+    autoRead: boolean;
     /** The mode the reader was left in (ui/readerMode.ts): the Feed or the Digest. Absent: the Feed. Only used while the Daily feature is on. */
     mode?: "feed" | "digest";
     /** The feed's order and choices, kept across restarts (ui/readerFeed.ts). `source` is a subscription id of the Studio, null for all blygs. */
@@ -180,7 +182,7 @@ export function defaultSettings(flavour: "release" | "dev" = "release"): BlygSet
     respond: { draftsPrefix: "blyg/" },
     mentions: { repoPath: "data/mentions.json" },
     webQuote: { ...DEFAULT_WEB_QUOTE },
-    readerPane: { images: "click", font: "default", contrast: "normal", shareInbox: "", filter: { sort: "newest", source: null, unreadOnly: false, length: "any", repliesToMe: false } },
+    readerPane: { images: "click", font: "default", contrast: "normal", shareInbox: "", autoRead: true, filter: { sort: "newest", source: null, unreadOnly: false, length: "any", repliesToMe: false } },
     digest: { useAi: false, endpoint: "https://api.anthropic.com", model: "claude-sonnet-5-5", keySecretName: "", dailyTokenCeiling: 2000000, autoWrite: false, time: "07:00", editor: "neutral" },
     marginalia: { markers: true, bottom: true },
     features: {},
