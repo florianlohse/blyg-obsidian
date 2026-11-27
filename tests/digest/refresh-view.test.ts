@@ -111,7 +111,7 @@ describe("the digest's Refresh", () => {
     const rows = t.root.all().filter((e) => e.cls.has("blyg-is-new"));
     expect(rows.length).toBeGreaterThan(0);
     expect(texts).toContain("new"); // the new single post in the Mixed bag
-    expect(texts).toContain("2 new posts");
+    expect(texts).toContain("2 new posts · AI off: grouped, texts not written"); // told in the meta line under the date (this host has the AI layer on, automatic writing off)
     expect(t.calls.write).toBe(0);
     expect(t.calls.refresh).toBe(1);
     expect(t.calls.loadList).toBe(1); // the saved list was read once, by opening; the tap reads from the Studio
@@ -121,7 +121,7 @@ describe("the digest's Refresh", () => {
     const el = t.root;
     await t.tap();
     expect(t.root).toBe(el);
-    expect(t.root.all().map((x) => x.text)).toContain("Nothing new");
+    expect(t.root.all().some((x) => /^Nothing new · checked /.test(x.text))).toBe(true);
     expect(t.root.all().map((x) => x.text)).not.toContain("Reading your list…");
     expect(t.calls.edition).toBe(2); // once for opening, once for the tap
   });

@@ -261,6 +261,13 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
   plugin.registerView(BLYG_DAILY_VIEW, (leaf) => new BlygDailyView(leaf, host));
   useReaderMode(deps.mode, open);
   plugin.addCommand({ id: "open-daily", name: "Open Daily", callback: () => void open() });
+  // The header has ONE update action (the refresh icon); the other actions stay reachable here.
+  const dailyView = (): BlygDailyView | null => (plugin.app.workspace.getLeavesOfType(BLYG_DAILY_VIEW)[0]?.view as BlygDailyView | undefined) ?? null;
+  plugin.addCommand({ id: "refresh-daily", name: "Refresh the digest", callback: () => void dailyView()?.refreshNow() });
+  if (llm) {
+    plugin.addCommand({ id: "write-digest", name: "Write the digest", callback: () => void dailyView()?.writeFromCommand(false) });
+    plugin.addCommand({ id: "resort-digest", name: "Re-sort digest sections", callback: () => void dailyView()?.writeFromCommand(true) });
+  }
   if (llm) plugin.addCommand({
     id: "show-digest-sent",
     name: "Show what the digest sent",
