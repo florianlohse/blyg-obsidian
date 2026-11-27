@@ -10,7 +10,7 @@ import type { Grouped } from "../digest/stable";
 import { nothingToWriteNote } from "../digest/writeNote";
 import { GROUPING_NOTE, previewOf, summarizeRest } from "../digest/layout";
 import { authorOf, authorsLine, keywordsOf } from "../digest/storyMeta";
-import { mastheadDate } from "../digest/window";
+import { editionLabel, mastheadDate } from "../digest/window";
 import { byNewestPost, drawnSections, type Drawn } from "../digest/order";
 import { byLine, contentLine } from "../digest/singleLine";
 import { markable, realSleep, unmarkable, sharedMarks, watchMarks, type MarkQueue } from "../digest/markQueue";
@@ -26,7 +26,7 @@ import { isUnread, type InboundMention, type ReadingPost } from "../studio/readi
 import type { PastEdition } from "../digest/history";
 import { CAPPED_NOTE } from "../digest/history";
 import { addUsage } from "../digest/autoWrite";
-import { drawPast, drawSwitcher } from "./DigestPast";
+import { drawPast, type EditionEntry } from "./DigestPast";
 import { drawPriceLine, priceLineText } from "./digestPriceLine";
 import { drawStoryMark, keepSavedMark, storyReadLook } from "./digestStory";
 import { drawMenuRow, fillMenuRow } from "./menuRow";
@@ -122,7 +122,7 @@ export class BlygDailyView extends ItemView {
   /** The menu's "Advanced" part (the manual writes): folded until opened, kept over redraws. */
   private advancedOpen = false;
   /** The sticky bar's menu: folded until the person opens it (kept over redraws). */
-  private bar = { open: false };
+  private bar: { open: boolean; editionsOpen?: boolean } = { open: false };
   /** The contents of the page being drawn: one entry per heading, pushed by section() as the heading is drawn, so the contents can never differ from the page. */
   private toc: TocEntry[] = [];
   /** The list the page was made from (kept so Refresh merges into it), and the posts drawn last: what a refresh adds is marked "new". */
@@ -385,18 +385,22 @@ export class BlygDailyView extends ItemView {
     publishPlacement(undefined, null); // set again by a page with sections
     root.empty();
     for (const f of ["default", "serif", "sans", "mono"] as const) root.toggleClass(`is-font-${f}`, f === this.host.font());
-    const bar = drawBar(root, { date: mastheadDate(this.viewing ?? model?.edition ?? model?.since ?? Date.now()), kicker: "Your digest", state: this.bar, toggle: () => void this.host.showFeed(this.leaf), refresh: { hint: REFRESH_HINT, click: () => void this.refreshNow(), made: (b) => (this.refreshBtns.push(b), this.paintRefresh(b)) } });
+    const today = model?.edition ?? null;
+    const pastRec = this.viewing !== null ? this.past.find((e) => e.id === this.viewing) : undefined;
+    const ids = [...(today !== null ? [today] : []), ...this.past.map((e) => e.id).filter((id) => id !== today)];
+    const shownId = pastRec ? pastRec.id : (today ?? ids[0] ?? 0);
+    // The editions under the date (a tap on the date): today's first, then the older ones; only when there is something else to choose.
+    const entries: EditionEntry[] = ids.map((id) => ({ id, label: id === today ? "Today" : editionLabel(id), meta: id === today ? (model ? `as of ${timeOnly(model.until)}` : "") : plural(this.past.find((e) => e.id === id)?.stories.length ?? 0, "story", "stories"), current: id === shownId }));
+    const editions = ids.length > 1 || pastRec ? { entries, pick: (id: number) => { this.viewing = id === today ? null : id; this.render(model); } } : undefined;
+    const bar = drawBar(root, { date: mastheadDate(this.viewing ?? model?.edition ?? model?.since ?? Date.now()), kicker: pastRec ? "Earlier edition" : "Your digest", state: this.bar, toggle: () => void this.host.showFeed(this.leaf), ...(editions ? { editions } : {}), refresh: { hint: REFRESH_HINT, click: () => void this.refreshNow(), made: (b) => (this.refreshBtns.push(b), this.paintRefresh(b)) } });
+    if (pastRec) {
+      const back = root.createEl("button", { cls: "blyg-daily-back", text: "‹ Back to today", attr: { "aria-label": "Back to today's edition" } });
+      back.addEventListener("click", () => ((this.viewing = null), this.render(model)));
+    }
     if (this.syncText.length > 0) for (const t of this.syncText) root.createDiv({ cls: "blyg-daily-meta blyg-daily-sync", text: t });
     // The top line: what the AI-written edition cost and who edited it (a past edition: its editor); nothing when the AI wrote nothing.
     const wrote = this.host.ai?.enabled() === true && this.written.some(Boolean);
     drawPriceLine(root, this.viewing !== null ? priceLineText(undefined, this.past.find((e) => e.id === this.viewing)?.editor) : wrote ? priceLineText(this.usage?.cost, this.editorId) : null);
-    const today = model?.edition ?? null;
-    const pastRec = this.viewing !== null ? this.past.find((e) => e.id === this.viewing) : undefined;
-    const ids = [...(today !== null ? [today] : []), ...this.past.map((e) => e.id).filter((id) => id !== today)];
-    if (ids.length > 1 || pastRec) drawSwitcher(bar.panel, ids, pastRec ? pastRec.id : (today ?? ids[0] ?? 0), (id) => {
-      this.viewing = id === today ? null : id;
-      this.render(model);
-    });
     if (pastRec) {
       if (this.pastCapped) root.createDiv({ cls: "blyg-daily-meta", text: CAPPED_NOTE });
       drawPast(root, pastRec, this.byId, { open: (p) => this.openEntry(p), seen: (p) => this.seen(p), section: (name, el) => this.sectionEls.set(name, el), go: (name) => this.goTo(name) });

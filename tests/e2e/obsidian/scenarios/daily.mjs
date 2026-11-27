@@ -113,14 +113,44 @@ await runScenario({ data }, async (s) => {
   await page.evaluate(() => document.querySelectorAll(".notice").forEach((n) => n.remove())); // no stray toast in the way of the touch steps
   await page.evaluate(() => window.app.workspace.detachLeavesOfType("blyg-daily"));
   await open();
-  // the edition switcher sits in the bar's folded menu: unfold it first, fold it again at the end
-  await page.waitForSelector(".blyg-daily .blyg-daily-menu", { timeout: 20000 });
-  await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-menu").click());
-  await page.waitForSelector(".blyg-daily-select", { state: "visible", timeout: 20000 });
-  await page.selectOption(".blyg-daily-select", String(pastId));
+  // Older editions: the date line is the control. A small ▾ marks it, a tap opens a list of editions under the date (today's first), Escape closes it and gives the focus back, a pick shows the older edition read-only,
+  // "Back to today" returns. The list stays inside the pane (no sideways scroll). The menu holds no edition switcher any more.
+  await page.waitForSelector(".blyg-daily .blyg-daily-datebtn", { timeout: 20000 });
+  const dateInfo = await page.evaluate(() => { const b = document.querySelector(".blyg-daily .blyg-daily-datebtn"); return { text: document.querySelector(".blyg-daily .blyg-daily-date")?.textContent ?? "", mark: b?.querySelector(".blyg-daily-datemark")?.textContent, markHidden: b?.querySelector(".blyg-daily-datemark")?.getAttribute("aria-hidden"), expanded: b?.getAttribute("aria-expanded"), tag: b?.tagName }; });
+  check(dateInfo.tag === "BUTTON" && dateInfo.mark === "▾" && dateInfo.markHidden === "true" && dateInfo.expanded === "false", `the date is a button with a small ▾ when older editions exist (${JSON.stringify(dateInfo)})`);
+  // The date is English whatever the device's language: English weekday and month and an English ordinal ("Friday, November 27th, 2026"), not the locale's ("Freitag, 27. November 2026").
+  check(/^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), (January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2}(st|nd|rd|th), \d{4}\u25BE?$/.test(dateInfo.text), `the header date is English and does not follow the device locale (${dateInfo.text})`);
+  check(await page.evaluate(() => !document.querySelector(".blyg-daily .blyg-daily-switcher, .blyg-daily .blyg-daily-select, .blyg-daily .blyg-daily-panel select")), "the menu holds no edition switcher");
+  await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-datebtn").click());
+  await page.waitForSelector(".blyg-daily .blyg-daily-editions.is-open", { state: "visible", timeout: 20000 });
+  const pop = await page.evaluate(() => {
+    const v = document.querySelector(".view-content.blyg-daily"); const l = document.querySelector(".blyg-daily .blyg-daily-editions"); const d = document.querySelector(".blyg-daily .blyg-daily-bar .blyg-daily-date"); const R = (e) => e.getBoundingClientRect();
+    const rows = [...l.querySelectorAll("button.blyg-daily-edition")];
+    return { n: rows.length, first: rows[0]?.querySelector(".blyg-daily-edition-date")?.textContent, current: rows.filter((r) => r.getAttribute("aria-current") === "true").length, below: R(l).top >= R(d).bottom - 1, inside: R(l).left >= R(v).left - 1 && R(l).right <= R(v).right + 1, sw: v.scrollWidth <= v.clientWidth, tall: rows.every((r) => R(r).height >= 40), expanded: document.querySelector(".blyg-daily .blyg-daily-datebtn")?.getAttribute("aria-expanded"), focus: document.activeElement === rows[0] };
+  });
+  check(pop.n === 2 && pop.first === "Today" && pop.current === 1 && pop.below && pop.inside && pop.sw && pop.tall && pop.expanded === "true" && pop.focus, `the date opens a list of editions under it, today's first and marked, inside the pane, no sideways scroll, rows at touch height, focus on the current one (${JSON.stringify(pop)})`);
+  // the same list at phone widths: nothing scrolls sideways and the list stays inside the pane (393, 360, 320 px)
+  const cdpW = await page.context().newCDPSession(page);
+  for (const [w, h] of [[393, 852], [360, 780], [320, 700]]) {
+    await cdpW.send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 1, mobile: true });
+    await wait(500);
+    const fit = await page.evaluate(() => { const v = document.querySelector(".view-content.blyg-daily"); const l = document.querySelector(".blyg-daily .blyg-daily-editions"); const R = (e) => e.getBoundingClientRect(); return { sw: v.scrollWidth <= v.clientWidth, list: R(l).left >= 0 && R(l).right <= window.innerWidth + 0.5, rows: [...l.querySelectorAll("button.blyg-daily-edition")].every((r) => r.scrollWidth <= r.clientWidth + 1) }; });
+    check(fit.sw && fit.list && fit.rows, `${w} px: the list of editions fits the pane, no sideways scroll (${JSON.stringify(fit)})`);
+  }
+  await cdpW.send("Emulation.clearDeviceMetricsOverride");
+  await wait(400);
+  await page.keyboard.press("Escape");
+  const closed = await page.evaluate(() => ({ open: document.querySelector(".blyg-daily .blyg-daily-editions")?.classList.contains("is-open"), expanded: document.querySelector(".blyg-daily .blyg-daily-datebtn")?.getAttribute("aria-expanded"), focus: document.activeElement === document.querySelector(".blyg-daily .blyg-daily-datebtn") }));
+  check(!closed.open && closed.expanded === "false" && closed.focus, `Escape closes the list and the date button has the focus back (${JSON.stringify(closed)})`);
+  await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-datebtn").click());
+  await page.waitForSelector(".blyg-daily .blyg-daily-editions.is-open", { state: "visible", timeout: 20000 });
+  await page.evaluate(() => document.querySelectorAll(".blyg-daily .blyg-daily-editions button.blyg-daily-edition")[1].click());
   const line = await page.waitForSelector(".blyg-daily .blyg-daily-priceline", { timeout: 20000 }).then((el) => el.evaluate((n) => { const c = getComputedStyle(n); const first = document.querySelector(".blyg-daily .blyg-story, .blyg-daily .blyg-daily-section"); return { text: n.textContent, kids: n.children.length, caps: c.fontVariantCaps, above: !first || n.getBoundingClientRect().bottom <= first.getBoundingClientRect().top + 1 }; }));
   check(line.text === "Editor: Harbour Master Okafor" && line.kids === 0 && line.caps === "small-caps" && line.above, `a past edition shows its editor, and no price it does not have, as one small-caps line of plain text above the first story (${JSON.stringify(line)})`);
-  await page.evaluate(() => { const m = document.querySelector(".blyg-daily .blyg-daily-menu"); if (m?.getAttribute("aria-expanded") === "true") m.click(); });
+  const past = await page.evaluate(() => ({ kicker: document.querySelector(".blyg-daily .blyg-daily-kicker")?.textContent, back: document.querySelector(".blyg-daily .blyg-daily-back")?.textContent, closed: !document.querySelector(".blyg-daily .blyg-daily-editions.is-open") }));
+  check(past.kicker === "Earlier edition" && past.back === "‹ Back to today" && past.closed, `a past edition says so and offers Back to today; the list closed after the pick (${JSON.stringify(past)})`);
+  await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-back").click());
+  check(await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-kicker")?.textContent === "Your digest" && !document.querySelector(".blyg-daily .blyg-daily-back")), "Back to today shows today's edition again");
   await page.evaluate(() => window.app.workspace.detachLeavesOfType("blyg-daily"));
   await page.evaluate((f) => window.app.vault.adapter.remove(f), pastFile); // the later steps start without a past edition (no day switcher)
 

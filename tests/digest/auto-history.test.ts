@@ -275,14 +275,15 @@ describe("history", () => {
   });
 });
 
-describe("the day switcher", () => {
+describe("the editions under the date", () => {
   const past: PastEdition = { id: NOW - 29 * 3600_000, at: NOW, stories: [{ headline: "Last week's gardens", summary: "Old tomato news.", posts: [a.remoteId, "gone".padEnd(26, "x")] }], singles: [lone.remoteId, "away".padEnd(26, "x")], sections: [{ name: "Home", stories: [0], posts: [lone.remoteId, "away".padEnd(26, "x")] }], who: { [a.remoteId]: "Ann", ["gone".padEnd(26, "x")]: "Dee", ["away".padEnd(26, "x")]: "Eli" } };
   it("lists today's edition first, then the past ones, and shows a past edition read-only", async () => {
     const m = await mount({ past: [past] });
-    const options = m.root.all().filter((e) => e.tag === "option").map((e) => e.text);
-    expect(options).toHaveLength(2);
-    expect(options[0]).toContain("today's edition");
-    m.root.all().find((e) => e.tag === "button" && e.text === "‹")?.click(); // previous edition
+    const entries = m.root.all().filter((e) => cls(e).has("blyg-daily-edition"));
+    expect(entries).toHaveLength(2);
+    expect(entries[0]?.all().map((e) => e.text)).toContain("Today"); // today's first
+    expect(m.root.all().some((e) => e.tag === "select" || cls(e).has("blyg-daily-switcher"))).toBe(false); // no switcher in the menu any more
+    entries[1]?.click(); // the older edition
     const t = m.texts();
     expect(t).toContain("Home");
     expect(t).toContain("Last week's gardens");
@@ -290,9 +291,34 @@ describe("the day switcher", () => {
     expect(t).not.toContain("Write the digest"); // read-only: no write, no refresh
     expect(t).not.toContain("Refresh");
   });
+  it("the date is the control: a button with a small ▾, a tap opens the list (aria-expanded), a pick closes it; no ▾ when there is nothing older", async () => {
+    const m = await mount({ past: [past] });
+    const btn = m.root.all().find((e) => cls(e).has("blyg-daily-datebtn"))!;
+    expect(btn.tag).toBe("button");
+    expect(btn.all().map((e) => e.text)).toContain("▾");
+    const list = m.root.all().find((e) => cls(e).has("blyg-daily-editions"))!;
+    expect(cls(list).has("is-open")).toBe(false);
+    expect((btn as unknown as { attrs: Record<string, string> }).attrs["aria-expanded"]).toBe("false");
+    btn.click();
+    expect(cls(list).has("is-open")).toBe(true);
+    expect((btn as unknown as { attrs: Record<string, string> }).attrs["aria-expanded"]).toBe("true");
+    const none = await mount({});
+    expect(none.root.all().some((e) => cls(e).has("blyg-daily-datebtn"))).toBe(false); // today only: plain date
+    expect(none.root.all().some((e) => cls(e).has("blyg-daily-date") && e.text !== "")).toBe(true);
+  });
+  it("a past edition shows 'Earlier edition' and a Back to today button that returns to today's page", async () => {
+    const m = await mount({ past: [past] });
+    m.root.all().filter((e) => cls(e).has("blyg-daily-edition"))[1]?.click();
+    expect(m.texts()).toContain("Earlier edition");
+    const back = m.root.all().find((e) => cls(e).has("blyg-daily-back"))!;
+    expect(back.text).toBe("‹ Back to today");
+    back.click();
+    expect(m.texts()).toContain("Your digest");
+    expect(m.root.all().some((e) => cls(e).has("blyg-daily-back"))).toBe(false);
+  });
   it("opens a post the reader still holds, and shows a missing one as a plain row with a note", async () => {
     const m = await mount({ past: [past] });
-    m.root.all().find((e) => e.text === "‹")?.click();
+    m.root.all().filter((e) => cls(e).has("blyg-daily-edition"))[1]?.click();
     m.root.all().find((e) => cls(e).has("blyg-daily-headline"))?.click(); // unfold the story
     const t = m.texts();
     expect(t).toContain("Dee"); // not in the reader: plain text, from the record
@@ -301,7 +327,7 @@ describe("the day switcher", () => {
     row?.click();
     expect(m.opened).toEqual([a.remoteId]); // held: opens
     expect(m.root.all().some((e) => e.tag === "button" && e.text === "Dee")).toBe(false); // missing: no button
-    m.root.all().find((e) => e.text === "›")?.click(); // back to today's edition
+    m.root.all().find((e) => cls(e).has("blyg-daily-back"))?.click(); // "Back to today"
     expect(m.texts()).toContain("Write the digest");
   });
 });
