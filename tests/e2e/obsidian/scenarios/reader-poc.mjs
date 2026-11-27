@@ -735,11 +735,12 @@ await runScenario({ data: fixtureData() }, async (s) => {
       root.appendChild(plain);
       const ref = getComputedStyle(plain).borderTopLeftRadius;
       plain.remove();
-      const rows = [...document.querySelectorAll(".blyg-reader-btn")].map((b) => { const c = getComputedStyle(b); const r = b.getBoundingClientRect(); return { radius: c.borderTopLeftRadius, h: r.height, pad: parseFloat(c.paddingLeft) }; });
+      const rows = [...document.querySelectorAll(".blyg-reader-btn")].map((b) => { const c = getComputedStyle(b); const r = b.getBoundingClientRect(); return { radius: c.borderTopLeftRadius, h: r.height, w: r.width, icon: b.classList.contains("blyg-reader-refresh"), pad: parseFloat(c.paddingLeft) }; });
       return { ref, rows };
     });
     check(look.rows.length > 0 && look.rows.every((r) => r.radius === look.ref), `${layout}: buttons: the shape is the theme's own (${look.ref}) on all ${look.rows.length} buttons`);
-    check(look.rows.every((r) => r.pad >= r.h * 0.35), `${layout}: buttons: the side padding scales with the height, so a round shape has room (${look.rows.map((r) => Math.round(r.pad) + "/" + Math.round(r.h)).join(" ")})`);
+    // (HX1: the Refresh icon of the first row is a bare 44 px square, drawn without text: it needs no side padding, it must be as wide as it is high)
+    check(look.rows.every((r) => (r.icon ? r.w >= r.h - 0.5 : r.pad >= r.h * 0.35)), `${layout}: buttons: the side padding scales with the height, so a round shape has room (an icon-only button is a square) (${look.rows.map((r) => Math.round(r.pad) + "/" + Math.round(r.h)).join(" ")})`);
     await closeReader();
   }
 

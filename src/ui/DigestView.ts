@@ -27,9 +27,9 @@ import type { PastEdition } from "../digest/history";
 import { CAPPED_NOTE } from "../digest/history";
 import { drawPast, type EditionEntry } from "./DigestPast";
 import { drawDigestMenu, type DigestMenu } from "./digestMenu";
-import { drawPriceLine, priceLineText } from "./digestPriceLine";
 import { drawStoryMark, keepSavedMark, storyReadLook } from "./digestStory";
-import type { ShelfFacade } from "../app/shelfService";
+import type { ShelfFacade, ShelfResult } from "../app/shelfService";
+import { drawSaving } from "./savingLine";
 import type { ReaderFont } from "./readerFonts";
 
 export const BLYG_DAILY_VIEW = "blyg-daily";
@@ -101,8 +101,6 @@ export class BlygDailyView extends ItemView {
   private busy = false;
   private past: PastEdition[] = [];
   private pastCapped = false;
-  /** The editor that wrote today's edition (absent: neutral). */
-  private editorId: string | undefined;
   private viewing: number | null = null;
   private byId = new Map<string, ReadingPost>();
   /** The section boxes drawn now, by name (the table of contents and the reader's chip scroll to them), and the section a chip asked for. */
@@ -119,6 +117,8 @@ export class BlygDailyView extends ItemView {
   /** Repainters of the saved mark of the rows drawn (the shelf is read after the page is drawn, and a quick menu can change it). */
   private savedPainters: Array<() => void> = [];
   private markStatus: HTMLElement | null = null;
+  /** How many shelf writes are in flight: the status line says "Saving bookmark…" while it is above zero. */
+  private saving = 0;
   /** The meta line under the date, and what it says: the edition's count (`idle`), a message after it (`note`), or, while a Refresh runs and after it, the Refresh's own state (`line`; `busy`: a spinner). */
   private idle = "";
   private modelNow: DailyModel | null = null;
@@ -190,7 +190,8 @@ export class BlygDailyView extends ItemView {
     if (!el) return;
     el.empty();
     const text = this.line ? this.line.text : [this.idle, this.note].filter(Boolean).join(" · ");
-    if (text) el.createSpan({ text });
+    if (this.saving > 0) drawSaving(el);
+    else if (text) el.createSpan({ text });
     el.toggleClass("is-busy", this.line?.busy === true);
     if (this.line?.busy) el.setAttr("aria-busy", "true");
     else el.removeAttribute("aria-busy");
@@ -329,7 +330,6 @@ export class BlygDailyView extends ItemView {
     const model = buildDaily(list.posts, list.mentions, win.since, win.until, win.grouped, win.id);
     this.checking = win.checking === true;
     this.syncText = this.checking ? ["Checking for your other devices…"] : ((await this.host.syncLines?.(win.id ?? null).catch(() => [])) ?? []);
-    this.editorId = win.editor;
     const ids = new Set([...model.front.flatMap((c) => c.posts.map((p) => p.remoteId)), ...model.mixed.map((p) => p.remoteId)]);
     this.added = mark && this.shown ? new Set([...ids].filter((id) => !this.shown?.has(id))) : new Set();
     this.shown = ids;
@@ -436,9 +436,6 @@ export class BlygDailyView extends ItemView {
       back.addEventListener("click", () => ((this.viewing = null), this.render(model)));
     }
     if (this.syncText.length > 0) for (const t of this.syncText) root.createDiv({ cls: "blyg-daily-meta blyg-daily-sync", text: t });
-    // The top line: who edited it (a past edition: its editor); nothing when the AI wrote nothing. (The cost is not here any more: the menu's billing line has the month's.)
-    const wrote = this.host.ai?.enabled() === true && this.written.some(Boolean);
-    drawPriceLine(root, this.viewing !== null ? priceLineText(this.past.find((e) => e.id === this.viewing)?.editor) : wrote ? priceLineText(this.editorId) : null);
     if (pastRec) {
       this.markStatus = null;
       if (this.pastCapped) root.createDiv({ cls: "blyg-daily-meta", text: CAPPED_NOTE });
@@ -565,7 +562,7 @@ export class BlygDailyView extends ItemView {
     const host = this.host;
     const shelf = host.shelf;
     // The shelf is read once per opening of the Daily (the first menu that needs it); Save and Remove are one write each, said in the line under the masthead.
-    const shelfMenu = shelf?.on() ? { shelf: { state: () => (shelf.ready() || shelf.lost?.() === true || shelf.settling?.() === true ? { saved: shelf.has(p), full: shelf.full() } : null), toggle: () => void shelf.toggle(p).then((r) => (this.say(r.ok ? (r.saved ? "Saved for later." : "Removed from saved.") : r.message), this.savedPainters.forEach((f) => f()))) } } : {};
+    const shelfMenu = shelf?.on() ? { shelf: { state: () => (shelf.ready() || shelf.lost?.() === true || shelf.settling?.() === true ? { saved: shelf.has(p), full: shelf.full() } : null), toggle: () => (this.saving++, this.paintStatus(), void shelf.toggle(p).catch((): ShelfResult => ({ ok: false, message: "Could not save, no connection. Tap Save to try again." })).finally(() => this.saving--).then((r) => (this.say(r.ok ? (r.saved ? "Saved for later." : "Removed from saved.") : r.message), this.savedPainters.forEach((f) => f())))) } } : {};
     quickPost(el, () => p, { open: () => this.openEntry(p), ...(host.replyTo ? { reply: () => void host.replyTo?.(p) } : {}), ...(q ? { mark: (read: boolean) => void (read ? q.enqueue([p]) : q.enqueueUnread([p])) } : {}), ...shelfMenu }, this.contentEl);
   }
 

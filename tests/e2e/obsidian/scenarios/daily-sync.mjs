@@ -75,7 +75,7 @@ await runScenario({ data }, async (s) => {
     f.regs.order = reg(2, ["Garden", "Town"]);
     f.regs["about/Garden"] = reg(about === "" ? 2 : 5, about || "Soil and seeds");
     f.regs.auto = reg(3, {});
-    // DG19: the editor whose voice it is in: the top line reads "Editor: The Setter" (no amount: the month's cost is the menu's billing line, checked below from the two devices' cost registers)
+    // DG19 / one editor: an edition an earlier version wrote in a named voice ("crossword-setter") shows no editor line and no name; the month's cost is the menu's billing line, checked below from the two devices' cost registers
     f.regs.editor = reg(3, "crossword-setter");
     f.regs[`usage/${FOREIGN}`] = reg(4, { tokens: 14200, cost: 0.0412 });
     f.regs["usage/e2esecond"] = { c: 4, d: "e2esecond", v: { tokens: 9000, cost: 0.02 } };
@@ -99,8 +99,9 @@ await runScenario({ data }, async (s) => {
   check([0, 1, 2, 3].every((k) => first.heads.includes(`Foreign headline ${k}`)), `the Daily shows the other device's four story headlines (${JSON.stringify(first.heads)})`);
   check(/Soil and seeds/.test(first.text) && /Garden/.test(first.text) && /Town/.test(first.text), `... under the sections and the byline of the other device's file`);
   check(/^Synced from 2 devices$/.test(first.sync.trim()), `the masthead line says only that the edition is synced from 2 devices (no device names) (${JSON.stringify(first.sync)})`);
-  const top = await ad(() => { const l = document.querySelector(".blyg-daily .blyg-daily-priceline"); const first = document.querySelector(".blyg-daily .blyg-story, .blyg-daily .blyg-daily-section > h3"); const c = l ? getComputedStyle(l) : null; return { n: document.querySelectorAll(".blyg-daily .blyg-daily-priceline").length, text: l?.textContent ?? null, caps: c?.fontVariantCaps ?? null, muted: c ? c.color !== getComputedStyle(document.querySelector(".blyg-daily")).color : null, above: !!l && !!first && l.getBoundingClientRect().bottom <= first.getBoundingClientRect().top + 1, kids: l?.children.length ?? -1, credit: [...document.querySelectorAll(".blyg-daily .blyg-story-credit")].map((e) => e.textContent), editorLine: document.querySelectorAll(".blyg-daily .blyg-daily-editor").length }; });
-  check(top.n === 1 && top.text === "Editor: The Setter" && top.caps === "small-caps" && top.muted && top.above && top.kids === 0, `the top line reads "Editor: The Setter" and carries no amount: small caps, muted, above the first story (${JSON.stringify(top)})`);
+  // ONE editor, no naming: an edition that an earlier version wrote in a named voice shows no editor line, no name and no amount anywhere on the page (the voice is not a credit any more).
+  const top = await ad(() => ({ line: document.querySelectorAll(".blyg-daily .blyg-daily-priceline").length, editorText: /Editor:|The Setter|Harbour Master|The Forecaster/.test(document.querySelector(".view-content.blyg-daily")?.innerText ?? ""), credit: [...document.querySelectorAll(".blyg-daily .blyg-story-credit")].map((e) => e.textContent), editorLine: document.querySelectorAll(".blyg-daily .blyg-daily-editor").length }));
+  check(top.line === 0 && !top.editorText && top.editorLine === 0, `the page has no top line, no editor credit and no persona name (${JSON.stringify(top)})`);
   // The month's cost, in the menu's billing line: two other devices keep a cost register each in their own key of data.json (numbers per local day); the line adds them up ($0.0412 + $0.02 = $0.06, dollars with two decimals).
   const BILL_KEYS = ["digestSync_e2ebill1", "digestSync_e2ebill2"];
   await ad(async ([p, keys]) => {
@@ -119,21 +120,6 @@ await runScenario({ data }, async (s) => {
   check(/Digest billing this month\$0\.06$/.test(bill), `the menu's billing line adds the two other devices' registers up: $0.06 (${bill})`);
   await ad(() => document.querySelector(".blyg-daily .blyg-daily-menu").click());
   await ad(async ([p, keys]) => { const a = window.app.vault.adapter; const d = JSON.parse(await a.read(p)); for (const k of keys) delete d[k]; await a.write(p, JSON.stringify(d)); }, [".obsidian/plugins/blyg/data.json", BILL_KEYS]); // the later device counts are as before
-  // contrast of the top line against the page, in both themes (the muted text colour must stay readable: 4.5)
-  const lineContrast = (theme) => ad(async (theme) => {
-    document.body.classList.toggle("theme-dark", theme === "dark");
-    document.body.classList.toggle("theme-light", theme !== "dark");
-    await new Promise((r) => setTimeout(r, 300));
-    const num = (c) => (c.match(/[\d.]+/g) ?? []).slice(0, 4).map(Number);
-    const lum = (c) => { const [r, g, b] = num(c).map((v) => { const x = v / 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
-    const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m); return +((x + 0.05) / (y + 0.05)).toFixed(1); };
-    const page = getComputedStyle(document.querySelector(".view-content.blyg-daily")).backgroundColor;
-    const ground = /rgba\(.*, 0\)$/.test(page) || page === "transparent" ? getComputedStyle(document.body).backgroundColor : page;
-    return ratio(getComputedStyle(document.querySelector(".blyg-daily-priceline")).color, ground);
-  }, theme);
-  const cDark = await lineContrast("dark");
-  const cLight = await lineContrast("light");
-  check(cDark >= 4.5 && cLight >= 4.5, `the top line is readable in both themes (contrast ${cDark} dark, ${cLight} light)`);
   check(top.editorLine === 0 && top.credit.every((t) => !/token|cent|\$/.test(t)), `the permanent cost line under "Written by" and the separate editor line are gone (${JSON.stringify(top.credit)})`);
   await wait(2500); // an automatic write, if it were going to happen, has started by now
   const files = await ad(async (d) => (await window.app.vault.adapter.list(d)).files, DIR);

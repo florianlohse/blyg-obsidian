@@ -13,7 +13,7 @@ will change before anything leaves your vault.
 ## What's new in 1.1.0: read and save
 
 - **Works with Studio 0.73.** Studio 0.51.0 or newer, tested against 0.51.0 and 0.73.1. Private items in the Studio are not published, edited or withdrawn from the plugin.
-- **The Daily.** A newspaper page of what the blygs you follow posted: stories first, single posts after, corrections apart. Open it from the ribbon or the reader's Feed | Digest switch. Daily sync between devices is new: it needs your vault sync to carry the plugin's settings file. An optional AI summary uses your own API key, is off until you turn it on, and shows a rough cost before it sends anything.
+- **The Daily.** A newspaper page of what the blygs you follow posted: stories first, single posts after, corrections apart. Read posts are dimmed with a check circle. Open it from the ribbon or the reader's Feed | Digest switch. Daily sync between devices is new: it needs your vault sync to carry the plugin's settings file. An optional AI summary uses your own API key, is off until you turn it on, and shows a rough cost before it sends anything.
 - **Save for later.** Press and hold a post, or tap the bookmark in an open post. Saved posts live on your Studio's shelf (up to 50), shared with your other devices. Needs a token with every permission ticked and a Studio that offers the shelf.
 - **Reception.** For a note you published: words others quoted are underlined with a count, and a Reception section at the end of the note (also in Reading view) lists who quoted or answered it; the same list is at the foot of your own posts in the reader. Works best on blygs you follow.
 
