@@ -7,28 +7,31 @@ import { byLine, topicOf } from "../digest/singleLine";
 import { drawToc, type TocEntry } from "./DigestToc";
 import { addStoryMark } from "./storyOpen";
 import { MIXED_BAG, TOP_STORIES, sectionLabel } from "../digest/labels";
+import { mastheadDate } from "../digest/window";
 
 export const NOT_IN_LIST = "no longer in the reader's list";
-export const editionDate = (id: number): string => new Date(id).toLocaleDateString(undefined, { dateStyle: "medium" });
+export const editionDate = (id: number): string => mastheadDate(id);
 
-/** Previous/next arrows and a list of the editions' dates (today's first). `ids`: newest first; `current`: the edition shown. */
-export function drawSwitcher(into: HTMLElement, ids: readonly number[], current: number, pick: (id: number) => void): void {
-  const at = ids.indexOf(current);
-  const bar = into.createDiv({ cls: "blyg-daily-switcher" });
-  const older = bar.createEl("button", { text: "‹", cls: "blyg-daily-btn", attr: { title: "Previous edition", "aria-label": "Previous edition" } });
-  const select = bar.createEl("select", { cls: "blyg-daily-select", attr: { "aria-label": "Edition" } });
-  ids.forEach((id, i) => {
-    const o = select.createEl("option", { text: i === 0 ? `${editionDate(id)} (today's edition)` : editionDate(id), attr: { value: String(id) } });
-    if (id === current) o.setAttr("selected", "true");
+/** One line of the list of editions under the date. */
+export interface EditionEntry {
+  id: number;
+  /** "Today" or "Thursday, November 26th". */
+  label: string;
+  /** "as of 09:41" or "9 stories". */
+  meta: string;
+  /** The edition on the page now. */
+  current: boolean;
+}
+
+/** The list of editions (today's first), one button per edition, drawn into `into`. `pick` gets the edition's id. Plain text only. */
+export function drawEditions(into: HTMLElement, entries: readonly EditionEntry[], pick: (id: number) => void): HTMLElement[] {
+  return entries.map((e) => {
+    const b = into.createEl("button", { cls: `blyg-daily-edition${e.current ? " is-current" : ""}`, attr: { "aria-current": e.current ? "true" : "false" } });
+    b.createSpan({ cls: "blyg-daily-edition-date", text: e.label });
+    b.createSpan({ cls: "blyg-daily-edition-meta", text: e.meta });
+    b.addEventListener("click", () => pick(e.id));
+    return b;
   });
-  select.addEventListener("change", () => pick(Number(select.value)));
-  const newer = bar.createEl("button", { text: "›", cls: "blyg-daily-btn", attr: { title: "Next edition", "aria-label": "Next edition" } });
-  const older1 = ids[at + 1];
-  const newer1 = ids[at - 1];
-  if (older1 === undefined) older.setAttr("disabled", "true");
-  else older.addEventListener("click", () => pick(older1));
-  if (newer1 === undefined) newer.setAttr("disabled", "true");
-  else newer.addEventListener("click", () => pick(newer1));
 }
 
 /** A past edition, read-only: sections with their stories (headline, summary, posts) and single posts. */
