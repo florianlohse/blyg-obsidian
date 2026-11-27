@@ -413,6 +413,12 @@ export class BlygSettingTab extends PluginSettingTab {
           aliases: ["reader", "contrast", "reading surface", "dark", "light"],
           control: { type: "dropdown", key: "readerPane.contrast", options: { reduced: "Reduced", normal: "Normal", high: "High" } },
         },
+        {
+          name: "Mark posts as read when I open them",
+          desc: "A post counts as read once it has been open in the reader or the Daily for about a second, so a tap on the wrong post does not mark it. Your own posts are never marked. You can still mark a post read or unread yourself, and a long press on Next still marks the post you leave. Needs the token permission to change read marks.",
+          aliases: ["reader", "daily", "read", "unread", "mark", "automatic"],
+          control: { type: "toggle", key: "readerPane.autoRead", defaultValue: true },
+        },
         this.fontPreviewItem(),
       ],
     });

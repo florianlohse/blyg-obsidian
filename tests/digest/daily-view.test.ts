@@ -89,7 +89,7 @@ async function mount(list: Awaited<ReturnType<DigestHost["loadList"]>>, ai?: Dig
   const view = new BlygDailyView(leaf as never, host);
   await view.onOpen();
   const root = (view as unknown as { contentEl: El }).contentEl;
-  return { root, opened, leaves, leaf };
+  return { root, opened, leaves, leaf, view };
 }
 
 describe("the Daily view", () => {
@@ -165,16 +165,14 @@ describe("the Daily view", () => {
     expect(rows.filter((r) => cls(r).has("blyg-is-read"))).toHaveLength(1); // Ann's post was read; Bo's was not
     expect(root.all().filter((e) => cls(e).has("blyg-story-mixed") && cls(e).has("blyg-is-read"))).toHaveLength(1); // the lone post, read
   });
-  it("Write the digest with nothing to send says so, and the button is back", async () => {
+  it("the Write command with nothing to send says so in the meta line, and there is no Write button in the page", async () => {
     const ai: DigestHost["ai"] = { enabled: () => true, cached: async () => [], write: async () => ({ written: [], status: "nothing-to-send" }) };
-    const { root } = await mount({ posts: [p({ authorName: "Ann" })], mentions: [], savedAt: NOW }, ai);
-    const btn = root.all().find((e) => (e as unknown as { cls: Set<string> }).cls.has("blyg-story-write"));
-    expect(btn).toBeDefined(); // shown even with no story
-    btn?.click();
-    await new Promise((r) => setTimeout(r, 0));
+    const { root, view } = await mount({ posts: [p({ authorName: "Ann" })], mentions: [], savedAt: NOW }, ai);
+    expect(root.all().some((e) => (e as unknown as { cls: Set<string> }).cls.has("blyg-story-write"))).toBe(false);
+    await view.writeFromCommand(false);
     const after = root.all();
-    expect(after.some((e) => e.text === "Nothing to write. 1 single post is in the Mixed bag; it gets no AI text.")).toBe(true);
-    expect(after.some((e) => e.text === "Writing the digest…")).toBe(false);
+    expect(after.some((e) => e.text.includes("Nothing to write. 1 single post is in the Mixed bag; it gets no AI text."))).toBe(true);
+    expect(after.some((e) => e.text === "Writing the texts…")).toBe(false);
   });
   it("has no HTML sink in the view or the digest code", () => {
     for (const f of ["src/ui/DigestView.ts", "src/digest/register.ts", "src/digest/daily.ts", "src/digest/cluster.ts", "src/digest/stable.ts", "src/digest/editionHost.ts"]) {
@@ -248,7 +246,7 @@ describe("the Daily view with sections that hold single posts", () => {
     expect(texts).toContain("Other");
     expect(texts.filter((t) => /^by (Cy|Di|Ed)$/.test(t))).toHaveLength(3); // all still in the Mixed bag
   });
-  it("Re-sort sections asks for a full sort; the plain Write does not", async () => {
+  it("the Re-sort command asks for a full sort; the plain Write command does not", async () => {
     const calls: Array<{ resort?: boolean } | undefined> = [];
     const ai: DigestHost["ai"] = {
       enabled: () => true,
@@ -256,11 +254,9 @@ describe("the Daily view with sections that hold single posts", () => {
       cachedSections: async () => [{ name: "Garden", ids: [0, 1, 2, 3] }],
       write: async (c, _s, opts) => (calls.push(opts), { written: c.map((_, i) => written(i)), sections: [{ name: "Garden", ids: [0, 1, 2, 3] }], status: "ok" }),
     };
-    const { root } = await mount(list, ai);
-    root.all().find((e) => cls(e).has("blyg-story-write"))?.click();
-    await new Promise((r) => setTimeout(r, 0));
-    root.all().find((e) => cls(e).has("blyg-daily-resortbtn"))?.click();
-    await new Promise((r) => setTimeout(r, 0));
+    const { view } = await mount(list, ai);
+    await view.writeFromCommand(false);
+    await view.writeFromCommand(true);
     expect(calls.map((c) => c?.resort === true)).toEqual([false, true]);
   });
 });

@@ -1136,7 +1136,7 @@ export default class BlygPlugin extends Plugin {
       },
       hideMention: (m) => this.writes.hideMention(m),
       markRead: (post) => this.writes.mark(post, true),
-      markUnread: (post) => this.writes.mark(post, false), receptionOn: () => this.features.enabled("marginalia") && this.settings.marginalia.bottom,
+      markUnread: (post) => this.writes.mark(post, false), autoRead: () => this.settings.readerPane.autoRead, receptionOn: () => this.features.enabled("marginalia") && this.settings.marginalia.bottom,
     };
   }
 
