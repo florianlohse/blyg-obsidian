@@ -398,7 +398,7 @@ export class BlygReaderView extends ItemView {
     const run = ++this.checking;
     this.busy(+1);
     try {
-      this.loadMine("fresh"); // Refresh is the one moment the owner's own items are read again
+      this.ownSeen.clear(); this.loadMine("fresh"); // Refresh is the one moment the owner's own items are read again
       const known = new Set((this.data?.posts ?? []).map((p) => `${keyOf(p)}/${p.version}`));
       const got = await askAndWait(this.host, { force, noteMarks: (m) => this.noteMarks(m), alive: () => run === this.checking && this.contentEl.isConnected, status: (t) => this.setStatus(t) });
       if (got.kind === "cancelled") return;
@@ -676,7 +676,7 @@ export class BlygReaderView extends ItemView {
   }
 
   /** The posts you came from by following a quote to its source: Back goes to the last of them, and to the list when there is none. */
-  private trail = new Trail(); private postScroll: HTMLElement | null = null;
+  private trail = new Trail(); private postScroll: HTMLElement | null = null; private readonly ownSeen = new Map<string, ReadingPost>(); // your own items met as a quote this session (Refresh forgets them)
   /** Set by the digest when it opens a post here: Back, once the trail is used up, returns to the digest. */
   readonly returnTo = new ReturnPoint();
   /** Set by the digest when it opens a post: Next and Previous walk the Daily's whole order (ui/readerSteps.ts). */
@@ -1193,9 +1193,7 @@ export class BlygReaderView extends ItemView {
         const line = quote.createDiv({ cls: "blyg-quote-source is-link", text, attr: { role: "link", tabindex: "0", title } });
         this.addIcon(line, "arrow-up-right");
         line.addEventListener("click", open);
-        line.addEventListener("keydown", (e) => {
-          if (e.key === "Enter") open();
-        });
+        line.addEventListener("keydown", (e) => { if (e.key === "Enter") open(); });
       };
       if (from && !(from.subscriptionId === p.subscriptionId && from.remoteId === p.remoteId)) {
         const who = [from.authorName, from.subscriptionTitle].filter((x): x is string => !!x && x !== "").join(" · ");
@@ -1203,10 +1201,12 @@ export class BlygReaderView extends ItemView {
         continue;
       }
       if (id === "") continue;
+      const seen = this.ownSeen.get(id); const ownLink = (own: ReadingPost): void => link(ownSourceText(label), "Open your own item here (Back returns to this post)", () => this.openPost(own, "quote"));
+      if (seen) { ownLink(seen); continue; } // known already: the line is there with the text, so nothing moves under a place Back restores
       void this.host.ownPost(id).then((own) => {
         if (!quote.isConnected) return;
         if (own) {
-          link(ownSourceText(label), "Open your own item here (Back returns to this post)", () => this.openPost(own, "quote"));
+          this.ownSeen.set(id, own); ownLink(own);
         } else if (origin) {
           let host = "";
           try {

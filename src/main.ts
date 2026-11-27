@@ -876,7 +876,7 @@ export default class BlygPlugin extends Plugin {
     if (where === "tab" && (await reopenInLastMode())) return; // the Digest was the last mode: "Open reader" opens it
     const inSidebar = (leaf: WorkspaceLeaf): boolean => (leaf.getRoot() as unknown) === (workspace.rightSplit as unknown);
     const existing = workspace.getLeavesOfType(BLYG_READER_VIEW).find((leaf) => inSidebar(leaf) === (where === "sidebar"));
-    if (existing) return void (await workspace.revealLeaf(existing));
+    if (existing) return void (await workspace.revealLeaf(existing).then(() => workspace.setActiveLeaf(existing, { focus: true }))); // forward AND active: the reader, not the note you came from
     const leaf = where === "sidebar" ? workspace.getRightLeaf(false) : workspace.getLeaf("tab");
     if (!leaf) return;
     await leaf.setViewState({ type: BLYG_READER_VIEW, active: true });
