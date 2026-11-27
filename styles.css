@@ -1143,3 +1143,6 @@ body button.blyg-daily-edition:focus-visible { outline: 2px solid var(--interact
 .blyg-daily-edition-meta { flex: 0 1 auto; min-width: 0; max-width: 50%; overflow: hidden; text-overflow: ellipsis; color: var(--text-muted); font-size: var(--font-ui-smaller); font-style: italic; white-space: nowrap; }
 body button.blyg-daily-back { display: block; height: auto; min-height: 32px; margin: 0 0 var(--size-4-2); padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; color: var(--text-muted); font-family: var(--font-interface); font-size: var(--font-ui-smaller); font-style: italic; cursor: pointer; }
 body button.blyg-daily-back:active { text-decoration: underline; }
+/* The Daily menu: the Digest time window's input fills the window; the billing line is a row that only tells (no pressed look, no pointer). */
+.blyg-time-input { display: block; box-sizing: border-box; width: 100%; max-width: 100%; margin: var(--size-4-3) 0; font-size: var(--font-ui-medium); }
+body div.blyg-menu-billing { cursor: default; }

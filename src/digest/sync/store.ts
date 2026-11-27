@@ -4,7 +4,7 @@ import { EDITIONS_KEPT, parseEditions, pruneEditions, type EditionRec, type Edit
 import { parseHistory, trimHistory, type PastEdition } from "../history";
 import { hashText, parseStore, type LlmStore } from "../llm";
 import { localDay } from "../budget";
-import { buildPayload, keyOf, readKeys } from "./dataKey";
+import { boundCost, buildPayload, keyOf, readKeys, type CostRegister } from "./dataKey";
 import type { DataPort } from "./dataPort";
 import { FILE_RE, LOCK_TTL_MS, applyChange, emptyState, fileName, joinAll, lockOf, parseState, projectEdition, projectHistory, setReg, storyIdFor, usedOnDay, type EdState, type Lock } from "./state";
 
@@ -71,6 +71,9 @@ export class SyncedDigest {
   /** What the other devices' keys in data.json held at the last read (and this device's own, read back): joined with the folder files. */
   private dataStates: EdState[] = [];
   private keyInfo = new Map<string, { at: number; bytes: number; ids: number[] }>();
+  /** The cost registers (dollars per local day) of every device as last read from data.json; null for a device whose register cannot be read. This device's own is `ownCost`, kept in memory. */
+  private costs = new Map<string, CostRegister | null>();
+  private ownCost: CostRegister = {};
   /** True when data.json could not be read at the last refresh: what the other devices wrote there is then unknown (fail closed for the shared ceiling). */
   private dataFailed = false;
   /** The size of this device's own key as last written or read back, in bytes. */
@@ -140,6 +143,9 @@ export class SyncedDigest {
     const keys = readKeys(disk);
     this.dataStates = keys.flatMap((k) => k.states);
     this.keyInfo = new Map(keys.map((k) => [k.device, { at: k.at, bytes: k.bytes, ids: k.states.map((s) => s.id) }]));
+    this.costs = new Map(keys.map((k) => [k.device, k.cost]));
+    const mine = this.costs.get(this.me.id);
+    if (mine) for (const [d, n] of Object.entries(mine)) this.ownCost[d] = Math.max(this.ownCost[d] ?? 0, n); // what was written is never lost to a read that is older than the last addition
     this.ownBytes = this.keyInfo.get(this.me.id)?.bytes ?? null;
   }
 
@@ -150,7 +156,7 @@ export class SyncedDigest {
     if (!this.data) return Promise.resolve();
     if (this.keyWrite) return ((this.keyAgain = true), this.keyWrite); // a change made while a write runs is written right after it
     const once = async (): Promise<void> => {
-      const built = buildPayload([...this.own.values()], this.me.id);
+      const built = buildPayload([...this.own.values()], this.me.id, this.ownCost);
       if (!built) return;
       const disk = await this.data?.read();
       if (!disk) return; // damaged or mid-write: not written now
@@ -334,6 +340,36 @@ export class SyncedDigest {
   knowsOthers(): boolean {
     return [...this.snapshot.devices.keys()].some((d) => d !== this.me.id);
   }
+  /** Add the estimated cost of one AI write (dollars) to this device's register for the local day of `now`; the register is kept in this device's own key (bounded, numbers only). */
+  async addCost(now: number, dollars: number): Promise<void> {
+    if (!(dollars > 0) || !Number.isFinite(dollars)) return;
+    const day = localDay(now);
+    this.ownCost = boundCost({ ...this.ownCost, [day]: (this.ownCost[day] ?? 0) + dollars });
+    await this.writeKey();
+  }
+
+  /**
+   * The estimated cost of the AI writes of the local calendar month of `now`, all devices summed (each device's register in its own key). null: it cannot be read (no settings-file
+   * transport, data.json unreadable, or a register that does not parse): the caller shows nothing rather than a wrong figure. Devices on an older version keep no register and add nothing.
+   */
+  async monthCost(now: number): Promise<number | null> {
+    if (!this.data) return null;
+    try {
+      await this.refresh();
+    } catch {
+      return null;
+    }
+    if (this.dataFailed) return null;
+    const month = localDay(now).slice(0, 7);
+    let sum = 0;
+    for (const [device, reg] of this.costs) {
+      if (reg === null) return null;
+      for (const [d, n] of Object.entries(device === this.me.id ? this.ownCost : reg)) if (d.startsWith(month)) sum += n;
+    }
+    if (!this.costs.has(this.me.id)) for (const [d, n] of Object.entries(this.ownCost)) if (d.startsWith(month)) sum += n;
+    return Math.round(sum * 1e6) / 1e6;
+  }
+
   /**
    * The tokens used on the local day of `now` by every device (the sum of the per-device usage in the synced editions), read fresh. null: it cannot be read (the folder cannot be
    * listed, or a file of another device is still arriving and may hold usage): the caller refuses (fail closed). `mine` is this device's own part, `others` the rest.

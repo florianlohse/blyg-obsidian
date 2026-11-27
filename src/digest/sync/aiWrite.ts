@@ -99,6 +99,7 @@ export async function writeShared(env: WriteEnv, c: readonly Cluster[], singles:
       if (o.status === "ok") {
         if (o.written.some(Boolean)) await editions.update(rec.id, ({ editor: _was, ...e }) => (voice === NEUTRAL ? e : { ...e, editor: voice }));
         if (o.tokens) await editions.update(rec.id, (e) => ({ ...e, usage: addUsage(e.usage, o.tokens ?? 0, o.cost ?? null) }));
+        if (o.tokens && o.cost) await sync.addCost(env.now(), o.cost).catch(() => undefined); // the month's total (the menu's billing row): one addition per write, to this device's own register
         // The history record is made when something was written, not when the texts were only read from the files of another device.
         if (o.written.some(Boolean) && (o.tokens || !(await history.list()).editions.some((e) => e.id === rec.id))) await history.put({ ...buildPast(rec.id, c, o, singles, env.now()), ...(voice === NEUTRAL ? {} : { editor: voice }) });
       } else if (auto) await editions.update(rec.id, (e) => ({ ...e, auto: { note: o.status === "failed" ? `The automatic write did not work: ${o.note ?? "no reason given"}` : (o.note ?? "Not written automatically.") } }));

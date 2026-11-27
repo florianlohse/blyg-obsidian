@@ -54,3 +54,31 @@ export class DigestConfirmModal extends AskModal {
     super(app, "Write the digest?", [estimateLine(estimate), "The cost is a rough guess; the provider counts its own tokens."], "Send", "Cancel", answer);
   }
 }
+
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** "Digest time": a small window with the device's own time input (24-hour). Save gives "HH:MM"; Cancel or closing it any other way changes nothing (null). */
+export class DigestTimeModal extends Modal {
+  private done = false;
+  constructor(app: App, private readonly current: string, private readonly answer: (time: string | null) => void) {
+    super(app);
+  }
+  override onOpen(): void {
+    this.setTitle("Digest time");
+    this.contentEl.createDiv({ text: "A new edition starts at this time of day, on this device's clock. It is made when you first open the reader or the Daily after that time." });
+    const input = this.contentEl.createEl("input", { cls: "blyg-time-input", attr: { type: "time", value: this.current, "aria-label": "Digest time" } });
+    new Setting(this.contentEl)
+      .addButton((b) => b.setButtonText("Save").setCta().onClick(() => this.finish(TIME_RE.test(input.value) ? input.value : null)))
+      .addButton((b) => b.setButtonText("Cancel").onClick(() => this.finish(null)));
+  }
+  private finish(time: string | null): void {
+    if (this.done) return;
+    this.done = true;
+    this.answer(time);
+    this.close();
+  }
+  override onClose(): void {
+    this.finish(null);
+    this.contentEl.empty();
+  }
+}

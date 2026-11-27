@@ -25,8 +25,8 @@ import { publishPlacement } from "../digest/placement";
 import { isUnread, type InboundMention, type ReadingPost } from "../studio/reading";
 import type { PastEdition } from "../digest/history";
 import { CAPPED_NOTE } from "../digest/history";
-import { addUsage } from "../digest/autoWrite";
 import { drawPast, type EditionEntry } from "./DigestPast";
+import { drawDigestMenu, type DigestMenu } from "./digestMenu";
 import { drawPriceLine, priceLineText } from "./digestPriceLine";
 import { drawStoryMark, keepSavedMark, storyReadLook } from "./digestStory";
 import type { ShelfFacade } from "../app/shelfService";
@@ -41,6 +41,8 @@ export interface DigestHost {
   refresh?(o: { held: { posts: ReadingPost[]; mentions: InboundMention[] } | null; alive: () => boolean; status: (text: string) => void }): Promise<{ ok: true; list: { posts: ReadingPost[]; mentions: InboundMention[] }; note?: string } | { ok: false; message: string; cancelled?: true }>;
   /** The current edition for these posts (src/digest/editionHost.ts): its window, and the stories and Mixed bag it has settled. Absent `id`/`grouped`: group the window afresh. */
   edition(posts: readonly ReadingPost[]): Promise<{ id?: number; since: number; until: number; grouped?: Grouped; checking?: true; auto?: { note?: string }; usage?: { tokens: number; cost: number | null }; editor?: string }>;
+  /** The hamburger menu (ui/digestMenu.ts): Digest time, Write automatically, Show what the digest sent, Settings and the month's billing line. Absent: an empty menu. */
+  menu?: DigestMenu;
   /** The saved past editions, newest first (src/digest/history.ts). Absent: no history. */
   history?(): Promise<{ editions: PastEdition[]; capped: boolean }>;
   /** The reader's font setting; the digest's type follows it. */
@@ -97,7 +99,6 @@ export class BlygDailyView extends ItemView {
   private sections: Section[] | null = null;
   private note = "";
   private busy = false;
-  private usage: { tokens: number; cost: number | null } | undefined;
   private past: PastEdition[] = [];
   private pastCapped = false;
   /** The editor that wrote today's edition (absent: neutral). */
@@ -326,7 +327,6 @@ export class BlygDailyView extends ItemView {
     this.byId = new Map(list.posts.map((p) => [p.remoteId, p]));
     const win = await this.host.edition(list.posts);
     const model = buildDaily(list.posts, list.mentions, win.since, win.until, win.grouped, win.id);
-    this.usage = win.usage;
     this.checking = win.checking === true;
     this.syncText = this.checking ? ["Checking for your other devices…"] : ((await this.host.syncLines?.(win.id ?? null).catch(() => [])) ?? []);
     this.editorId = win.editor;
@@ -386,7 +386,6 @@ export class BlygDailyView extends ItemView {
         outcome = o;
         this.written = o.written;
         this.sections = o.sections ?? null;
-        if (o.status === "ok" && o.tokens) this.usage = addUsage(this.usage, o.tokens, o.cost ?? null);
         this.note = o.note ?? nothingToWriteNote(o, before, model.front.length, model.mixed.length);
         if (o.status === "failed") this.note = auto ? `The automatic write did not work: ${o.note ?? "no reason given"}` : `${o.note ?? "The digest could not be written."} Showing the list made on your device.`;
         if (lead && this.note !== lead) this.note = [lead, this.note].filter(Boolean).join(" · ");
@@ -430,15 +429,16 @@ export class BlygDailyView extends ItemView {
     // The editions under the date (a tap on the date): today's first, then the older ones; only when there is something else to choose.
     const entries: EditionEntry[] = ids.map((id) => ({ id, label: id === today ? "Today" : editionLabel(id), meta: id === today ? (model ? `as of ${timeOnly(model.until)}` : "") : plural(this.past.find((e) => e.id === id)?.stories.length ?? 0, "story", "stories"), current: id === shownId }));
     const editions = ids.length > 1 || pastRec ? { entries, pick: (id: number) => { this.viewing = id === today ? null : id; this.render(model); } } : undefined;
-    drawBar(root, { date: mastheadDate(this.viewing ?? model?.edition ?? model?.since ?? Date.now()), kicker: pastRec ? "Earlier edition" : "Your digest", state: this.bar, toggle: () => void this.host.showFeed(this.leaf), ...(editions ? { editions } : {}), refresh: { hint: REFRESH_HINT, click: () => void this.refreshNow(), made: (b) => (this.refreshBtns.push(b), this.paintRefresh(b)) } });
+    const bar = drawBar(root, { date: mastheadDate(this.viewing ?? model?.edition ?? model?.since ?? Date.now()), kicker: pastRec ? "Earlier edition" : "Your digest", state: this.bar, toggle: () => void this.host.showFeed(this.leaf), ...(editions ? { editions } : {}), refresh: { hint: REFRESH_HINT, click: () => void this.refreshNow(), made: (b) => (this.refreshBtns.push(b), this.paintRefresh(b)) } });
+    if (this.host.menu) drawDigestMenu(bar.panel, this.host.menu, { fold: () => ((this.bar.open = false), this.render(model)), repaint: () => this.render(model) });
     if (pastRec) {
       const back = root.createEl("button", { cls: "blyg-daily-back", text: "‹ Back to today", attr: { "aria-label": "Back to today's edition" } });
       back.addEventListener("click", () => ((this.viewing = null), this.render(model)));
     }
     if (this.syncText.length > 0) for (const t of this.syncText) root.createDiv({ cls: "blyg-daily-meta blyg-daily-sync", text: t });
-    // The top line: what the AI-written edition cost and who edited it (a past edition: its editor); nothing when the AI wrote nothing.
+    // The top line: who edited it (a past edition: its editor); nothing when the AI wrote nothing. (The cost is not here any more: the menu's billing line has the month's.)
     const wrote = this.host.ai?.enabled() === true && this.written.some(Boolean);
-    drawPriceLine(root, this.viewing !== null ? priceLineText(undefined, this.past.find((e) => e.id === this.viewing)?.editor) : wrote ? priceLineText(this.usage?.cost, this.editorId) : null);
+    drawPriceLine(root, this.viewing !== null ? priceLineText(this.past.find((e) => e.id === this.viewing)?.editor) : wrote ? priceLineText(this.editorId) : null);
     if (pastRec) {
       this.markStatus = null;
       if (this.pastCapped) root.createDiv({ cls: "blyg-daily-meta", text: CAPPED_NOTE });
