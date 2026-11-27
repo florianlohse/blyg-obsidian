@@ -13,14 +13,7 @@ export function renderTangle(parent: HTMLElement, tangle: { rows: TangleRow[]; m
   parent.createDiv({ cls: "blyg-diff-heading", text: `New items (${n} of at most ${tangle.max})` });
   const list = parent.createEl("ol", { cls: "blyg-quotes blyg-tangle-list" });
   for (const row of tangle.rows) {
-    list.createEl("li", {
-      text:
-        row.kind === "block"
-          ? `paragraph ^${row.block?.id ?? ""} of ${row.block?.host ?? "a note"}, line ${row.line} — “${row.words}”`
-          : row.kind === "span"
-            ? `passage, line ${row.line} — “${row.words}”`
-            : `idea, line ${row.line} — an empty thread titled “${row.words}”`,
-    });
+    list.createEl("li", { text: row.kind === "span" ? `passage, line ${row.line} — “${row.words}”` : `idea, line ${row.line} — an empty thread titled “${row.words}”` });
   }
   list.createEl("li", { cls: "blyg-tangle-last", text: "then this thread, published last" });
 }
