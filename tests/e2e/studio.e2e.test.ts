@@ -96,7 +96,7 @@ run("against a real Studio", { timeout: 120_000 }, () => {
       { baseUrl: URL_ ?? "", mount: MOUNT, tokenSecretName: "t" },
     );
     expect(report.lines.filter((l) => l.level === "error")).toEqual([]);
-    expect(report.lines.map((l) => l.text).join("\n")).toMatch(/contract [56]\.\d+\.\d+: the API this plugin speaks/);
+    expect(report.lines.map((l) => l.text).join("\n")).toMatch(/contract [567]\.\d+\.\d+: the API this plugin speaks/);
   });
 
   it("publishes, finds nothing to do, updates, and refuses to overwrite work done in the Studio", async () => {

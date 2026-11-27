@@ -12,6 +12,7 @@ will change before anything leaves your vault.
 
 ## What's new in 1.1.0: read and save
 
+- **Works with Studio 0.73.** Studio 0.51.0 or newer, tested against 0.51.0 and 0.73.1. Private items in the Studio are not published, edited or withdrawn from the plugin.
 - **The Daily.** A newspaper page of what the blygs you follow posted: stories first, single posts after, corrections apart. Open it from the ribbon or the reader's Feed | Digest switch. Daily sync between devices is new: it needs your vault sync to carry the plugin's settings file. An optional AI summary uses your own API key, is off until you turn it on, and shows a rough cost before it sends anything.
 - **Save for later.** Press and hold a post, or tap the bookmark in an open post. Saved posts live on your Studio's shelf (up to 50), shared with your other devices. Needs a token with every permission ticked and a Studio that offers the shelf.
 - **Reception.** For a note you published: words others quoted are underlined with a count, and a Reception section at the end of the note (also in Reading view) lists who quoted or answered it. Works best on blygs you follow.
@@ -132,9 +133,9 @@ blygs you follow live in the plugin's own storage, not in your notes.
 1. **Obsidian 1.13.0 or newer** (the plugin stores secrets in Obsidian's keychain and uses the 1.13 settings screen).
 2. **A Blygger Studio** that you own and have signed in to. Blygger Studio is the reference server of the Blygger
    protocol (open source: [blygger/blygger-studio](https://github.com/blygger/blygger-studio)). The plugin needs
-   **Studio 0.51.0 or newer** (API contract 5 or 6). Every change to the plugin is tested against Studio 0.51.0 (contract 5.2, the oldest it
-   supports) and against the newest Studio release, last seen on 22 November 2026 with Studio 0.69.0 (contract 6.2); the contracts in between were
-   checked operation by operation against the two. A newer minor version is accepted with a quiet note; an older Studio, or an API generation the
+   **Studio 0.51.0 or newer** (API contract 5, 6 or 7). Every change to the plugin is tested against Studio 0.51.0 (contract 5.2, the oldest it
+   supports) and against the newest Studio release, last seen on 27 November 2026 with Studio 0.73.1 (contract 7.1); the contracts in between were
+   checked operation by operation against the two. Private items (the Studio's notebook, from Studio 0.73) are not published, edited or withdrawn from here. A newer minor version is accepted with a quiet note; an older Studio, or an API generation the
    plugin has not seen, is refused before anything is sent.
 3. **An access token from that Studio** (see *Token*).
 

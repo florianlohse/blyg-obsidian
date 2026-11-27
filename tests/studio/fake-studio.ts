@@ -34,7 +34,7 @@ interface Stored {
   /** Contract 5: starts at 1 and goes up with every change of the item (an edit, a publish, a withdrawal). */
   revision: number;
   kind: "fragment" | "thread";
-  status: "draft" | "public" | "withdrawn";
+  status: "draft" | "public" | "private" | "withdrawn";
   created: string;
   updated: string;
   version: number;

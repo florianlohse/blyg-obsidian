@@ -3,18 +3,19 @@
 // The manifest's `generator` is only used to tell a stock Studio from a fork or another program.
 
 /**
- * The contracts this plugin speaks: the major versions 5 and 6 (E1). Contract 6.0.0 (Studio 0.67.0) is breaking only by removing `GET /changes`
- * (two syndication operations are new); 5.14 to 6.2 otherwise only adds. Whatever differs between the two is chosen from what the Studio's
+ * The contracts this plugin speaks: the major versions 5, 6 and 7. Contract 6.0.0 (Studio 0.67.0) is breaking only by removing `GET /changes`
+ * (two syndication operations are new); 5.14 to 6.4 otherwise only adds. Contract 7.0.0 (Studio 0.73.0) removes `provenance` from item create and edit (the plugin never sent it),
+ * adds the scope `owner:private` and the item status `private` (refused here, see client.ts); 7.1 adds `draft` on own reading entries. From 7 a publish names `visibility: "public"`. Whatever differs between the two is chosen from what the Studio's
  * `GET /capabilities` lists in `operations` (see capabilities.ts), never from the version string. The gate itself still reads the major: older than 5
  * and a major the plugin has not seen are refused, because nothing is known about them.
  */
-export const SUPPORTED_MAJORS = { min: 5, max: 6 } as const;
+export const SUPPORTED_MAJORS = { min: 5, max: 7 } as const;
 /**
  * The newest minor of each supported major that the plugin was checked against, by the operation diff of every operation it calls (the vendored
  * 0.51.0 file against 0.69.0's, tests/studio/operations.test.ts) and, for 6.2, against a live Studio 0.69.0. 5.14 is the last 5.x (Studio 0.65.0).
  * The end-to-end run on contract 5 is against the pinned 0.51.0 (5.2.0).
  */
-export const TESTED_MINOR: Readonly<Record<number, number>> = { 5: 14, 6: 2 };
+export const TESTED_MINOR: Readonly<Record<number, number>> = { 5: 14, 6: 4, 7: 1 };
 /** "6.2": the newest contract the plugin was tested with, for messages. */
 export const CONTRACT_TEXT = `${SUPPORTED_MAJORS.max}.${TESTED_MINOR[SUPPORTED_MAJORS.max]}`;
 /** A newer minor of a supported major is accepted, so it is a muted note, not a warning. */

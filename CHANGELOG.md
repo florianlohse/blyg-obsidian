@@ -10,6 +10,8 @@ becomes the release notes. Write entries for people who use the plugin, not for 
 
 ## [1.1.0] — 2026-11-27
 
+**Works with Studio 0.73.** Studio 0.51.0 or newer, tested against 0.51.0 and 0.73.1. The plugin used to refuse Studios newer than 0.72; it now accepts 0.73 (API contract 7). Private items in the Studio (its notebook) are not published, edited or withdrawn from the plugin, and a publish from the plugin always asks for a public publish, even if your Studio's default is private.
+
 **Read and save.** Three features that were behind a switch are now part of the plugin: the Daily, Save for later and Reception. Everything else that is new is still experimental and off until you switch it on.
 
 ### What's new
@@ -35,7 +37,7 @@ Off until you switch them on under Settings → Experimental features: **Send pa
 
 ### Good to know
 
-- **Save for later** needs a token with every permission ticked (it uses `owner:manage`) and a Studio that offers the shelf (Studio 0.67.0 or newer; the plugin says so in one line when yours does not). The plugin itself still needs Studio 0.51.0 or newer.
+- **Save for later** needs a token with every permission ticked (it uses `owner:manage`) and a Studio that offers the shelf (Studio 0.67.0 or newer; the plugin says so in one line when yours does not).
 - **Reception** works best on blygs you follow.
 - The AI summary sends text to the provider you choose (by default `api.anthropic.com`) only after you agree and only when you ask for it or switch on automatic writing.
 - Needs Obsidian 1.13.0 or newer. It works on mobile.

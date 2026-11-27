@@ -1,5 +1,5 @@
 // What a Studio can do, as it says so itself: the `operations` its `GET /capabilities` lists (operation ids, filtered to what the token may call),
-// not the release number. The plugin supports contract 5 and 6 side by side (E1); this is where the two are told apart.
+// not the release number. The plugin supports contracts 5, 6 and 7 side by side (E1); this is where the two are told apart.
 import type { ContractVerdict } from "./version";
 
 /** Operation ids the plugin branches on. */
