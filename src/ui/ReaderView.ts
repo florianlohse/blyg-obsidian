@@ -13,7 +13,7 @@ import { plainText, renderForeign, type ImageMode } from "./defang"; import { ro
 import { activeFilters, arrange, isReplyToMine, OWN_SOURCE, readFilter, cardOf, DEFAULT_FILTER, frameable, LENGTH_LABELS, postOfQuote, readingTimeLabel, relativeTime, SORT_LABELS, sourcesOf, type FeedFilter, type FeedLength, type FeedSort } from "./readerFeed";
 import { type ReaderFont } from "./readerFonts";
 import { ReturnPoint, whenIdle } from "./readerExtras";
-import { drawModeToggle, setReaderMode, switchMode } from "./readerMode";
+import { AutoRead } from "./readerAutoRead"; import { drawModeToggle, setReaderMode, switchMode } from "./readerMode";
 import { askStudioToFetch } from "./readerFetch";
 import { drawFeedStart, heldList, noteListLoaded, sessionSync, startReader, type Saved } from "./readerStart";
 import { askAndWait } from "../app/readerRefresh";
@@ -97,7 +97,7 @@ export interface ReaderHost extends FollowHost, ShelfHost {
   /** Open the note of one of the owner's items in Obsidian; false when no note of this vault holds it. */
   openOwnItem(itemId: string): Promise<boolean>;
   markRead(post: ReadingPost): Promise<ReadResult>; // needs the token permission `reading:state`; the message says so when it is missing
-  markUnread(post: ReadingPost): Promise<ReadResult>;
+  markUnread(post: ReadingPost): Promise<ReadResult>; autoRead(): boolean; // the setting "Mark posts as read when I open them"
   /** The owner's choices (settings): how a post opens, and what happens to images in the text view. */
   imageMode(): ImageMode;
   /** The font of the text view's content (the setting "Font in the reader"). */
@@ -129,7 +129,7 @@ const keyOf = (p: ReadingPost): string => `${p.subscriptionId}/${p.remoteId}`;
 export class BlygReaderView extends ItemView {
   private data: ReaderData | null = null;
   private tab: "stream" | "mentions" = "stream";
-  private shown: ReadingPost | null = null;
+  private shown: ReadingPost | null = null; private readonly autoRead = new AutoRead({ enabled: () => this.host.autoRead(), current: () => this.shown, live: (p) => this.live(p), mark: (p) => void this.setRead(p, true) });
   private filter: FeedFilter = { ...DEFAULT_FILTER };
   /** Keep the feed's choices (order, blyg, length, unread) in the settings: every change goes through here. */
   private saveFilter(): void {
@@ -262,7 +262,7 @@ export class BlygReaderView extends ItemView {
   }
 
   override async onClose(): Promise<void> {
-    this.checking++;
+    this.checking++; this.autoRead.cancel();
     await Promise.resolve();
   }
 
@@ -713,7 +713,7 @@ export class BlygReaderView extends ItemView {
     this.drawHeader();
     this.drawBody();
     this.loadMine("cached"); // never a request of its own: the list of your own items is read with the list
-    this.checkFetched(p);
+    this.checkFetched(p); this.autoRead.arm(p);
   }
 
   /** A post that did not come from the feed (a mention's, a quote's): ask whether the Studio really holds it, and say so in the header when it does not (S15-H). */
@@ -932,7 +932,7 @@ export class BlygReaderView extends ItemView {
     check.disabled = opts.disabled === true;
     check.addEventListener("click", (e) => {
       e.stopPropagation();
-      void this.setRead(p, unread);
+      this.autoRead.cancel(); void this.setRead(p, unread);
     });
     return check;
   }

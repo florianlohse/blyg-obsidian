@@ -1136,7 +1136,7 @@ export default class BlygPlugin extends Plugin {
       },
       hideMention: (m) => this.writes.hideMention(m),
       markRead: (post) => this.writes.mark(post, true),
-      markUnread: (post) => this.writes.mark(post, false),
+      markUnread: (post) => this.writes.mark(post, false), autoRead: () => this.settings.readerPane.autoRead,
     };
   }
 
