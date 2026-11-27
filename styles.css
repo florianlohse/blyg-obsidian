@@ -1147,14 +1147,14 @@ body:not(.is-mobile) .blyg-passage-dock-send { flex: 0 0 auto; padding-inline: c
 button.blyg-daily-datebtn { all: unset; cursor: pointer; display: inline; color: inherit; font: inherit; -webkit-tap-highlight-color: transparent; }
 button.blyg-daily-datebtn:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 2px; }
 .blyg-daily-datemark { color: var(--text-muted); font-family: var(--font-interface); font-size: 0.7em; font-weight: 400; margin-left: 0.3em; vertical-align: 0.12em; }
-.blyg-daily-editions { display: none; position: absolute; top: 100%; left: 0; right: 0; max-width: 24rem; max-height: 60vh; overflow-x: hidden; overflow-y: auto; z-index: 6; box-sizing: border-box; margin-top: var(--size-4-1); padding: var(--size-4-1) var(--size-4-3); font-family: var(--font-interface); background: var(--background-primary); border: 1px solid var(--background-modifier-border-hover); box-shadow: var(--shadow-s); }
+.blyg-daily-editions { display: none; position: absolute; top: 100%; left: 0; right: 0; max-width: min(24rem, 100%); max-height: 60vh; overflow-x: hidden; overflow-y: auto; z-index: 6; box-sizing: border-box; margin-top: var(--size-4-1); padding: var(--size-4-1) var(--size-4-3); font-family: var(--font-interface); background: var(--background-primary); border: 1px solid var(--background-modifier-border-hover); box-shadow: var(--shadow-s); }
 .blyg-daily-editions.is-open { display: block; }
-body button.blyg-daily-edition { display: flex; align-items: baseline; gap: var(--size-4-2); box-sizing: border-box; width: 100%; height: auto; min-height: 44px; margin: 0; padding: var(--size-4-2) 0; border: 0; border-bottom: 1px solid var(--background-modifier-border); border-radius: 0; background: none; box-shadow: none; color: var(--text-normal); font: inherit; text-align: left; cursor: pointer; }
+body button.blyg-daily-edition { display: flex; align-items: baseline; gap: var(--size-4-2); box-sizing: border-box; width: 100%; height: auto; min-height: 44px; margin: 0; padding: var(--size-4-2) 0; border: 0; border-bottom: 1px solid var(--background-modifier-border); border-radius: 0; background: none; box-shadow: none; color: var(--text-normal); font: inherit; text-align: left; cursor: pointer; overflow: hidden; }
 body button.blyg-daily-edition:last-child { border-bottom: 0; }
 body button.blyg-daily-edition:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: -2px; }
 .blyg-daily-edition-date { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
 .blyg-daily-edition.is-current .blyg-daily-edition-date { font-weight: 700; }
 .blyg-daily-edition.is-current .blyg-daily-edition-date::before { content: "●"; font-size: 0.5em; vertical-align: 0.25em; margin-right: 0.5em; }
-.blyg-daily-edition-meta { flex: none; color: var(--text-muted); font-size: var(--font-ui-smaller); font-style: italic; white-space: nowrap; }
+.blyg-daily-edition-meta { flex: 0 1 auto; min-width: 0; max-width: 50%; overflow: hidden; text-overflow: ellipsis; color: var(--text-muted); font-size: var(--font-ui-smaller); font-style: italic; white-space: nowrap; }
 body button.blyg-daily-back { display: block; height: auto; min-height: 32px; margin: 0 0 var(--size-4-2); padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; color: var(--text-muted); font-family: var(--font-interface); font-size: var(--font-ui-smaller); font-style: italic; cursor: pointer; }
 body button.blyg-daily-back:active { text-decoration: underline; }

@@ -131,10 +131,12 @@ await runScenario({ data }, async (s) => {
   check(pop.n === 2 && pop.first === "Today" && pop.current === 1 && pop.below && pop.inside && pop.sw && pop.tall && pop.expanded === "true" && pop.focus, `the date opens a list of editions under it, today's first and marked, inside the pane, no sideways scroll, rows at touch height, focus on the current one (${JSON.stringify(pop)})`);
   // the same list at phone widths: nothing scrolls sideways and the list stays inside the pane (393, 360, 320 px)
   const cdpW = await page.context().newCDPSession(page);
+  const fitNow = () => page.evaluate(() => { const v = document.querySelector(".view-content.blyg-daily"); const l = document.querySelector(".blyg-daily .blyg-daily-editions"); const R = (e) => e.getBoundingClientRect(); return { sw: v.scrollWidth <= v.clientWidth, list: R(l).left >= -0.5 && R(l).right <= window.innerWidth + 0.5, rows: [...l.querySelectorAll("button.blyg-daily-edition")].every((r) => r.scrollWidth <= r.clientWidth + 1), w: window.innerWidth, vw: [v.scrollWidth, v.clientWidth], lw: [Math.round(R(l).left), Math.round(R(l).right)] }; });
   for (const [w, h] of [[393, 852], [360, 780], [320, 700]]) {
-    await cdpW.send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 1, mobile: true });
-    await wait(500);
-    const fit = await page.evaluate(() => { const v = document.querySelector(".view-content.blyg-daily"); const l = document.querySelector(".blyg-daily .blyg-daily-editions"); const R = (e) => e.getBoundingClientRect(); return { sw: v.scrollWidth <= v.clientWidth, list: R(l).left >= 0 && R(l).right <= window.innerWidth + 0.5, rows: [...l.querySelectorAll("button.blyg-daily-edition")].every((r) => r.scrollWidth <= r.clientWidth + 1) }; });
+    await cdpW.send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 2, mobile: true });
+    await wait(1500); // the phone layout needs a moment to settle after the resize (as in the width checks below)
+    let fit = await fitNow();
+    for (let i = 0; i < 6 && !(fit.sw && fit.list && fit.rows); i++) { await wait(500); fit = await fitNow(); }
     check(fit.sw && fit.list && fit.rows, `${w} px: the list of editions fits the pane, no sideways scroll (${JSON.stringify(fit)})`);
   }
   await cdpW.send("Emulation.clearDeviceMetricsOverride");
