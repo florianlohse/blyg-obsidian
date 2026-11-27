@@ -121,7 +121,7 @@ await runScenario({ data }, async (s) => {
   const busy = await page.evaluate(() => ({ disabled: document.querySelector(".blyg-daily .blyg-daily-refresh")?.disabled, busy: document.querySelector(".blyg-daily .blyg-daily-refresh")?.classList.contains("is-busy"), aria: document.querySelector(".blyg-daily .blyg-daily-refresh")?.getAttribute("aria-busy"), status: document.querySelector(".blyg-daily-markstatus")?.textContent }));
   await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-refresh")?.click()); // a second tap while it runs does nothing
   check(busy.disabled && busy.busy && busy.aria === "true" && /Fetching new posts/.test(busy.status ?? ""), `while it runs the Refresh button is busy and the meta line says Fetching new posts (${JSON.stringify(busy)})`);
-  await page.waitForFunction(() => /new post|Nothing new/.test(document.querySelector(".blyg-daily-markstatus")?.textContent ?? ""), null, { timeout: 45000 });
+  await page.waitForFunction(() => /^(\d+ new posts?|Nothing new)/.test(document.querySelector(".blyg-daily-markstatus")?.textContent ?? ""), null, { timeout: 45000 });
   await wait(1200);
   const digestTap = snap();
   const after = await page.evaluate(() => {
