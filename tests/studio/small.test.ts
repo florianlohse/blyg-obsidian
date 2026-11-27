@@ -68,12 +68,15 @@ describe("the manifest's generator", () => {
 });
 
 describe("the contract gate's verdict (contractVersion, not the release number)", () => {
-  it("supports majors 5 and 6; the tested minors (5.x up to 5.14, 6.x up to 6.2) give no notice, a higher minor is accepted and flagged", () => {
+  it("supports majors 5, 6 and 7; the tested minors (5.x up to 5.14, 6.x up to 6.4, 7.x up to 7.1) give no notice, a higher minor is accepted and flagged", () => {
     for (const v of ["5.1.0", "5.2.0", "5.4.9", "5.11.0", "5.14.0", "5.14.3"]) expect(contractVerdict(v), v).toEqual({ kind: "ok", contract: v, major: 5, newerMinor: false, operations: null });
     for (const v of ["6.0.0", "6.1.0", "6.2.0", "6.2.7"]) expect(contractVerdict(v), v).toEqual({ kind: "ok", contract: v, major: 6, newerMinor: false, operations: null });
     expect(contractVerdict("5.15.0")).toEqual({ kind: "ok", contract: "5.15.0", major: 5, newerMinor: true, operations: null });
-    expect(contractVerdict("6.3.0")).toEqual({ kind: "ok", contract: "6.3.0", major: 6, newerMinor: true, operations: null });
-    expect(CONTRACT_TEXT).toBe("6.2");
+    for (const v of ["6.3.0", "6.4.0"]) expect(contractVerdict(v), v).toEqual({ kind: "ok", contract: v, major: 6, newerMinor: false, operations: null });
+    expect(contractVerdict("6.5.0")).toEqual({ kind: "ok", contract: "6.5.0", major: 6, newerMinor: true, operations: null });
+    for (const v of ["7.0.0", "7.1.0"]) expect(contractVerdict(v), v).toEqual({ kind: "ok", contract: v, major: 7, newerMinor: false, operations: null });
+    expect(contractVerdict("7.2.0")).toEqual({ kind: "ok", contract: "7.2.0", major: 7, newerMinor: true, operations: null });
+    expect(CONTRACT_TEXT).toBe("7.1");
     expect(MIN_STUDIO_VERSION).toBe("0.51.0");
   });
   it("carries the operations the Studio listed, which are what tell contract 5 from 6 (not the version)", () => {
@@ -95,8 +98,8 @@ describe("the contract gate's verdict (contractVersion, not the release number)"
     expect(contractVerdict("4.9.0")).toEqual({ kind: "studio-older", contract: "4.9.0" });
     for (const bad of [null, "", "5", "5.2", "five", "5.2.0-rc1", "v5.2.0"]) expect(contractVerdict(bad)).toEqual({ kind: "studio-older", contract: null });
   });
-  it("a major the plugin has not seen (7 and up) means the plugin is older", () => {
-    expect(contractVerdict("7.0.0")).toEqual({ kind: "plugin-older", contract: "7.0.0" });
+  it("a major the plugin has not seen (8 and up) means the plugin is older", () => {
+    expect(contractVerdict("8.0.0")).toEqual({ kind: "plugin-older", contract: "8.0.0" });
     expect(contractVerdict("12.1.0")).toEqual({ kind: "plugin-older", contract: "12.1.0" });
   });
 });

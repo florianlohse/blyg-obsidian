@@ -121,9 +121,9 @@ blygs you follow live in the plugin's own storage, not in your notes.
 1. **Obsidian 1.13.0 or newer** (the plugin stores secrets in Obsidian's keychain and uses the 1.13 settings screen).
 2. **A Blygger Studio** that you own and have signed in to. Blygger Studio is the reference server of the Blygger
    protocol (open source: [blygger/blygger-studio](https://github.com/blygger/blygger-studio)). The plugin needs
-   **Studio 0.51.0 or newer** (API contract 5 or 6). Every change to the plugin is tested against Studio 0.51.0 (contract 5.2, the oldest it
-   supports) and against the newest Studio release, last seen on 22 November 2026 with Studio 0.69.0 (contract 6.2); the contracts in between were
-   checked operation by operation against the two. A newer minor version is accepted with a quiet note; an older Studio, or an API generation the
+   **Studio 0.51.0 or newer** (API contract 5, 6 or 7). Every change to the plugin is tested against Studio 0.51.0 (contract 5.2, the oldest it
+   supports) and against the newest Studio release, last seen on 27 November 2026 with Studio 0.73.1 (contract 7.1); the contracts in between were
+   checked operation by operation against the two. Private items (the Studio's notebook, from Studio 0.73) are not published, edited or withdrawn from here. A newer minor version is accepted with a quiet note; an older Studio, or an API generation the
    plugin has not seen, is refused before anything is sent.
 3. **An access token from that Studio** (see *Token*).
 

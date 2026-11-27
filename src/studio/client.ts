@@ -178,6 +178,7 @@ const SUBSCRIPTION_PAGE = 100;
 const SUBSCRIPTION_PAGES = 10;
 /** The Studio's name for the owner's own items in a hopper (upstream `OWN_SUBSCRIPTION`). */
 const OWN = "~own";
+const PRIVATE_ITEM_MESSAGE = "This item is private in the Studio (the notebook). This plugin does not publish, edit or withdraw private items. Nothing was sent.";
 const MENTION_PAGES = 5;
 
 export function readItem(json: unknown): StudioItem | null {
@@ -241,6 +242,8 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
 
   const itemResult = (res: StudioResponse, okStatuses: number[]): StudioResult<StudioItem> => {
     if (!okStatuses.includes(res.status)) return failure(res);
+    // Contract 7: a private item (the Studio's notebook) is not this plugin's to publish, edit or withdraw: refused, nothing sent.
+    if (isRecord(res.json) && res.json.status === "private") return { kind: "rejected", status: res.status, message: PRIVATE_ITEM_MESSAGE, problems: [] };
     const item = readItem(res.json);
     return item ? { kind: "ok", value: item } : unreadable(res);
   };
@@ -358,7 +361,7 @@ export function createStudioClient(deps: { http: StudioHttp; token: string; gate
     },
 
     publish: async (id: string, note: string | undefined, expectedRevision: number, opts: { tangle?: boolean } = {}): Promise<StudioResult<StudioCommandDone>> => {
-      const res = await http.send(token, { method: "POST", area: "api", path: `/items/${encodeURIComponent(id)}/publish`, body: { expectedRevision, ...(note ? { note } : {}), ...(opts.tangle ? { tangle: true } : {}) } });
+      const res = await http.send(token, { method: "POST", area: "api", path: `/items/${encodeURIComponent(id)}/publish`, body: { expectedRevision, ...(note ? { note } : {}), ...(opts.tangle ? { tangle: true } : {}), ...(contractAtLeast(gateCache.get(), 7, 0) ? { visibility: "public" } : {}) } });
       if (res.status !== 200) return failure(res);
       if (!isRecord(res.json) || typeof res.json.version !== "number" || typeof res.json.revision !== "number") return unreadable(res);
       const warning = str(res.json.warning);
