@@ -396,7 +396,7 @@ describe("the contract gate", () => {
 
   it("refuses a major the plugin has not seen (7) with 'update the plugin'", async () => {
     const { client, studio } = setup();
-    studio.contractVersion = "7.0.0";
+    studio.contractVersion = "8.0.0";
     const refused = await client.countItems();
     expect(refused).toMatchObject({ kind: "incompatible", which: "plugin-older" });
     expect(refused.kind === "incompatible" && refused.message).toContain("Update the plugin");
@@ -419,5 +419,36 @@ describe("the contract gate", () => {
     expect(b.get()).toBeUndefined();
     a.set(undefined);
     expect(a.get()).toBeUndefined();
+  });
+});
+
+describe("studio client: contract 7 (Studio 0.73.0 and 0.73.1)", () => {
+  it.each(["7.0.0", "7.1.0"])("contract %s is accepted: reads work, nothing is refused by the gate", async (v) => {
+    const { client, studio } = setup();
+    studio.contractVersion = v;
+    const item = studio.seed({ content_md: "x" });
+    expect((await client.getItem(item.id)).kind).toBe("ok");
+  });
+
+  it("a publish names visibility public from contract 7 (a Studio whose default is private would otherwise publish privately), and not before", async () => {
+    for (const [v, expected] of [["7.1.0", true], ["7.0.0", true], ["6.4.0", false], ["5.14.0", false], ["5.2.0", false]] as const) {
+      const { client, studio } = setup();
+      studio.contractVersion = v;
+      const item = studio.seed({ content_md: "x" });
+      expect((await client.publish(item.id, undefined, item.revision)).kind, v).toBe("ok");
+      const sent = studio.writes().find((w) => w.path.endsWith("/publish"))?.body as Record<string, unknown>;
+      expect("visibility" in sent, v).toBe(expected);
+      if (expected) expect(sent.visibility).toBe("public");
+    }
+  });
+
+  it("a private item (status private) is refused with a clear message: it is not published, edited or withdrawn from here", async () => {
+    const { client, studio } = setup();
+    studio.contractVersion = "7.1.0";
+    const item = studio.seed({ content_md: "x", status: "private" });
+    const got = await client.getItem(item.id);
+    expect(got).toMatchObject({ kind: "rejected" });
+    expect(got.kind === "rejected" && got.message).toContain("private");
+    expect(studio.writes()).toEqual([]);
   });
 });
