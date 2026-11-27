@@ -10,7 +10,7 @@ import { ItemView, sanitizeHTMLToDom, setIcon, type WorkspaceLeaf } from "obsidi
 import { isUnread, type InboundMention, type ReadingPost } from "../studio/reading";
 import { quickPost } from "./quickMenu";
 import { plainText, renderForeign, type ImageMode } from "./defang"; import { routeOwnLinks } from "./readerOwnLinks";
-import { activeFilters, arrange, isReplyToMine, OWN_SOURCE, readFilter, cardOf, DEFAULT_FILTER, frameable, LENGTH_LABELS, postOfQuote, readingTimeLabel, relativeTime, SORT_LABELS, sourcesOf, type FeedFilter, type FeedLength, type FeedSort } from "./readerFeed";
+import { ownSourceText } from "./readerOwnPost"; import { Trail } from "./readerTrail"; import { activeFilters, arrange, isReplyToMine, OWN_SOURCE, readFilter, cardOf, DEFAULT_FILTER, frameable, LENGTH_LABELS, postOfQuote, readingTimeLabel, relativeTime, SORT_LABELS, sourcesOf, type FeedFilter, type FeedLength, type FeedSort } from "./readerFeed";
 import { type ReaderFont } from "./readerFonts";
 import { ReturnPoint, whenIdle } from "./readerExtras";
 import { AutoRead } from "./readerAutoRead"; import { drawOwnReception } from "./readerReception"; import { drawModeToggle, setReaderMode, switchMode } from "./readerMode";
@@ -88,8 +88,8 @@ export interface ReaderHost extends FollowHost, ShelfHost {
   mentionPost(m: InboundMention, posts: ReadingPost[]): Promise<ReadingPost | null>;
   /** A short excerpt of the owner's own item that was mentioned; null when it cannot be had. */
   ownExcerpt(itemId: string): Promise<string | null>;
-  /** Whether this id is one of the owner's own items (a quote of it is "you"); false when it is not or cannot be told. */
-  isOwnItem(itemId: string): Promise<boolean>;
+  /** One of the owner's own items as a post of the reader (a quote of it is "you"); null when it is not one, or cannot be told. */
+  ownPost(itemId: string): Promise<ReadingPost | null>;
   /** Look an item of another blyg up (through the owner's Studio) and open its page in the browser; false when it cannot be found. */
   openQuotedItem(origin: string, itemId: string): Promise<boolean>;
   /** The owner's own items (the replies chip): `cached` only what this session kept, `ask` that or one request, `fresh` always one request (Refresh). */
@@ -398,7 +398,7 @@ export class BlygReaderView extends ItemView {
     const run = ++this.checking;
     this.busy(+1);
     try {
-      this.loadMine("fresh"); // Refresh is the one moment the owner's own items are read again
+      this.ownSeen.clear(); this.loadMine("fresh"); // Refresh is the one moment the owner's own items are read again
       const known = new Set((this.data?.posts ?? []).map((p) => `${keyOf(p)}/${p.version}`));
       const got = await askAndWait(this.host, { force, noteMarks: (m) => this.noteMarks(m), alive: () => run === this.checking && this.contentEl.isConnected, status: (t) => this.setStatus(t) });
       if (got.kind === "cancelled") return;
@@ -676,7 +676,7 @@ export class BlygReaderView extends ItemView {
   }
 
   /** The posts you came from by following a quote to its source: Back goes to the last of them, and to the list when there is none. */
-  private trail: ReadingPost[] = [];
+  private trail = new Trail(); private postScroll: HTMLElement | null = null; private readonly ownSeen = new Map<string, ReadingPost>(); // your own items met as a quote this session (Refresh forgets them)
   /** Set by the digest when it opens a post here: Back, once the trail is used up, returns to the digest. */
   readonly returnTo = new ReturnPoint();
   /** Set by the digest when it opens a post: Next and Previous walk the Daily's whole order (ui/readerSteps.ts). */
@@ -685,7 +685,7 @@ export class BlygReaderView extends ItemView {
   private closePost(): void {
     const back = this.trail.pop();
     if (back) {
-      this.openPost(back, "back");
+      this.openPost(back.post, "back"); if (this.postScroll) this.postScroll.scrollTop = back.top; // the place in the post you left
       return;
     }
     if (this.returnTo.run()) return;
@@ -702,8 +702,8 @@ export class BlygReaderView extends ItemView {
    */
   openPost(p: ReadingPost, via: "feed" | "quote" | "back" | "step" | "digest" = "feed"): void {
     if (this.shown === null) this.feedScroll = this.scrollEl?.scrollTop ?? 0;
-    if (via === "quote" && this.shown) this.trail.push(this.shown);
-    else if (via === "feed" || via === "step" || via === "digest") this.trail = [];
+    if (via === "quote" && this.shown) this.trail.push(this.shown, this.postScroll?.scrollTop ?? 0);
+    else if (via === "feed" || via === "step" || via === "digest") this.trail.clear();
     if (via === "feed") this.walk.clear();
     if (!this.data) this.useSaved(heldList()); // the place in the feed is known when the header is first drawn: nothing moves when the list arrives
     if (via === "feed" || via === "digest") this.stepKeys = null; // the order to step through is taken from the feed as it is when a post is opened from it
@@ -895,7 +895,7 @@ export class BlygReaderView extends ItemView {
     if (p.own === true) {
       // Your own post: no read mark; the note it came from is one tap away.
       this.button(row, "Open note", async () => {
-        if (!(await this.host.openOwnItem(p.remoteId))) this.setStatus("No note of this vault holds this post.");
+        if (!(await this.host.openOwnItem(p.remoteId))) this.setStatus("No note in this vault holds this item (it was published from elsewhere).");
       }, { title: "Open the note this post was published from" });
     } else {
       // The read mark is the feed card's own: a ring while unread, a green check once read. Save (a bookmark) follows it, then Reply and the steps at the other end.
@@ -1179,7 +1179,7 @@ export class BlygReaderView extends ItemView {
    * the quoted item, which a reader may use as the anchor text of its attribution line and for nothing else (spec 0.4 §10.1).
    *   - a post of a blyg you read: "label · Author · Blog", a tap opens it here (Back returns to this post);
    *   - another blyg's item: "label · host", a tap looks the item up through your Studio and opens its page in the browser;
-   *   - your own item: "You, in your own item".
+   *   - your own item: "You, in your own item", a tap opens it here as your own post (Back returns; "Open note" there opens the vault note).
    * Text only, set as text.
    */
   private nameQuoteSources(body: HTMLElement, p: ReadingPost): void {
@@ -1193,20 +1193,20 @@ export class BlygReaderView extends ItemView {
         const line = quote.createDiv({ cls: "blyg-quote-source is-link", text, attr: { role: "link", tabindex: "0", title } });
         this.addIcon(line, "arrow-up-right");
         line.addEventListener("click", open);
-        line.addEventListener("keydown", (e) => {
-          if (e.key === "Enter") open();
-        });
+        line.addEventListener("keydown", (e) => { if (e.key === "Enter") open(); });
       };
       if (from && !(from.subscriptionId === p.subscriptionId && from.remoteId === p.remoteId)) {
         const who = [from.authorName, from.subscriptionTitle].filter((x): x is string => !!x && x !== "").join(" · ");
-        link(`${[label, who].filter((x) => x !== "").join(" · ") || "Open the post"}`, "Open this post here", () => this.openPost(from, "quote"));
+        link(from.own === true ? ownSourceText(label) : `${[label, who].filter((x) => x !== "").join(" · ") || "Open the post"}`, "Open this post here (Back returns to this post)", () => this.openPost(from, "quote"));
         continue;
       }
       if (id === "") continue;
-      void this.host.isOwnItem(id).then((own) => {
+      const seen = this.ownSeen.get(id); const ownLink = (own: ReadingPost): void => link(ownSourceText(label), "Open your own item here (Back returns to this post)", () => this.openPost(own, "quote"));
+      if (seen) { ownLink(seen); continue; } // known already: the line is there with the text, so nothing moves under a place Back restores
+      void this.host.ownPost(id).then((own) => {
         if (!quote.isConnected) return;
         if (own) {
-          quote.createDiv({ cls: "blyg-quote-source", text: label ? `You, in your own item · ${label}` : "You, in your own item" });
+          this.ownSeen.set(id, own); ownLink(own);
         } else if (origin) {
           let host = "";
           try {
@@ -1226,7 +1226,7 @@ export class BlygReaderView extends ItemView {
 
   private drawPostBody(body: HTMLElement, p: ReadingPost): void {
     const scroll = body.createDiv({ cls: "blyg-reader-scroll blyg-reader-surface" });
-    const col = scroll.createDiv({ cls: "blyg-reader-column" }); this.postColumn = col;
+    const col = scroll.createDiv({ cls: "blyg-reader-column" }); this.postColumn = col; this.postScroll = scroll;
     this.drawText(col, p);
     this.drawReplies(p);
     if (this.host.receptionOn()) drawOwnReception(col, p, { mentions: this.data?.mentions ?? [], post: (m) => this.mentionInfo.get(m.id)?.post ?? postOfMention(this.data?.posts ?? [], m), load: (m) => this.loadMention(m), open: (m) => void this.openMention(m) });

@@ -50,7 +50,7 @@ import { replyPreviewExtension } from "./editor/replyPreviewExtension";
 import { previewOfPost, resolvePreview, type PreviewResult } from "./studio/previewResolver";
 import { drawPreview, type PreviewDeps } from "./ui/replyPreview";
 import { limiter, postFromPeek, postOfMention } from "./ui/readerMentions";
-import { parseReaderCache, readerCacheOf } from "./ui/readerCache";
+import { parseReaderCache, readerCacheOf } from "./ui/readerCache"; import { ownPostOfItem } from "./ui/readerOwnPost";
 import { registerFeatureEntries } from "./features/register"; import { createFeatures } from "./features/registry";
 import { reopenInLastMode } from "./ui/readerMode"; import { BLYG_READER_VIEW, BlygReaderView, excerptOf, type ReaderHost } from "./ui/ReaderView"; import { createMarginalia } from "./marginalia/wire";
 import { createReaderService } from "./app/readerService"; import { createShelf } from "./app/shelfService"; import { createReaderWrites } from "./app/readerWrites";
@@ -876,7 +876,7 @@ export default class BlygPlugin extends Plugin {
     if (where === "tab" && (await reopenInLastMode())) return; // the Digest was the last mode: "Open reader" opens it
     const inSidebar = (leaf: WorkspaceLeaf): boolean => (leaf.getRoot() as unknown) === (workspace.rightSplit as unknown);
     const existing = workspace.getLeavesOfType(BLYG_READER_VIEW).find((leaf) => inSidebar(leaf) === (where === "sidebar"));
-    if (existing) return void (await workspace.revealLeaf(existing));
+    if (existing) return void (await workspace.revealLeaf(existing).then(() => workspace.setActiveLeaf(existing, { focus: true }))); // forward AND active: the reader, not the note you came from
     const leaf = where === "sidebar" ? workspace.getRightLeaf(false) : workspace.getLeaf("tab");
     if (!leaf) return;
     await leaf.setViewState({ type: BLYG_READER_VIEW, active: true });
@@ -1107,7 +1107,8 @@ export default class BlygPlugin extends Plugin {
       openOwnItem: async (itemId) => {
         const file = this.app.vault.getMarkdownFiles().find((f) => this.app.metadataCache.getFileCache(f)?.frontmatter?.blyg_id === itemId);
         if (!file) return false;
-        await this.app.workspace.getLeaf("tab").openFile(file);
+        const open = this.app.workspace.getLeavesOfType("markdown").find((l) => (l.view as { file?: { path: string } }).file?.path === file.path); // the leaf that holds it already: no second tab
+        if (open) { await this.app.workspace.revealLeaf(open); this.app.workspace.setActiveLeaf(open, { focus: true }); } else await this.app.workspace.getLeaf("tab").openFile(file);
         return true;
       },
       openQuotedItem: async (origin, itemId) => {
@@ -1118,10 +1119,9 @@ export default class BlygPlugin extends Plugin {
         window.open(got.value.url, "_blank");
         return true;
       },
-      isOwnItem: async (itemId) => {
-        const built = buildStudio(this.env());
-        if (!built.ok) return false;
-        return (await built.studio.client.getItem(itemId)).kind === "ok";
+      ownPost: async (itemId) => {
+        const built = buildStudio(this.env()); const got = built.ok ? await built.studio.client.getItem(itemId) : null;
+        return got?.kind === "ok" ? ownPostOfItem(got.value) : null;
       },
       ownExcerpt: async (itemId) => {
         // The owner's items were listed already (the reader asks for them when it opens), working copy included: no request per mention.
