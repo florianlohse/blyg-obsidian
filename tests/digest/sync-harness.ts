@@ -4,7 +4,6 @@ import { Editions } from "../../src/digest/editionHost";
 import { History } from "../../src/digest/history";
 import { emptyStore, type LlmDeps, type LlmStore } from "../../src/digest/llm";
 import { editorIdFor, withEditor } from "../../src/digest/editorRun";
-import { editorFor, NEUTRAL } from "../../src/digest/editors";
 import { sharedStore, writeShared } from "../../src/digest/sync/aiWrite";
 import { SyncedDigest, type LegacyPorts, type SyncFs } from "../../src/digest/sync/store";
 import type { RawRequest, RawResponse } from "../../src/platform/http";
@@ -106,7 +105,7 @@ export interface Device {
 }
 
 /** `_label`: kept so the many callers read as before; devices have no names any more (DG20). */
-export function device(id: string, _label: string, prov: Provider, start: number, opts: { data?: DataJson; legacy?: LegacyPorts; time?: string; editor?: string; ceiling?: number; settle?: () => Promise<void>; hold?: boolean } = {}): Device {
+export function device(id: string, _label: string, prov: Provider, start: number, opts: { data?: DataJson; legacy?: LegacyPorts; time?: string; ceiling?: number; settle?: () => Promise<void>; hold?: boolean } = {}): Device {
   const disk = new Disk();
   let now = start;
   const local = { store: emptyStore() };
@@ -115,7 +114,7 @@ export function device(id: string, _label: string, prov: Provider, start: number
   const history = new History({ read: async () => null, write: async () => undefined, sync: { list: () => sync.history(), put: (r) => sync.putHistory(r) } });
   const shared = sharedStore(sync, editions, { load: async () => structuredClone(local.store), save: async (s) => void (local.store = structuredClone(s)) });
   const llm: LlmDeps = {
-    settings: () => ({ endpoint: "https://api.example.com/", model: "test-model", ...(opts.editor ? { editor: opts.editor } : {}) }),
+    settings: () => ({ endpoint: "https://api.example.com/", model: "test-model" }),
     transport: prov.transport,
     getKey: () => "sk-test-0123456789abcdefghijklmnop",
     confirm: async () => true,
@@ -128,7 +127,7 @@ export function device(id: string, _label: string, prov: Provider, start: number
   return {
     id, disk, sync, editions, history, llm, local,
     setNow: (t) => void (now = t),
-    write: (c, singles = [], o) => writeShared({ llm, settings, editions, history, sync, now: () => now, settle: opts.settle ?? (async () => undefined), voiceOf: (rec, resort) => (resort && rec ? (editorFor(opts.editor, rec.id)?.id ?? NEUTRAL) : editorIdFor(rec, opts.editor)), withVoice: withEditor }, c, singles, o),
+    write: (c, singles = [], o) => writeShared({ llm, settings, editions, history, sync, now: () => now, settle: opts.settle ?? (async () => undefined), voiceOf: (rec) => editorIdFor(rec), withVoice: withEditor }, c, singles, o),
   };
 }
 

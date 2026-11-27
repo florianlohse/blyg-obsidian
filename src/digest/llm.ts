@@ -17,7 +17,7 @@ import { estimateCost, formatCost } from "./prices";
 import { authorOf } from "./storyMeta";
 import { cutAtBoundary } from "./truncate";
 import { buildSectionsRequest, parseSectionsCache, singleOf, type Section, type SectionsEntry } from "./sections";
-import { EDITORS_VERSION, editorById, NEUTRAL, voiceLine } from "./editors";
+import { NEUTRAL, VOICE_VERSION, voiceId, voiceLine } from "./editors";
 import { cachedPass, estimatePass, runSectionPass, sectionsPrecheck, type ExistingSections, type PassEstimate, type PassSpec } from "./sectionPass";
 
 /** Raise when the prompt or the answer format changes: old cached results no longer apply. */
@@ -190,10 +190,10 @@ export interface PlanItem {
   headline: string;
 }
 
-/** The key of one story's text: its words, the prompt version, the model and (not neutral) the editor and the cast's version, so another voice never shows the old text. */
+/** The key of one story's text: its words, the prompt version, the model and (not neutral) the voice id and its version, so another voice never shows the old text. */
 export function cacheKeyOf(inner: string, model: string, editor: string = NEUTRAL): string {
-  const id = editorById(editor)?.id;
-  return `${hashText(inner)}|${PROMPT_VERSION}|${model}${id ? `|${id}@${EDITORS_VERSION}` : ""}`;
+  const id = voiceId(editor);
+  return `${hashText(inner)}|${PROMPT_VERSION}|${model}${id ? `|${id}@${VOICE_VERSION}` : ""}`;
 }
 
 /** The clusters that may be sent, in order, each with the text that would go. Capped by MAX_GROUPS (the front page) and MAX_POSTS_PER_CLUSTER. */
@@ -265,7 +265,7 @@ export function buildRequest(items: readonly PlanItem[], settings: DigestAiSetti
     kept.push(it);
     content += block;
   }
-  const system = SYSTEM_PROMPT + voiceLine(editorById(settings.editor));
+  const system = SYSTEM_PROMPT + voiceLine(settings.editor);
   const body = JSON.stringify({
     model: settings.model.trim(),
     max_tokens: MAX_OUTPUT_TOKENS,

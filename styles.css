@@ -1027,7 +1027,6 @@ button.blyg-story-more:active { color: var(--text-faint); text-decoration: under
 button.blyg-storymark { height: auto; min-height: 32px; padding: var(--size-4-1) 0; border: 0; border-radius: 0; background: none; box-shadow: none; color: var(--text-muted); font: inherit; font-size: var(--font-ui-smaller); font-style: italic; letter-spacing: 0.02em; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 button.blyg-storymark:active { color: var(--text-faint); text-decoration: underline; }
 /* 4. The Daily's top line (small caps, muted) and the menu's rows (Menu 1: label at the left, a muted value at the right, a fixed slot for the ›). */
-.blyg-daily-priceline { color: var(--text-muted); font-variant: small-caps; letter-spacing: 0.1em; font-size: var(--font-ui-small); margin: var(--size-4-1) 0 var(--size-4-2); }
 .blyg-menu, .blyg-daily-panel { font-family: var(--font-interface); }
 .blyg-reader-menu { margin-top: var(--size-4-1); border-top: 1px solid var(--background-modifier-border); }
 .blyg-daily-panel .blyg-menurow:first-of-type { border-top: 1px solid var(--background-modifier-border); }
