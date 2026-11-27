@@ -33,7 +33,7 @@ becomes the release notes. Write entries for people who use the plugin, not for 
 
 ### Still experimental
 
-Off until you switch them on under Settings → Experimental features: **Send passage to note** (with drafting selected words as a fragment or thread), **New items from a thread** (and "Publish this paragraph"), and **Open a shared address**. They keep improving; this release does not promote them.
+Off until you switch them on under Settings → Experimental features: **Send passage to note** (with drafting selected words as a fragment or thread), **New items from a thread** (the Studio's `![[+ passage]]` and `[[+ idea]]`), and **Open a shared address**. They keep improving; this release does not promote them.
 
 ### Good to know
 
