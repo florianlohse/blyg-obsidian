@@ -73,7 +73,7 @@ await runScenario({ data }, async (s) => {
     f.regs.order = reg(2, ["Garden", "Town"]);
     f.regs["about/Garden"] = reg(about === "" ? 2 : 5, about || "Soil and seeds");
     f.regs.auto = reg(3, {});
-    // DG19: what two devices spent on this edition (their `usage/<device>` registers add up) and the editor whose voice it is in: the top line reads "$0.06 · Editor: The Setter"
+    // DG19: what two devices spent on this edition (their `usage/<device>` registers add up) and the editor whose voice it is in: the top line reads "Editor: The Setter" (the amount moved to the menu: daily-sync.mjs checks it from cost registers)
     f.regs.editor = reg(3, "crossword-setter");
     f.regs[`usage/${FOREIGN}`] = reg(4, { tokens: 14200, cost: 0.0412 });
     f.regs["usage/e2esecond"] = { c: 4, d: "e2esecond", v: { tokens: 9000, cost: 0.02 } };
