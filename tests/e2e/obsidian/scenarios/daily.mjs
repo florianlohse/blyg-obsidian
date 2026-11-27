@@ -500,7 +500,8 @@ await runScenario({ data }, async (s) => {
     await startWith(posts);
     await page.waitForSelector(".blyg-reader-card", { timeout: 30000 }).catch(async () => { console.error("cache:", await page.evaluate(() => window.app.vault.adapter.read(".obsidian/plugins/blyg/reader-cache.json").then((t) => t.slice(0, 200))), "base", base, "studio", await page.evaluate(() => window.app.plugins.plugins.blyg.settings.studio?.baseUrl)); console.error("view data:", await page.evaluate(() => { const v = window.app.workspace.getLeavesOfType("blyg-reader")[0]?.view; return JSON.stringify({ posts: v?.data?.posts?.length, filter: v?.filter, tab: v?.tab, status: v?.status }); })); console.error("reader shows:", await page.evaluate(() => document.querySelector(".view-content.blyg-reader")?.innerText?.slice(0, 400) ?? "(no reader)")); throw new Error("the feed shows no cards"); });
     const slotFeed = await box(".blyg-reader-header .blyg-modeslot");
-    const hamb = await box(".blyg-reader-header .blyg-reader-menubtn"); // (DG19: the feed's menu button is the last item of the first row, after the toggle)
+    const hamb = await box(".blyg-reader-header .blyg-reader-menubtn");
+    const fRefresh = await box(".blyg-reader-header .blyg-reader-refresh"); // (DG19: the feed's menu button is the last item of the first row, after the toggle)
     await page.evaluate(() => [...document.querySelectorAll(".blyg-reader-header .blyg-reader-btn")].find((b) => /^Mentions/.test(b.textContent ?? ""))?.click());
     await wait(500);
     const slotMentions = await box(".blyg-reader-header .blyg-modeslot");
@@ -522,6 +523,11 @@ await runScenario({ data }, async (s) => {
     const mid = (r) => (r ? (r.t + r.b) / 2 : null);
     const dMenu = await box(".blyg-daily-bar .blyg-daily-menu"), dRefresh = await box(".blyg-daily-bar .blyg-daily-refresh");
     check(dMenu && dRefresh && slotDigest && Math.abs(mid(dMenu) - mid(slotDigest)) <= 1.5 && Math.abs(mid(dRefresh) - mid(slotDigest)) <= 1.5, `${label}: in the digest's header the menu icon (${mid(dMenu)}), the Refresh icon (${mid(dRefresh)}) and the toggle (${mid(slotDigest)}) are on one line`);
+    // HX1: the same order in both views, left to right: menu, Refresh, toggle; menu and Refresh are 44 px targets; the first row does not jump when the mode is switched.
+    check(hamb && fRefresh && slotFeed && hamb.r <= fRefresh.l + 1 && fRefresh.r <= slotFeed.l + 1, `${label}: feed header order is menu, Refresh, toggle (${JSON.stringify([hamb?.l, fRefresh?.l, slotFeed?.l])})`);
+    check(dMenu && dRefresh && slotDigest && dMenu.r <= dRefresh.l + 1 && dRefresh.r <= slotDigest.l + 1, `${label}: digest header order is menu, Refresh, toggle (${JSON.stringify([dMenu?.l, dRefresh?.l, slotDigest?.l])})`);
+    check([hamb, fRefresh, dMenu, dRefresh].every((r) => r && r.r - r.l >= 43.5 && r.b - r.t >= 43.5), `${label}: the menu and Refresh icons are 44 px targets in both headers (${JSON.stringify([hamb, fRefresh, dMenu, dRefresh].map((r) => r && [Math.round(r.r - r.l), Math.round(r.b - r.t)]))})`);
+    check(hamb && dMenu && fRefresh && dRefresh && Math.abs(hamb.t - dMenu.t) <= 3 && Math.abs(fRefresh.t - dRefresh.t) <= 3, `${label}: the first row does not jump between Feed and Digest (menu top ${hamb?.t} / ${dMenu?.t}, Refresh top ${fRefresh?.t} / ${dRefresh?.t})`);
     check(hamb && slotFeed && Math.abs(mid(hamb) - mid(slotFeed)) <= 1.5, `${label}: in the feed's header the menu icon (${mid(hamb)}) and the toggle (${mid(slotFeed)}) are on one line`);
     // (the emulated phone layout draws a 12 px scrollbar inside the digest's page; a device draws none: the right edge is read without it)
     const bar = await page.evaluate(() => { const v = document.querySelector(".view-content.blyg-daily"); return v ? v.offsetWidth - v.clientWidth : 0; });

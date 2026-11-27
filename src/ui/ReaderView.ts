@@ -29,6 +29,7 @@ import { hostOf, limiter, mentionBadge, postOfMention, visibleMentions } from ".
 import { drawDigestChip } from "./readerDigestChip";
 import { drawFollowedButton, drawFollowNote, isUnfollowedPost, selectionNotQuoted, unfollowedReplyTitle, type FollowHost } from "./readerFollow";
 import { ShelfControl, type ShelfHost } from "./readerShelf";
+import { drawSaving } from "./savingLine";
 import { markedMoment } from "./readerMoment";
 
 export const BLYG_READER_VIEW = "blyg-reader";
@@ -185,7 +186,7 @@ export class BlygReaderView extends ItemView {
   /** Read-state changes of one post go to the Studio one after the other, in the order they were made. */
   private readonly readChain = new Map<string, Promise<void>>();
   /** Save for later (readerShelf.ts): the Save button, the saved mark and the Saved view. */
-  private readonly shelfUi = new ShelfControl(() => this.host.shelf, { status: (l) => this.setStatus(l), refresh: (p) => this.refreshPost(p), body: () => void (this.shown === null && this.drawBody()), posts: () => this.data?.posts ?? [] });
+  private readonly shelfUi = new ShelfControl(() => this.host.shelf, { status: (l) => this.setStatus(l), saving: () => { if (this.statusEl?.isConnected) { this.statusEl.empty(); drawSaving(this.statusEl); } }, refresh: (p) => this.refreshPost(p), body: () => void (this.shown === null && this.drawBody()), posts: () => this.data?.posts ?? [] });
 
   constructor(leaf: WorkspaceLeaf, private readonly host: ReaderHost) {
     super(leaf);
@@ -791,19 +792,18 @@ export class BlygReaderView extends ItemView {
       }, { active: this.tab === id });
     }
     row.createDiv({ cls: "blyg-reader-spacer" });
-    drawModeToggle(row, "feed", (m) => switchMode(this.leaf, m)); // the toggle is always the last thing of this row: one fixed slot, whatever else is drawn
     const canFilter = this.tab === "stream" && this.data !== null && this.data.posts.length > 0;
     const menu: FeedMenu = { state: this.menu, repaint: () => this.drawHeader(), sort: canFilter ? { value: sortValue(activeFilters(this.filter), SORT_LABELS[this.filter.sort]), run: () => void (this.filtersOpen = !this.filtersOpen) } : null, sources: () => this.host.openFollowed(), ...(this.host.openSettings ? { settings: () => this.host.openSettings?.() } : {}) };
-    drawMenuButton(row, menu); // the menu is the last thing of the first row, after the toggle (the Daily's header has it at the same edge)
-    // One item: what the last check found (or what is going on) and the button that checks again, in a single bar under the tabs.
-    const bar = h.createDiv({ cls: "blyg-reader-statusrow" });
-    this.statusEl = bar.createDiv({ cls: "blyg-reader-status", text: this.status });
-    const refresh = this.button(bar, "Refresh", () => {
-      void this.checkForNew(true);
-    }, { cls: "blyg-reader-refresh", title: "Look for new posts" });
+    // The right end of the first row is the same in the feed and in the Daily (ui/DigestBar.ts): menu, Refresh, then the Feed | Digest toggle. Nothing else is drawn after the toggle: it keeps one fixed slot.
+    drawMenuButton(row, menu);
+    const refresh = this.button(row, "Refresh", () => void this.checkForNew(true), { cls: "blyg-reader-refresh", title: "Look for new posts" });
     this.addIcon(refresh, "refresh-cw");
     refresh.disabled = this.busyCount > 0;
     this.refreshEl = refresh;
+    drawModeToggle(row, "feed", (m) => switchMode(this.leaf, m));
+    // One item under the tabs: what the last check found (or what is going on), and the plugin's version.
+    const bar = h.createDiv({ cls: "blyg-reader-statusrow" });
+    this.statusEl = bar.createDiv({ cls: "blyg-reader-status", text: this.status });
     drawFollowedButton(bar, this.host.version);
     drawMenuPanel(h, menu);
     if (!canFilter || !this.filtersOpen || !this.data) return;

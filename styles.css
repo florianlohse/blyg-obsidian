@@ -543,10 +543,10 @@
 .blyg-reader-header .blyg-reader-bar { flex-wrap: nowrap; }
 .blyg-reader-header .blyg-reader-bar .blyg-reader-btn { flex: 0 1 auto; white-space: nowrap; padding-inline: calc(var(--blyg-btn-h) * 0.4); min-width: 0; }
 .blyg-reader-statusrow { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: var(--size-4-2); margin-top: var(--size-2-1); }
-.blyg-reader-statusrow .blyg-reader-refresh { grid-column: 2; grid-row: 1; justify-self: center; margin: 0; font-size: 0; background: transparent; border: 0; box-shadow: none; color: var(--text-accent); }
-.blyg-reader .blyg-reader-statusrow .blyg-reader-refresh { padding-inline: calc(var(--blyg-btn-h) * 0.38); font-size: 0; }
-.blyg-reader .blyg-reader-statusrow .blyg-reader-refresh .blyg-reader-icon { font-size: var(--font-ui-medium); }
-.blyg-reader-statusrow .blyg-reader-refresh:hover { background: var(--background-modifier-hover); }
+/* The Refresh icon lives in the first row, between the menu and the toggle (the same place as in the Daily's bar): a 44 px target, drawn as the bare icon. */
+.blyg-reader .blyg-reader-header .blyg-reader-bar:not(.blyg-reader-bar-main):not(.blyg-reader-bar-thumb) .blyg-reader-btn.blyg-reader-refresh { flex: none; margin: 0; width: 44px; min-width: 44px; height: 44px; min-height: 44px; padding: 0; font-size: 0; background: transparent; border: 0; box-shadow: none; color: var(--text-accent); }
+.blyg-reader .blyg-reader-header .blyg-reader-refresh .blyg-reader-icon { font-size: var(--font-ui-medium); }
+.blyg-reader .blyg-reader-header .blyg-reader-refresh:hover { background: var(--background-modifier-hover); }
 .blyg-reader-header.is-busy .blyg-reader-refresh .blyg-reader-icon svg { animation: blyg-spin 0.9s linear infinite; }
 .blyg-reader-statusrow .blyg-reader-status { grid-column: 1; grid-row: 1; min-width: 0; padding-top: 0; min-height: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .blyg-reader-statusrow .blyg-reader-status.is-busy::before { display: none; }
@@ -967,6 +967,13 @@ button.blyg-daily-link.blyg-correction-note { font-size: inherit; }
 /* Read posts stay where they are, in a muted colour (never opacity or a strike-through, so the text keeps its contrast and stays tappable); a story whose posts are all read has its headline and summary muted too. The hover colour below still wins. */
 .blyg-story.blyg-is-read > button.blyg-story-headline, .blyg-story.blyg-is-read > button.blyg-story-summary,
 .blyg-daily-member.blyg-is-read button.blyg-daily-who, .blyg-story-mixed.blyg-is-read button.blyg-story-line { color: var(--text-muted); }
+/* HX2: read is clearly read. The text is dimmed further (a 66 % mix of the text colour into the page: 5.4:1 in Obsidian's light theme and 6.0:1 in its dark one, so still above WCAG AA's 4.5:1) and a small filled circle with a check stands before a read story's headline and a read lone post's line; the mark of a post row is a filled disc, too. Unread text keeps the full colour. */
+body { --blyg-read-text: var(--text-muted); }
+@supports (color: color-mix(in srgb, red 50%, blue)) { body { --blyg-read-text: color-mix(in srgb, var(--text-normal) 66%, var(--background-primary)); } }
+.blyg-story.blyg-is-read > button.blyg-story-headline, .blyg-story.blyg-is-read > button.blyg-story-summary,
+.blyg-daily-member.blyg-is-read button.blyg-daily-who, .blyg-story-mixed.blyg-is-read button.blyg-story-line { color: var(--blyg-read-text); }
+.blyg-story.blyg-is-read > button.blyg-story-headline::before, .blyg-story-mixed.blyg-is-read button.blyg-story-line::before { content: "\2713"; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: 1.4rem; height: 1.4rem; margin-right: 0.45rem; border-radius: 50%; vertical-align: 0.12em; background: var(--interactive-accent); color: var(--text-on-accent); font-size: 0.8rem; font-weight: var(--font-semibold); font-style: normal; line-height: 1; letter-spacing: 0; }
+button.blyg-mark.is-read svg { fill: var(--interactive-accent); stroke: var(--text-on-accent); }
 /* DG19: a story never takes the accent colour, open or pressed. A press is shown in type only: underlined, in lighter text; no tap highlight. */
 .blyg-story button { -webkit-tap-highlight-color: transparent; }
 .blyg-story > button.blyg-story-headline:active, .blyg-story > button.blyg-story-summary:active,
@@ -1042,6 +1049,12 @@ body button.blyg-menurow[disabled] { opacity: 0.6; cursor: default; }
 .blyg-menurow-go { flex: none; width: 1em; text-align: right; color: var(--text-faint); }
 /* 5. The feed header's hamburger: the last item of the first row, at the same edge as in the Daily. */
 .blyg-reader-header .blyg-reader-menubtn { flex: none; margin-left: 0; margin-block: 0; align-self: center; }
+/* The menu and Refresh icons are 44 px targets in the feed's header and in the Daily's bar, at every width. */
+.blyg-reader-header button.blyg-reader-menubtn { width: 44px; min-width: 44px; height: 44px; min-height: 44px; padding-inline: 0; }
+.blyg-daily-barrow { --blyg-ctl-h: 44px; }
+.blyg-daily-barrow > button.blyg-daily-menu, .blyg-daily-barrow > button.blyg-daily-refresh { width: 44px; min-width: 44px; }
+.blyg-reader-header .blyg-reader-bar:not(.blyg-reader-bar-main):not(.blyg-reader-bar-thumb) { min-height: 44px; }
+.blyg-daily-bartitle .blyg-daily-date { overflow-wrap: anywhere; }
 /* 6. Loading: a thin spinner centred under the header; reduced motion shows the still ring. */
 .blyg-reader-loading { display: flex; justify-content: center; padding: var(--size-4-12, 48px) 0; }
 .blyg-reader-spinner { width: 22px; height: 22px; box-sizing: border-box; border: 2px solid var(--text-faint); border-right-color: transparent; border-radius: 50%; animation: blyg-spin 0.9s linear infinite; }
@@ -1055,7 +1068,6 @@ body button.blyg-menurow[disabled] { opacity: 0.6; cursor: default; }
 }
 @media (max-width: 340px) {
   .blyg-reader .blyg-reader-header .blyg-reader-bar:not(.blyg-reader-bar-main):not(.blyg-reader-bar-thumb) .blyg-reader-btn { font-size: var(--font-ui-smaller); padding-inline: 6px; }
-  .blyg-reader-header button.blyg-reader-menubtn { width: 28px; min-width: 28px; padding-inline: 0; }
 }
 
 /* HK3 Marginalia: the Reception section at the end of a note (editor block widget). */
@@ -1146,3 +1158,13 @@ body button.blyg-daily-back:active { text-decoration: underline; }
 /* The Daily menu: the Digest time window's input fills the window; the billing line is a row that only tells (no pressed look, no pointer). */
 .blyg-time-input { display: block; box-sizing: border-box; width: 100%; max-width: 100%; margin: var(--size-4-3) 0; font-size: var(--font-ui-medium); }
 body div.blyg-menu-billing { cursor: default; }
+
+/* HX3: "Saving bookmark…" while a shelf write is in flight: a small muted line, the three dots blink one after the other; still dots with reduced motion. In the open post it takes the room right of the bookmark (the spacer's), cut with an ellipsis, and below 360 px says "Saving…". */
+.blyg-saving { display: inline-flex; align-items: baseline; min-width: 0; color: var(--text-muted); font-size: var(--font-ui-smaller); font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.blyg-reader-bar-thumb > .blyg-saving { flex: 1 1 0; }
+.blyg-saving-dot { animation: blyg-saving-dot 1.2s infinite both; }
+.blyg-saving-dot:nth-child(2) { animation-delay: 0.2s; }
+.blyg-saving-dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes blyg-saving-dot { 0%, 80%, 100% { opacity: 0.2; } 40% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .blyg-saving-dot { animation: none; opacity: 1; } }
+@media (max-width: 360px) { .blyg-saving-obj { display: none; } }
