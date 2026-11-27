@@ -27,7 +27,6 @@ import type { PastEdition } from "../digest/history";
 import { CAPPED_NOTE } from "../digest/history";
 import { drawPast, type EditionEntry } from "./DigestPast";
 import { drawDigestMenu, type DigestMenu } from "./digestMenu";
-import { drawPriceLine, priceLineText } from "./digestPriceLine";
 import { drawStoryMark, keepSavedMark, storyReadLook } from "./digestStory";
 import type { ShelfFacade } from "../app/shelfService";
 import type { ReaderFont } from "./readerFonts";
@@ -101,8 +100,6 @@ export class BlygDailyView extends ItemView {
   private busy = false;
   private past: PastEdition[] = [];
   private pastCapped = false;
-  /** The editor that wrote today's edition (absent: neutral). */
-  private editorId: string | undefined;
   private viewing: number | null = null;
   private byId = new Map<string, ReadingPost>();
   /** The section boxes drawn now, by name (the table of contents and the reader's chip scroll to them), and the section a chip asked for. */
@@ -329,7 +326,6 @@ export class BlygDailyView extends ItemView {
     const model = buildDaily(list.posts, list.mentions, win.since, win.until, win.grouped, win.id);
     this.checking = win.checking === true;
     this.syncText = this.checking ? ["Checking for your other devices…"] : ((await this.host.syncLines?.(win.id ?? null).catch(() => [])) ?? []);
-    this.editorId = win.editor;
     const ids = new Set([...model.front.flatMap((c) => c.posts.map((p) => p.remoteId)), ...model.mixed.map((p) => p.remoteId)]);
     this.added = mark && this.shown ? new Set([...ids].filter((id) => !this.shown?.has(id))) : new Set();
     this.shown = ids;
@@ -436,9 +432,6 @@ export class BlygDailyView extends ItemView {
       back.addEventListener("click", () => ((this.viewing = null), this.render(model)));
     }
     if (this.syncText.length > 0) for (const t of this.syncText) root.createDiv({ cls: "blyg-daily-meta blyg-daily-sync", text: t });
-    // The top line: who edited it (a past edition: its editor); nothing when the AI wrote nothing. (The cost is not here any more: the menu's billing line has the month's.)
-    const wrote = this.host.ai?.enabled() === true && this.written.some(Boolean);
-    drawPriceLine(root, this.viewing !== null ? priceLineText(this.past.find((e) => e.id === this.viewing)?.editor) : wrote ? priceLineText(this.editorId) : null);
     if (pastRec) {
       this.markStatus = null;
       if (this.pastCapped) root.createDiv({ cls: "blyg-daily-meta", text: CAPPED_NOTE });

@@ -53,8 +53,8 @@ export interface WriteEnv {
   history: History;
   sync: SyncedDigest;
   now: () => number;
-  /** The editor's id for this write (src/digest/editorRun.ts): the edition keeps its editor; a manual re-sort takes the setting's pick again. */
-  voiceOf: (rec: EditionRec | null, resort: boolean) => string;
+  /** The voice id for this write (src/digest/editorRun.ts): the edition keeps the voice that wrote it; an edition with no texts yet gets the one voice. */
+  voiceOf: (rec: EditionRec | null) => string;
   /** The LLM deps speaking in that voice. */
   withVoice: (llm: LlmDeps, voice: string) => LlmDeps;
   /** The short wait after this device has put its "writing" marker and before it reads the files again (default: `SETTLE_MS` of real time). Tests pass their own. */
@@ -69,7 +69,7 @@ export async function writeShared(env: WriteEnv, c: readonly Cluster[], singles:
   const { llm, editions, history, sync } = env;
   const rec = await editions.current(); // reads the synced files again
   const busy = rec ? sync.lock(rec.id) : null;
-  const voice = env.voiceOf(rec, opts?.resort === true);
+  const voice = env.voiceOf(rec);
   if (rec && busy) return { written: await cachedStories(env.withVoice(llm, voice), rec, c), status: "cancelled", note: `Another device is writing this digest right now. Its text will appear here when it has been synced.` };
   let yielded: { label: string } | null = null;
   if (rec) {
