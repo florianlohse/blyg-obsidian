@@ -9,7 +9,6 @@ import type { StudioClient } from "../studio/client";
 import { studioTextHash } from "../studio/media";
 import { M } from "./messages";
 import { logError } from "./shared";
-import type { PendingBlock } from "./studioBlocks";
 import { refused, type Outcome, type PublishDeps, type TangleRow } from "./types";
 
 const words = (text: string): string => {
@@ -20,16 +19,14 @@ const words = (text: string): string => {
 /** The rows of the confirmation window, in source order. */
 export const tangleRows = (parts: readonly TanglePart[]): TangleRow[] => parts.map((p) => ({ kind: p.kind, line: p.line, words: words(p.text) }));
 
-/** The `studio` part of the window and the lines of its list of changes. Paragraphs of notes come first (the plugin publishes them), then the Studio's own new items. */
-export function tangleWindow(parts: readonly TanglePart[], blocks: readonly PendingBlock[] = []): { tangle: { rows: TangleRow[]; max: number }; changes: string[] } {
-  const n = parts.length + blocks.length;
-  const blockRows: TangleRow[] = blocks.map((b) => ({ kind: "block", line: b.line, words: words(b.text), block: { host: b.hostName, id: b.blockId } }));
+/** The `studio` part of the window and the lines of its list of changes. */
+export function tangleWindow(parts: readonly TanglePart[]): { tangle: { rows: TangleRow[]; max: number }; changes: string[] } {
+  const n = parts.length;
   return {
-    tangle: { rows: [...blockRows, ...tangleRows(parts)], max: TANGLE_MAX },
+    tangle: { rows: tangleRows(parts), max: TANGLE_MAX },
     changes: [
       `${n} new item${n === 1 ? "" : "s"} will be made and published first, then the thread.`,
-      ...(blocks.length > 0 ? [`Each paragraph gets a block id (^…) if it has none and is marked in its note; the paragraph stays where it is.`] : []),
-      ...(parts.length > 0 ? [`Your note changes after that: each span or placeholder becomes a link to its item, so it is never made twice.`] : []),
+      `Your note changes after that: each span or placeholder becomes a link to its item, so it is never made twice.`,
     ],
   };
 }

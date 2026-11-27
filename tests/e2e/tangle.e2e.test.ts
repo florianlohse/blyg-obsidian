@@ -9,7 +9,6 @@ import { createStudioClient } from "../../src/studio/client";
 import { createStudioHttp } from "../../src/studio/http";
 import { frontmatterOf } from "../world";
 import { idleTimers } from "../helpers";
-import { publishParagraph } from "../../src/publish/studioBlocks";
 import { makeStudioWorld, tapStudio } from "../studio/world";
 
 const URL_ = process.env.STUDIO_E2E_URL;
@@ -80,36 +79,5 @@ run("tangling against a real Studio", () => {
     expect(["noop", "published"]).toContain(again.status);
     expect(w.previews.slice(1).every((p) => p.studio?.tangle === undefined)).toBe(true);
     expect((w.local.get(NOTE) ?? "").match(/\[\[[0-9a-hjkmnp-tv-z]{26}/g)).toHaveLength(2);
-  }, 120_000);
-
-  it("publishes a paragraph of a note, then a thread that embeds it and one that is not published yet: items first, thread last", async () => {
-    const DAILY = "studio/Daily.md";
-    const THREAD = "studio/Reading.md";
-    const stamp = Date.now().toString(36);
-    const p1 = `A paragraph of mine ${stamp} that becomes an item of its own.`;
-    const p2 = `A second paragraph ${stamp}, still unpublished when the thread is.`;
-    const w = makeStudioWorld({ vault: { [DAILY]: `---\ntags: [x]\n---\n${p1}\n\n${p2} ^two2\n`, [THREAD]: `---\nblyg_kind: thread\n---\nIntro.\n\n![[Daily#^two2]]\n` } });
-    const address = studioAddress({ baseUrl: URL_ ?? "", mount: MOUNT });
-    if (!address || !w.deps.studio) throw new Error("e2e setup");
-    const client = createStudioClient({ http: createStudioHttp({ transport, timers: idleTimers, address }), token: TOKEN ?? "" });
-    w.deps.studio = { ...w.deps.studio, client, address };
-    w.deps.tangle = () => true;
-    // a paragraph on its own
-    const line = (w.local.get(DAILY) ?? "").split("\n").findIndex((l) => l.startsWith("A paragraph of mine")) + 1;
-    const one = await publishParagraph(w.deps, { path: DAILY, name: "Daily.md", extension: "md" }, line);
-    expect(one.status, one.notices.join("\n")).toBe("published");
-    const map = frontmatterOf(w.local.get(DAILY) ?? "").blyg_blocks as Record<string, string>;
-    expect(Object.keys(map)).toHaveLength(1);
-    const first = await client.getItem(Object.values(map)[0] ?? "");
-    expect(first.kind === "ok" && first.value.kind === "fragment" && first.value.status === "public").toBe(true);
-    // a thread that embeds the other one, which is not published yet
-    const out = await tapStudio(w, THREAD);
-    expect(out.status, out.notices.join("\n")).toBe("published");
-    expect(w.previews).toHaveLength(2); // the paragraph's window, then the thread's
-    expect(w.previews[1]?.studio?.tangle?.rows.map((r) => r.kind)).toEqual(["block"]);
-    const blockId = (frontmatterOf(w.local.get(DAILY) ?? "").blyg_blocks as Record<string, string>).two2 ?? "";
-    expect(blockId).toMatch(/^[0-9a-hjkmnp-tv-z]{26}$/);
-    const th = await client.getItem(out.id ?? "");
-    expect(th.kind === "ok" && th.value.contentMd.includes(`![[${blockId}]]`)).toBe(true);
   }, 120_000);
 });
