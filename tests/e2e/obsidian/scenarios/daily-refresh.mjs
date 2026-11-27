@@ -190,7 +190,7 @@ await runScenario({ data }, async (s) => {
   check(await page.evaluate(() => window.app.plugins.plugins.blyg.settings.digest.autoWrite === false), "a second tap turns it off again");
   const billing = await page.evaluate(() => document.querySelector(".blyg-daily-panel .blyg-menu-billing .blyg-menurow-value")?.textContent ?? "");
   check(billing === "" || /^\$\d+\.\d\d$/.test(billing), `the billing line shows no value or a dollar amount with two decimals (${billing})`);
-  check(await page.evaluate(() => !document.querySelector(".blyg-daily-priceline") && !/\$\d/.test(document.querySelector(".blyg-daily-bar")?.innerText ?? "")), "the page header carries no per-edition amount and no editor line any more");
+  check(await page.evaluate(() => !document.querySelector(".blyg-daily-priceline") && !/\$\d|Editor:/.test(document.querySelector(".blyg-daily-bartitle")?.innerText ?? "") && !/Editor:/.test(document.querySelector(".view-content.blyg-daily")?.innerText ?? "")), "the page header (title block) carries no per-edition amount, and nothing on the page has an editor line (the billing line in the menu is the only amount)");
   await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-menu").click());
 
   // ---- the command "Write the digest" sends nothing without consent (the write is no longer a menu row)
