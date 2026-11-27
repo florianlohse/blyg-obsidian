@@ -15,7 +15,7 @@ import { Notice } from "obsidian";
 import type { Keychain } from "../platform/ports";
 import type { RawTransport } from "../platform/http";
 import type { BlygSettings } from "../settings/schema";
-import { DigestConfirmModal, DigestConsentModal } from "../ui/DigestModals";
+import { DigestConfirmModal, DigestConsentModal, DigestTimeModal } from "../ui/DigestModals";
 import { trailText } from "./trailText";
 import { setConsentGate } from "./consentGate";
 import { setSyncCheck } from "./syncCheck";
@@ -44,6 +44,8 @@ export interface DigestDeps {
   font: () => ReaderFont;
   /** The setting "Digest time" ("HH:MM", the device's clock). */
   time: () => string;
+  /** Change the settings the Daily menu owns (Digest time, Write automatically) and keep them. */
+  set?: (patch: Partial<Pick<BlygSettings["digest"], "time" | "autoWrite">>) => void;
   readList: () => Promise<{ posts: ReadingPost[]; mentions: InboundMention[]; savedAt: number; studioOrigin: string } | null>;
   /** The reader's Studio conversation, so the digest's Refresh is the feed's Refresh (app/readerRefresh.ts). Absent: Refresh only reads the saved list again. */
   reader?: DigestReader;
@@ -189,6 +191,20 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
         }
       : {}),
     history: () => history.list(),
+    // The Daily's hamburger menu (ui/digestMenu.ts): Digest time and Write automatically live here; Show what the digest sent and the billing line need the AI layer.
+    menu: {
+      time: () => deps.time(),
+      pickTime: (done) => new DigestTimeModal(plugin.app, deps.time(), (t) => (t !== null && deps.set?.({ time: t }), done())).open(),
+      autoWrite: () => (ai?.settings().useAi === true && deps.set ? ai.settings().autoWrite : null),
+      setAutoWrite: (on) => deps.set?.({ autoWrite: on }),
+      ...(llm ? { showSent: () => showSent(), monthCost: () => sync.monthCost(Date.now()) } : {}),
+      settings: () => {
+        // Obsidian's own settings window, on this plugin's tab (an internal handle: when it is absent nothing happens).
+        const setting = (plugin.app as unknown as { setting?: { open(): void; openTabById(id: string): void } }).setting;
+        setting?.open();
+        setting?.openTabById(plugin.manifest.id);
+      },
+    },
     syncLines: async (id) => (await sync.refresh().catch(() => undefined), syncLines(sync.info(id), id)),
     // The Daily re-reads the synced files when the app comes to the front and on the vault's "raw" event (both below). While the Daily is open, a fallback every 30 s while it is visible
     // (a local list and stat of a few small files, no network) catches a changed file where neither event was reported.
@@ -261,11 +277,15 @@ export function registerDigest(plugin: Plugin, deps: DigestDeps): void {
   plugin.registerView(BLYG_DAILY_VIEW, (leaf) => new BlygDailyView(leaf, host));
   useReaderMode(deps.mode, open);
   plugin.addCommand({ id: "open-daily", name: "Open Daily", callback: () => void open() });
-  if (llm) plugin.addCommand({
-    id: "show-digest-sent",
-    name: "Show what the digest sent",
-    callback: () => void loadStore().then((st) => new TextModal(plugin.app, "What the digest sent", "Time, model, host, tokens and a rough cost for each run, and the text of the last three requests, kept on this device only. No key is kept here.", trailText(st), (ok) => new Notice(ok ? "Copied." : "Copy is blocked here; the text is selected.")).open()),
-  });
+  // The header has ONE update action (the refresh icon); the other actions stay reachable here.
+  const dailyView = (): BlygDailyView | null => (plugin.app.workspace.getLeavesOfType(BLYG_DAILY_VIEW)[0]?.view as BlygDailyView | undefined) ?? null;
+  plugin.addCommand({ id: "refresh-daily", name: "Refresh the digest", callback: () => void dailyView()?.refreshNow() });
+  if (llm) {
+    plugin.addCommand({ id: "write-digest", name: "Write the digest", callback: () => void dailyView()?.writeFromCommand(false) });
+    plugin.addCommand({ id: "resort-digest", name: "Re-sort digest sections", callback: () => void dailyView()?.writeFromCommand(true) });
+  }
+  const showSent = (): void => void loadStore().then((st) => new TextModal(plugin.app, "What the digest sent", "Time, model, host, tokens and a rough cost for each run, and the text of the last three requests, kept on this device only. No key is kept here.", trailText(st), (ok) => new Notice(ok ? "Copied." : "Copy is blocked here; the text is selected.")).open());
+  if (llm) plugin.addCommand({ id: "show-digest-sent", name: "Show what the digest sent", callback: showSent });
   plugin.addCommand({
     id: "clear-digest-requests",
     name: "Clear stored requests",

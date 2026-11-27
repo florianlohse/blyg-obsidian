@@ -52,12 +52,13 @@ const deps = { digest: { font: () => "default" as const, time: () => "07:00", re
 
 describe("registerFeatureEntries", () => {
   const DAILY = ["cmd:open-daily", "ribbon:Open Blyg Daily", "cmd:show-digest-sent"];
+  const DAILY_ALL = [...DAILY, "cmd:clear-digest-requests", "cmd:refresh-daily", "cmd:write-digest", "cmd:resort-digest", "view:blyg-daily"];
   it("release 1.1.0: the release build registers the promoted Daily (with its AI layer) and nothing experimental or dev by default", () => {
     const { calls, p } = fakePlugin("blyg");
     registerFeatureEntries(p, createFeatures(() => ({}), "blyg"), deps);
     expect(calls).toEqual(expect.arrayContaining(DAILY));
     for (const absent of ["cmd:open-address-from-clipboard", "cmd:send-passage-to-note", "cmd:dev-author-look", "cmd:dev-draw-synthetic-posts"]) expect(calls).not.toContain(absent);
-    expect([...calls].sort()).toEqual([...DAILY, "cmd:clear-digest-requests", "view:blyg-daily"].sort());
+    expect([...calls].sort()).toEqual([...DAILY_ALL].sort());
   });
   it("registers everything in the dev build by default", () => {
     const { calls, p } = fakePlugin("blyg-dev");

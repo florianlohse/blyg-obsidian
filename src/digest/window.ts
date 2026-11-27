@@ -7,9 +7,17 @@ export function ordinal(day: number): string {
   return `${day}${teen ? "th" : last === 1 ? "st" : last === 2 ? "nd" : last === 3 ? "rd" : "th"}`;
 }
 
-/** The masthead's date: the weekday and the full date in the person's own locale (`locale` undefined: the device's); in English the day is an ordinal ("November 23rd"). */
-export function mastheadDate(t: number, locale?: string): string {
-  const f = new Intl.DateTimeFormat(locale, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-  if (!f.resolvedOptions().locale.toLowerCase().startsWith("en")) return f.format(t);
-  return f.formatToParts(t).map((p) => (p.type === "day" ? ordinal(Number(p.value)) : p.value)).join("");
+const EN = "en-US";
+const parts = (t: number): Record<string, string> => Object.fromEntries(new Intl.DateTimeFormat(EN, { weekday: "long", year: "numeric", month: "long", day: "numeric" }).formatToParts(t).map((p) => [p.type, p.value]));
+
+/** The masthead's date, always English whatever the device's language: "Friday, November 27th, 2026". The time zone is the device's (the edition cutoff logic is elsewhere and unchanged). */
+export function mastheadDate(t: number): string {
+  const p = parts(t);
+  return `${p.weekday}, ${p.month} ${ordinal(Number(p.day))}, ${p.year}`;
+}
+
+/** The same without the year, for the list of editions: "Thursday, November 26th". */
+export function editionLabel(t: number): string {
+  const p = parts(t);
+  return `${p.weekday}, ${p.month} ${ordinal(Number(p.day))}`;
 }

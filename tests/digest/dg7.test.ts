@@ -8,7 +8,7 @@ import { buildSectionsRequest } from "../../src/digest/sections";
 import { buildFillRequest } from "../../src/digest/sectionFill";
 import { parseHistory } from "../../src/digest/history";
 import { migrateSettings } from "../../src/settings/migrate";
-import { drawPriceLine, priceAmount, priceLineText } from "../../src/ui/digestPriceLine";
+import { drawPriceLine, priceLineText } from "../../src/ui/digestPriceLine";
 import type { Cluster } from "../../src/digest/cluster";
 import type { ReadingPost } from "../../src/studio/reading";
 
@@ -164,22 +164,11 @@ describe("the top line of the Daily (DG19: the price, and the editor)", () => {
     const made: Array<{ cls?: string; text?: string }> = [];
     return { made, root: { createDiv: (o: { cls?: string; text?: string }) => (made.push(o), o) } as unknown as HTMLElement };
   };
-  it("names a known editor only, never neutral, rota or an unknown id; the money alone when no editor is named; nothing at all when there is neither", () => {
-    for (const none of [undefined, "neutral", "rota", "unknown"]) {
-      expect(priceLineText(undefined, none)).toBeNull();
-      expect(priceLineText(null, none)).toBeNull();
-      expect(priceLineText(0.04, none)).toBe("$0.04");
-    }
-    expect(priceLineText(undefined, "forecaster")).toBe("Editor: The Forecaster"); // a past edition keeps no cost
-    expect(priceLineText(null, "harbour-master")).toBe("Editor: Harbour Master Okafor"); // a model without a price: no amount
-  });
-  it("is US dollars with two decimals, then the editor: no tokens, no cents wording", () => {
-    expect(priceLineText(0.04, "crossword-setter")).toMatch(/^\$0\.04 · Editor: .+$/);
-    expect(priceAmount(0.0449)).toBe("$0.04");
-    expect(priceAmount(0.045)).toBe("$0.04"); // toFixed on the binary value: nothing is promised beyond two decimals
-    expect(priceAmount(12.5)).toBe("$12.50");
-    for (const nothing of [0, -1, null, undefined, Number.NaN, Number.POSITIVE_INFINITY]) expect(priceAmount(nothing)).toBeNull();
-    expect(priceLineText(1.234, "forecaster")).not.toMatch(/token|cent/i);
+  it("names a known editor only, never neutral, rota or an unknown id; nothing at all when there is none; and never any money (the month's cost is the menu's billing row)", () => {
+    for (const none of [undefined, "neutral", "rota", "unknown"]) expect(priceLineText(none)).toBeNull();
+    expect(priceLineText("forecaster")).toBe("Editor: The Forecaster");
+    expect(priceLineText("harbour-master")).toBe("Editor: Harbour Master Okafor");
+    expect(priceLineText("crossword-setter")).not.toMatch(/\$|token|cent/i);
   });
   it("is drawn as one small-caps line of text, and not at all without text", () => {
     const s = stub();

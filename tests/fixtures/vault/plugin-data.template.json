@@ -13,6 +13,9 @@
       "draftsOnly": true
     }
   ],
+  "readerPane": {
+    "autoRead": false
+  },
   "respond": {
     "draftsPrefix": "Blyg/"
   }

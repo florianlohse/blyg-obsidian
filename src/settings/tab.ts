@@ -281,7 +281,7 @@ export class BlygSettingTab extends PluginSettingTab {
       heading: "Marginalia",
       items: [
         { name: "Marks in the text", desc: "A small mark at the end of a paragraph that others quoted. Tap it to see who, and when.", control: { type: "toggle", key: "marginalia.markers", defaultValue: true } },
-        { name: "Reception at the end of the note", desc: "A section after the last paragraph listing who quoted or answered this note. It is only drawn, never written into the note.", control: { type: "toggle", key: "marginalia.bottom", defaultValue: true } },
+        { name: "Reception at the end of the note", desc: "A section after the last paragraph listing who quoted or answered this note. It is also listed at the end of your own post in the reader. It is only drawn, never written into the note.", control: { type: "toggle", key: "marginalia.bottom", defaultValue: true } },
       ],
     });
 
@@ -412,6 +412,12 @@ export class BlygSettingTab extends PluginSettingTab {
           desc: "How strongly a post stands out from its background in the reader: reduced (softer, for dim rooms), normal, or high.",
           aliases: ["reader", "contrast", "reading surface", "dark", "light"],
           control: { type: "dropdown", key: "readerPane.contrast", options: { reduced: "Reduced", normal: "Normal", high: "High" } },
+        },
+        {
+          name: "Mark posts as read when I open them",
+          desc: "A post counts as read once it has been open in the reader or the Daily for about a second, so a tap on the wrong post does not mark it. Your own posts are never marked. You can still mark a post read or unread yourself, and a long press on Next still marks the post you leave. Needs the token permission to change read marks.",
+          aliases: ["reader", "daily", "read", "unread", "mark", "automatic"],
+          control: { type: "toggle", key: "readerPane.autoRead", defaultValue: true },
         },
         this.fontPreviewItem(),
       ],

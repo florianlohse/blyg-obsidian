@@ -11,7 +11,7 @@ await runScenario({ data }, async (s) => {
   const { check } = s;
   const ids = await s.commandIds("blyg:");
   const has = (id) => ids.includes(`blyg:${id}`);
-  for (const id of ["open-daily", "show-digest-sent", "clear-digest-requests"]) check(has(id), `promoted, on without a switch: the command ${id} exists`);
+  for (const id of ["open-daily", "show-digest-sent", "clear-digest-requests", "refresh-daily", "write-digest", "resort-digest"]) check(has(id), `promoted, on without a switch: the command ${id} exists`);
   for (const id of ["send-passage-to-note", "open-address-from-clipboard", "dev-author-look", "dev-draw-synthetic-posts"]) check(!has(id), `not promoted: the command ${id} is absent`);
   const plugin = await s.page.evaluate(() => {
     const p = window.app.plugins.plugins.blyg;

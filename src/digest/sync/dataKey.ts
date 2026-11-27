@@ -15,12 +15,38 @@ const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 export const keyOf = (device: string): string => `${KEY_PREFIX}${device}`;
 export const isSyncKey = (k: string): boolean => k.startsWith(KEY_PREFIX);
 
+/** How many local days of cost this device keeps in its key (a bit more than two months, so a whole calendar month is always covered). */
+export const COST_DAYS = 62;
+/** The cost register: the estimated dollars this device's AI writes cost on each local day ("YYYY-MM-DD"). Numbers only, no text of any post. */
+export type CostRegister = Record<string, number>;
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const round6 = (n: number): number => Math.round(n * 1e6) / 1e6;
+
+/** The newest `COST_DAYS` days of a register, as a fresh object built field by field. */
+export function boundCost(reg: CostRegister): CostRegister {
+  return Object.fromEntries(Object.entries(reg).filter(([d, n]) => DAY_RE.test(d) && Number.isFinite(n) && n > 0).sort(([a], [b]) => (a < b ? 1 : -1)).slice(0, COST_DAYS).map(([d, n]) => [d, round6(n)]));
+}
+
+/** A register read from data.json: undefined (a key of an older version) is an empty register; anything that is not a plain object of day -> non-negative number is null (unreadable: the total is then not shown). */
+export function parseCost(raw: unknown): CostRegister | null {
+  if (raw === undefined) return {};
+  if (!isObj(raw)) return null;
+  const out: CostRegister = {};
+  for (const [d, n] of Object.entries(raw)) {
+    if (!DAY_RE.test(d) || typeof n !== "number" || !Number.isFinite(n) || n < 0) return null;
+    out[d] = n;
+  }
+  return boundCost(out);
+}
+
 export interface KeyPayload {
   v: 1;
   device: string;
   /** The writer's clock when it last changed. */
   at: number;
   editions: EdState[];
+  /** The cost register of this device (absent while it is empty). */
+  cost?: CostRegister;
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -35,10 +61,11 @@ const without = (s: EdState, drop: (k: string) => boolean): EdState => ({ ...s, 
  * records and AI texts (the story texts are rewritten on demand), then whole old editions; the newest edition is always kept as it is. null: even the newest alone is too big
  * (the key is not written; the folder files still carry it).
  */
-export function buildPayload(own: readonly EdState[], device: string): { payload: KeyPayload; bytes: number } | null {
+export function buildPayload(own: readonly EdState[], device: string, cost: CostRegister = {}): { payload: KeyPayload; bytes: number } | null {
   const newest = [...own].filter((s) => s.device === device).sort((a, b) => b.id - a.id).slice(0, KEY_EDITIONS).map(strip);
   if (newest.length === 0) return null;
-  const make = (eds: EdState[]): KeyPayload => ({ v: 1, device, at: Math.max(...eds.map((e) => e.at)), editions: eds });
+  const reg = boundCost(cost);
+  const make = (eds: EdState[]): KeyPayload => ({ v: 1, device, at: Math.max(...eds.map((e) => e.at)), editions: eds, ...(Object.keys(reg).length > 0 ? { cost: reg } : {}) });
   const size = (p: KeyPayload): number => JSON.stringify(p).length;
   let eds = newest;
   const steps: Array<(s: EdState, i: number) => EdState> = [
@@ -61,6 +88,8 @@ export interface KeyRead {
   at: number;
   bytes: number;
   states: EdState[];
+  /** This device's cost register; null when the key holds one that cannot be read. */
+  cost: CostRegister | null;
 }
 
 /** Every device's key found in the parsed data.json (this device's too). Keys that do not parse are ignored here (and kept untouched when writing). */
@@ -73,7 +102,7 @@ export function readKeys(data: Record<string, unknown>): KeyRead[] {
       const st = parseState(JSON.stringify(e));
       if (st && st.device === v.device) states.push(st);
     }
-    out.push({ device: v.device, at: typeof v.at === "number" && Number.isFinite(v.at) ? v.at : 0, bytes: JSON.stringify(v).length, states });
+    out.push({ device: v.device, at: typeof v.at === "number" && Number.isFinite(v.at) ? v.at : 0, bytes: JSON.stringify(v).length, states, cost: parseCost(v.cost) });
   }
   return out;
 }

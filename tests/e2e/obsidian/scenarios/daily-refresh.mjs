@@ -1,8 +1,7 @@
 // One Refresh, in real Obsidian: the feed's Refresh and the digest's Refresh are the same action. One tap asks the (stand-in, counted) Studio to fetch once and reads the
 // list once, in both; nothing is requested without a tap; the digest takes the new posts into its edition WITHOUT redrawing the page (the page element and its scroll position
 // stay, no "Reading your list…" blank page, one draw), marked new; "Write the digest" sends nothing and starts nothing without consent; the 60 s pause holds.
-// DG18: with the automatic write OFF, Refresh sends nothing to the AI and says in one line that the new posts are grouped but not written; the menu holds one update action and the
-// manual writes sit under "Advanced"; with the automatic write ON (and consent recorded), the same Refresh also tries the missing texts, by the automatic rules, with the same Studio requests.
+// DG18: with the automatic write OFF, Refresh sends nothing to the AI and says in one line that the new posts are grouped but not written; the header refresh icon is the one update action (the manual writes are commands); with the automatic write ON (and consent recorded), the same Refresh also tries the missing texts, by the automatic rules, with the same Studio requests.
 // The stand-in answers the poll, the change counters and the list itself, so every request is counted by kind.
 //   STUDIO_E2E_URL=… STUDIO_E2E_TOKEN=… node tests/e2e/obsidian/scenarios/daily-refresh.mjs
 import http from "node:http";
@@ -83,18 +82,14 @@ await runScenario({ data }, async (s) => {
   reset();
   await wait(3000);
   check(Object.keys(snap()).length === 0, `the digest asks the Studio for nothing by itself (${JSON.stringify(snap())})`);
-  const icon = await page.evaluate(() => { const b = document.querySelector(".blyg-daily .blyg-daily-barrow .blyg-daily-refresh"); const e = document.querySelector(".blyg-daily .blyg-daily-panel .blyg-daily-refreshbtn"); const w = document.querySelector(".blyg-daily .blyg-daily-panel .blyg-story-write"); return { bar: !!b?.querySelector("svg"), label: b?.getAttribute("aria-label"), entry: e?.querySelector(".blyg-menurow-label")?.textContent, value: e?.querySelector(".blyg-menurow-value")?.textContent, hint: e?.getAttribute("title"), write: w?.getAttribute("title"), writeValue: w?.querySelector(".blyg-menurow-value")?.textContent }; });
-  check(icon.bar && icon.label === "Refresh" && icon.entry === "Refresh" && icon.value === "may use tokens" && /^Fetches new posts from your blygs and groups them\. Writes the missing texts only if “Write the digest automatically” is on/.test(icon.hint ?? "") && /Writes headlines and summaries with your AI model, uses tokens/.test(icon.write ?? "") && icon.writeValue === "uses tokens", `the bar has a Refresh icon and the menu rows say in words what Refresh and Write cost: a short value at the right, the longer explanation in the title (${JSON.stringify(icon)})`);
+  const icon = await page.evaluate(() => { const b = document.querySelector(".blyg-daily .blyg-daily-barrow .blyg-daily-refresh"); const panel = document.querySelector(".blyg-daily .blyg-daily-panel"); return { bar: !!b?.querySelector("svg"), label: b?.getAttribute("aria-label"), hint: b?.getAttribute("title"), icons: document.querySelectorAll(".blyg-daily .blyg-daily-refresh").length, entries: panel?.querySelectorAll(".blyg-daily-refreshbtn, .blyg-story-write, .blyg-daily-resortbtn, details.blyg-daily-advanced").length ?? 0 }; });
+  check(icon.bar && icon.icons === 1 && icon.label === "Refresh" && /^Fetches new posts from your blygs and groups them\. Writes the missing texts only if “Write the digest automatically” is on/.test(icon.hint ?? "") && icon.entries === 0, `the header has ONE update action, the Refresh icon, and its title says in words what it does and costs; the menu holds no Refresh, Write, Re-sort or Advanced entry (${JSON.stringify(icon)})`);
 
-  // DG18: one update action in the menu; "Write the digest" and "Re-sort sections" are under a labelled "Advanced" part (a row of the menu that unfolds the writes as rows)
-  const menu = await page.evaluate(() => {
-    const panel = document.querySelector(".blyg-daily .blyg-daily-panel");
-    const adv = panel?.querySelector("details.blyg-daily-advanced");
-    const rows = [...(panel?.querySelectorAll(".blyg-menurow") ?? [])];
-    const outside = rows.filter((r) => !adv?.contains(r)).map((r) => r.querySelector(".blyg-menurow-label")?.textContent ?? "");
-    return { label: adv?.querySelector("summary .blyg-menurow-label")?.textContent ?? null, opens: adv?.querySelector("summary .blyg-menurow-go")?.textContent ?? null, outside, inside: [...(adv?.querySelectorAll("button.blyg-menurow .blyg-menurow-label") ?? [])].map((b) => b.textContent), writeIn: !!adv?.querySelector(".blyg-story-write"), mainWrite: !!panel?.querySelector(":scope > .blyg-story-write") };
-  });
-  check(menu.label === "Advanced" && menu.opens === "›" && JSON.stringify(menu.outside) === JSON.stringify(["Refresh"]) && menu.writeIn && !menu.mainWrite && menu.inside.includes("Write the digest"), `the main menu has one update action (Refresh); "Write the digest" (and "Re-sort sections" once there are sections) are under "Advanced", a row with the › of a row that opens something (${JSON.stringify(menu)})`);
+  // One update action: the menu has no Refresh row, no "Advanced" part, no Write or Re-sort row (they are command-palette commands: blyg:refresh-daily, blyg:write-digest, blyg:resort-digest)
+  const menu = await page.evaluate(() => { const panel = document.querySelector(".blyg-daily .blyg-daily-panel"); return { labels: [...(panel?.querySelectorAll(".blyg-menurow-label") ?? [])].map((e) => e.textContent), adv: !!panel?.querySelector("details.blyg-daily-advanced") }; });
+  check(!menu.adv && !menu.labels.some((l) => /^(Refresh|Advanced|Write the digest|Re-sort sections)$/.test(l ?? "")), `the menu has no Refresh, Advanced, Write or Re-sort row (${JSON.stringify(menu)})`);
+  const cmds = await page.evaluate(() => ["blyg:refresh-daily", "blyg:write-digest", "blyg:resort-digest"].map((id) => !!window.app.commands.commands[id]));
+  check(cmds.every(Boolean), `the actions stay as command-palette commands (${JSON.stringify(cmds)})`);
 
   // new posts arrive on the blyg: a reply that joins the first story, and an unrelated post
   live.rows = [...posts, mk(30, "Alpha harbour tide lantern story body number 0 follow up from the quay.", "Late", { isReply: true, stubTarget: { origin: "https://one.example.com/", id: posts[0].remoteId } }), mk(31, "Zebra crossing paint dries slowly on the new bridge deck.", "Zed")].map(wire);
@@ -125,8 +120,8 @@ await runScenario({ data }, async (s) => {
   await wait(300);
   const busy = await page.evaluate(() => ({ disabled: document.querySelector(".blyg-daily .blyg-daily-refresh")?.disabled, busy: document.querySelector(".blyg-daily .blyg-daily-refresh")?.classList.contains("is-busy"), aria: document.querySelector(".blyg-daily .blyg-daily-refresh")?.getAttribute("aria-busy"), status: document.querySelector(".blyg-daily-markstatus")?.textContent }));
   await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-refresh")?.click()); // a second tap while it runs does nothing
-  check(busy.disabled && busy.busy && busy.aria === "true" && /Checking/.test(busy.status ?? ""), `while it runs the Refresh button is busy and the status says Checking (${JSON.stringify(busy)})`);
-  await page.waitForFunction(() => /new post|Nothing new/.test(document.querySelector(".blyg-daily-markstatus")?.textContent ?? ""), null, { timeout: 45000 });
+  check(busy.disabled && busy.busy && busy.aria === "true" && /Fetching new posts/.test(busy.status ?? ""), `while it runs the Refresh button is busy and the meta line says Fetching new posts (${JSON.stringify(busy)})`);
+  await page.waitForFunction(() => /^(\d+ new posts?|Nothing new)/.test(document.querySelector(".blyg-daily-markstatus")?.textContent ?? ""), null, { timeout: 45000 });
   await wait(1200);
   const digestTap = snap();
   const after = await page.evaluate(() => {
@@ -140,7 +135,7 @@ await runScenario({ data }, async (s) => {
   check(after.draws.bars === 1 && after.draws.reading === 0, `the page is drawn once and never shows "Reading your list…" (${JSON.stringify(after.draws)})`);
   check(/2 new posts/.test(after.status ?? "") && after.tags.includes("new") && after.updated.some((t) => /\+1 new post/.test(t)) && after.newRows >= 1, `the new posts are marked: "+1 new post" on its story, a "new" tag on the post in the Mixed bag, "2 new posts" in the status (${JSON.stringify({ status: after.status, tags: after.tags, updated: after.updated, newRows: after.newRows })})`);
   check(!after.busy && llmRequests.length === 0, `the button is free again and Refresh made no AI request (${llmRequests.length})`);
-  check(/grouped, texts not written \(automatic writing is off\)/.test(after.status ?? "") && (after.status ?? "").split("\n").length === 1, `with the automatic write off, one plain line says the new posts are grouped and their texts are not written (${after.status})`);
+  check(/AI off: grouped, texts not written/.test(after.status ?? "") && (after.status ?? "").split("\n").length === 1, `with the automatic write off, one plain line says the new posts are grouped and their texts are not written (${after.status})`);
   // the same tap again inside the 60 s pause: the Studio is not asked to fetch again (one read of the list), "Nothing new"
   reset();
   await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-refresh")?.click());
@@ -180,21 +175,33 @@ await runScenario({ data }, async (s) => {
       plain: rows.every((r) => getComputedStyle(r).backgroundColor === "rgba(0, 0, 0, 0)" && getComputedStyle(r).boxShadow === "none"), cut, labelKept, cutRight: valueRightWhenCut === R(val).right, inside: rows.every((r) => R(r).right <= window.innerWidth + 0.5),
     };
   });
-  check(menu1.n >= 2 && menu1.labels && menu1.valueEdges.length === 1 && menu1.goEdges.length === 1 && menu1.rowEdges.length === 1 && menu1.goEdges[0] === menu1.rowEdges[0] && menu1.aligned && menu1.muted && menu1.plain && menu1.inside, `the digest menu's rows: labels at the left, values muted and right-aligned, all on one right edge, no box (${JSON.stringify(menu1)})`);
-  check(menu1.cut && menu1.labelKept, `a long value is cut with an ellipsis and the label keeps its room (${JSON.stringify({ cut: menu1.cut, labelKept: menu1.labelKept })})`);
+  check((menu1.n >= 2 && menu1.labels && menu1.valueEdges.length === 1 && menu1.goEdges.length === 1 && menu1.rowEdges.length === 1 && menu1.goEdges[0] === menu1.rowEdges[0] && menu1.aligned && menu1.muted && menu1.plain && menu1.inside), `the digest menu's rows: labels at the left, values muted and right-aligned, all on one right edge, no box (${JSON.stringify(menu1)})`);
+  check((menu1.cut && menu1.labelKept), `a long value is cut with an ellipsis and the label keeps its room (${JSON.stringify({ cut: menu1.cut, labelKept: menu1.labelKept })})`);
+  // The menu's content: four rows and a billing line (Digest time, Write automatically, Show what the digest sent, Settings, Digest billing this month); no Refresh, Advanced, Write, Re-sort,
+  // edition switcher or editor picker; Write automatically is a switch that changes the setting and is put back; the billing line only tells (no button, no arrow).
+  const menuRows = () => page.evaluate(() => [...document.querySelectorAll(".blyg-daily-panel .blyg-menurow")].map((r) => ({ label: r.querySelector(".blyg-menurow-label")?.textContent, value: r.querySelector(".blyg-menurow-value")?.textContent, go: r.querySelector(".blyg-menurow-go")?.textContent, tag: r.tagName, role: r.getAttribute("role"), checked: r.getAttribute("aria-checked") })));
+  const rowsBefore = await menuRows();
+  check(JSON.stringify(rowsBefore.map((r) => r.label)) === JSON.stringify(["Digest time", "Write automatically", "Show what the digest sent", "Settings", "Digest billing this month"]), `the menu has the four rows and the billing line (${JSON.stringify(rowsBefore.map((r) => r.label))})`);
+  check(rowsBefore[0]?.value === "07:00" && rowsBefore[0]?.go === "›" && rowsBefore[1]?.value === "Off" && rowsBefore[1]?.role === "switch" && rowsBefore[1]?.checked === "false" && rowsBefore[1]?.go === "" && rowsBefore[2]?.go === "›" && rowsBefore[3]?.go === "›" && rowsBefore[4]?.go === "" && rowsBefore[4]?.tag === "DIV", `Digest time shows its time, Write automatically is a switch (Off), the rows that open something have the ›, the billing line is not a button (${JSON.stringify(rowsBefore)})`);
+  await page.evaluate(() => document.querySelector(".blyg-daily-panel .blyg-menu-auto").click());
+  const toggled = await page.evaluate(() => ({ setting: window.app.plugins.plugins.blyg.settings.digest.autoWrite, value: document.querySelector(".blyg-daily-panel .blyg-menu-auto .blyg-menurow-value")?.textContent, checked: document.querySelector(".blyg-daily-panel .blyg-menu-auto")?.getAttribute("aria-checked") }));
+  check(toggled.setting === true && toggled.value === "On" && toggled.checked === "true", `a tap on Write automatically turns the setting on and the row says On (${JSON.stringify(toggled)})`);
+  await page.evaluate(() => document.querySelector(".blyg-daily-panel .blyg-menu-auto").click());
+  check(await page.evaluate(() => window.app.plugins.plugins.blyg.settings.digest.autoWrite === false), "a second tap turns it off again");
+  const billing = await page.evaluate(() => document.querySelector(".blyg-daily-panel .blyg-menu-billing .blyg-menurow-value")?.textContent ?? "");
+  check(billing === "" || /^\$\d+\.\d\d$/.test(billing), `the billing line shows no value or a dollar amount with two decimals (${billing})`);
+  check(await page.evaluate(() => !/\$\d/.test(document.querySelector(".blyg-daily-priceline")?.textContent ?? "")), "the page header carries no per-edition amount any more");
   await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-menu").click());
 
-  // ---- "Write the digest" sends nothing without consent
-  const writeText = await page.evaluate(() => document.querySelector(".blyg-daily .blyg-story-write .blyg-menurow-label")?.textContent ?? "");
-  check(writeText === "Write the digest", `the menu has "Write the digest" (${writeText})`);
+  // ---- the command "Write the digest" sends nothing without consent (the write is no longer a menu row)
   reset();
-  await page.evaluate(() => document.querySelector(".blyg-daily .blyg-story-write")?.click());
+  await page.evaluate(() => window.app.commands.executeCommandById("blyg:write-digest"));
   await page.waitForFunction(() => !!activeDocument.querySelector(".modal-container .modal"), null, { timeout: 15000 }).catch(() => {});
   const modal = await page.evaluate(() => activeDocument.querySelector(".modal-container .modal")?.textContent ?? "");
-  check(/AI model/.test(modal) && /Agree/.test(modal) && /Cancel/.test(modal), `"Write the digest" asks for consent first (${modal.slice(0, 80)})`);
+  check(/AI model/.test(modal) && /Agree/.test(modal) && /Cancel/.test(modal), `the "Write the digest" command asks for consent first (${modal.slice(0, 80)})`);
   await page.evaluate(() => [...activeDocument.querySelectorAll(".modal-container .modal button")].find((b) => b.textContent === "Cancel")?.click());
   await wait(1500);
-  const afterCancel = await page.evaluate(() => ({ modal: !!activeDocument.querySelector(".modal-container .modal"), busy: document.querySelector(".blyg-daily .blyg-story-write")?.getAttribute("aria-busy") }));
+  const afterCancel = await page.evaluate(() => ({ modal: !!activeDocument.querySelector(".modal-container .modal"), busy: document.querySelector(".blyg-daily .blyg-daily-markstatus")?.getAttribute("aria-busy") }));
   check(!afterCancel.modal && afterCancel.busy !== "true" && llmRequests.length === 0 && !Object.keys(snap()).some((k) => /^other/.test(k)), `declining sends nothing and starts nothing (${llmRequests.length} AI requests, ${JSON.stringify(snap())})`);
   // ---- DG18: with the automatic write ON and consent recorded, the same Refresh also tries the missing texts, by the automatic rules (the provider here does not exist: the try fails, which is the proof it was made)
   await page.evaluate(async () => {
@@ -208,11 +215,11 @@ await runScenario({ data }, async (s) => {
   await pause();
   reset();
   await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-refresh")?.click());
-  await page.waitForFunction(() => /automatic|Written by/i.test(document.querySelector(".blyg-daily-markstatus")?.textContent ?? ""), null, { timeout: 60000 }).catch(() => {});
+  await page.waitForFunction(() => /automatic|texts written/i.test(document.querySelector(".blyg-daily-markstatus")?.textContent ?? ""), null, { timeout: 60000 }).catch(() => {});
   await wait(1500);
   const auto = await page.evaluate(() => ({ status: document.querySelector(".blyg-daily-markstatus")?.textContent ?? "", modal: !!activeDocument.querySelector(".modal-container .modal") }));
   const autoTap = snap();
-  check(/1 new post/.test(auto.status) && /The automatic write did not work|Not written automatically|Written by/.test(auto.status) && !/automatic writing is off/.test(auto.status) && !auto.modal, `with the automatic write on, Refresh also tried the missing texts by the automatic rules, asked nothing, and did not say they are unwritten (${JSON.stringify(auto)})`);
+  check(/1 new post/.test(auto.status) && /The automatic write did not work|Not written automatically|texts written/.test(auto.status) && !/AI off/.test(auto.status) && !auto.modal, `with the automatic write on, Refresh also tried the missing texts by the automatic rules, asked nothing, and did not say they are unwritten (${JSON.stringify(auto)})`);
   check(autoTap.poll === 1 && autoTap.list === 1 && !Object.keys(autoTap).some((k) => /^other/.test(k)), `the Refresh that writes made the same Studio requests as one without (${JSON.stringify(autoTap)})`);
   // Cloudflare budget guard: opening the reader, the digest, two Refresh taps and the pause caused no Studio write request at all (a read mark would be a PUT, a follow a POST); every poll above was the Refresh's one POST
   check(live.writes.length === 0, `opening the reader and the digest and tapping Refresh sent no write request to the Studio (${JSON.stringify(live.writes)})`);
