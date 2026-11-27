@@ -157,7 +157,6 @@ await runScenario({ data }, async (s) => {
     if (adv) adv.open = true;
     const rows = [...document.querySelectorAll(".blyg-daily-panel .blyg-menurow")];
     const R = (e) => e.getBoundingClientRect();
-    if (rows.length === 0) return { n: 0 }; // PR1: the menu holds no rows yet (the Menu 1 rows come back with the four-row menu, which re-runs this same check)
     const first = rows[0];
     const lab = first.querySelector(".blyg-menurow-label");
     const val = first.querySelector(".blyg-menurow-value");
@@ -176,8 +175,22 @@ await runScenario({ data }, async (s) => {
       plain: rows.every((r) => getComputedStyle(r).backgroundColor === "rgba(0, 0, 0, 0)" && getComputedStyle(r).boxShadow === "none"), cut, labelKept, cutRight: valueRightWhenCut === R(val).right, inside: rows.every((r) => R(r).right <= window.innerWidth + 0.5),
     };
   });
-  check(menu1.n === 0 || (menu1.n >= 2 && menu1.labels && menu1.valueEdges.length === 1 && menu1.goEdges.length === 1 && menu1.rowEdges.length === 1 && menu1.goEdges[0] === menu1.rowEdges[0] && menu1.aligned && menu1.muted && menu1.plain && menu1.inside), `the digest menu's rows: labels at the left, values muted and right-aligned, all on one right edge, no box (${JSON.stringify(menu1)})`);
-  check(menu1.n === 0 || (menu1.cut && menu1.labelKept), `a long value is cut with an ellipsis and the label keeps its room (${JSON.stringify({ cut: menu1.cut, labelKept: menu1.labelKept })})`);
+  check((menu1.n >= 2 && menu1.labels && menu1.valueEdges.length === 1 && menu1.goEdges.length === 1 && menu1.rowEdges.length === 1 && menu1.goEdges[0] === menu1.rowEdges[0] && menu1.aligned && menu1.muted && menu1.plain && menu1.inside), `the digest menu's rows: labels at the left, values muted and right-aligned, all on one right edge, no box (${JSON.stringify(menu1)})`);
+  check((menu1.cut && menu1.labelKept), `a long value is cut with an ellipsis and the label keeps its room (${JSON.stringify({ cut: menu1.cut, labelKept: menu1.labelKept })})`);
+  // The menu's content: four rows and a billing line (Digest time, Write automatically, Show what the digest sent, Settings, Digest billing this month); no Refresh, Advanced, Write, Re-sort,
+  // edition switcher or editor picker; Write automatically is a switch that changes the setting and is put back; the billing line only tells (no button, no arrow).
+  const menuRows = () => page.evaluate(() => [...document.querySelectorAll(".blyg-daily-panel .blyg-menurow")].map((r) => ({ label: r.querySelector(".blyg-menurow-label")?.textContent, value: r.querySelector(".blyg-menurow-value")?.textContent, go: r.querySelector(".blyg-menurow-go")?.textContent, tag: r.tagName, role: r.getAttribute("role"), checked: r.getAttribute("aria-checked") })));
+  const rowsBefore = await menuRows();
+  check(JSON.stringify(rowsBefore.map((r) => r.label)) === JSON.stringify(["Digest time", "Write automatically", "Show what the digest sent", "Settings", "Digest billing this month"]), `the menu has the four rows and the billing line (${JSON.stringify(rowsBefore.map((r) => r.label))})`);
+  check(rowsBefore[0]?.value === "07:00" && rowsBefore[0]?.go === "›" && rowsBefore[1]?.value === "Off" && rowsBefore[1]?.role === "switch" && rowsBefore[1]?.checked === "false" && rowsBefore[1]?.go === "" && rowsBefore[2]?.go === "›" && rowsBefore[3]?.go === "›" && rowsBefore[4]?.go === "" && rowsBefore[4]?.tag === "DIV", `Digest time shows its time, Write automatically is a switch (Off), the rows that open something have the ›, the billing line is not a button (${JSON.stringify(rowsBefore)})`);
+  await page.evaluate(() => document.querySelector(".blyg-daily-panel .blyg-menu-auto").click());
+  const toggled = await page.evaluate(() => ({ setting: window.app.plugins.plugins.blyg.settings.digest.autoWrite, value: document.querySelector(".blyg-daily-panel .blyg-menu-auto .blyg-menurow-value")?.textContent, checked: document.querySelector(".blyg-daily-panel .blyg-menu-auto")?.getAttribute("aria-checked") }));
+  check(toggled.setting === true && toggled.value === "On" && toggled.checked === "true", `a tap on Write automatically turns the setting on and the row says On (${JSON.stringify(toggled)})`);
+  await page.evaluate(() => document.querySelector(".blyg-daily-panel .blyg-menu-auto").click());
+  check(await page.evaluate(() => window.app.plugins.plugins.blyg.settings.digest.autoWrite === false), "a second tap turns it off again");
+  const billing = await page.evaluate(() => document.querySelector(".blyg-daily-panel .blyg-menu-billing .blyg-menurow-value")?.textContent ?? "");
+  check(billing === "" || /^\$\d+\.\d\d$/.test(billing), `the billing line shows no value or a dollar amount with two decimals (${billing})`);
+  check(await page.evaluate(() => !/\$\d/.test(document.querySelector(".blyg-daily-priceline")?.textContent ?? "")), "the page header carries no per-edition amount any more");
   await page.evaluate(() => document.querySelector(".blyg-daily .blyg-daily-menu").click());
 
   // ---- the command "Write the digest" sends nothing without consent (the write is no longer a menu row)

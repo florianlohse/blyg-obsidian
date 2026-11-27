@@ -169,7 +169,7 @@ describe("automatic write in the Daily", () => {
     release(ok());
     await settle();
     expect(m.texts()).toContain("Gardens");
-    expect(m.texts()).toContain("$0.00"); // the top line: the money only (0.004 dollars, two decimals), no editor named here
+    expect(m.texts().some((t) => /^\$/.test(t))).toBe(false); // no money in the page header any more (the menu has the month's billing line)
     expect(m.texts().join("\n")).not.toMatch(/about 1234 tokens|under 1 cent/); // DG19: the permanent cost line under the credit is gone
   });
   it("does not write when nothing is due (off, no consent, over the ceiling, already tried)", async () => {

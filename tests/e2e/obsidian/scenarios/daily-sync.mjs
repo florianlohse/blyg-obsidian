@@ -75,7 +75,7 @@ await runScenario({ data }, async (s) => {
     f.regs.order = reg(2, ["Garden", "Town"]);
     f.regs["about/Garden"] = reg(about === "" ? 2 : 5, about || "Soil and seeds");
     f.regs.auto = reg(3, {});
-    // DG19: what two devices spent on this edition (their `usage/<device>` registers add up) and the editor whose voice it is in: the top line reads "$0.06 · Editor: The Setter"
+    // DG19: the editor whose voice it is in: the top line reads "Editor: The Setter" (no amount: the month's cost is the menu's billing line, checked below from the two devices' cost registers)
     f.regs.editor = reg(3, "crossword-setter");
     f.regs[`usage/${FOREIGN}`] = reg(4, { tokens: 14200, cost: 0.0412 });
     f.regs["usage/e2esecond"] = { c: 4, d: "e2esecond", v: { tokens: 9000, cost: 0.02 } };
@@ -100,7 +100,25 @@ await runScenario({ data }, async (s) => {
   check(/Soil and seeds/.test(first.text) && /Garden/.test(first.text) && /Town/.test(first.text), `... under the sections and the byline of the other device's file`);
   check(/^Synced from 2 devices$/.test(first.sync.trim()), `the masthead line says only that the edition is synced from 2 devices (no device names) (${JSON.stringify(first.sync)})`);
   const top = await ad(() => { const l = document.querySelector(".blyg-daily .blyg-daily-priceline"); const first = document.querySelector(".blyg-daily .blyg-story, .blyg-daily .blyg-daily-section > h3"); const c = l ? getComputedStyle(l) : null; return { n: document.querySelectorAll(".blyg-daily .blyg-daily-priceline").length, text: l?.textContent ?? null, caps: c?.fontVariantCaps ?? null, muted: c ? c.color !== getComputedStyle(document.querySelector(".blyg-daily")).color : null, above: !!l && !!first && l.getBoundingClientRect().bottom <= first.getBoundingClientRect().top + 1, kids: l?.children.length ?? -1, credit: [...document.querySelectorAll(".blyg-daily .blyg-story-credit")].map((e) => e.textContent), editorLine: document.querySelectorAll(".blyg-daily .blyg-daily-editor").length }; });
-  check(top.n === 1 && top.text === "$0.06 · Editor: The Setter" && top.caps === "small-caps" && top.muted && top.above && top.kids === 0, `the top line reads "$0.06 · Editor: The Setter": the two devices' cost added up, dollars with two decimals, no tokens, small caps, muted, above the first story (${JSON.stringify(top)})`);
+  check(top.n === 1 && top.text === "Editor: The Setter" && top.caps === "small-caps" && top.muted && top.above && top.kids === 0, `the top line reads "Editor: The Setter" and carries no amount: small caps, muted, above the first story (${JSON.stringify(top)})`);
+  // The month's cost, in the menu's billing line: two other devices keep a cost register each in their own key of data.json (numbers per local day); the line adds them up ($0.0412 + $0.02 = $0.06, dollars with two decimals).
+  const BILL_KEYS = ["digestSync_e2ebill1", "digestSync_e2ebill2"];
+  await ad(async ([p, keys]) => {
+    const a = window.app.vault.adapter; const d = JSON.parse(await a.read(p));
+    const t = new Date(); const day = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+    keys.forEach((k, i) => { d[k] = { v: 1, device: k.slice("digestSync_".length), at: Date.now(), editions: [], cost: { [day]: [0.0412, 0.02][i] } }; }); // what Sync would do to the file
+    await a.write(p, JSON.stringify(d));
+  }, [".obsidian/plugins/blyg/data.json", BILL_KEYS]);
+  // (the total is read when the page is drawn: close the Daily and open it again so it reads the keys that just arrived)
+  await ad(() => window.app.workspace.detachLeavesOfType("blyg-daily"));
+  await ad(() => window.app.commands.executeCommandById("blyg:open-daily"));
+  await s.waitCount(".blyg-daily .blyg-story-headline", (n) => n >= 4, 30000);
+  await ad(() => document.querySelector(".blyg-daily .blyg-daily-menu").click());
+  await page.waitForFunction(() => /^\$0\.06$/.test(document.querySelector(".blyg-daily-panel .blyg-menu-billing .blyg-menurow-value")?.textContent ?? ""), null, { timeout: 20000 }).catch(() => {});
+  const bill = await ad(() => document.querySelector(".blyg-daily-panel .blyg-menu-billing")?.textContent ?? "");
+  check(/Digest billing this month\$0\.06$/.test(bill), `the menu's billing line adds the two other devices' registers up: $0.06 (${bill})`);
+  await ad(() => document.querySelector(".blyg-daily .blyg-daily-menu").click());
+  await ad(async ([p, keys]) => { const a = window.app.vault.adapter; const d = JSON.parse(await a.read(p)); for (const k of keys) delete d[k]; await a.write(p, JSON.stringify(d)); }, [".obsidian/plugins/blyg/data.json", BILL_KEYS]); // the later device counts are as before
   // contrast of the top line against the page, in both themes (the muted text colour must stay readable: 4.5)
   const lineContrast = (theme) => ad(async (theme) => {
     document.body.classList.toggle("theme-dark", theme === "dark");

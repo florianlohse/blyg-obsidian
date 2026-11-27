@@ -24,7 +24,9 @@ class El {
 beforeEach(() => vi.stubGlobal("activeWindow", { getSelection: () => null }));
 
 const own = (over: Partial<ReadingPost> = {}): ReadingPost => ({ subscriptionId: "own", subscriptionTitle: "", origin: "https://you.example.com", remoteId: "item-1", kind: "fragment", withdrawn: false, version: 1, readVersion: 1, observedAt: "", created: null, isReply: false, contentHtml: "<p>mine</p>", contentMd: "", authorName: null, authorUrl: null, sourceUrl: null, own: true, ...over });
-const mention = (over: Partial<InboundMention> = {}): InboundMention => ({ id: "m1", targetItemId: "item-1", relation: "transclusion", status: "verified", hidden: false, sourceOrigin: "https://other.example.com", sourceId: "s1", sourcePage: null, sourceAuthorName: "Ada", firstSeen: new Date(Date.now() - 3 * 3600_000).toISOString(), ...over });
+/** One fixed "now" for the file, and a distinct firstSeen per mention (m0 is the newest, each next one a second older): the order the section shows never depends on the clock ticking over between two calls. */
+const T0 = Date.now();
+const mention = (over: Partial<InboundMention> = {}): InboundMention => ({ id: "m1", targetItemId: "item-1", relation: "transclusion", status: "verified", hidden: false, sourceOrigin: "https://other.example.com", sourceId: "s1", sourcePage: null, sourceAuthorName: "Ada", firstSeen: new Date(T0 - 3 * 3600_000 - (Number(String(over.id ?? "m1").slice(1)) || 0) * 1000).toISOString(), ...over });
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 describe("receptionOf", () => {
