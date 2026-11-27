@@ -105,13 +105,15 @@ describe("posts already read, dimmed in place", () => {
     expect(await order(true)).toEqual(await order(false));
     expect(await order(true)).toEqual([a!.remoteId, b!.remoteId, lone.remoteId]);
   });
-  it("is a muted colour, never opacity or a strike-through, and the pressed look (DG19: underline, lighter, never the accent) still comes after it", () => {
+  it("is a muted colour (and a check disc), never opacity or a strike-through, and the pressed look (DG19: underline, lighter, never the accent) still comes after it", () => {
     const css = readFileSync("styles.css", "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
     const rules = [...css.matchAll(/[^{}]*blyg-is-read[^{}]*\{[^}]*\}/g)].map((m) => m[0]);
     expect(rules.length).toBeGreaterThan(0);
     for (const r of rules) {
       expect(r).not.toMatch(/opacity|line-through|display: none/);
-      expect(r).toMatch(/color: var\(--text-muted\)/);
+      // (HX2: the dimming rules use the read-text token, which is a mix of the text colour with the page, or --text-muted where color-mix is missing; the check disc is the one rule that carries a mark and no dimming)
+      if (r.includes("::before")) expect(r).toMatch(/background: var\(--interactive-accent\)/);
+      else expect(r).toMatch(/color: var\(--(text-muted|blyg-read-text)\)/);
     }
     expect(css.indexOf("blyg-story.blyg-is-read > button.blyg-story-headline")).toBeLessThan(css.indexOf(".blyg-story > button.blyg-story-headline:active"));
   });

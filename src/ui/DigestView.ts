@@ -28,7 +28,8 @@ import { CAPPED_NOTE } from "../digest/history";
 import { drawPast, type EditionEntry } from "./DigestPast";
 import { drawDigestMenu, type DigestMenu } from "./digestMenu";
 import { drawStoryMark, keepSavedMark, storyReadLook } from "./digestStory";
-import type { ShelfFacade } from "../app/shelfService";
+import type { ShelfFacade, ShelfResult } from "../app/shelfService";
+import { drawSaving } from "./savingLine";
 import type { ReaderFont } from "./readerFonts";
 
 export const BLYG_DAILY_VIEW = "blyg-daily";
@@ -116,6 +117,8 @@ export class BlygDailyView extends ItemView {
   /** Repainters of the saved mark of the rows drawn (the shelf is read after the page is drawn, and a quick menu can change it). */
   private savedPainters: Array<() => void> = [];
   private markStatus: HTMLElement | null = null;
+  /** How many shelf writes are in flight: the status line says "Saving bookmark…" while it is above zero. */
+  private saving = 0;
   /** The meta line under the date, and what it says: the edition's count (`idle`), a message after it (`note`), or, while a Refresh runs and after it, the Refresh's own state (`line`; `busy`: a spinner). */
   private idle = "";
   private modelNow: DailyModel | null = null;
@@ -187,7 +190,8 @@ export class BlygDailyView extends ItemView {
     if (!el) return;
     el.empty();
     const text = this.line ? this.line.text : [this.idle, this.note].filter(Boolean).join(" · ");
-    if (text) el.createSpan({ text });
+    if (this.saving > 0) drawSaving(el);
+    else if (text) el.createSpan({ text });
     el.toggleClass("is-busy", this.line?.busy === true);
     if (this.line?.busy) el.setAttr("aria-busy", "true");
     else el.removeAttribute("aria-busy");
@@ -558,7 +562,7 @@ export class BlygDailyView extends ItemView {
     const host = this.host;
     const shelf = host.shelf;
     // The shelf is read once per opening of the Daily (the first menu that needs it); Save and Remove are one write each, said in the line under the masthead.
-    const shelfMenu = shelf?.on() ? { shelf: { state: () => (shelf.ready() || shelf.lost?.() === true || shelf.settling?.() === true ? { saved: shelf.has(p), full: shelf.full() } : null), toggle: () => void shelf.toggle(p).then((r) => (this.say(r.ok ? (r.saved ? "Saved for later." : "Removed from saved.") : r.message), this.savedPainters.forEach((f) => f()))) } } : {};
+    const shelfMenu = shelf?.on() ? { shelf: { state: () => (shelf.ready() || shelf.lost?.() === true || shelf.settling?.() === true ? { saved: shelf.has(p), full: shelf.full() } : null), toggle: () => (this.saving++, this.paintStatus(), void shelf.toggle(p).catch((): ShelfResult => ({ ok: false, message: "Could not save, no connection. Tap Save to try again." })).finally(() => this.saving--).then((r) => (this.say(r.ok ? (r.saved ? "Saved for later." : "Removed from saved.") : r.message), this.savedPainters.forEach((f) => f())))) } } : {};
     quickPost(el, () => p, { open: () => this.openEntry(p), ...(host.replyTo ? { reply: () => void host.replyTo?.(p) } : {}), ...(q ? { mark: (read: boolean) => void (read ? q.enqueue([p]) : q.enqueueUnread([p])) } : {}), ...shelfMenu }, this.contentEl);
   }
 

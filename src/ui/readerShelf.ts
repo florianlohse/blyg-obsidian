@@ -6,6 +6,7 @@ import type { ShelfFacade, ShelfResult } from "../app/shelfService";
 import type { ReadingPost } from "../studio/reading";
 import { SHELF_MAX } from "../studio/shelf";
 import { drawSavedMark } from "./savedMark";
+import { drawSaving } from "./savingLine";
 
 /** What the reader asks of the plugin for the shelf. `ReaderHost` extends this. Absent (or switched off): no Save button, no mark, no Saved view. */
 export interface ShelfHost {
@@ -16,6 +17,8 @@ export interface ShelfHost {
 export interface ShelfScreen {
   /** A line in the reader's status row. */
   status(line: string): void;
+  /** The "Saving bookmark…" line, in the reader's status row, while a write is in flight (the next `status` replaces it). */
+  saving?(): void;
   /** Draw again what shows this post (its card, the open post's header). */
   refresh(p: ReadingPost): void;
   /** Draw the feed's body again (a no-op while a post is open: the feed is drawn when the person goes back). */
@@ -86,6 +89,7 @@ export class ShelfControl {
       label: working ? "Saving…" : saved ? "Saved" : "Save for later",
       pressed: saved,
     });
+    if (working) drawSaving(parent); // right of the bookmark: the write is in flight
   }
 
   /** The shelf is switched on and either read, being read or unreachable for now (not: a Studio that has none). */
@@ -106,6 +110,7 @@ export class ShelfControl {
     if (!s || this.busy.has(key)) return;
     this.busy.add(key);
     this.screen.refresh(p);
+    this.screen.saving?.();
     // Whatever goes wrong, the button comes back (a failure, a hang, a throw): the person can tap again.
     const done = await s.toggle(p).catch((): ShelfResult => ({ ok: false, message: "Could not save, no connection. Tap Save to try again." })).finally(() => this.busy.delete(key));
     this.screen.status(done.ok ? (done.saved ? "Saved for later." : "Removed from saved.") : done.message);

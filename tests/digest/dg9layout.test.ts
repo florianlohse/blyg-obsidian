@@ -16,10 +16,18 @@ describe("DG9: one slot for the toggle, one header for the open post", () => {
     expect(rule(".blyg-daily-head > .blyg-modeslot")).toMatch(/order: 99/);
     expect(readFileSync("src/ui/readerMode.ts", "utf8")).toMatch(/blyg-modeswitch blyg-modeslot/);
   });
-  it("the feed's menu (DG19) is the last item of the first row, after the toggle, and holds Sort & filter, Sources and Settings", () => {
+  it("the first row ends the same way in the feed and the Daily: menu, Refresh, then the toggle (HX1); the menu holds Sort & filter, Sources and Settings", () => {
     const src = readFileSync("src/ui/ReaderView.ts", "utf8");
-    expect(src.indexOf("drawModeToggle(row")).toBeLessThan(src.indexOf("drawMenuButton(row"));
-    expect(src.indexOf("drawMenuButton(row")).toBeLessThan(src.indexOf("drawMenuPanel(h"));
+    const feed = src.slice(src.indexOf("private drawFeedHeader"));
+    expect(feed.indexOf("drawMenuButton(row")).toBeLessThan(feed.indexOf('cls: "blyg-reader-refresh"'));
+    expect(feed.indexOf('cls: "blyg-reader-refresh"')).toBeLessThan(feed.indexOf("drawModeToggle(row"));
+    expect(feed.indexOf("drawModeToggle(row")).toBeLessThan(feed.indexOf("drawMenuPanel(h"));
+    expect(feed.indexOf('cls: "blyg-reader-refresh"')).toBeLessThan(feed.indexOf('cls: "blyg-reader-statusrow"'));
+    const bar = readFileSync("src/ui/DigestBar.ts", "utf8");
+    expect(bar.indexOf("blyg-daily-menu")).toBeLessThan(bar.indexOf("blyg-daily-refresh"));
+    expect(bar.indexOf("blyg-daily-refresh")).toBeLessThan(bar.indexOf("drawModeToggle("));
+    expect(css).toMatch(/\.blyg-reader-header button\.blyg-reader-menubtn \{[^}]*width: 44px/);
+    expect(css).toMatch(/\.blyg-daily-barrow \{ --blyg-ctl-h: 44px/);
     const menu = readFileSync("src/ui/readerMenu.ts", "utf8");
     for (const label of ["Sort & filter", "Sources", "Settings"]) expect(menu).toContain(`label: "${label}"`);
   });
