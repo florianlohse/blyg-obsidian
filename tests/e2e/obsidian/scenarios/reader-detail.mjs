@@ -48,7 +48,7 @@ await new Promise((resolve) => stub.listen(0, "127.0.0.1", resolve));
 const base = `http://127.0.0.1:${stub.address().port}`;
 const data = fixtureData();
 data.studio.baseUrl = base;
-data.features = { daily: true, shelf: true }; // experimental features are off in the release flavour this harness loads
+data.features = { daily: true, shelf: true }; // since 1.1.0 both are stable (always on); the line is kept harmlessly
 
 await runScenario({ data }, async (s) => {
   const { check } = s;

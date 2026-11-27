@@ -36,7 +36,7 @@ await new Promise((resolve) => stub.listen(0, "127.0.0.1", resolve));
 const base = `http://127.0.0.1:${stub.address().port}`;
 const data = fixtureData();
 data.studio.baseUrl = base;
-data.features = { passages: true }; // an experimental feature is off in the release flavour this harness loads
+data.features = { passages: true }; // still experimental: off in the release flavour this harness loads unless switched on
 data.passages = { folders: "Reading\nIdeas" };
 
 const HABIT = "# On habit\nShort entries, every day.\n\n## Copying by hand\nA slow way.\n\n# Open questions\nDoes typing count?\n";

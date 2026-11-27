@@ -270,7 +270,7 @@ export class BlygSettingTab extends PluginSettingTab {
       type: "group",
       heading: "Experimental features",
       items: [
-        { name: "Early features", desc: "These are still being built and may change, be slow or misbehave. Each is off in the released plugin until it has been tried. Switching one off hides it completely and keeps what it saved. Reload Obsidian after a change." },
+        { name: "Early features", desc: "These are still being built and may change, be slow or misbehave. Each is off in the released plugin until you switch it on. Switching one off hides it completely and keeps what it saved. Reload Obsidian after a change." },
         ...experimental.map((f): SettingGroupItem => ({ name: f.title, desc: f.description, control: { type: "toggle", key: `features.${f.id}`, defaultValue: false } })),
       ],
     });

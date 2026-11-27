@@ -44,7 +44,7 @@ await new Promise((resolve) => stub.listen(0, "127.0.0.1", resolve));
 const base = `http://127.0.0.1:${stub.address().port}`;
 const data = fixtureData();
 data.studio.baseUrl = base;
-data.features = { daily: true }; // an experimental feature is off in the release flavour this harness loads
+data.features = { daily: true }; // since 1.1.0 the Daily is stable (always on); the line is kept harmlessly. release-flavour.mjs checks the default set
 
 await runScenario({ data }, async (s) => {
   const { check } = s;
@@ -672,8 +672,11 @@ await runScenario({ data }, async (s) => {
   check((await menu()).length === 0 && (await opened()), "a short touch opens no menu: it is a tap and opens the post");
   await freshFeed();
   await touch(".blyg-reader-card");
+  // Since 1.1.0 the shelf is stable, so the release flavour's menu also offers "Save for later"; the other rows are what this scenario is about.
+  const noSave = (m) => m.filter((t) => t !== "Save for later");
   const feedMenu = await menu();
-  check(JSON.stringify(feedMenu) === JSON.stringify(["Open", "Reply", "Mark read"]) && !(await opened()), `a long press on a feed card opens the menu (${JSON.stringify(feedMenu)}) and the release did not open the post`);
+  check(JSON.stringify(noSave(feedMenu)) === JSON.stringify(["Open", "Reply", "Mark read"]) && !(await opened()), `a long press on a feed card opens the menu (${JSON.stringify(feedMenu)}) and the release did not open the post`);
+  check(feedMenu.includes("Save for later"), "the shelf is stable since 1.1.0: the long-press menu offers Save for later without any switch");
   check(marks.length === marked0 && others.length === others0, "opening the menu asked the Studio for nothing");
   await pick("Mark read");
   await settle(marks, marked0 + 1);
@@ -701,12 +704,12 @@ await runScenario({ data }, async (s) => {
   const m1 = marks.length;
   await touch(".blyg-daily .blyg-story-mixed");
   const dm = await menu();
-  check(JSON.stringify(dm) === JSON.stringify(["Open", "Reply", "Mark read"]) && !(await opened()), `a long press on a digest post opens the menu (${JSON.stringify(dm)}), the release opened nothing`);
+  check(JSON.stringify(noSave(dm)) === JSON.stringify(["Open", "Reply", "Mark read"]) && !(await opened()), `a long press on a digest post opens the menu (${JSON.stringify(dm)}), the release opened nothing`);
   await pick("Mark read");
   await settle(marks, m1 + 1);
   check(marks.length === m1 + 1 && (await page.evaluate(() => document.querySelector(".blyg-daily .blyg-story-mixed")?.classList.contains("blyg-is-read"))), `Mark read in the digest wrote exactly one request and showed at once (${marks.length - m1})`);
   await touch(".blyg-daily .blyg-story .blyg-daily-meta");
-  const sm = await menu();
+  const sm = noSave(await menu());
   check(sm[0] === "Open first post" && /^Mark story (read|unread)$/.test(sm[1] ?? "") && sm.length === 2, `a long press on a story card offers Open first post and Mark story read (${JSON.stringify(sm)})`);
   await pick("Open first post");
   await page.waitForSelector(".blyg-reader-header .blyg-reader-back", { timeout: 20000 });
