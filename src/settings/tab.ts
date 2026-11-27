@@ -281,7 +281,7 @@ export class BlygSettingTab extends PluginSettingTab {
       heading: "Marginalia",
       items: [
         { name: "Marks in the text", desc: "A small mark at the end of a paragraph that others quoted. Tap it to see who, and when.", control: { type: "toggle", key: "marginalia.markers", defaultValue: true } },
-        { name: "Reception at the end of the note", desc: "A section after the last paragraph listing who quoted or answered this note. It is only drawn, never written into the note.", control: { type: "toggle", key: "marginalia.bottom", defaultValue: true } },
+        { name: "Reception at the end of the note", desc: "A section after the last paragraph listing who quoted or answered this note. It is also listed at the end of your own post in the reader. It is only drawn, never written into the note.", control: { type: "toggle", key: "marginalia.bottom", defaultValue: true } },
       ],
     });
 
