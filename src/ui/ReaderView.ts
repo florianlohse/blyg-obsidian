@@ -13,7 +13,7 @@ import { plainText, renderForeign, type ImageMode } from "./defang"; import { ro
 import { activeFilters, arrange, isReplyToMine, OWN_SOURCE, readFilter, cardOf, DEFAULT_FILTER, frameable, LENGTH_LABELS, postOfQuote, readingTimeLabel, relativeTime, SORT_LABELS, sourcesOf, type FeedFilter, type FeedLength, type FeedSort } from "./readerFeed";
 import { type ReaderFont } from "./readerFonts";
 import { ReturnPoint, whenIdle } from "./readerExtras";
-import { AutoRead } from "./readerAutoRead"; import { drawModeToggle, setReaderMode, switchMode } from "./readerMode";
+import { AutoRead } from "./readerAutoRead"; import { drawOwnReception } from "./readerReception"; import { drawModeToggle, setReaderMode, switchMode } from "./readerMode";
 import { askStudioToFetch } from "./readerFetch";
 import { drawFeedStart, heldList, noteListLoaded, sessionSync, startReader, type Saved } from "./readerStart";
 import { askAndWait } from "../app/readerRefresh";
@@ -97,7 +97,7 @@ export interface ReaderHost extends FollowHost, ShelfHost {
   /** Open the note of one of the owner's items in Obsidian; false when no note of this vault holds it. */
   openOwnItem(itemId: string): Promise<boolean>;
   markRead(post: ReadingPost): Promise<ReadResult>; // needs the token permission `reading:state`; the message says so when it is missing
-  markUnread(post: ReadingPost): Promise<ReadResult>; autoRead(): boolean; // the setting "Mark posts as read when I open them"
+  markUnread(post: ReadingPost): Promise<ReadResult>; autoRead(): boolean; receptionOn(): boolean; // autoRead: the setting "Mark posts as read when I open them"; receptionOn: feature `marginalia` and its "bottom" choice (Reception at the foot of your own posts)
   /** The owner's choices (settings): how a post opens, and what happens to images in the text view. */
   imageMode(): ImageMode;
   /** The font of the text view's content (the setting "Font in the reader"). */
@@ -1226,9 +1226,9 @@ export class BlygReaderView extends ItemView {
 
   private drawPostBody(body: HTMLElement, p: ReadingPost): void {
     const scroll = body.createDiv({ cls: "blyg-reader-scroll blyg-reader-surface" });
-    const col = scroll.createDiv({ cls: "blyg-reader-column" });
-    this.postColumn = col;
+    const col = scroll.createDiv({ cls: "blyg-reader-column" }); this.postColumn = col;
     this.drawText(col, p);
     this.drawReplies(p);
+    if (this.host.receptionOn()) drawOwnReception(col, p, { mentions: this.data?.mentions ?? [], post: (m) => this.mentionInfo.get(m.id)?.post ?? postOfMention(this.data?.posts ?? [], m), load: (m) => this.loadMention(m), open: (m) => void this.openMention(m) });
   }
 }
