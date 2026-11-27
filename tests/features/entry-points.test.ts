@@ -48,7 +48,7 @@ const fakePlugin = (id: string) => {
   };
   return { calls, p: p as never };
 };
-const deps = { digest: { font: () => "default" as const, time: () => "07:00", readList: async () => null, mode: { get: () => "feed" as const, set: () => {} }, ai: { settings: () => ({}) as never, keychain: {} as never, transport: {} as never } }, share: { settings: () => ({}) as never, build: () => ({}) as never, openReader: async () => {} }, contrast: () => "normal" as const, tangle: { write: async () => {}, routes: () => [] } };
+const deps = { digest: { font: () => "default" as const, time: () => "07:00", readList: async () => null, mode: { get: () => "feed" as const, set: () => {} }, ai: { settings: () => ({}) as never, keychain: {} as never, transport: {} as never } }, share: { settings: () => ({}) as never, build: () => ({}) as never, openReader: async () => {} }, contrast: () => "normal" as const };
 
 describe("registerFeatureEntries", () => {
   const DAILY = ["cmd:open-daily", "ribbon:Open Blyg Daily", "cmd:show-digest-sent"];
@@ -56,13 +56,13 @@ describe("registerFeatureEntries", () => {
     const { calls, p } = fakePlugin("blyg");
     registerFeatureEntries(p, createFeatures(() => ({}), "blyg"), deps);
     expect(calls).toEqual(expect.arrayContaining(DAILY));
-    for (const absent of ["cmd:open-address-from-clipboard", "cmd:send-passage-to-note", "cmd:publish-paragraph", "cmd:dev-author-look", "cmd:dev-draw-synthetic-posts"]) expect(calls).not.toContain(absent);
+    for (const absent of ["cmd:open-address-from-clipboard", "cmd:send-passage-to-note", "cmd:dev-author-look", "cmd:dev-draw-synthetic-posts"]) expect(calls).not.toContain(absent);
     expect([...calls].sort()).toEqual([...DAILY, "cmd:clear-digest-requests", "view:blyg-daily"].sort());
   });
   it("registers everything in the dev build by default", () => {
     const { calls, p } = fakePlugin("blyg-dev");
     registerFeatureEntries(p, createFeatures(() => ({}), "blyg-dev"), deps);
-    expect(calls).toEqual(expect.arrayContaining(["cmd:open-daily", "cmd:show-digest-sent", "ribbon:Open Blyg Daily", "cmd:open-address-from-clipboard", "cmd:send-passage-to-note", "cmd:dev-author-look", "cmd:dev-draw-synthetic-posts", "cmd:publish-paragraph"]));
+    expect(calls).toEqual(expect.arrayContaining(["cmd:open-daily", "cmd:show-digest-sent", "ribbon:Open Blyg Daily", "cmd:open-address-from-clipboard", "cmd:send-passage-to-note", "cmd:dev-author-look", "cmd:dev-draw-synthetic-posts"]));
   });
   it("leaves out an experimental feature that is switched off; a stable one cannot be switched off", () => {
     const { calls, p } = fakePlugin("blyg-dev");
@@ -70,15 +70,6 @@ describe("registerFeatureEntries", () => {
     expect(calls).toEqual(expect.arrayContaining(DAILY));
     expect(calls).not.toContain("cmd:open-address-from-clipboard");
     expect(calls).toContain("cmd:dev-author-look");
-    expect(calls).toContain("cmd:publish-paragraph");
-  });
-  it("Publish this paragraph exists only with the feature `tangle` on", () => {
-    const off = fakePlugin("blyg-dev");
-    registerFeatureEntries(off.p, createFeatures(() => ({ tangle: false }), "blyg-dev"), deps);
-    expect(off.calls).not.toContain("cmd:publish-paragraph");
-    const on = fakePlugin("blyg");
-    registerFeatureEntries(on.p, createFeatures(() => ({ tangle: true }), "blyg"), deps);
-    expect(on.calls).toContain("cmd:publish-paragraph");
   });
   it("turns the release build's experimental features on with the user's switch", () => {
     const { calls, p } = fakePlugin("blyg");
