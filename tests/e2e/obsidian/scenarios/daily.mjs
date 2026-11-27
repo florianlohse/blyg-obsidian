@@ -310,7 +310,7 @@ await runScenario({ data }, async (s) => {
   // DG14: a story is typography, not a box. Measured in both themes: no background, border, radius or shadow on a story, a hairline between stories, the headline larger than the summary, the meta line small, muted and italic, a "›" mark and no chevron element, contrast of headline, summary and meta.
   const typeLook = (theme) => page.evaluate(async (theme) => {
     if (theme) { document.body.classList.toggle("theme-dark", theme === "dark"); document.body.classList.toggle("theme-light", theme !== "dark"); await new Promise((r) => setTimeout(r, 400)); } // (Obsidian's own theme classes: all the variables follow them)
-    const num = (c) => (c.match(/[\d.]+/g) ?? []).slice(0, 4).map(Number);
+    const num = (c) => { const n = (c.match(/[\d.]+/g) ?? []).slice(0, 4).map(Number); return c.startsWith("color(srgb") ? n.map((v, i) => (i < 3 ? v * 255 : v)) : n; }; // (a colour made with color-mix() comes back as color(srgb r g b) with parts from 0 to 1)
     const lum = (c) => { const [r, g, b] = num(c).map((v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
     const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m); return +((x + 0.05) / (y + 0.05)).toFixed(1); };
     const stories = [...document.querySelectorAll(".blyg-daily .blyg-daily-cluster.blyg-story")];
@@ -344,7 +344,7 @@ await runScenario({ data }, async (s) => {
   // DG18: posts already read are dimmed in place: a muted colour (not opacity, not struck through), still readable and tappable; a story whose posts are all read has its headline lighter too; unread ones are unchanged. Both themes.
   const readLook = (theme) => page.evaluate(async (theme) => {
     document.body.classList.toggle("theme-dark", theme === "dark"); document.body.classList.toggle("theme-light", theme !== "dark"); await new Promise((r) => setTimeout(r, 400));
-    const num = (c) => (c.match(/[\d.]+/g) ?? []).slice(0, 4).map(Number);
+    const num = (c) => { const n = (c.match(/[\d.]+/g) ?? []).slice(0, 4).map(Number); return c.startsWith("color(srgb") ? n.map((v, i) => (i < 3 ? v * 255 : v)) : n; }; // (a colour made with color-mix() comes back as color(srgb r g b) with parts from 0 to 1)
     const lum = (c) => { const [r, g, b] = num(c).map((v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
     const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m); return +((x + 0.05) / (y + 0.05)).toFixed(1); };
     const colour = (v) => { const probe = document.createElement("span"); probe.style.color = `var(${v})`; document.body.appendChild(probe); const c = getComputedStyle(probe).color; probe.remove(); return c; };
@@ -363,13 +363,17 @@ await runScenario({ data }, async (s) => {
       decoration: [readHead, readLine].map((el) => (el ? getComputedStyle(el).textDecorationLine : null)),
       tappable: [readHead, readLine].map((el) => !!el && !el.disabled && getComputedStyle(el).pointerEvents !== "none"),
       contrast: [readHead, readLine].map((el) => (el ? ratio(getComputedStyle(el).color, solid(ground)) : null)),
+      disc: [readHead, readLine].map((el) => { const c = getComputedStyle(el, "::before"); return { content: c.content, bg: c.backgroundColor, radius: c.borderTopLeftRadius === "9999px" || c.borderTopLeftRadius === "50%" ? "50%" : c.borderTopLeftRadius }; }),
+      unreadDisc: [unreadHead, unreadLine].map((el) => ({ content: getComputedStyle(el, "::before").content })),
     };
   }, theme);
   await page.mouse.move(0, 0); // (a pointer resting on a headline would show its hover colour)
   for (const theme of ["dark", "light"]) {
     const r = await readLook(theme);
     check(r.readHead !== null && r.readLine !== null && r.unreadHead !== null && r.unreadLine !== null, `the ${theme} theme: the page holds a read story and a read single post, and unread ones to compare (${JSON.stringify(r)})`);
-    check(r.readHead === r.muted && r.readLine === r.muted && r.unreadHead === r.normal && r.unreadLine === r.normal, `the ${theme} theme: a read story's headline and a read post's line are the muted colour, unread ones are unchanged (${JSON.stringify(r)})`);
+    // HX2: read text is dimmed further than the muted colour (a mix of the text colour into the page; the contrast check below keeps it at AA), unread ones are unchanged, and a filled check disc stands before a read headline and a read line.
+    check(r.readHead === r.readLine && r.readHead !== r.normal && r.readHead !== r.unreadHead && r.unreadHead === r.normal && r.unreadLine === r.normal, `the ${theme} theme: a read story's headline and a read post's line are dimmed, unread ones are unchanged (${JSON.stringify(r)})`);
+    check(r.disc.every((d) => d.content.includes("\u2713") && d.bg !== "rgba(0, 0, 0, 0)" && d.radius === "50%") && r.unreadDisc.every((d) => d.content === "none" || d.content === "normal"), `the ${theme} theme: a filled check disc stands before a read headline and a read line, not before unread ones (${JSON.stringify([r.disc, r.unreadDisc])})`);
     check(r.opacity.every((o) => o === "1/1") && r.decoration.every((d) => d === "none") && r.tappable.every(Boolean) && r.contrast.every((c) => c >= 4.5), `the ${theme} theme: read text is not made see-through or struck through, stays tappable, contrast at least 4.5 (${JSON.stringify(r)})`);
   }
   const lead = await page.evaluate(() => { const s = [...document.querySelectorAll(".blyg-daily .blyg-daily-cluster.blyg-story")]; const f = (el) => parseFloat(getComputedStyle(el.querySelector(":scope > .blyg-story-headline")).fontSize); const lead = s.find((e) => !(e.previousElementSibling?.classList.contains("blyg-story"))); const next = s.find((e) => e.previousElementSibling?.classList.contains("blyg-story")); return lead && next ? { lead: f(lead), next: f(next) } : null; });
@@ -550,10 +554,9 @@ await runScenario({ data }, async (s) => {
     await page.waitForSelector(".blyg-reader-header .blyg-modeswitch", { timeout: 20000 });
     await wait(1000);
     const near = (a, b, tol) => a !== null && b !== null && Math.abs(a - b) <= tol;
-    // DG19: the feed's first row ends with the hamburger, after the toggle; the Daily's first row ends with its toggle (its own menu icon and Refresh are to the left of it): the two rows end at the same right edge,
-    // the toggle is one slot in every state of the feed (with a list, the Mentions tab) and sits right before the hamburger, at the same height as the Daily's.
-    check(slotFeed && slotMentions && slotDigest && hamb && near(slotFeed.r, slotMentions.r, 1) && near(slotFeed.t, slotMentions.t, 2) && near(hamb.r, slotDigest.r + bar, 1) && hamb.l >= slotFeed.r - 0.5 && hamb.l - slotFeed.r <= 12 && near(slotFeed.t, slotDigest.t, 2),
-      `${label}: the Feed | Digest toggle is in one slot in the feed with a list and the Mentions tab, with the hamburger right after it at the row's right edge, the same edge where the digest's first row ends (right edges ${slotFeed?.r}, ${slotMentions?.r}; hamburger ${hamb?.l}-${hamb?.r} against the digest's ${slotDigest?.r + bar}; top ${slotFeed?.t}, ${slotMentions?.t}, ${slotDigest?.t})`);
+    // HX1: the feed's first row ends like the Daily's: menu, Refresh, then the toggle at the right edge (the same edge where the digest's first row ends). The toggle is one slot in every state of the feed (with a list, the Mentions tab) and at the same height as the Daily's.
+    check(slotFeed && slotMentions && slotDigest && hamb && fRefresh && near(slotFeed.r, slotMentions.r, 1) && near(slotFeed.t, slotMentions.t, 2) && near(slotFeed.r, slotDigest.r + bar, 1) && hamb.r <= fRefresh.l + 1 && fRefresh.r <= slotFeed.l + 1 && near(slotFeed.t, slotDigest.t, 2),
+      `${label}: the Feed | Digest toggle is in one slot in the feed with a list and the Mentions tab, after the menu and Refresh, at the row's right edge, the same edge where the digest's first row ends (right edges ${slotFeed?.r}, ${slotMentions?.r}; digest ${slotDigest?.r + bar}; menu ${hamb?.l}-${hamb?.r}, Refresh ${fRefresh?.l}-${fRefresh?.r}; top ${slotFeed?.t}, ${slotMentions?.t}, ${slotDigest?.t})`);
     check(verClear, `${label}: the version label does not overlap the toggle (${JSON.stringify(verRect)} against ${JSON.stringify(slotFeed)})`);
     check(inView(feedPost) && inView(storyPost), `${label}: in an open post (feed and story) every header control is inside the viewport and nothing scrolls sideways (feed ${JSON.stringify(feedPost.view)}, story ${JSON.stringify(storyPost.view)}; right edges feed ${Object.keys(CONTROLS).map((k) => feedPost[k]?.r)}, story ${Object.keys(CONTROLS).map((k) => storyPost[k]?.r)})`);
     const same = Object.keys(CONTROLS).filter((k) => !(feedPost[k] && storyPost[k] && near(feedPost[k].l, storyPost[k].l, 1) && near(feedPost[k].t, storyPost[k].t, 1)));
