@@ -17,6 +17,16 @@ will change before anything leaves your vault.
 - **Save for later.** Press and hold a post, or tap the bookmark in an open post. Saved posts live on your Studio's shelf (up to 50), shared with your other devices. Needs a token with every permission ticked and a Studio that offers the shelf.
 - **Reception.** For a note you published: words others quoted are underlined with a count, and a Reception section at the end of the note (also in Reading view) lists who quoted or answered it; the same list is at the foot of your own posts in the reader. Works best on blygs you follow.
 
+The Daily on a phone: the top of an edition, a story unfolded, the date's list of older editions, and the menu.
+
+| <img src="images/readme/daily-top.png" width="190" alt="The Blyg Daily on a phone: the date Friday, November 27th, 2026, the refresh and Feed or Digest buttons, a contents list (Top stories, Letters, Mixed bag) and the first story headline, The stairwell light in our building runs on a timer"> | <img src="images/readme/daily-story.png" width="190" alt="One Daily story unfolded: its four posts by Teo Brandt, each with a read mark, the first one marked read"> | <img src="images/readme/daily-editions.png" width="190" alt="The date in the Daily opened to a list of editions: Today as of 1:40 PM, Thursday November 26th with 3 stories and Wednesday November 25th with 2 stories"> | <img src="images/readme/daily-menu.png" width="190" alt="The Daily's menu: the rows Digest time 07:00, Show what the digest sent and Settings, and the line Digest billing this month"> |
+|---|---|---|---|
+
+Save for later and Reception:
+
+| <img src="images/readme/save-menu.png" width="190" alt="The press-and-hold menu on a post in the reader feed with the rows Open, Reply, Mark read and Save for later"> | <img src="images/readme/saved-view.png" width="190" alt="The reader feed with the Saved choice selected under Sort and filter, listing two saved posts, each with a small bookmark"> | <img src="images/readme/reception.png" width="190" alt="A published note with the words the most reasonable wrong explanation I have read underlined and a Reception (2) section below it: one quote of a paragraph and one reply, each with an Open in reader button"> |
+|---|---|---|
+
 Posts you open now count as read after about a second (Settings → Blyg → Reader, on by default).
 
 Still experimental, off until you switch them on under Settings → Experimental features: sending a passage to a note and drafting selected words, new items from a thread, opening a shared address. The full list is in the [changelog](CHANGELOG.md).
