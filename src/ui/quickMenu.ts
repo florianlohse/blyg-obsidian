@@ -18,12 +18,20 @@ export function showQuickMenu(entries: readonly QuickEntry[], at: { x: number; y
   menu.showAtPosition(at);
 }
 
+const owned = new WeakSet<Event>();
+
 /**
  * Make `el` open `show(x, y)` on a long press (touch) or a context click (mouse). The release after a long press never counts as a tap: the click that follows is swallowed.
  * Movement, a second finger and a scroll of `scroller` cancel the press, so scrolling never opens a menu.
  */
 export function attachQuick(el: HTMLElement, show: (x: number, y: number) => void, scroller?: HTMLElement | null): void {
   let swallowUntil = 0;
+  // A post row sits inside its story card and both listen: the innermost element that sees a touch or a context click owns it, so exactly ONE menu opens (iOS showed two).
+  const mine = (e: Event): boolean => {
+    if (owned.has(e)) return false;
+    owned.add(e);
+    return true;
+  };
   let shownAt = 0;
   const open = (x: number, y: number): void => {
     shownAt = Date.now();
@@ -31,7 +39,7 @@ export function attachQuick(el: HTMLElement, show: (x: number, y: number) => voi
   };
   const press = new LongPress({ set: (fn, ms) => window.setTimeout(fn, ms), clear: (h) => window.clearTimeout(h) }, open);
   const at = (e: TouchEvent): { x: number; y: number } => ({ x: e.touches[0]?.clientX ?? e.changedTouches[0]?.clientX ?? 0, y: e.touches[0]?.clientY ?? e.changedTouches[0]?.clientY ?? 0 });
-  el.addEventListener("touchstart", (e) => press.start(e.touches.length, at(e).x, at(e).y), { passive: true });
+  el.addEventListener("touchstart", (e) => (mine(e) ? press.start(e.touches.length, at(e).x, at(e).y) : press.cancel()), { passive: true });
   el.addEventListener("touchmove", (e) => press.move(e.touches.length, at(e).x, at(e).y), { passive: true });
   el.addEventListener("touchcancel", () => press.cancel(), { passive: true });
   el.addEventListener("touchend", (e) => {
@@ -49,6 +57,7 @@ export function attachQuick(el: HTMLElement, show: (x: number, y: number) => voi
   }, true);
   el.addEventListener("contextmenu", (e) => {
     e.preventDefault();
+    if (!mine(e)) return;
     if (Date.now() - shownAt < 800) return; // a touch device sends this right after the long press that already opened the menu
     open(e.clientX, e.clientY);
   });

@@ -68,9 +68,11 @@ export class ShelfControl {
     const s = this.shelf();
     if (!s || (p.subscriptionId === "" && p.own !== true) || (p.withdrawn && !this.has(p))) return;
     if (!this.usable) {
-      // Room is kept for Save while the shelf is being read (so the row does not move when it arrives), and Save stays when the read had no connection: a tap tries again.
+      // Save is always reachable on a phone: while the shelf is being read the button is kept (pending), and when the read had no connection or has not happened a tap tries again.
       const lost = s.lost?.() === true;
-      if (lost || s.settling?.() === true) make(parent, "", () => void this.toggle(p), { disabled: !lost, cls: `blyg-reader-savebtn${lost ? "" : " is-pending"}`, title: "Save this post for later on your shelf, shared with your other devices", icon: "bookmark", label: "Save for later", pressed: false });
+      const settling = !lost && s.settling?.() === true;
+      if (!lost && !settling) return; // a Studio without a shelf: no button
+      make(parent, "", () => void this.toggle(p), { disabled: settling, cls: `blyg-reader-savebtn${settling ? " is-pending" : ""}`, title: "Save this post for later on your shelf, shared with your other devices", icon: "bookmark", label: "Save for later", pressed: false });
       return;
     }
     const saved = this.has(p);
@@ -86,9 +88,15 @@ export class ShelfControl {
     });
   }
 
-  /** What a long press offers (quickMenu.ts): read when the menu opens. */
+  /** The shelf is switched on and either read, being read or unreachable for now (not: a Studio that has none). */
+  private offered(): boolean {
+    const s = this.shelf();
+    return s?.on() === true && (s.ready() || s.lost?.() === true || s.settling?.() === true);
+  }
+
+  /** What a long press offers (quickMenu.ts): read when the menu opens. Save is offered whenever the shelf is on, even before it has been read (on a phone the read can still be running or have failed): a tap reads again first and says what went wrong. */
   actions(p: ReadingPost): { state(): { saved: boolean; full: boolean } | null; toggle(): void } {
-    return { state: () => (this.usable ? { saved: this.has(p), full: this.shelf()?.full() === true } : null), toggle: () => void this.toggle(p) };
+    return { state: () => (this.offered() ? { saved: this.has(p), full: this.shelf()?.full() === true } : null), toggle: () => void this.toggle(p) };
   }
 
   /** Save the post, or take it off the shelf. One write to the Studio; what went wrong is said in the status line, nothing is shown as saved that is not. */
