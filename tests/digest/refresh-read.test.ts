@@ -131,23 +131,25 @@ describe("one Refresh", () => {
     };
     const refresh: DigestHost["refresh"] = () => Promise.resolve({ ok: true, list: { posts: [...base, fresh], mentions: [] } });
     const m = await mount(base, { ai, refresh });
-    return { ...m, writes, note: () => (m.view as unknown as { note: string }).note };
+    return { ...m, writes, note: () => statusOf(m.root) };
   };
+  /** The meta line under the date: the one element that carries the edition's count and the Refresh's state. */
+  const statusOf = (root: El): string => (root.all().find((e) => has(e, "blyg-daily-markstatus"))?.children ?? []).map((c) => c.text).join("");
   const press = async (m: { root: El }): Promise<void> => {
-    m.root.all().find((e) => has(e, "blyg-daily-refreshbtn"))!.click();
+    m.root.all().find((e) => has(e, "blyg-daily-refresh"))!.click();
     await new Promise((r) => setTimeout(r, 10));
   };
-  it("with the automatic write on, writes once, by the automatic rules, after fetching", async () => {
+  it("with the automatic write on, writes once, by the automatic rules, after fetching, and says the texts were written", async () => {
     const m = await setup(true, (c) => c.map(() => null));
     await press(m);
     expect(m.writes).toEqual([{ resort: false, auto: true }]); // never a re-sort, never the manual path (no consent question, the ceiling applies)
-    expect(m.note()).toMatch(/^1 new post/);
+    expect(m.note()).toMatch(/^1 new post · texts written · as of /);
   });
   it("with the automatic write off, sends nothing and says in one line that the texts are not written", async () => {
     const m = await setup(false, (c) => c.map(() => null));
     await press(m);
     expect(m.writes).toEqual([]);
-    expect(m.note()).toMatch(/^1 new post · grouped, texts not written \(automatic writing is off\)$/);
+    expect(m.note()).toBe("1 new post · AI off: grouped, texts not written");
   });
   it("with everything written and nothing new, there is nothing to write and nothing is sent", async () => {
     const writes: unknown[] = [];
@@ -155,23 +157,24 @@ describe("one Refresh", () => {
     const m = await mount(base, { ai, refresh: () => Promise.resolve({ ok: true, list: { posts: base, mentions: [] } }) });
     await press(m);
     expect(writes).toEqual([]);
-    expect((m.view as unknown as { note: string }).note).toBe("Nothing new");
+    expect(statusOf(m.root)).toMatch(/^Nothing new · checked /);
   });
-  it("without the AI layer, Refresh writes nothing and says nothing about texts", async () => {
+  it("without the AI layer, Refresh writes nothing and says only that the new posts are grouped", async () => {
     const m = await mount(base, { refresh: () => Promise.resolve({ ok: true, list: { posts: [...base, fresh], mentions: [] } }) });
     await press(m);
-    expect((m.view as unknown as { note: string }).note).toBe("1 new post");
+    expect(statusOf(m.root)).toMatch(/^1 new post, grouped · as of /);
   });
-  it("the menu shows one update action; the manual writes are under Advanced (a row of the menu that opens them as rows)", async () => {
+  it("the digest has ONE update action in its UI: the refresh icon; no Refresh, Advanced, Write or Re-sort entry anywhere in the page", async () => {
     const m = await setup(false, (c) => written(c));
-    const rows = (): El[] => m.root.all().filter((e) => has(e, "blyg-menurow"));
-    const adv = m.root.all().find((e) => has(e, "blyg-daily-advanced"))!;
-    expect(adv.tag).toBe("details");
-    expect(adv.children[0]!.tag).toBe("summary");
-    expect(adv.children[0]!.all().map((e) => e.text).filter(Boolean)).toEqual(["Advanced", "›"]); // the label, and the › of a row that opens something
-    const outside = rows().filter((e) => !adv.all().includes(e));
-    expect(outside.map((e) => e.all().find((b) => has(b, "blyg-menurow-label"))?.text)).toEqual(["Refresh"]);
-    expect(adv.all().filter((b) => b.tag === "button" && has(b, "blyg-menurow")).length).toBeGreaterThanOrEqual(1);
-    expect(adv.all().some((b) => has(b, "blyg-story-write"))).toBe(true);
+    expect(m.root.all().filter((e) => has(e, "blyg-daily-refresh")).length).toBe(1);
+    for (const cls of ["blyg-daily-refreshbtn", "blyg-daily-advanced", "blyg-story-write", "blyg-daily-resortbtn"]) expect(m.root.all().some((e) => has(e, cls)), cls).toBe(false);
+    const labels = m.root.all().filter((e) => has(e, "blyg-menurow-label")).map((e) => e.text);
+    for (const l of ["Refresh", "Advanced", "Write the digest", "Re-sort sections"]) expect(labels).not.toContain(l);
+  });
+  it("the idle meta line keeps the edition's count, and the refresh state replaces it in the same element", async () => {
+    const m = await setup(false, (c) => written(c));
+    expect(statusOf(m.root)).toMatch(/^\d+ posts? in this edition, as of /);
+    await press(m);
+    expect(m.root.all().filter((e) => has(e, "blyg-daily-markstatus")).length).toBe(1);
   });
 });

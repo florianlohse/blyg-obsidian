@@ -29,7 +29,6 @@ import { addUsage } from "../digest/autoWrite";
 import { drawPast, drawSwitcher } from "./DigestPast";
 import { drawPriceLine, priceLineText } from "./digestPriceLine";
 import { drawStoryMark, keepSavedMark, storyReadLook } from "./digestStory";
-import { drawMenuRow, fillMenuRow } from "./menuRow";
 import type { ShelfFacade } from "../app/shelfService";
 import type { ReaderFont } from "./readerFonts";
 
@@ -80,12 +79,13 @@ export interface DigestHost {
   };
 }
 
-/** What each button of the menu does and costs (shown under it). */
-const REFRESH_HINT = "Fetches new posts from your blygs, no AI, no cost";
-const REFRESH_AI_HINT = "Fetches new posts from your blygs and groups them. Writes the missing texts only if “Write the digest automatically” is on (uses tokens).";
-const NOT_WRITTEN = "grouped, texts not written (automatic writing is off)"; // one short line: the status must not wrap and push the page down
-const WRITE_HINT = "Writes headlines and summaries with your AI model, uses tokens";
-const RESORT_HINT = "Sorts every story and post into sections again, uses tokens";
+/** The header's one update action (the refresh icon): what it does and costs, in its title. */
+const REFRESH_HINT = "Fetches new posts from your blygs and groups them. Writes the missing texts only if “Write the digest automatically” is on (uses tokens).";
+/** The refresh's states, said in the line under the date (the meta line). One short line each: it must not wrap and push the page down. */
+const FETCHING = "Fetching new posts…";
+const WRITING = "Writing the texts…";
+const AI_OFF = "AI off: grouped, texts not written";
+const COULD_NOT_CHECK = "Could not check your blygs.";
 const stamp = (t: number): string => new Date(t).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
 const timeOnly = (t: number): string => new Date(t).toLocaleTimeString(undefined, { timeStyle: "short" });
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
@@ -104,7 +104,6 @@ export class BlygDailyView extends ItemView {
   private editorId: string | undefined;
   private viewing: number | null = null;
   private byId = new Map<string, ReadingPost>();
-  private writeBtn: HTMLElement | null = null;
   /** The section boxes drawn now, by name (the table of contents and the reader's chip scroll to them), and the section a chip asked for. */
   private sectionEls = new Map<string, HTMLElement>();
   private wantSection: string | null = null;
@@ -119,8 +118,10 @@ export class BlygDailyView extends ItemView {
   /** Repainters of the saved mark of the rows drawn (the shelf is read after the page is drawn, and a quick menu can change it). */
   private savedPainters: Array<() => void> = [];
   private markStatus: HTMLElement | null = null;
-  /** The menu's "Advanced" part (the manual writes): folded until opened, kept over redraws. */
-  private advancedOpen = false;
+  /** The meta line under the date, and what it says: the edition's count (`idle`), a message after it (`note`), or, while a Refresh runs and after it, the Refresh's own state (`line`; `busy`: a spinner). */
+  private idle = "";
+  private modelNow: DailyModel | null = null;
+  private line: { text: string; busy: boolean } | null = null;
   /** The sticky bar's menu: folded until the person opens it (kept over redraws). */
   private bar = { open: false };
   /** The contents of the page being drawn: one entry per heading, pushed by section() as the heading is drawn, so the contents can never differ from the page. */
@@ -176,7 +177,22 @@ export class BlygDailyView extends ItemView {
   }
   private say(text: string): void {
     this.note = text;
-    if (this.markStatus) this.markStatus.textContent = text;
+    this.paintStatus();
+  }
+  /** The refresh's state, in place (no redraw). `busy`: the spinner shows. */
+  private setLine(text: string | null, busy = false): void {
+    this.line = text === null ? null : { text, busy };
+    this.paintStatus();
+  }
+  private paintStatus(): void {
+    const el = this.markStatus;
+    if (!el) return;
+    el.empty();
+    const text = this.line ? this.line.text : [this.idle, this.note].filter(Boolean).join(" · ");
+    if (text) el.createSpan({ text });
+    el.toggleClass("is-busy", this.line?.busy === true);
+    if (this.line?.busy) el.setAttr("aria-busy", "true");
+    else el.removeAttribute("aria-busy");
   }
 
   /** Keep where the page is scrolled to, under its edition (it is made again when the person comes Back from a post). */
@@ -201,6 +217,7 @@ export class BlygDailyView extends ItemView {
     this.saveScroll();
     root.empty();
     root.createDiv({ cls: "blyg-daily-status", text: "Reading your list…" });
+    this.line = null;
     this.setWorking(true);
     let model: DailyModel | null = null;
     let autoNote = "";
@@ -217,44 +234,63 @@ export class BlygDailyView extends ItemView {
     await this.finishOpen(model, autoNote);
   }
 
-  /** The Refresh button, the same action as the feed's: the Studio is asked to fetch, the list is read once, and the new posts join the edition on the page without any AI request. Drawn once, in place. */
-  private async refreshNow(): Promise<void> {
+  /** The Refresh icon, the same action as the feed's and the digest's ONE update action: the Studio is asked to fetch, the list is read once, the new posts join the edition on the page, and the texts still missing are written only by the rules of the automatic write. The result is told in the meta line under the date. Drawn once, in place. */
+  async refreshNow(): Promise<void> {
     if (this.working) return;
     const run = ++this.runs;
     this.setWorking(true);
-    this.say("Checking your blygs…");
+    this.setLine(FETCHING, true);
     try {
       if (!this.host.refresh) return void (await this.refreshSaved(run));
-      const got = await this.host.refresh({ held: this.list, alive: () => run === this.runs && this.contentEl.isConnected, status: (t) => this.say(t) });
+      const got = await this.host.refresh({ held: this.list, alive: () => run === this.runs && this.contentEl.isConnected, status: (t) => this.setLine(t.replace(/^Checking blygs/, "Fetching new posts"), true) });
       if (run !== this.runs || (!got.ok && got.cancelled)) return;
-      if (!got.ok) return this.say(got.message || "Could not check your blygs.");
+      if (!got.ok) return this.setLine(got.message || COULD_NOT_CHECK);
       const { model } = await this.makeModel(got.list, Date.now(), true);
       if (run !== this.runs) return;
       const n = this.added.size;
-      this.note = [got.note ?? "", n > 0 ? `${plural(n, "new post", "new posts")}` : "Nothing new"].filter(Boolean).join(" · ");
       this.written = model && this.host.ai?.enabled() ? await this.host.ai.cached(model.front).catch(() => []) : [];
       this.sections = model && this.written.length > 0 && this.host.ai?.enabled() ? await (this.host.ai.cachedSections?.(model.front, model.mixed) ?? Promise.resolve(null)).catch(() => null) : null;
+      const base = this.fetched(got.note, n);
+      this.setLine(base);
       if (run === this.runs) this.render(model);
-      if (run === this.runs && model) await this.writeMissing(model, this.note, run);
+      if (run === this.runs && model) await this.writeMissing(model, base, n, run);
     } catch {
-      if (run === this.runs) this.say("Could not check your blygs.");
+      if (run === this.runs) this.setLine(COULD_NOT_CHECK);
     } finally {
       if (run === this.runs) this.setWorking(false);
     }
   }
+  /** The command palette's "Write the digest" and "Re-sort digest sections" (the header has one update action, the refresh icon). The AI layer's consent and ceiling rules apply as before. */
+  async writeFromCommand(resort: boolean): Promise<void> {
+    const model = this.modelNow;
+    if (!model || !this.host.ai?.enabled() || this.viewing !== null) return;
+    this.setLine(WRITING, true);
+    await this.run(model, resort, false, "", () => this.setLine(null));
+  }
+  /** The line for a finished fetch: "3 new posts, grouped · as of 09:52" or "Nothing new · checked 09:52". */
+  private fetched(note: string | undefined, n: number): string {
+    const at = timeOnly(Date.now());
+    return [note ?? "", n > 0 ? `${plural(n, "new post", "new posts")}, grouped · as of ${at}` : `Nothing new · checked ${at}`].filter(Boolean).join(" · ");
+  }
 
   /**
-   * After a Refresh: the texts missing for new or changed stories are written, but only by the rules of the automatic write (setting on, consent recorded, the daily ceiling; nothing is
-   * asked). With automatic writing off nothing is sent and one plain line says so; "Write the digest" (under Advanced) stays the way to write them.
+   * After a fetch: the texts missing for new or changed stories are written, but only by the rules of the automatic write (AI layer on, setting on, consent recorded, the daily ceiling;
+   * nothing is asked). With the AI layer off nothing is sent and the line stays "grouped"; with the layer on but automatic writing off, one line says the texts were not written.
+   * The manual writes ("Write the digest", "Re-sort sections") are command-palette commands.
    */
-  private async writeMissing(model: DailyModel, lead: string, run: number): Promise<void> {
+  private async writeMissing(model: DailyModel, base: string, n: number, run: number): Promise<void> {
     const ai = this.host.ai;
-    if (!ai?.enabled() || this.busy || (this.written.every((w) => w !== null) && this.added.size === 0)) return;
+    if (!ai?.enabled() || this.busy || (this.written.every((w) => w !== null) && n === 0)) return;
     if (!(await (ai.autoOn?.() ?? Promise.resolve(false)).catch(() => false))) {
-      if (this.added.size > 0 && run === this.runs) this.say((this.note = [lead, NOT_WRITTEN].filter(Boolean).join(" · ")));
+      if (n > 0 && run === this.runs) this.setLine(`${plural(n, "new post", "new posts")} · ${AI_OFF}`);
       return;
     }
-    if (run === this.runs) await this.run(model, false, true, lead);
+    if (run !== this.runs) return;
+    this.setLine(WRITING, true);
+    await this.run(model, false, true, "", (o) => {
+      if (o?.status === "ok" && o.tokens) this.setLine(`${n > 0 ? `${plural(n, "new post", "new posts")} · texts written` : "Texts written"} · as of ${timeOnly(Date.now())}`);
+      else this.setLine([base, this.note].filter(Boolean).join(" · "));
+    });
   }
 
   /** A file of another device changed (DG16): read the edition, the history and the texts again and draw them in place. Nothing is asked of the Studio or the AI. */
@@ -277,9 +313,9 @@ export class BlygDailyView extends ItemView {
   /** Without a Studio conversation (a host that cannot ask): read the saved list again, in place. */
   private async refreshSaved(run: number): Promise<void> {
     const list = await this.host.loadList();
-    if (run !== this.runs || !list) return this.say("There is no saved list to read yet.");
+    if (run !== this.runs || !list) return this.setLine("There is no saved list to read yet.");
     const { model } = await this.makeModel(list, list.savedAt, true);
-    this.note = this.added.size > 0 ? plural(this.added.size, "new post", "new posts") : "Nothing new";
+    this.setLine(this.fetched(undefined, this.added.size));
     if (run === this.runs) this.render(model);
   }
 
@@ -319,7 +355,7 @@ export class BlygDailyView extends ItemView {
     if (model && ai?.enabled() && !this.busy && !this.checking && this.viewing === null && (await (ai.autoDue?.(model.front) ?? Promise.resolve(false)).catch(() => false))) void this.run(model, false, true);
   }
 
-  /** The Refresh buttons (the bar's icon and the menu's entry): busy while a read or a Refresh runs; in place, so the page does not redraw. */
+  /** The Refresh icon: busy while a read or a Refresh runs; in place, so the page does not redraw. */
   private setWorking(on: boolean): void {
     this.working = on;
     this.refreshBtns = this.refreshBtns.filter((b) => b.isConnected !== false);
@@ -336,17 +372,18 @@ export class BlygDailyView extends ItemView {
     }
   }
 
-  /** "Write the digest" (or the automatic write, or the write after a Refresh): in the background; the page redraws when the answer is in. `lead`: what the status says first. */
-  private run(model: DailyModel, resort: boolean, auto = false, lead = ""): Promise<void> {
+  /** The manual write (a command), the automatic write, or the write after a Refresh: in the background; the page redraws when the answer is in. `lead`: what the status says first. */
+  private run(model: DailyModel, resort: boolean, auto = false, lead = "", after?: (o: Outcome | null) => void): Promise<void> {
     const ai = this.host.ai;
     if (!ai || this.busy) return Promise.resolve();
     this.busy = true;
     this.note = lead;
     const before = this.written;
-    if (this.writeBtn) this.paintWrite(this.writeBtn); // in place: the page does not redraw, so nothing jumps
+    let outcome: Outcome | null = null;
     return ai
       .write(model.front, model.mixed, { resort, ...(auto ? { auto: true } : {}) })
       .then((o) => {
+        outcome = o;
         this.written = o.written;
         this.sections = o.sections ?? null;
         if (o.status === "ok" && o.tokens) this.usage = addUsage(this.usage, o.tokens, o.cost ?? null);
@@ -357,6 +394,7 @@ export class BlygDailyView extends ItemView {
       .catch(() => void (this.note = "The digest could not be written. Showing the list made on your device."))
       .finally(() => {
         this.busy = false;
+        after?.(outcome);
         this.render(model);
       });
   }
@@ -398,28 +436,16 @@ export class BlygDailyView extends ItemView {
       this.render(model);
     });
     if (pastRec) {
+      this.markStatus = null;
       if (this.pastCapped) root.createDiv({ cls: "blyg-daily-meta", text: CAPPED_NOTE });
       drawPast(root, pastRec, this.byId, { open: (p) => this.openEntry(p), seen: (p) => this.seen(p), section: (name, el) => this.sectionEls.set(name, el), go: (name) => this.goTo(name) });
       return;
     }
-    // One update action in the menu as a Menu 1 row (label at the left, a muted value at the right: what it costs), the longer explanation in the row's title; the manual writes are under "Advanced".
-    const entry = (label: string, value: string, hint: string, cls: string, run: () => void, into: HTMLElement = bar.panel): HTMLElement => drawMenuRow(into, { label, value, title: hint, cls, run });
-    const aiOn = this.host.ai?.enabled() === true;
-    const rbtn = entry("Refresh", aiOn ? "may use tokens" : "no AI, no cost", aiOn ? REFRESH_AI_HINT : REFRESH_HINT, "blyg-daily-refreshbtn", () => void this.refreshNow());
-    this.refreshBtns.push(rbtn);
-    this.paintRefresh(rbtn);
-    const ai = this.host.ai;
-    if (model && ai?.enabled()) {
-      const adv = bar.panel.createEl("details", { cls: "blyg-daily-advanced" });
-      fillMenuRow(adv.createEl("summary", { cls: "blyg-menurow" }), { label: "Advanced", opens: true });
-      if (this.advancedOpen) adv.setAttr("open", "true");
-      adv.addEventListener("toggle", () => (this.advancedOpen = adv.hasAttribute("open")));
-      const btn = entry("Write the digest", "uses tokens", WRITE_HINT, "blyg-story-write", () => void this.run(model, false), adv);
-      this.writeBtn = btn;
-      this.paintWrite(btn);
-      if (this.sections) entry("Re-sort sections", "uses tokens", RESORT_HINT, "blyg-daily-resortbtn", () => void this.run(model, true), adv);
-    }
-    this.markStatus = root.createDiv({ cls: "blyg-daily-meta blyg-daily-markstatus", text: this.note });
+    // The meta line under the date: the edition's count, and the Refresh's state in the same place (one element).
+    this.markStatus = root.createDiv({ cls: "blyg-daily-meta blyg-daily-markstatus" });
+    this.modelNow = model;
+    this.idle = model ? `${plural(model.postCount, "post", "posts")} in this edition, as of ${timeOnly(model.until)}` : "";
+    this.paintStatus();
     if (!model) {
       root.createDiv({ cls: "blyg-daily-empty", text: "There is no saved list to read yet. Open the reader and let it load, then come back." });
       return;
@@ -427,21 +453,7 @@ export class BlygDailyView extends ItemView {
     this.draw(root, model);
   }
 
-  /** The Write button: "Write the digest", or, while a run is going, disabled with a spinner. Same width either way. */
-  private paintWrite(btn: HTMLElement): void {
-    const { value } = fillMenuRow(btn, { label: this.busy ? "Writing the digest…" : "Write the digest", value: this.busy ? "" : "uses tokens" });
-    if (this.busy) {
-      value.createSpan({ cls: "blyg-story-spinner" });
-      btn.setAttr("disabled", "true");
-      btn.setAttr("aria-busy", "true");
-    } else {
-      btn.removeAttribute("disabled");
-      btn.removeAttribute("aria-busy");
-    }
-  }
-
   private draw(root: HTMLElement, m: DailyModel): void {
-    root.createDiv({ cls: "blyg-daily-meta", text: `${plural(m.postCount, "post", "posts")} in this edition, as of ${timeOnly(m.until)}` });
     if (m.postCount === 0 && m.letters.length === 0 && m.corrections.length === 0 && m.retractions.length === 0) {
       root.createDiv({ cls: "blyg-daily-empty", text: "Nothing new in this edition yet." });
       return;

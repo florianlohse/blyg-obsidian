@@ -293,8 +293,8 @@ describe("the digest page", () => {
     expect(menus[0]!.attrs["data-icon"]).toBe("menu");
     const panel = bar.all().find((e) => has(e, "blyg-daily-panel"))!;
     expect(panel.cls.has("is-open")).toBe(false);
-    expect(panel.all().some((e) => e.text === "Refresh")).toBe(true); // inside the folded panel
-    expect(bar.all().filter((e) => e.text === "Refresh" && !panel.all().includes(e))).toHaveLength(0);
+    expect(panel.all().some((e) => e.text === "Refresh")).toBe(false); // the refresh icon is the only update action: no "Refresh" row in the menu
+    expect(bar.all().filter((e) => has(e, "blyg-daily-refresh"))).toHaveLength(1);
     menus[0]!.click();
     expect(panel.cls.has("is-open")).toBe(true);
   });
