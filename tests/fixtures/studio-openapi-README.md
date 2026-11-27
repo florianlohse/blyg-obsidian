@@ -17,3 +17,7 @@ licence; SHA-256 `271fdc1b…` from the release's `SHA256SUMS`, checked by `test
 0.51.0 file stays as the contract-5 base, this one is the contract-6 base. `src/studio/api-types-contract6.ts` is generated from it (`npm run gen:studio-types`
 writes both mirrors), `tests/studio/operations.test.ts` runs the client against each file, and `tests/studio/contract-compat.test.ts` checks that every operation
 the client calls differs between the two by additions only (the one removal, `GET /changes`, is named there).
+
+`studio-openapi-0.73.1.json` is `openapi.json` of the tag `v0.73.1` of blygger-studio (contract 7.1.0; same source and licence; `info.version` 7.1.0). It is the contract-7
+check base: `tests/studio/contract7.test.ts` lists what contract 7 changes for the operations the client calls against the 0.69.0 file (contract 6.2.0). The
+end-to-end leg against the newest Studio release is what runs the client against the real thing.

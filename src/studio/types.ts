@@ -1,4 +1,4 @@
-// The slice of Blygger Studio's owner API this plugin uses (API contract 5 and 6, E1), written by hand against `studio-openapi-0.51.0.json` (contract 5.2) and checked against `studio-openapi-0.69.0.json` (6.2; the release
+// The slice of Blygger Studio's owner API this plugin uses (API contract 5, 6 and 7), written by hand against `studio-openapi-0.51.0.json` (contract 5.2) and checked against `studio-openapi-0.69.0.json` (6.2; the release
 // assets of blygger/blygger-studio, MIT). The hand-written shapes below are what the plugin reads; `src/studio/api-types.ts` and `api-types-contract6.ts` are the generated,
 // types-only mirrors of the two files (S16 plan §5, option (a): no runtime dependency, the SDK calls `fetch` and the plugin may not).
 // tests/studio/operations.test.ts validates every request the client builds, and every answer the fake Studio gives, against the file's own

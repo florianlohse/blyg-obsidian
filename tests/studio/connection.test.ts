@@ -54,8 +54,8 @@ describe("studio connection check", () => {
     // an info line (muted), not a warning
     expect(r1.lines.find((l) => /newer than/.test(l.text))?.level).toBe("info");
     expect(r1.lines.filter((l) => l.level === "warn").some((l) => /newer than/.test(l.text))).toBe(false);
-    // the tested contracts (Studio 0.51.0 to 0.69.0: 5.2 to 5.14, 6.0 to 6.2) say nothing about versions
-    for (const v of ["5.2.0", "5.4.0", "5.14.0", "6.0.0", "6.2.0"]) {
+    // the tested contracts (Studio 0.51.0 to 0.73.1: 5.2 to 5.14, 6.0 to 6.4, 7.0 to 7.1) say nothing about versions
+    for (const v of ["5.2.0", "5.4.0", "5.14.0", "6.0.0", "6.2.0", "6.4.0", "7.0.0", "7.1.0"]) {
       const tested = new FakeStudio();
       tested.contractVersion = v;
       const r = await run(tested);
@@ -63,10 +63,10 @@ describe("studio connection check", () => {
       expect(formatReport(r), v).not.toMatch(/newer than/);
     }
     const next = new FakeStudio();
-    next.contractVersion = "6.3.0";
-    expect(formatReport(await run(next))).toMatch(/Studio API 6\.3\.0 is newer than the 6\.2/);
+    next.contractVersion = "7.2.0";
+    expect(formatReport(await run(next))).toMatch(/Studio API 7\.2\.0 is newer than the 7\.1/);
     const major = new FakeStudio();
-    major.contractVersion = "7.0.0";
+    major.contractVersion = "8.0.0";
     const refused = await run(major);
     expect(refused.ok).toBe(false);
     expect(refused.lines.some((l) => l.level === "error")).toBe(true);
@@ -95,7 +95,7 @@ describe("studio connection check", () => {
 
   it("a major the plugin has not seen fails the check and says to update the plugin", async () => {
     const future = new FakeStudio();
-    future.contractVersion = "7.0.0";
+    future.contractVersion = "8.0.0";
     const report = await run(future);
     expect(report.ok).toBe(false);
     expect(formatReport(report)).toMatch(/Update the plugin/);
