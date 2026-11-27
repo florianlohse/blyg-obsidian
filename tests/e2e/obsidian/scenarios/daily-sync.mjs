@@ -109,6 +109,10 @@ await runScenario({ data }, async (s) => {
     keys.forEach((k, i) => { d[k] = { v: 1, device: k.slice("digestSync_".length), at: Date.now(), editions: [], cost: { [day]: [0.0412, 0.02][i] } }; }); // what Sync would do to the file
     await a.write(p, JSON.stringify(d));
   }, [".obsidian/plugins/blyg/data.json", BILL_KEYS]);
+  // (the total is read when the page is drawn: close the Daily and open it again so it reads the keys that just arrived)
+  await ad(() => window.app.workspace.detachLeavesOfType("blyg-daily"));
+  await ad(() => window.app.commands.executeCommandById("blyg:open-daily"));
+  await s.waitCount(".blyg-daily .blyg-story-headline", (n) => n >= 4, 30000);
   await ad(() => document.querySelector(".blyg-daily .blyg-daily-menu").click());
   await page.waitForFunction(() => /^\$0\.06$/.test(document.querySelector(".blyg-daily-panel .blyg-menu-billing .blyg-menurow-value")?.textContent ?? ""), null, { timeout: 20000 }).catch(() => {});
   const bill = await ad(() => document.querySelector(".blyg-daily-panel .blyg-menu-billing")?.textContent ?? "");
