@@ -97,13 +97,13 @@ describe("the release workflows keep their locks", () => {
     expect((code.match(/gh workflow run/g) ?? []).length).toBe(1);
   });
 
-  it("release.yml: a pull request or a dispatch with one input; read-only by default; the only write permission is in the publish job", () => {
+  it("release.yml: a pull request or a dispatch with two inputs (version, sha); read-only by default; the only write permission is in the publish job", () => {
     const wf = yaml.load(read("release.yml")) as Wf;
     expect(Object.keys(wf.on).sort()).toEqual(["pull_request", "workflow_dispatch"]);
-    expect(Object.keys((wf.on["workflow_dispatch"] as { inputs: object }).inputs)).toEqual(["version"]);
+    expect(Object.keys((wf.on["workflow_dispatch"] as { inputs: object }).inputs)).toEqual(["version", "sha"]);
     expect(wf.permissions).toEqual({ contents: "read" });
     expect(Object.keys(wf.jobs).sort()).toEqual(["publish", "verify"]);
-    expect(wf.jobs["verify"]?.permissions).toBeUndefined();
+    expect(wf.jobs["verify"]?.permissions).toEqual({ contents: "read", "pull-requests": "read", issues: "read", checks: "read" }); // read only: the release gate reads the pull request and its checks
     expect(wf.jobs["publish"]?.permissions).toEqual({ contents: "write" });
     expect(wf.jobs["publish"]?.needs).toBe("verify");
   });

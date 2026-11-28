@@ -19,6 +19,9 @@ on:
       version:
         description: "x.y.z, equal to manifest.json's version (a stable release, from main)"
         required: true
+      sha:
+        description: "the merge commit the release is for (release-on-merge passes it; a run on any other commit is refused)"
+        required: true
 
 permissions:
   contents: read
@@ -35,6 +38,11 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:   # read only: the release gate reads the pull request, its comments and the check runs of the candidate
+      contents: read
+      pull-requests: read
+      issues: read
+      checks: read
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5   # v4.3.1
         with:
@@ -56,6 +64,18 @@ jobs:
           fi
           echo "version=$HAVE" >> "$GITHUB_OUTPUT"
           echo "version $HAVE" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Release gate (owner-confirmed Obsidian preview of this exact tree, required CI on it)
+        # In a release this FAILS the run, so nothing reaches the publish job. On a pull request titled "Release x.y.z" it only warns (a dry run of the same checks).
+        if: github.event_name == 'workflow_dispatch' || startsWith(github.event.pull_request.title, 'Release ')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          GATE_MODE: ${{ github.event_name == 'workflow_dispatch' && 'release' || 'dry-run' }}
+          HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.pull_request.head.sha }}
+          EXPECTED_SHA: ${{ inputs.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: node scripts/release-gate.mjs
 
       - run: npm ci
       - if: github.event_name == 'workflow_dispatch'

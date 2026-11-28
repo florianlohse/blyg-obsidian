@@ -136,12 +136,11 @@ jobs:
           bash scripts/local-studio.sh stop "$RUNNER_TEMP/studio" >/dev/null 2>&1
           exit $RC
 
-  # P6 (docs/plans/P6-ui-regression.md, decision D3): the UI scenarios are ADVISORY for the first week (continue-on-error: a red scenario shows as a
-  # warning, not a failed check), then required (remove the continue-on-error line). A scenario that passes only on its retry is reported as a warning.
+  # P6 (docs/plans/P6-ui-regression.md, decision D3): the UI scenarios are REQUIRED (the advisory first week is over; no continue-on-error, which would also make
+  # this job's own result read "success" after a red scenario). A scenario that passes only on its retry is reported as a warning.
   obsidian-ui:
     if: github.event_name == 'pull_request' || github.event.repository.private != true
     runs-on: ubuntu-latest
-    continue-on-error: true
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5   # v4.3.1
@@ -184,11 +183,12 @@ jobs:
           retention-days: 7
 
   # P6 slice E (decision D1): the same scenarios against the NEWEST public Obsidian, so a change in Obsidian shows here before it reaches a device.
-  # ADVISORY and staying so (continue-on-error): the required legs run the pinned Obsidian above. A red leg here is a warning to look at, not a failure of the change.
+  # ADVISORY and staying so: it is not a required check of the branch protection, so a red leg does not block a merge; the required legs run the pinned Obsidian above.
+  # It has NO continue-on-error, so its own result is the truth: the release gate (scripts/release-gate.mjs) reads it on the release candidate and needs the owner's
+  # explicit acceptance of a failure. It runs on every push to main and on a pull request titled "Release x.y.z" (the candidate), not on every feature pull request.
   obsidian-ui-newest:
-    if: github.event_name == 'push'   # watches Obsidian releases, which a pull request does not change: once per merge, not once per PR push
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && startsWith(github.event.pull_request.title, 'Release '))
     runs-on: ubuntu-latest
-    continue-on-error: true
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5   # v4.3.1

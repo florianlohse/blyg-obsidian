@@ -43,6 +43,28 @@ A release with no change for users is not made.
 
 `release.yml` on dispatch repeats the checks strictly, runs lint and tests, builds, and the `publish` job creates a draft release at the verified commit with `main.js`, `manifest.json` and `styles.css`, then publishes it. It needs no secret (it uses the run's own token) and runs only while the repository variable `PUBLIC_RELEASE_ENABLED` is exactly `true` (anything else is the emergency off-switch), on `main`, in the environment `public-release`. On a pull request the same workflow is a dry run: checks, leak scan, a production build and the assembled files; it publishes nothing.
 
+## The release gate (a release is refused without these)
+
+`scripts/release-gate.mjs` runs in the verify job of `release.yml` on every release dispatch; the publish job needs that job, so a red gate publishes nothing. It reads GitHub's own records, never text a contributor can edit.
+
+1. **The right commit.** `release-on-merge.yml` passes the merge commit's SHA to the dispatch; the run refuses if the checkout is any other commit (main moved on), or is not the merge commit of the pull request "Release x.y.z".
+2. **Your confirmed Obsidian preview.** After you run the official review preview on the release candidate, comment on the release pull request, from your own account (the gate accepts only a comment by the repository owner):
+
+   ```
+   Obsidian preview: <the full 40-character commit SHA> Completed errors=0
+   ```
+
+   `Failed`, `Incomplete`, errors above 0, a short SHA, a comment older than 7 days or a comment by anyone else do not count; the newest such comment decides. The pull request body gives the candidate SHA; copy it whole.
+3. **Same tree.** The reviewed commit must have the same git tree as the commit being released. The merge commit has another SHA than the pull request head, but the same tree if nothing changed; any source or version change after your scan blocks the release. Scan again and comment again.
+4. **Required CI on that commit:** `check`, `guard`, `verify`, `declares`, `ticked`, `e2e (pinned)`, `e2e (newest)`, `obsidian-smoke`, `obsidian-ui`, each with its own successful result (skipped, cancelled, pending or missing blocks). `ci.yml` has no `continue-on-error`.
+5. **Newest Obsidian.** `obsidian-ui-newest` runs on the release pull request as well as on pushes. It stays advisory: if it failed, comment `Newest Obsidian UI accepted: <full SHA>` to go ahead; if it is missing or still running, wait.
+
+On the release pull request the same checks run as warnings (the "Release gate" step of the `verify` job, see its summary), so you can see what is missing before you merge.
+
+**If a release is blocked:** read the run's summary (each line says what is missing), fix that (comment, wait for CI, scan the new candidate), then "Re-run jobs" on the "Release on merge" run of the merge. If the tree changed, open a new release pull request. The emergency off-switch `PUBLIC_RELEASE_ENABLED` is unchanged and nothing waives a failed or missing preview.
+
+Not covered by the gate, by design: whether the preview you confirmed is true (it is your statement, bound to a SHA and tree), and released-asset attestations (a preview cannot show them).
+
 ## Guards on every push
 
 This repository is public, so every push is a publication. `public-guard.yml` scans the files, the pull request title and body, commit messages and what each commit added, against the generic list in `.github/release/public-needles.txt` and a private list held as a repository secret, and runs gitleaks (pinned, checksummed). A red scan is fixed at its cause, never by editing the scan. Before pushing, run the same scan locally (`AGENTS.md`).
