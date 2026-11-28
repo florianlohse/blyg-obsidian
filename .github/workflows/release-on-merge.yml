@@ -4,7 +4,8 @@ name: Release on merge
 # the pull request GitHub links to that commit (never the commit message: a merge made in the GitHub app carries no title): the pull request is merged, every checklist box is
 # ticked, manifest.json and the CHANGELOG agree with the title. Then it dispatches release.yml for that version. It publishes nothing itself; release.yml keeps its own locks
 # (the repository variable PUBLIC_RELEASE_ENABLED must be "true", the public-release environment, the release checks). Setting that variable to anything but "true" is the
-# emergency off-switch: the merge then dispatches nothing and says so. A push that is not a release pull request merge does nothing. A release pull request that is not in
+# emergency off-switch: the merge then dispatches nothing and says so. The dispatch carries the merge commit's SHA; release.yml refuses to run if main has moved on, and its
+# release gate (scripts/release-gate.mjs) refuses without the owner's confirmed preview and the required CI results on the candidate. A push that is not a release pull request merge does nothing. A release pull request that is not in
 # order fails this run, loudly. If the variable was off or the dispatch failed: fix it, then "Re-run jobs" here.
 
 on:
@@ -51,11 +52,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.plan.outputs.version }}
+          SHA: ${{ github.sha }}
           SWITCH: ${{ vars.PUBLIC_RELEASE_ENABLED }}
         run: |
           if [ "$SWITCH" != "true" ]; then
             echo "::error::Release $VERSION is merged, but PUBLIC_RELEASE_ENABLED is not \"true\": nothing was dispatched (the emergency off-switch). Set it to true, then re-run this job."
             exit 1
           fi
-          gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref main -f version="$VERSION"
-          echo "Dispatched release.yml: $VERSION from main."
+          gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref main -f version="$VERSION" -f sha="$SHA"
+          echo "Dispatched release.yml: $VERSION from main, expecting commit $SHA."
