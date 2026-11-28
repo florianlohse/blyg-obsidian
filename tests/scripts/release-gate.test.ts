@@ -12,16 +12,17 @@ const MERGE = "b".repeat(40);
 const TREE = "c".repeat(40);
 const NOW = new Date("2026-11-30T12:00:00Z");
 
-const job = (name: string, conclusion: string | null = "success", status = "completed", id = 1): CheckRun => ({ name, status, conclusion, id });
+const CI_START = "2026-11-29T09:00:00Z";
+const job = (name: string, conclusion: string | null = "success", status = "completed", id = 1): CheckRun => ({ name, status, conclusion, id, started_at: CI_START });
 const goodChecks = (): CheckRun[] => [...REQUIRED_JOBS, NEWEST_JOB].map((n) => job(n));
 const owner = (body: string, at = "2026-11-29T10:00:00Z") => ({ user: { login: "the-owner" }, author_association: "OWNER", body, created_at: at });
-const preview = (sha = REVIEWED, status = "Completed", errors = 0) => owner(`Obsidian preview: ${sha} ${status} errors=${errors}`);
+const preview = (body = "preview ok", at = "2026-11-29T10:00:00Z") => owner(body, at);
 
 /** A release that passes; each test breaks one thing. */
 function base(over: Partial<GateInput> = {}): GateInput {
   return {
     mode: "release", version: "1.2.0", headSha: MERGE, headTree: TREE, expectedSha: MERGE, owner: "the-owner", now: NOW,
-    pr: { number: 7, title: "Release 1.2.0", merged_at: "2026-11-29T11:00:00Z", merge_commit_sha: MERGE },
+    pr: { number: 7, title: "Release 1.2.0", merged_at: "2026-11-29T11:00:00Z", merge_commit_sha: MERGE, head: { sha: REVIEWED } },
     comments: [preview()],
     commits: { [REVIEWED]: { tree: TREE, checks: goodChecks() } },
     ...over,
@@ -41,7 +42,7 @@ describe("release gate: the positive cases", () => {
   });
   it("passes a failed newest-Obsidian job the owner accepted for this commit", () => {
     const checks = goodChecks().map((c) => (c.name === NEWEST_JOB ? job(NEWEST_JOB, "failure") : c));
-    const accept = owner(`Newest Obsidian UI accepted: ${REVIEWED}`);
+    const accept = owner("newest ok", "2026-11-29T10:05:00Z");
     const r = releaseGate(base({ commits: { [REVIEWED]: { tree: TREE, checks } }, comments: [preview(), accept] }));
     expect(r.problems).toEqual([]);
     expect(r.notes.join(" ")).toContain("accepted by the owner");
@@ -54,27 +55,32 @@ describe("release gate: the positive cases", () => {
 
 describe("release gate: blocked (negative cases)", () => {
   it("absent preview", () => blocked(base({ comments: [] }), "No confirmed Obsidian preview"));
-  it("failed preview", () => blocked(base({ comments: [preview(REVIEWED, "Failed", 1)] }), "only Completed with errors=0 passes"));
-  it("incomplete preview", () => blocked(base({ comments: [preview(REVIEWED, "Incomplete", 0)] }), "Incomplete"));
-  it("completed but with errors", () => blocked(base({ comments: [preview(REVIEWED, "Completed", 2)] }), "2 error(s)"));
+  it("failed preview", () => blocked(base({ comments: [preview("preview failed")] }), 'only "preview ok" passes'));
+  it("anything but the exact words is no confirmation (Completed with errors, a question, a different sentence)", () => {
+    for (const body of ["preview ok but 2 errors", "preview ok?", "the preview is ok", "Obsidian preview: completed", "preview okay"]) blocked(base({ comments: [preview(body)] }), "No confirmed Obsidian preview");
+  });
   it("a newer Failed comment overrides an older Completed one", () =>
-    blocked(base({ comments: [owner(`Obsidian preview: ${REVIEWED} Completed errors=0`, "2026-11-28T10:00:00Z"), owner(`Obsidian preview: ${REVIEWED} Failed errors=1`, "2026-11-29T10:00:00Z")] }), "Failed"));
-  it("stale preview (older than the limit)", () => blocked(base({ comments: [owner(`Obsidian preview: ${REVIEWED} Completed errors=0`, "2026-11-01T10:00:00Z")] }), "older than 7 days"));
+    blocked(base({ comments: [owner("preview ok", "2026-11-29T10:00:00Z"), owner("preview failed", "2026-11-29T11:00:00Z")] }), "preview failed"));
+  it("stale preview (older than the limit)", () => blocked(base({ comments: [owner("preview ok", "2026-11-01T10:00:00Z")] }), "older than 7 days"));
   it("an unauthorized approval: a contributor's comment, a forged owner login without OWNER association", () => {
-    const stranger = { user: { login: "someone" }, author_association: "CONTRIBUTOR", body: `Obsidian preview: ${REVIEWED} Completed errors=0`, created_at: "2026-11-29T10:00:00Z" };
-    const spoof = { user: { login: "the-owner" }, author_association: "CONTRIBUTOR", body: `Obsidian preview: ${REVIEWED} Completed errors=0`, created_at: "2026-11-29T10:00:00Z" };
-    const imposter = { user: { login: "someone" }, author_association: "OWNER", body: `Obsidian preview: ${REVIEWED} Completed errors=0`, created_at: "2026-11-29T10:00:00Z" };
+    const stranger = { user: { login: "someone" }, author_association: "CONTRIBUTOR", body: "preview ok", created_at: "2026-11-29T10:00:00Z" };
+    const spoof = { user: { login: "the-owner" }, author_association: "CONTRIBUTOR", body: "preview ok", created_at: "2026-11-29T10:00:00Z" };
+    const imposter = { user: { login: "someone" }, author_association: "OWNER", body: "preview ok", created_at: "2026-11-29T10:00:00Z" };
     blocked(base({ comments: [stranger, spoof, imposter] }), "No confirmed Obsidian preview");
   });
-  it("an abbreviated sha is not accepted", () => blocked(base({ comments: [owner(`Obsidian preview: ${REVIEWED.slice(0, 7)} Completed errors=0`)] }), "No confirmed Obsidian preview"));
+  it("a bare confirmation written before CI began on the head is void (a push came after it)", () => blocked(base({ comments: [owner("preview ok", "2026-11-29T08:00:00Z")] }), "before CI began"));
+  it("a confirmation that names another commit is void; one that names a prefix of the head passes", () => {
+    blocked(base({ comments: [owner(`preview ok ${"9".repeat(7)}`)] }), "does not name the pull request's head");
+    expect(releaseGate(base({ comments: [owner(`preview ok ${REVIEWED.slice(0, 7)}`, "2026-11-29T08:00:00Z")] })).ok).toBe(true);
+  });
+  it("the pull request's head cannot be read", () => blocked(base({ commits: {} }), "cannot be read"));
   it("source or version changed after the approval (different tree)", () => blocked(base({ headTree: "d".repeat(40) }), "is not what was reviewed"));
-  it("reviewed commit unknown to the repository", () => blocked(base({ commits: {} }), "unknown to this repository"));
   it("main advanced after the dispatch", () => blocked(base({ expectedSha: "e".repeat(40) }), "Main moved"));
-  it("the checkout is not the merge commit of the release pull request", () => blocked(base({ pr: { number: 7, title: "Release 1.2.0", merged_at: "2026-11-29T11:00:00Z", merge_commit_sha: "f".repeat(40) } }), "not the merge commit"));
+  it("the checkout is not the merge commit of the release pull request", () => blocked(base({ pr: { number: 7, title: "Release 1.2.0", merged_at: "2026-11-29T11:00:00Z", merge_commit_sha: "f".repeat(40), head: { sha: REVIEWED } } }), "not the merge commit"));
   it("an unmerged or differently titled or wrong-version pull request", () => {
-    blocked(base({ pr: { number: 7, title: "Release 1.2.0", merged_at: null, merge_commit_sha: MERGE } }), "not the merge commit");
-    blocked(base({ pr: { number: 7, title: "Quick fix", merged_at: "x", merge_commit_sha: MERGE } }), 'not titled "Release x.y.z"');
-    blocked(base({ pr: { number: 7, title: "Release 1.3.0", merged_at: "x", merge_commit_sha: MERGE } }), "is for 1.3.0");
+    blocked(base({ pr: { number: 7, title: "Release 1.2.0", merged_at: null, merge_commit_sha: MERGE, head: { sha: REVIEWED } } }), "not the merge commit");
+    blocked(base({ pr: { number: 7, title: "Quick fix", merged_at: "x", merge_commit_sha: MERGE, head: { sha: REVIEWED } } }), 'not titled "Release x.y.z"');
+    blocked(base({ pr: { number: 7, title: "Release 1.3.0", merged_at: "x", merge_commit_sha: MERGE, head: { sha: REVIEWED } } }), "is for 1.3.0");
     blocked(base({ pr: null }), "No pull request");
   });
   it("wrong candidate CI: green only on another commit leaves the reviewed one without results", () => blocked(base({ commits: { [REVIEWED]: { tree: TREE, checks: [] } } }), 'Required job "obsidian-ui" has no result'));
@@ -99,17 +105,17 @@ describe("release gate: blocked (negative cases)", () => {
   it("a failed newest-Obsidian job without the owner's acceptance, or accepted for another commit, or accepted by a stranger", () => {
     const commits = { [REVIEWED]: { tree: TREE, checks: goodChecks().map((c) => (c.name === NEWEST_JOB ? job(NEWEST_JOB, "failure") : c)) } };
     blocked(base({ commits }), "has not accepted it");
-    blocked(base({ commits, comments: [preview(), owner(`Newest Obsidian UI accepted: ${"9".repeat(40)}`)] }), "has not accepted it");
-    const stranger = { user: { login: "someone" }, author_association: "CONTRIBUTOR", body: `Newest Obsidian UI accepted: ${REVIEWED}`, created_at: "2026-11-29T10:00:00Z" };
+    blocked(base({ commits, comments: [preview(), owner(`newest ok ${"9".repeat(7)}`)] }), "has not accepted it");
+    const stranger = { user: { login: "someone" }, author_association: "CONTRIBUTOR", body: "newest ok", created_at: "2026-11-29T10:00:00Z" };
     blocked(base({ commits, comments: [preview(), stranger] }), "has not accepted it");
   });
 });
 
 describe("release gate: dry run on a pull request", () => {
   it("reports the same problems but needs no merge and no expected sha", () => {
-    const r = releaseGate(base({ mode: "dry-run", expectedSha: "", headSha: REVIEWED, pr: { number: 7, title: "Release 1.2.0", merged_at: null, merge_commit_sha: null } }));
+    const r = releaseGate(base({ mode: "dry-run", expectedSha: "", headSha: REVIEWED, pr: { number: 7, title: "Release 1.2.0", merged_at: null, merge_commit_sha: null, head: { sha: REVIEWED } } }));
     expect(r.problems).toEqual([]);
-    expect(releaseGate(base({ mode: "dry-run", comments: [], pr: { number: 7, title: "Release 1.2.0" } })).problems).toHaveLength(1);
+    expect(releaseGate(base({ mode: "dry-run", comments: [], pr: { number: 7, title: "Release 1.2.0", head: { sha: REVIEWED } } })).problems).toHaveLength(1);
   });
 });
 
@@ -172,7 +178,7 @@ describe("the gate command itself (a stub `gh`, the real script and the real che
     const dir = mkdtempSync(join(tmpdir(), "gate-"));
     const stub = join(dir, "gh");
     const data = {
-      pulls: [{ number: 5, title: `Release ${version}`, merged_at: "2026-11-29T00:00:00Z", merge_commit_sha: head }],
+      pulls: [{ number: 5, title: `Release ${version}`, merged_at: "2026-11-29T00:00:00Z", merge_commit_sha: head, head: { sha: REVIEWED } }],
       comments: fixture.comments,
       commit: { tree: { sha: fixture.reviewedTree ?? tree } },
       checks: fixture.checks,
@@ -191,7 +197,7 @@ describe("the gate command itself (a stub `gh`, the real script and the real che
     rmSync(dir, { recursive: true, force: true });
     return { code: r.status, out: `${r.stdout}${r.stderr}` };
   }
-  const ok = { comments: [{ user: { login: "the-owner" }, author_association: "OWNER", body: `Obsidian preview: ${REVIEWED} Completed errors=0`, created_at: new Date().toISOString() }], checks: goodChecks() };
+  const ok = { comments: [{ user: { login: "the-owner" }, author_association: "OWNER", body: "preview ok", created_at: new Date().toISOString() }], checks: goodChecks().map((c) => ({ ...c, started_at: "2020-01-01T00:00:00Z" })) };
 
   it("exits 0 for the exact, reviewed, green candidate", () => {
     expect(run(ok).out).toContain("PASS");

@@ -71,7 +71,7 @@ export const TICKS = [
   "Scope is what I want released (nothing to hold back)",
   "Release notes read and OK (they go out exactly like this)",
   "Version number right",
-  "Obsidian preview of this exact commit: Completed, zero errors, and I commented `Obsidian preview: <full sha> Completed errors=0` below (the release is refused without it)",
+  "Obsidian preview of this exact commit: Completed, zero errors, and I commented `preview ok` below (the release is refused without it)",
   "Device checks done on Blyg (dev) of this commit: all pass (or listed exceptions are acceptable)",
   "Anything to announce? (blyg post / Discord: decided)",
 ];

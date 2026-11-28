@@ -1,11 +1,13 @@
 // The publication gate of a stable release (REVIEW-198 C1). `release.yml` runs it in the verify job of a release dispatch, before anything is kept for the publish job, and the
 // publish job needs that job: a red gate means no release. It checks, from GitHub's own records and never from text anyone can edit:
 //   1. the checkout is exactly the commit the merge dispatched (main did not advance in between) and is the merge commit of the pull request "Release x.y.z";
-//   2. the repository OWNER confirmed the official Obsidian review preview for a full commit SHA, in a comment on that pull request (GitHub vouches for the author, so a contributor
-//      cannot forge it): `Obsidian preview: <40-hex sha> Completed errors=0`. The newest such comment counts; Failed/Incomplete or errors > 0 blocks; older than MAX_AGE_DAYS is stale;
+//   2. the repository OWNER confirmed the official Obsidian review preview, in a comment on that pull request (GitHub vouches for the author, so a contributor cannot forge it):
+//      `preview ok` (or `preview ok <sha, 7 to 40 hex>`, or `preview failed`). The newest such comment counts; older than MAX_AGE_DAYS is stale. The reviewed commit is the pull
+//      request's head. A bare `preview ok` counts only if it was written AFTER CI began on that head (GitHub's own check-run times), so a push after your comment voids it; a
+//      `preview ok <sha>` must name a prefix of that head;
 //   3. the reviewed commit has the SAME git TREE as the checkout, so a changed source file or version after the scan is caught, whatever the merge made of the commit SHA;
 //   4. every required CI job succeeded on the reviewed commit (a job's own conclusion, never a workflow's overall result; skipped, cancelled, missing or pending all block);
-//   5. the newest-Obsidian UI job has finished on it: success passes, a failure needs the owner's `Newest Obsidian UI accepted: <sha>`, a missing or pending result blocks.
+//   5. the newest-Obsidian UI job has finished on it: success passes, a failure needs the owner's `newest ok` (bound like `preview ok`), a missing or pending result blocks.
 // In dry-run mode (a pull request) it reports the same findings as warnings and never fails, so the mechanism is exercised on every release pull request without publishing.
 // Not shipped. Needs `gh` and a token with contents, pull-requests, issues and checks read.
 import { execFileSync } from "node:child_process";
@@ -16,16 +18,16 @@ export const MAX_AGE_DAYS = 7;
 /** Jobs that must have succeeded on the candidate (their names as GitHub lists them). `obsidian-ui-newest` is handled apart (advisory, acknowledged). */
 export const REQUIRED_JOBS = ["check", "guard", "verify", "declares", "ticked", "e2e (pinned)", "e2e (newest)", "obsidian-smoke", "obsidian-ui"];
 export const NEWEST_JOB = "obsidian-ui-newest";
-export const PREVIEW_RE = /^Obsidian preview: ([0-9a-f]{40}) (Completed|Failed|Incomplete) errors=(\d+)\s*$/im;
-export const ACCEPT_RE = /^Newest Obsidian UI accepted: ([0-9a-f]{40})\s*$/im;
+export const PREVIEW_RE = /^preview (ok|failed)(?: ([0-9a-f]{7,40}))?\s*$/im;
+export const ACCEPT_RE = /^newest ok(?: ([0-9a-f]{7,40}))?\s*$/im;
 const RELEASE_TITLE = /^Release (\d+\.\d+\.\d+)$/;
 
 /**
- * @typedef {{name: string, status: string, conclusion: string | null, id: number}} CheckRun
+ * @typedef {{name: string, status: string, conclusion: string | null, id: number, started_at?: string | null}} CheckRun
  * @typedef {{user?: {login?: string}, author_association?: string, body?: string | null, created_at: string}} Comment
  * @param {{
  *   mode: "release" | "dry-run", version: string, headSha: string, headTree: string, expectedSha: string, owner: string, now: Date,
- *   pr: {number: number, title: string, merged_at?: string | null, merge_commit_sha?: string | null} | null,
+ *   pr: {number: number, title: string, merged_at?: string | null, merge_commit_sha?: string | null, head?: {sha?: string}} | null,
  *   comments: Comment[],
  *   commits: Record<string, {tree: string, checks: CheckRun[]}>,
  * }} i
@@ -45,46 +47,55 @@ export function releaseGate(i) {
     if (release && (!i.pr.merged_at || i.pr.merge_commit_sha !== i.headSha)) problems.push(`The checkout ${i.headSha} is not the merge commit of pull request #${i.pr.number}.`);
   }
 
-  // 2. the owner's preview confirmation
+  // 2. the owner's preview confirmation, for the pull request's head commit
+  const headOfPr = i.pr?.head?.sha ?? "";
   const mine = i.comments
     .filter((c) => c.user?.login === i.owner && c.author_association === "OWNER" && typeof c.body === "string")
     .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
   const previews = mine.flatMap((c) => {
     const m = PREVIEW_RE.exec(c.body ?? "");
-    return m ? [{ sha: m[1], status: m[2], errors: Number(m[3]), at: Date.parse(c.created_at) }] : [];
+    return m ? [{ ok: m[1].toLowerCase() === "ok", sha: m[2]?.toLowerCase(), at: Date.parse(c.created_at) }] : [];
   });
   const last = previews.at(-1);
-  /** @type {{tree: string, checks: CheckRun[]} | undefined} */
-  let reviewed;
-  if (!last) problems.push(`No confirmed Obsidian preview: the owner has not commented "Obsidian preview: <full commit sha> Completed errors=0" on the release pull request.`);
+  const reviewed = headOfPr ? i.commits[headOfPr] : undefined;
+  /** When CI began on the head, by GitHub's own clock (the earliest check run): a bare confirmation must come after it. */
+  const times = reviewed ? reviewed.checks.map((c) => Date.parse(c.started_at ?? "")).filter((t) => !Number.isNaN(t)) : [];
+  // no check runs at all: the required-job loop below reports every one as missing; check runs without a time: fail closed (a bare confirmation cannot be placed in time)
+  const ciBegan = reviewed && reviewed.checks.length === 0 ? -Infinity : times.length > 0 ? Math.min(...times) : Infinity;
+  /** @param {string | undefined} sha @param {number} at */
+  const bindsToHead = (sha, at) => (sha ? headOfPr.startsWith(sha) : at >= ciBegan);
+  if (!last) problems.push(`No confirmed Obsidian preview: the owner has not commented "preview ok" on the release pull request.`);
+  else if (!last.ok) problems.push(`The owner's newest preview comment says "preview failed": only "preview ok" passes.`);
   else {
-    if (last.status !== "Completed" || last.errors !== 0) problems.push(`The owner's newest preview is ${last.status} with ${last.errors} error(s) for ${last.sha}: only Completed with errors=0 passes.`);
     if (i.now.getTime() - last.at > MAX_AGE_DAYS * 86400000) problems.push(`The confirmed preview is older than ${MAX_AGE_DAYS} days: scan again and confirm again.`);
-    reviewed = i.commits[last.sha];
-    if (!reviewed) problems.push(`The reviewed commit ${last.sha} is unknown to this repository.`);
-    else if (reviewed.tree !== i.headTree) problems.push(`The release is not what was reviewed: tree ${i.headTree} differs from the tree ${reviewed.tree} of the reviewed commit ${last.sha}. Scan this candidate and confirm it.`);
-    else notes.push(`Preview: confirmed by the owner for ${last.sha}, identical tree ${i.headTree}.`);
+    if (!headOfPr || !reviewed) problems.push(`The pull request's head commit ${headOfPr || "(unknown)"} cannot be read, so the preview cannot be tied to it.`);
+    else if (!bindsToHead(last.sha, last.at)) problems.push(last.sha ? `"preview ok ${last.sha}" does not name the pull request's head ${headOfPr}.` : `"preview ok" was written before CI began on the pull request's head ${headOfPr}: a newer push voids it. Scan the new head and comment again.`);
+    else if (reviewed.tree !== i.headTree) problems.push(`The release is not what was reviewed: tree ${i.headTree} differs from the tree ${reviewed.tree} of the reviewed head ${headOfPr}. Scan this candidate and confirm it.`);
+    else notes.push(`Preview: confirmed by the owner for ${headOfPr}, identical tree ${i.headTree}.`);
   }
 
-  // 4./5. CI on the reviewed commit (only if it really is the same tree)
-  if (reviewed && reviewed.tree === i.headTree && last) {
+  // 4./5. CI on the reviewed commit (only if the confirmation holds for it and it is the same tree)
+  if (last?.ok && reviewed && reviewed.tree === i.headTree && bindsToHead(last.sha, last.at)) {
     /** @param {string} name */
     const latest = (name) => reviewed.checks.filter((c) => c.name === name).sort((a, b) => b.id - a.id)[0];
     for (const name of REQUIRED_JOBS) {
       const c = latest(name);
-      if (!c) problems.push(`Required job "${name}" has no result on ${last.sha}.`);
-      else if (c.status !== "completed") problems.push(`Required job "${name}" is still ${c.status} on ${last.sha}.`);
-      else if (c.conclusion !== "success") problems.push(`Required job "${name}" did not succeed on ${last.sha} (${c.conclusion}).`);
+      if (!c) problems.push(`Required job "${name}" has no result on ${headOfPr}.`);
+      else if (c.status !== "completed") problems.push(`Required job "${name}" is still ${c.status} on ${headOfPr}.`);
+      else if (c.conclusion !== "success") problems.push(`Required job "${name}" did not succeed on ${headOfPr} (${c.conclusion}).`);
     }
     const n = latest(NEWEST_JOB);
-    if (!n) problems.push(`The newest-Obsidian UI job has no result on ${last.sha}: it must run and finish before a release.`);
-    else if (n.status !== "completed") problems.push(`The newest-Obsidian UI job is still ${n.status} on ${last.sha}.`);
-    else if (n.conclusion === "success") notes.push(`Newest Obsidian UI: success on ${last.sha}.`);
+    if (!n) problems.push(`The newest-Obsidian UI job has no result on ${headOfPr}: it must run and finish before a release.`);
+    else if (n.status !== "completed") problems.push(`The newest-Obsidian UI job is still ${n.status} on ${headOfPr}.`);
+    else if (n.conclusion === "success") notes.push(`Newest Obsidian UI: success on ${headOfPr}.`);
     else if (n.conclusion === "failure" || n.conclusion === "timed_out") {
-      const accepted = mine.some((c) => ACCEPT_RE.exec(c.body ?? "")?.[1] === last.sha);
-      if (accepted) notes.push(`Newest Obsidian UI: ${n.conclusion} on ${last.sha}, accepted by the owner (advisory).`);
-      else problems.push(`The newest-Obsidian UI job ${n.conclusion} on ${last.sha} and the owner has not accepted it ("Newest Obsidian UI accepted: ${last.sha}").`);
-    } else problems.push(`The newest-Obsidian UI job ended ${n.conclusion} on ${last.sha}: that is neither a result nor an accepted failure.`);
+      const accepted = mine.some((c) => {
+        const m = ACCEPT_RE.exec(c.body ?? "");
+        return m !== null && bindsToHead(m[1]?.toLowerCase(), Date.parse(c.created_at));
+      });
+      if (accepted) notes.push(`Newest Obsidian UI: ${n.conclusion} on ${headOfPr}, accepted by the owner (advisory).`);
+      else problems.push(`The newest-Obsidian UI job ${n.conclusion} on ${headOfPr} and the owner has not accepted it (comment "newest ok").`);
+    } else problems.push(`The newest-Obsidian UI job ended ${n.conclusion} on ${headOfPr}: that is neither a result nor an accepted failure.`);
   }
 
   return { ok: problems.length === 0, problems, notes };
@@ -113,16 +124,15 @@ function main() {
   /** @type {Comment[]} */
   const comments = pr ? pages(`repos/${repo}/issues/${pr.number}/comments?per_page=100`) : [];
 
-  // look up only the commits the owner named (a candidate for the tree/CI checks)
+  // the pull request's head is the reviewed commit: its tree and its check runs
   /** @type {Record<string, {tree: string, checks: CheckRun[]}>} */
   const commits = {};
-  for (const c of comments) {
-    const m = c.user?.login === owner && c.author_association === "OWNER" ? PREVIEW_RE.exec(c.body ?? "") : null;
-    if (!m || commits[m[1]]) continue;
+  const head = pr?.head?.sha;
+  if (head) {
     try {
-      commits[m[1]] = { tree: gh([`repos/${repo}/git/commits/${m[1]}`]).tree.sha, checks: pages(`repos/${repo}/commits/${m[1]}/check-runs?per_page=100`, "check_runs") };
+      commits[head] = { tree: gh([`repos/${repo}/git/commits/${head}`]).tree.sha, checks: pages(`repos/${repo}/commits/${head}/check-runs?per_page=100`, "check_runs") };
     } catch {
-      /* unknown commit: the gate reports it */
+      /* unreadable: the gate reports it */
     }
   }
 

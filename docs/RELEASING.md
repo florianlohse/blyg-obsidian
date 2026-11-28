@@ -48,16 +48,17 @@ A release with no change for users is not made.
 `scripts/release-gate.mjs` runs in the verify job of `release.yml` on every release dispatch; the publish job needs that job, so a red gate publishes nothing. It reads GitHub's own records, never text a contributor can edit.
 
 1. **The right commit.** `release-on-merge.yml` passes the merge commit's SHA to the dispatch; the run refuses if the checkout is any other commit (main moved on), or is not the merge commit of the pull request "Release x.y.z".
-2. **Your confirmed Obsidian preview.** After you run the official review preview on the release candidate, comment on the release pull request, from your own account (the gate accepts only a comment by the repository owner):
+2. **Your confirmed Obsidian preview.** After you run the official review preview on the release candidate and it is Completed with zero errors, comment on the release pull request, from your own account (only a comment by the repository owner counts):
 
    ```
-   Obsidian preview: <the full 40-character commit SHA> Completed errors=0
+   preview ok
    ```
 
-   `Failed`, `Incomplete`, errors above 0, a short SHA, a comment older than 7 days or a comment by anyone else do not count; the newest such comment decides. The pull request body gives the candidate SHA; copy it whole.
+   That confirms the pull request's current head commit. It counts only if it was written after CI began on that head, so any push after your comment voids it and you comment again after scanning the new head. If you want it explicit, `preview ok 3c93863` (7 to 40 characters of the head's SHA) must name that head. `preview failed` blocks. The newest such comment decides; one older than 7 days is stale; a comment by anyone else is ignored.
+
 3. **Same tree.** The reviewed commit must have the same git tree as the commit being released. The merge commit has another SHA than the pull request head, but the same tree if nothing changed; any source or version change after your scan blocks the release. Scan again and comment again.
 4. **Required CI on that commit:** `check`, `guard`, `verify`, `declares`, `ticked`, `e2e (pinned)`, `e2e (newest)`, `obsidian-smoke`, `obsidian-ui`, each with its own successful result (skipped, cancelled, pending or missing blocks). `ci.yml` has no `continue-on-error`.
-5. **Newest Obsidian.** `obsidian-ui-newest` runs on the release pull request as well as on pushes. It stays advisory: if it failed, comment `Newest Obsidian UI accepted: <full SHA>` to go ahead; if it is missing or still running, wait.
+5. **Newest Obsidian.** `obsidian-ui-newest` runs on the release pull request as well as on pushes. It stays advisory: if it failed, comment `newest ok` to go ahead (same binding as `preview ok`); if it is missing or still running, wait.
 
 On the release pull request the same checks run as warnings (the "Release gate" step of the `verify` job, see its summary), so you can see what is missing before you merge.
 
