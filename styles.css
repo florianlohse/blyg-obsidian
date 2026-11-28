@@ -1081,7 +1081,7 @@ body button.blyg-menurow[disabled] { opacity: 0.6; cursor: default; }
 .blyg-preview .blyg-studio-render .blyg-tangle-new { border-left: 3px solid var(--interactive-accent); }
 .blyg-preview .blyg-studio-render .blyg-tangle-label { font-size: var(--font-smaller); color: var(--text-muted); margin: 0; }
 /* "Send passage to note" (feature passages): the dock under the open post, and the two-step window. */
-.blyg-reader .blyg-passage-dock { flex: none; display: flex; flex-direction: column; gap: var(--size-2-2); padding: var(--size-4-2) var(--size-4-3); border-top: 1px solid var(--background-modifier-border); background: var(--background-primary); }
+.blyg-reader .blyg-passage-dock { flex: none; display: flex; flex-direction: column; gap: var(--size-2-2); padding: var(--size-4-2) var(--size-4-3); border-top: 1px solid var(--background-modifier-border); background: var(--background-primary); margin-bottom: var(--blyg-dock-lift, 0px); }
 .blyg-passage-dock-note { text-align: center; color: var(--text-muted); font-size: var(--font-ui-smaller); }
 .blyg-passage-dock.is-blocked .blyg-passage-dock-note { color: var(--text-warning, var(--text-muted)); }
 .blyg-passage-dock-row { display: flex; gap: var(--size-4-2); }

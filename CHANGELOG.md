@@ -8,6 +8,12 @@ becomes the release notes. Write entries for people who use the plugin, not for 
 
 ## [Unreleased]
 
+## [1.1.1] — 2026-11-28
+
+### Fixed
+
+- The "Send to note" bar that appears when you select text in a post is lifted above the phone's bottom bar through a style rule instead of an inline style. It looks and behaves the same; this is a maintenance fix to meet the plugin directory's review.
+
 ## [1.1.0] — 2026-11-27
 
 **Works with Studio 0.73.** Studio 0.51.0 or newer, tested against 0.51.0 and 0.73.1. The plugin used to refuse Studios newer than 0.72; it now accepts 0.73 (API contract 7). Private items in the Studio (its notebook) are not published, edited or withdrawn from the plugin, and a publish from the plugin always asks for a public publish, even if your Studio's default is private.

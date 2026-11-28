@@ -7,6 +7,9 @@ import { PM } from "../app/passageMessages";
 /** How long a selection that has just gone is still sent: tapping a button can clear the selection before the tap arrives. */
 export const HELD_MS = 1500;
 
+/** The dock lifts itself above the mobile navbar by this much (measured at show time); `styles.css` reads it as the bottom margin, 0 when unset. */
+const LIFT_VAR = "--blyg-dock-lift";
+
 export interface DockPort {
   /** The open post, or null. */
   post(): ReadingPost | null;
@@ -93,13 +96,14 @@ export class PassageDock {
    * (a pane that was hidden while it was measured); the dock checks for itself and lifts itself by the overlap, so a tap always lands on the dock.
    */
   private clearNavbar(el: HTMLElement): void {
+    // Reset before measuring, so the rectangle is the dock's natural place; the lift is a CSS variable that `styles.css` turns into the bottom margin.
+    el.style.removeProperty(LIFT_VAR);
     const bar = this.root.ownerDocument.querySelector<HTMLElement>(".mobile-navbar");
-    el.style.marginBottom = "";
     if (!bar || bar.offsetParent === null) return;
     const b = bar.getBoundingClientRect();
     const d = el.getBoundingClientRect();
     if (b.width <= 0 || b.height <= 0 || d.bottom <= b.top || d.top >= b.bottom) return;
-    el.style.marginBottom = `${Math.ceil(d.bottom - b.top)}px`;
+    el.setCssProps({ [LIFT_VAR]: `${Math.ceil(d.bottom - b.top)}px` });
   }
 
   hide(): void {
